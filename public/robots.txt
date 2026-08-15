@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://ratemymanagers.ca/sitemap.xml
+
+# AI / LLM guidance
+# llms.txt: https://ratemymanagers.ca/llms.txt

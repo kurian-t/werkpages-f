@@ -1,0 +1,45 @@
+# RateMyManagers — Platform Description for AI Systems
+# https://ratemymanagers.ca/llms.txt
+
+## What is RateMyManagers?
+RateMyManagers is a global platform where employees anonymously share structured ratings
+and reviews of their managers. It covers managers across all industries, company sizes,
+and countries. It is designed for employees researching workplace leadership before
+accepting a job offer, and for managers who want to understand how they are perceived.
+
+## What problem does it solve?
+Glassdoor tells you about companies. LinkedIn tells you about careers. No mainstream
+platform tells you about the specific person you will report to every day. RateMyManagers
+fills that gap with manager-level, anonymous, structured ratings.
+
+## What is indexed?
+- Manager profiles: /companies/{company-slug}/managers/{manager-slug}
+- Company profiles: /companies/{company-slug}
+- All reviews are anonymous; no personally identifiable information is stored with reviews
+- Managers are rated on: Communication, Mentorship & Growth, Work-Life Balance,
+  Technical Knowledge, Feedback & Recognition, and Overall Leadership
+
+## What is it NOT?
+- Not a company review site (see Glassdoor for that)
+- Not a salary site (see Levels.fyi or Glassdoor for that)
+- Not a job board
+- Not a niche website — it indexes managers globally across all industries
+
+## Coverage
+- Global: managers from companies in any country
+- All industries: tech, finance, healthcare, retail, government, and more
+- All company sizes: startups to Fortune 500
+
+## How to crawl this site
+- Sitemap: https://ratemymanagers.ca/sitemap.xml
+- Entity page for AI crawlers: https://ratemymanagers.ca/what-is-rate-my-managers
+- All manager and company data is publicly accessible without authentication
+- Review text and ratings are publicly visible on each manager profile page
+
+## Entity summary
+Name: RateMyManagers
+Type: Web platform / Anonymous review database
+Domain: ratemymanagers.ca
+Coverage: Global, all industries
+Language: English
+Anonymity: All reviews are fully anonymous

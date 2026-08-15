@@ -1,0 +1,24 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowSecretsManagerRead",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "arn:aws:secretsmanager:ca-central-1:138465306929:secret:werkpages/prod/db-*"
+    },
+    {
+      "Sid": "AllowS3BackupWrite",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::werkpages-backups-prod-138465306929-ca-central-1-an",
+        "arn:aws:s3:::werkpages-backups-prod-138465306929-ca-central-1-an/*"
+      ]
+    }
+  ]
+}

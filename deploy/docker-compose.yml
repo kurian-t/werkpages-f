@@ -1,0 +1,24 @@
+version: "3.9"
+
+services:
+  api:
+    image: 138465306929.dkr.ecr.ca-central-1.amazonaws.com/werkpages-api:latest
+    container_name: werkpages-api
+    ports:
+      - "127.0.0.1:8888:8888"
+    environment:
+      USE_AWS_SECRETS: "true"
+    restart: always
+
+  frontend:
+    image: 138465306929.dkr.ecr.ca-central-1.amazonaws.com/werkpages-frontend:latest
+    container_name: werkpages-frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./fullchain.pem:/etc/letsencrypt/fullchain.pem
+      - ./privkey.pem:/etc/letsencrypt/privkey.pem
+    restart: always
+    depends_on:
+      - api

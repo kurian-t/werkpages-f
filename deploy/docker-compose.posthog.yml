@@ -1,0 +1,19 @@
+# PostHog self-hosted — deploy this on a SEPARATE server (min 4 GB RAM, 8 GB recommended)
+# Tested with PostHog 1.x hobby/self-hosted deployment.
+#
+# Setup steps on the PostHog server:
+#   1. Clone the posthog repo: git clone https://github.com/PostHog/posthog.git
+#   2. cd posthog && copy this file over docker-compose.yml, or use PostHog's own
+#      hobby deployment script: bin/deploy-hobby
+#   3. Set POSTHOG_SECRET, DOMAIN, and EMAIL in .env before starting
+#
+# The recommended approach is PostHog's official hobby installer:
+#   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/posthog/posthog/HEAD/bin/deploy-hobby)"
+#
+# It handles ClickHouse, Kafka, Redis, Postgres, and nginx+certbot automatically.
+# Point analytics.werkpages.com at this server's IP, then run the installer.
+#
+# After installation, your PostHog host will be: https://analytics.werkpages.com
+# Add to GitHub secrets:
+#   VITE_POSTHOG_HOST = https://analytics.werkpages.com
+#   VITE_POSTHOG_KEY  = (from PostHog → Project Settings → Project API Key)
