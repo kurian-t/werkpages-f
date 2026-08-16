@@ -132,27 +132,36 @@ export default function Index() {
   return (
     <Layout>
       {/* Hero */}
-      <section className="border-b border-border">
+      <section className="border-b border-border overflow-hidden">
 
-        {/* Large screens (lg+): content first, image BELOW buttons */}
-        <div className="hidden lg:flex flex-col items-center text-center px-4 pt-8">
-          <h1 className="text-[38px] font-semibold leading-[1.15] tracking-[-0.025em] text-foreground max-w-2xl">
-            Had a great manager? A terrible one?
-          </h1>
-          <div className="mt-5 w-full max-w-[460px]">
-            <p className="text-[17px] font-semibold text-foreground">Rate them anonymously</p>
-            <p className="mt-1 text-[13px] text-muted-foreground">
-              Help the next person know what they're walking into. Star ratings only, takes 2 minutes.
-            </p>
+        {/* Desktop (lg+): copy left, art right */}
+        <div className="hidden lg:grid lg:grid-cols-[1fr_1.5fr] items-center overflow-hidden mx-auto w-full max-w-6xl" style={{ minHeight: 580 }}>
+
+          {/* Left: headline + CTA */}
+          <div className="flex flex-col items-start pl-10 xl:pl-16 pr-6 py-10">
+            <h1 className="text-[38px] font-semibold leading-[1.15] tracking-[-0.025em] text-foreground">
+              Had a great manager?<br />A terrible one?
+            </h1>
+            <div className="mt-4 w-full">
+              <p className="text-[17px] font-semibold text-foreground">Rate them anonymously</p>
+              <p className="mt-1 text-[13px] text-muted-foreground">
+                Help the next person know what they're walking into. Star ratings only, takes 2 minutes.
+              </p>
+            </div>
+            {heroCta}
+            {browsingLink}
           </div>
-          {heroCta}
-          {browsingLink}
-          <HeroImage className="mt-2" imgClass="max-h-[300px]" />
+
+          {/* Right: full image with all animations */}
+          <div className="flex items-center self-stretch">
+            <HeroImage className="!w-full" imgClass="block w-full h-auto" />
+          </div>
+
         </div>
 
-        {/* Small/medium screens (<lg): image ABOVE title */}
+        {/* Mobile/tablet (<lg): image above title */}
         <div className="flex flex-col lg:hidden">
-          <HeroImage className="" imgClass="max-h-[260px] mx-auto" />
+          <HeroImage className="mx-auto" imgClass="max-h-[260px]" />
           <div className="flex flex-col items-center text-center px-4 pt-4 pb-8">
             <h1 className="text-[32px] font-semibold leading-[1.15] tracking-[-0.025em] text-foreground">
               Had a great manager? A terrible one?
