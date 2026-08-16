@@ -587,7 +587,7 @@ export default function Admin() {
                               <button
                                 onClick={() => handleEditManager(manager.id)}
                                 disabled={editSaving || (!editingName.trim() && !editingTitle.trim() && !editingCompany.trim())}
-                                className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                className="rounded-lg bg-[#2e0562] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#2e0562]/90 disabled:opacity-50"
                               >
                                 {editSaving ? "Saving…" : "Save"}
                               </button>
@@ -673,7 +673,7 @@ export default function Admin() {
                     <div className="flex gap-3">
                       <button
                         onClick={() => setConfirmAction({ type: "approve-manager", id: String(manager.id), label: manager.name })}
-                        className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                        className="flex items-center gap-2 rounded-lg bg-[#2e0562] px-4 py-2 text-sm font-medium text-white hover:bg-[#2e0562]/90 transition-colors"
                       >
                         <CheckCircle size={16} />
                         Approve
@@ -735,7 +735,7 @@ export default function Admin() {
                               <button
                                 onClick={() => handleEditManager(manager.id)}
                                 disabled={editSaving || (!editingName.trim() && !editingTitle.trim() && !editingCompany.trim())}
-                                className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                className="rounded-lg bg-[#2e0562] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#2e0562]/90 disabled:opacity-50"
                               >
                                 {editSaving ? "Saving…" : "Save"}
                               </button>
@@ -788,7 +788,7 @@ export default function Admin() {
                       </Link>
                       <button
                         onClick={() => handleMarkGhostReviewed(manager.id)}
-                        className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                        className="flex items-center gap-2 rounded-lg bg-[#2e0562] px-4 py-2 text-sm font-medium text-white hover:bg-[#2e0562]/90 transition-colors"
                       >
                         <CheckCircle size={16} />
                         Mark as Reviewed
@@ -857,7 +857,7 @@ export default function Admin() {
                     <div className="flex gap-3">
                       <button
                         onClick={() => setConfirmAction({ type: "approve", id: edit.id, label: edit.managerName })}
-                        className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                        className="flex items-center gap-2 rounded-lg bg-[#2e0562] px-4 py-2 text-sm font-medium text-white hover:bg-[#2e0562]/90 transition-colors"
                       >
                         <CheckCircle size={16} />
                         Approve
@@ -1119,7 +1119,7 @@ export default function Admin() {
                           toast.success("Managers merged successfully.");
                         }
                       })}
-                      className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                      className="w-full rounded-lg bg-[#2e0562] px-4 py-2 text-sm font-medium text-white hover:bg-[#2e0562]/90 transition-colors"
                     >
                       Merge →
                     </button>
@@ -1293,7 +1293,7 @@ export default function Admin() {
                 }}
                 className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors ${
                   confirmAction.type === "approve-manager" || confirmAction.type === "approve"
-                    ? "bg-primary hover:bg-primary/90"
+                    ? "bg-[#2e0562] hover:bg-[#2e0562]/90"
                     : "bg-red-600 hover:bg-red-700"
                 }`}
               >

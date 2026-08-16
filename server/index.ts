@@ -8,8 +8,6 @@ export function createServer() {
 
   // Middleware
   app.use(cors());
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
 
   // Example API routes
   app.get("/api/ping", (_req, res) => {

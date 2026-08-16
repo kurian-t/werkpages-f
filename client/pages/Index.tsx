@@ -146,7 +146,7 @@ export default function Index() {
           <div className="grid gap-5 sm:grid-cols-2">
 
             <div className="flex gap-3">
-              <EyeOff size={20} className="mt-0.5 shrink-0 text-primary" />
+              <EyeOff size={20} className="mt-0.5 shrink-0 text-[#2e0562]" />
               <div>
                 <p className="text-[14px] font-semibold text-foreground">Is it really anonymous?</p>
                 <p className="mt-0.5 text-[13px] text-muted-foreground">
@@ -156,7 +156,7 @@ export default function Index() {
             </div>
 
             <div className="flex gap-3">
-              <ShieldCheck size={20} className="mt-0.5 shrink-0 text-primary" />
+              <ShieldCheck size={20} className="mt-0.5 shrink-0 text-[#2e0562]" />
               <div>
                 <p className="text-[14px] font-semibold text-foreground">Can my employer find out?</p>
                 <p className="mt-0.5 text-[13px] text-muted-foreground">
@@ -166,7 +166,7 @@ export default function Index() {
             </div>
 
             <div className="flex gap-3">
-              <AlertCircle size={20} className="mt-0.5 shrink-0 text-primary" />
+              <AlertCircle size={20} className="mt-0.5 shrink-0 text-[#2e0562]" />
               <div>
                 <p className="text-[14px] font-semibold text-foreground">What stops fake reviews?</p>
                 <p className="mt-0.5 text-[13px] text-muted-foreground">
@@ -176,7 +176,7 @@ export default function Index() {
             </div>
 
             <div className="flex gap-3">
-              <CheckCircle size={20} className="mt-0.5 shrink-0 text-primary" />
+              <CheckCircle size={20} className="mt-0.5 shrink-0 text-[#2e0562]" />
               <div>
                 <p className="text-[14px] font-semibold text-foreground">Is this allowed?</p>
                 <p className="mt-0.5 text-[13px] text-muted-foreground">

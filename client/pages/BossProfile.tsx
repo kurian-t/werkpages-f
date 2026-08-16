@@ -94,7 +94,7 @@ function DateSelects({ label, value, onChange, disabled }: DateSelectsProps) {
         disabled={disabled}
         value={value.month}
         onChange={e => onChange({ ...value, month: e.target.value })}
-        className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-40 disabled:cursor-not-allowed"
+        className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] disabled:opacity-40 disabled:cursor-not-allowed"
         aria-label={`${label} month`}
       >
         <option value="">Month</option>
@@ -113,7 +113,7 @@ function DateSelects({ label, value, onChange, disabled }: DateSelectsProps) {
               : value.month;
           onChange({ month: clearedMonth, year: y });
         }}
-        className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-40 disabled:cursor-not-allowed"
+        className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] disabled:opacity-40 disabled:cursor-not-allowed"
         aria-label={`${label} year`}
       >
         <option value="">Year</option>
@@ -1289,7 +1289,7 @@ export default function BossProfile() {
         <section className="py-16 text-center">
           <h1 className="text-3xl font-bold text-foreground">Manager Not Found</h1>
           <p className="mt-2 text-muted-foreground">The manager you're looking for doesn't exist.</p>
-          <button onClick={() => navigate(-1)} className="mt-6 inline-block rounded-lg bg-primary px-6 py-3 text-primary-foreground">
+          <button onClick={() => navigate(-1)} className="mt-6 inline-block rounded-lg bg-[#2e0562] px-6 py-3 text-white hover:bg-[#2e0562]/90">
             Go Back
           </button>
         </section>
@@ -1454,7 +1454,7 @@ export default function BossProfile() {
             <div className="flex flex-col gap-3 flex-shrink-0 w-[200px] overflow-visible">
               {/* Compact rating strip */}
               <div className={`flex items-center gap-3 ${isLocked ? "select-none" : ""}`}>
-                <span className={`text-2xl font-bold text-primary tabular-nums leading-none whitespace-nowrap ${isLocked ? "blur-sm" : ""}`}>
+                <span className={`text-2xl font-bold text-[#6d5091] tabular-nums leading-none whitespace-nowrap ${isLocked ? "blur-sm" : ""}`}>
                   {managerCategoryAverages.overallRating
                     ? Number(managerCategoryAverages.overallRating).toFixed(1)
                     : manager.overallRating
@@ -1515,7 +1515,7 @@ export default function BossProfile() {
                       className={`flex-1 px-4 py-2 text-sm font-medium transition-all text-left ${
                         isBanned || atReviewLimit
                           ? "bg-muted text-muted-foreground cursor-not-allowed"
-                          : "bg-primary text-primary-foreground hover:bg-primary/90"
+                          : "bg-[#2e0562] text-white hover:bg-[#2e0562]/90"
                       } ${userHasReviewedState && !atReviewLimit ? "rounded-l-lg" : "rounded-lg"}`}
                     >
                       {atReviewLimit ? "Review Limit Reached" : userHasReviewedState ? "Edit Your Review" : "Write a Review"}
@@ -1525,7 +1525,7 @@ export default function BossProfile() {
                       <button
                         onClick={() => { setShowReviewDropdown(v => !v); setPendingDeleteReviewId(null); }}
                         aria-label="Show review options"
-                        className="border-l border-primary/40 bg-primary px-2 py-2 text-primary-foreground hover:bg-primary/90 transition-all rounded-r-lg"
+                        className="border-l border-[#2e0562]/40 bg-[#2e0562] px-2 py-2 text-white hover:bg-[#2e0562]/90 transition-all rounded-r-lg"
                       >
                         <ChevronDown size={16} className={`transition-transform ${showReviewDropdown ? "rotate-180" : ""}`} />
                       </button>
@@ -1704,7 +1704,7 @@ export default function BossProfile() {
                   value={adminEditForm.name}
                   onChange={e => setAdminEditForm(p => ({ ...p, name: e.target.value }))}
                   maxLength={100}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                 />
               </div>
               <div>
@@ -1714,7 +1714,7 @@ export default function BossProfile() {
                   value={adminEditForm.title}
                   onChange={e => setAdminEditForm(p => ({ ...p, title: e.target.value }))}
                   maxLength={100}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                 />
               </div>
               <div>
@@ -1723,7 +1723,7 @@ export default function BossProfile() {
                   value={adminEditForm.company}
                   onChange={val => { setAdminEditForm(p => ({ ...p, company: val })); setAdminEditLogoUrl(undefined); }}
                   onSuggestionSelect={(_name, logoUrl) => setAdminEditLogoUrl(logoUrl)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                 />
               </div>
               <div>
@@ -1734,7 +1734,7 @@ export default function BossProfile() {
                   onChange={e => setAdminEditForm(p => ({ ...p, linkedinUrl: e.target.value }))}
                   placeholder="https://linkedin.com/in/…"
                   maxLength={500}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                 />
               </div>
             </div>
@@ -1768,7 +1768,7 @@ export default function BossProfile() {
                     setAdminEditSaving(false);
                   }
                 }}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="rounded-lg bg-[#2e0562] px-4 py-2 text-sm font-medium text-white hover:bg-[#2e0562]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {adminEditSaving ? "Saving…" : "Save changes"}
               </button>
@@ -1795,7 +1795,7 @@ export default function BossProfile() {
                   type="text"
                   value={adminCareerEditEntry.company}
                   onChange={e => setAdminCareerEditEntry(p => p ? { ...p, company: e.target.value } : p)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                 />
               </div>
               <div>
@@ -1804,7 +1804,7 @@ export default function BossProfile() {
                   type="text"
                   value={adminCareerEditEntry.role}
                   onChange={e => setAdminCareerEditEntry(p => p ? { ...p, role: e.target.value } : p)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -1816,7 +1816,7 @@ export default function BossProfile() {
                     onChange={e => setAdminCareerEditEntry(p => p ? { ...p, startDate: e.target.value } : p)}
                     min={1900}
                     max={new Date().getFullYear()}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                   />
                 </div>
                 <div>
@@ -1828,7 +1828,7 @@ export default function BossProfile() {
                     min={1900}
                     max={new Date().getFullYear()}
                     placeholder="Present"
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                   />
                 </div>
               </div>
@@ -1862,7 +1862,7 @@ export default function BossProfile() {
                     setAdminCareerEditSaving(false);
                   }
                 }}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-lg bg-[#2e0562] px-4 py-2 text-sm font-medium text-white hover:bg-[#2e0562]/90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {adminCareerEditSaving ? "Saving…" : "Save"}
               </button>
@@ -1979,7 +1979,7 @@ export default function BossProfile() {
                 <p className="mt-1 text-xs text-muted-foreground">Rate any manager to see the full summary.</p>
                 <button
                   onClick={() => navigate("/add")}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-4 py-2 text-xs font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
                 >
                   ⭐ Rate a manager
                 </button>
@@ -2109,7 +2109,7 @@ export default function BossProfile() {
                   <div key={category} className="flex items-center gap-3">
                     <span className="w-44 flex-shrink-0 text-xs text-muted-foreground leading-tight">{category}</span>
                     <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div className="h-full rounded-full bg-primary" style={{ width: `${Math.random() * 60 + 20}%` }} />
+                      <div className="h-full rounded-full bg-[#6d5091]" style={{ width: `${Math.random() * 60 + 20}%` }} />
                     </div>
                     <span className="w-7 flex-shrink-0 text-right text-xs font-semibold text-foreground tabular-nums">—</span>
                   </div>
@@ -2120,7 +2120,7 @@ export default function BossProfile() {
                 <p className="mt-1 text-xs text-muted-foreground">Rate any manager to unlock the full breakdown</p>
                 <button
                   onClick={() => navigate("/add")}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-4 py-2 text-xs font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
                 >
                   ⭐ Rate a manager
                 </button>
@@ -2135,7 +2135,7 @@ export default function BossProfile() {
                   <div key={category} className="flex items-center gap-3">
                     <span className="w-44 flex-shrink-0 text-xs text-muted-foreground leading-tight">{category}</span>
                     <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${pct}%` }} />
+                      <div className="h-full rounded-full bg-[#6d5091] transition-all duration-500" style={{ width: `${pct}%` }} />
                     </div>
                     <span className="w-7 flex-shrink-0 text-right text-xs font-semibold text-foreground tabular-nums">
                       {avg > 0 ? avg.toFixed(1) : "—"}
@@ -2193,7 +2193,7 @@ export default function BossProfile() {
                 <p className="mt-1 text-sm text-muted-foreground">Rate a manager to unlock the performance trajectory</p>
                 <button
                   onClick={() => navigate("/add")}
-                  className="mt-4 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                  className="mt-4 rounded-lg bg-[#2e0562] px-5 py-2 text-sm font-semibold text-white hover:bg-[#2e0562]/90"
                 >
                   ⭐ Rate a manager
                 </button>
@@ -2220,7 +2220,7 @@ export default function BossProfile() {
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
+              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] flex-shrink-0"
             >
               <option value="recent">Most Recent</option>
               <option value="highest">Highest Rated</option>
@@ -2256,7 +2256,7 @@ export default function BossProfile() {
                   <p className="mt-1 text-xs text-muted-foreground">Rate any manager to read what others think.</p>
                   <button
                     onClick={() => navigate("/add")}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
                   >
                     ⭐ Rate a manager to unlock
                   </button>
@@ -2396,7 +2396,7 @@ export default function BossProfile() {
               className={`mt-6 rounded-lg px-8 py-3 font-medium transition-all ${
                 isBanned
                   ? "bg-muted text-muted-foreground cursor-not-allowed opacity-50"
-                  : "bg-primary text-primary-foreground hover:bg-primary/90"
+                  : "bg-[#2e0562] text-white hover:bg-[#2e0562]/90"
               }`}
             >
               Write a Review
@@ -2443,7 +2443,7 @@ export default function BossProfile() {
             {/* Progress bar */}
             <div className="h-1 bg-muted/60">
               <div
-                className="h-1 bg-primary transition-all duration-300"
+                className="h-1 bg-[#2e0562] transition-all duration-300"
                 style={{ width: `${Math.round(stepIdx * 100 / 3)}%` }}
               />
             </div>
@@ -2454,7 +2454,7 @@ export default function BossProfile() {
 
                 {/* Draft restored banner */}
                 {showDraftBanner && reviewStep === "ratings" && (
-                  <div className="flex items-center justify-between gap-4 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 mb-6">
+                  <div className="flex items-center justify-between gap-4 rounded-lg border border-[#2e0562]/30 bg-[#2e0562]/5 px-4 py-3 mb-6">
                     <p className="text-sm text-foreground">
                       <span className="font-medium">Draft Restored.</span> Pick up where you left off.
                     </p>
@@ -2507,11 +2507,11 @@ export default function BossProfile() {
                         <div>
                           <p className="text-xs text-muted-foreground mb-2">From <span className="text-red-500">*</span></p>
                           <div className="flex gap-2">
-                            <select aria-label="From month" value={reviewWorkedFrom.month} onChange={(e) => { const v = e.target.value; setReviewWorkedFrom(p => ({ ...p, month: v })); if (!v && !reviewWorkedFrom.year) { setReviewWorkedUntil({ month: "", year: "" }); setReviewCurrentlyWorking(false); } }} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
+                            <select aria-label="From month" value={reviewWorkedFrom.month} onChange={(e) => { const v = e.target.value; setReviewWorkedFrom(p => ({ ...p, month: v })); if (!v && !reviewWorkedFrom.year) { setReviewWorkedUntil({ month: "", year: "" }); setReviewCurrentlyWorking(false); } }} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]">
                               <option value="">Month</option>
                               {availableMonths(reviewWorkedFrom.year).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                             </select>
-                            <select aria-label="From year" value={reviewWorkedFrom.year} onChange={(e) => { const v = e.target.value; const clearedMonth = v === String(currentYear) && parseInt(reviewWorkedFrom.month) > currentMonth ? "" : reviewWorkedFrom.month; setReviewWorkedFrom({ month: clearedMonth, year: v }); if (!v && !clearedMonth) { setReviewWorkedUntil({ month: "", year: "" }); setReviewCurrentlyWorking(false); } }} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
+                            <select aria-label="From year" value={reviewWorkedFrom.year} onChange={(e) => { const v = e.target.value; const clearedMonth = v === String(currentYear) && parseInt(reviewWorkedFrom.month) > currentMonth ? "" : reviewWorkedFrom.month; setReviewWorkedFrom({ month: clearedMonth, year: v }); if (!v && !clearedMonth) { setReviewWorkedUntil({ month: "", year: "" }); setReviewCurrentlyWorking(false); } }} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]">
                               <option value="">Year</option>
                               {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
                             </select>
@@ -2522,11 +2522,11 @@ export default function BossProfile() {
                           <div className="flex gap-2 items-center">
                             {!reviewCurrentlyWorking && (
                               <>
-                                <select aria-label="Until month" value={reviewWorkedUntil.month} onChange={(e) => setReviewWorkedUntil(p => ({ ...p, month: e.target.value }))} disabled={!reviewWorkedFrom.month && !reviewWorkedFrom.year} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-40 disabled:cursor-not-allowed">
+                                <select aria-label="Until month" value={reviewWorkedUntil.month} onChange={(e) => setReviewWorkedUntil(p => ({ ...p, month: e.target.value }))} disabled={!reviewWorkedFrom.month && !reviewWorkedFrom.year} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] disabled:opacity-40 disabled:cursor-not-allowed">
                                   <option value="">Month</option>
                                   {availableMonths(reviewWorkedUntil.year).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                                 </select>
-                                <select aria-label="Until year" value={reviewWorkedUntil.year} onChange={(e) => { const v = e.target.value; const clearedMonth = v === String(currentYear) && parseInt(reviewWorkedUntil.month) > currentMonth ? "" : reviewWorkedUntil.month; setReviewWorkedUntil({ month: clearedMonth, year: v }); }} disabled={!reviewWorkedFrom.month && !reviewWorkedFrom.year} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-40 disabled:cursor-not-allowed">
+                                <select aria-label="Until year" value={reviewWorkedUntil.year} onChange={(e) => { const v = e.target.value; const clearedMonth = v === String(currentYear) && parseInt(reviewWorkedUntil.month) > currentMonth ? "" : reviewWorkedUntil.month; setReviewWorkedUntil({ month: clearedMonth, year: v }); }} disabled={!reviewWorkedFrom.month && !reviewWorkedFrom.year} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] disabled:opacity-40 disabled:cursor-not-allowed">
                                   <option value="">Year</option>
                                   {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
                                 </select>
@@ -2632,7 +2632,7 @@ export default function BossProfile() {
                                 placeholder="e.g. Engineering Manager"
                                 maxLength={100}
                                 autoFocus
-                                className={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary ${reviewTitleError || isDuplicateTitle ? "border-red-500" : "border-border"}`}
+                                className={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] ${reviewTitleError || isDuplicateTitle ? "border-red-500" : "border-border"}`}
                               />
                             </div>
                             <div>
@@ -2641,7 +2641,7 @@ export default function BossProfile() {
                                 value={reviewManagerCompany}
                                 onChange={val => { setReviewManagerCompany(val); setReviewTitleError(null); setConflictAfterAuth(false); }}
                                 placeholder="e.g. Acme Corp"
-                                className={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary ${reviewTitleError || isDuplicateTitle ? "border-red-500" : "border-border"}`}
+                                className={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] ${reviewTitleError || isDuplicateTitle ? "border-red-500" : "border-border"}`}
                               />
                             </div>
                           </div>
@@ -2770,7 +2770,7 @@ export default function BossProfile() {
                             setEditingEditRoleInline(false);
                             setEditReviewStep("ratings");
                           }}
-                          className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground transition-all hover:bg-primary/90"
+                          className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#2e0562] px-4 py-3 font-medium text-white transition-all hover:bg-[#2e0562]/90"
                         >
                           Edit my existing review
                         </button>
@@ -2820,7 +2820,7 @@ export default function BossProfile() {
                         (reviewStep === "dates" && (!reviewIsDateValid || !!reviewDateError)) ||
                         (isLastStep && submitDisabled)
                       }
-                      className={`w-full inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed ${isLastStep && showReadyBanner ? "ring-2 ring-primary ring-offset-2" : ""}`}
+                      className={`w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#2e0562] px-4 py-3 font-medium text-white transition-all hover:bg-[#2e0562]/90 disabled:opacity-50 disabled:cursor-not-allowed ${isLastStep && showReadyBanner ? "ring-2 ring-[#2e0562] ring-offset-2" : ""}`}
                     >
                       {isLastStep && isSubmittingReview && (
                         <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
@@ -2870,7 +2870,7 @@ export default function BossProfile() {
             </div>
 
             {/* Progress bar */}
-            <div className="h-1 bg-primary" />
+            <div className="h-1 bg-[#2e0562]" />
 
             {/* Scrollable content */}
             <div className="flex-1 overflow-y-auto">
@@ -2893,7 +2893,7 @@ export default function BossProfile() {
                       onChange={(e) => { setEditModalTouched(true); setEditFormData((prev) => ({ ...prev, title: e.target.value })); }}
                       placeholder="e.g., CEO, Engineering Manager"
                       maxLength={100}
-                      className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                     />
                   </div>
 
@@ -2904,7 +2904,7 @@ export default function BossProfile() {
                       onChange={(val) => { setEditModalTouched(true); setEditFormData((prev) => ({ ...prev, company: val })); setEditCompanyLogoUrl(undefined); }}
                       onSuggestionSelect={(_name, logoUrl) => setEditCompanyLogoUrl(logoUrl)}
                       placeholder="e.g., Microsoft, Apple"
-                      className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                     />
                   </div>
 
@@ -2913,7 +2913,7 @@ export default function BossProfile() {
                     <select
                       value={editFormData.country}
                       onChange={(e) => { setEditModalTouched(true); setEditFormData((prev) => ({ ...prev, country: e.target.value })); }}
-                      className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                     >
                       <option value="">Select a country</option>
                       {COUNTRIES.map(c => (
@@ -2925,7 +2925,7 @@ export default function BossProfile() {
                   <div>
                     <label className="block text-sm font-semibold text-foreground mb-3">Manager Status *</label>
                     <div className="space-y-2">
-                      <label className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${editFormData.status === "active" ? "border-primary bg-primary/5" : "border-border hover:bg-accent/5"}`}>
+                      <label className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${editFormData.status === "active" ? "border-[#2e0562] bg-[#2e0562]/5" : "border-border hover:bg-accent/5"}`}>
                         <input type="radio" name="editStatus" value="active" checked={editFormData.status === "active"}
                           onChange={() => { setEditModalTouched(true); setEditFormData(prev => ({ ...prev, status: "active" })); setEditEndDate({ month: "", year: "" }); setEditEndCurrent(true); }}
                           className="w-4 h-4" />
@@ -2934,7 +2934,7 @@ export default function BossProfile() {
                           <p className="text-xs text-muted-foreground">Manager is actively leading</p>
                         </div>
                       </label>
-                      <label className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${editFormData.status === "retired" ? "border-primary bg-primary/5" : "border-border hover:bg-accent/5"}`}>
+                      <label className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${editFormData.status === "retired" ? "border-[#2e0562] bg-[#2e0562]/5" : "border-border hover:bg-accent/5"}`}>
                         <input type="radio" name="editStatus" value="retired" checked={editFormData.status === "retired"}
                           onChange={() => { setEditModalTouched(true); setEditFormData(prev => ({ ...prev, status: "retired" })); setEditEndCurrent(false); }}
                           className="w-4 h-4" />
@@ -2990,7 +2990,7 @@ export default function BossProfile() {
                 <button
                   onClick={handleEditManager}
                   disabled={!canSave}
-                  className="w-full rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full rounded-lg bg-[#2e0562] px-4 py-3 font-medium text-white transition-all hover:bg-[#2e0562]/90 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Save Changes
                 </button>
@@ -3037,7 +3037,7 @@ export default function BossProfile() {
 
             {/* Progress bar */}
             <div className="h-1 bg-muted/60">
-              <div className="h-1 bg-primary transition-all duration-300" style={{ width: `${stepIdx * 25}%` }} />
+              <div className="h-1 bg-[#2e0562] transition-all duration-300" style={{ width: `${stepIdx * 25}%` }} />
             </div>
 
             {/* Scrollable content */}
@@ -3091,7 +3091,7 @@ export default function BossProfile() {
                               <input type="text" value={editManagerTitle}
                                 onChange={(e) => { setEditManagerTitle(e.target.value); setEditReviewTitleError(null); }}
                                 placeholder="e.g. Engineering Manager" maxLength={100} autoFocus
-                                className={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary ${editReviewTitleError || isEditDuplicateTitle ? "border-red-500" : "border-border"}`}
+                                className={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] ${editReviewTitleError || isEditDuplicateTitle ? "border-red-500" : "border-border"}`}
                               />
                             </div>
                             <div>
@@ -3100,7 +3100,7 @@ export default function BossProfile() {
                                 value={editManagerCompany}
                                 onChange={val => setEditManagerCompany(val)}
                                 placeholder="e.g. Acme Corp"
-                                className={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary ${isEditDuplicateTitle ? "border-red-500" : "border-border"}`}
+                                className={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] ${isEditDuplicateTitle ? "border-red-500" : "border-border"}`}
                               />
                             </div>
                           </div>
@@ -3165,11 +3165,11 @@ export default function BossProfile() {
                         <div>
                           <p className="text-xs text-muted-foreground mb-2">From <span className="text-red-500">*</span></p>
                           <div className="flex gap-2">
-                            <select aria-label="From month" value={editWorkedFrom.month} onChange={(e) => { const v = e.target.value; setEditWorkedFrom(p => ({ ...p, month: v })); if (!v && !editWorkedFrom.year) { setEditWorkedUntil({ month: "", year: "" }); setEditCurrentlyWorking(false); } }} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
+                            <select aria-label="From month" value={editWorkedFrom.month} onChange={(e) => { const v = e.target.value; setEditWorkedFrom(p => ({ ...p, month: v })); if (!v && !editWorkedFrom.year) { setEditWorkedUntil({ month: "", year: "" }); setEditCurrentlyWorking(false); } }} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]">
                               <option value="">Month</option>
                               {availableMonths(editWorkedFrom.year).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                             </select>
-                            <select aria-label="From year" value={editWorkedFrom.year} onChange={(e) => { const v = e.target.value; const clearedMonth = v === String(currentYear) && parseInt(editWorkedFrom.month) > currentMonth ? "" : editWorkedFrom.month; setEditWorkedFrom({ month: clearedMonth, year: v }); if (!v && !clearedMonth) { setEditWorkedUntil({ month: "", year: "" }); setEditCurrentlyWorking(false); } }} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
+                            <select aria-label="From year" value={editWorkedFrom.year} onChange={(e) => { const v = e.target.value; const clearedMonth = v === String(currentYear) && parseInt(editWorkedFrom.month) > currentMonth ? "" : editWorkedFrom.month; setEditWorkedFrom({ month: clearedMonth, year: v }); if (!v && !clearedMonth) { setEditWorkedUntil({ month: "", year: "" }); setEditCurrentlyWorking(false); } }} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]">
                               <option value="">Year</option>
                               {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
                             </select>
@@ -3180,11 +3180,11 @@ export default function BossProfile() {
                           <div className="flex gap-2 items-center">
                             {!editCurrentlyWorking && (
                               <>
-                                <select aria-label="Until month" value={editWorkedUntil.month} onChange={(e) => setEditWorkedUntil(p => ({ ...p, month: e.target.value }))} disabled={!editWorkedFrom.month && !editWorkedFrom.year} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-40 disabled:cursor-not-allowed">
+                                <select aria-label="Until month" value={editWorkedUntil.month} onChange={(e) => setEditWorkedUntil(p => ({ ...p, month: e.target.value }))} disabled={!editWorkedFrom.month && !editWorkedFrom.year} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] disabled:opacity-40 disabled:cursor-not-allowed">
                                   <option value="">Month</option>
                                   {availableMonths(editWorkedUntil.year).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                                 </select>
-                                <select aria-label="Until year" value={editWorkedUntil.year} onChange={(e) => { const v = e.target.value; const clearedMonth = v === String(currentYear) && parseInt(editWorkedUntil.month) > currentMonth ? "" : editWorkedUntil.month; setEditWorkedUntil({ month: clearedMonth, year: v }); }} disabled={!editWorkedFrom.month && !editWorkedFrom.year} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-40 disabled:cursor-not-allowed">
+                                <select aria-label="Until year" value={editWorkedUntil.year} onChange={(e) => { const v = e.target.value; const clearedMonth = v === String(currentYear) && parseInt(editWorkedUntil.month) > currentMonth ? "" : editWorkedUntil.month; setEditWorkedUntil({ month: clearedMonth, year: v }); }} disabled={!editWorkedFrom.month && !editWorkedFrom.year} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] disabled:opacity-40 disabled:cursor-not-allowed">
                                   <option value="">Year</option>
                                   {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
                                 </select>
@@ -3237,7 +3237,7 @@ export default function BossProfile() {
                       <h2 className="text-[22px] font-semibold text-foreground">Who wrote this review?</h2>
                       <p className="mt-1 text-sm text-muted-foreground">This review will be posted under the same name you originally used.</p>
                     </div>
-                    <div className="rounded-lg border border-primary p-3 bg-primary/5">
+                    <div className="rounded-lg border border-[#2e0562] p-3 bg-[#2e0562]/5">
                       <p className="font-medium text-foreground">
                         {editAuthorType === "username" ? `@${user.username}` : editAuthorType === "real_name" ? `${user.firstName} ${user.lastName}` : editGeneratedName}
                       </p>
@@ -3271,7 +3271,7 @@ export default function BossProfile() {
                       (editReviewStep === "dates" && !editReviewIsDateValid) ||
                       (isLastStep && submitDisabled)
                     }
-                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-[#2e0562] px-4 py-3 font-medium text-white transition-all hover:bg-[#2e0562]/90 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLastStep ? "Save Changes" : "Next"}
                   </button>

@@ -10,7 +10,7 @@ import { fetchGeo } from "@/lib/geo";
 import axios from "axios";
 
 const INPUT_CLASS =
-  "rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-sm placeholder:text-muted-foreground";
+  "rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] shadow-sm placeholder:text-muted-foreground";
 
 const FAKE_NAME_PARTS = new Set([
   "test", "fake", "admin", "null", "undefined", "anonymous",
@@ -250,7 +250,8 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
           <button
             type="submit"
             disabled={!allFilled || loading}
-            className="w-full rounded-xl bg-primary px-4 py-3.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: !allFilled || loading ? '#c0b4d0' : '#2e0562' }}
+            className="w-full rounded-xl px-4 py-3.5 text-sm font-semibold text-white transition-colors shadow-md disabled:cursor-not-allowed"
           >
             {loading ? "Searching…" : "Search"}
           </button>
@@ -296,7 +297,7 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
                   <p className="mt-1 text-xs text-muted-foreground">It's anonymous and takes 2 minutes.</p>
                   <button
                     onClick={() => navigate("/add")}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
                   >
                     ⭐ Rate a manager
                   </button>

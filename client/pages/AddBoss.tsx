@@ -64,7 +64,7 @@ function DateSelects({ label, value, onChange, disabled }: DateSelectsProps) {
         disabled={disabled}
         value={value.month}
         onChange={e => onChange({ ...value, month: e.target.value })}
-        className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-40 disabled:cursor-not-allowed"
+        className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] disabled:opacity-40 disabled:cursor-not-allowed"
         aria-label={`${label} month`}
         autoComplete="off"
       >
@@ -84,7 +84,7 @@ function DateSelects({ label, value, onChange, disabled }: DateSelectsProps) {
               : value.month;
           onChange({ month: clearedMonth, year: y });
         }}
-        className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-40 disabled:cursor-not-allowed"
+        className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] disabled:opacity-40 disabled:cursor-not-allowed"
         aria-label={`${label} year`}
         autoComplete="off"
       >
@@ -627,7 +627,7 @@ export default function AddBoss() {
         {/* Progress bar */}
         <div className="h-1 bg-muted/60">
           <div
-            className="h-1 bg-primary transition-all duration-300"
+            className="h-1 bg-[#2e0562] transition-all duration-300"
             style={{ width: `${Math.round(stepIdx * 100 / 3)}%` }}
           />
         </div>
@@ -638,7 +638,7 @@ export default function AddBoss() {
 
             {/* Draft banner */}
             {showDraftBanner && step === "info" && (
-              <div className="flex items-center justify-between gap-4 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 mb-6">
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-[#2e0562]/30 bg-[#2e0562]/5 px-4 py-3 mb-6">
                 <p className="text-sm text-foreground">
                   <span className="font-medium">Draft Restored.</span> Pick up where you left off.
                 </p>
@@ -679,13 +679,13 @@ export default function AddBoss() {
                     <label className="block text-sm font-semibold text-foreground mb-2">First Name *</label>
                     <input type="text" name="firstName" value={formData.firstName} onChange={handleInputChange}
                       placeholder="e.g., Satya" maxLength={50}
-                      className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                      className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]" />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-foreground mb-2">Last Name *</label>
                     <input type="text" name="lastName" value={formData.lastName} onChange={handleInputChange}
                       placeholder="e.g., Nadella" maxLength={50}
-                      className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                      className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]" />
                   </div>
                 </div>
 
@@ -694,7 +694,7 @@ export default function AddBoss() {
                     <label className="block text-sm font-semibold text-foreground mb-2">Title *</label>
                     <input type="text" name="title" value={formData.title} onChange={handleInputChange}
                       placeholder="e.g., Engineering Manager" maxLength={100}
-                      className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                      className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]" />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-foreground mb-2">Company *</label>
@@ -703,7 +703,7 @@ export default function AddBoss() {
                       onChange={val => { touch(); setFormData(prev => ({ ...prev, company: val })); if (errors.length > 0) setErrors([]); }}
                       placeholder="e.g., Microsoft"
                       name="company"
-                      className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                     />
                     {formData.company.trim().length === 1 && (
                       <p className="mt-1 text-xs text-amber-600">Company name must be at least 2 characters</p>
@@ -740,7 +740,7 @@ export default function AddBoss() {
                           name="country"
                           value={formData.country}
                           onChange={e => { touch(); setFormData(prev => ({ ...prev, country: e.target.value })); if (errors.length > 0) setErrors([]); }}
-                          className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                          className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                         >
                           <option value="">Select a country</option>
                           {COUNTRIES.map(c => (
@@ -757,14 +757,14 @@ export default function AddBoss() {
                           onChange={e => { touch(); setFormData(prev => ({ ...prev, state: e.target.value })); }}
                           placeholder="e.g. Ontario"
                           maxLength={100}
-                          className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                          className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                         />
                       </div>
                       {formData.country && editingLocation && (
                         <button
                           type="button"
                           onClick={() => setEditingLocation(false)}
-                          className="text-xs text-primary hover:underline"
+                          className="text-xs text-[#2e0562] hover:underline"
                         >
                           Done editing
                         </button>
@@ -776,14 +776,14 @@ export default function AddBoss() {
                 <div>
                   <label className="block text-sm font-semibold text-foreground mb-3">Manager Status *</label>
                   <div className="space-y-2">
-                    <label className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${formData.status === "active" ? "border-primary bg-primary/5" : "border-border hover:bg-accent/5"}`}>
+                    <label className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${formData.status === "active" ? "border-[#2e0562] bg-[#2e0562]/5" : "border-border hover:bg-accent/5"}`}>
                       <input type="radio" name="status" value="active" checked={formData.status === "active"} onChange={() => handleStatusChange("active")} className="w-4 h-4" />
                       <div>
                         <p className="font-medium text-foreground">Currently Active</p>
                         <p className="text-xs text-muted-foreground">Manager is actively leading</p>
                       </div>
                     </label>
-                    <label className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${formData.status === "retired" ? "border-primary bg-primary/5" : "border-border hover:bg-accent/5"}`}>
+                    <label className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${formData.status === "retired" ? "border-[#2e0562] bg-[#2e0562]/5" : "border-border hover:bg-accent/5"}`}>
                       <input type="radio" name="status" value="retired" checked={formData.status === "retired"} onChange={() => handleStatusChange("retired")} className="w-4 h-4" />
                       <div>
                         <p className="font-medium text-foreground">Retired / No longer in this role</p>
@@ -848,16 +848,16 @@ export default function AddBoss() {
                 </div>
 
                 {/* Rating progress */}
-                <div className="rounded-lg bg-primary/5 p-4">
+                <div className="rounded-lg bg-[#2e0562]/5 p-4">
                   <div className="mb-2 flex items-center justify-between">
                     <p className="text-sm font-medium text-foreground">Progress</p>
-                    <p className="text-sm font-semibold text-primary">
+                    <p className="text-sm font-semibold text-[#2e0562]">
                       {Object.values(ratings).filter(r => r > 0).length} / {RATING_CATEGORIES.length}
                     </p>
                   </div>
                   <div className="h-2 w-full rounded-full bg-border overflow-hidden">
                     <div
-                      className="h-full bg-primary transition-all duration-300"
+                      className="h-full bg-[#2e0562] transition-all duration-300"
                       style={{ width: `${(Object.values(ratings).filter(r => r > 0).length / RATING_CATEGORIES.length) * 100}%` }}
                     />
                   </div>
@@ -872,7 +872,7 @@ export default function AddBoss() {
                       <p className="font-medium text-foreground">{generatedName}</p>
                       <button type="button"
                         onClick={(e) => { e.preventDefault(); setGeneratedName(generateUsername()); }}
-                        className="text-xs text-primary hover:underline">
+                        className="text-xs text-[#2e0562] hover:underline">
                         Regenerate
                       </button>
                     </div>
@@ -934,9 +934,9 @@ export default function AddBoss() {
               disabled={nextDisabled}
               className={`w-full rounded-lg px-6 py-3 font-semibold text-sm transition-all ${
                 !nextDisabled
-                  ? "bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
-                  : "bg-muted text-muted-foreground cursor-not-allowed"
-              } ${showReadyBanner && isLastStep ? "ring-2 ring-primary ring-offset-2 animate-pulse" : ""}`}
+                  ? "bg-[#2e0562] text-white hover:bg-[#2e0562]/90 cursor-pointer"
+                  : "bg-[#c0b4d0] text-white cursor-not-allowed"
+              } ${showReadyBanner && isLastStep ? "ring-2 ring-[#2e0562] ring-offset-2 animate-pulse" : ""}`}
             >
               {isLastStep
                 ? isSubmitting ? "Submitting..." : user ? "Submit Review" : "Continue to Sign In"

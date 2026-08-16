@@ -53,8 +53,6 @@ export function ManagerAvatar({ name, size = "md" }: { name: string; size?: "sm"
 
 export function CompanyLogoImg({ company, logoUrl, sizeClass }: { company: string; logoUrl?: string; sizeClass: string }) {
   const logoDevUrl = `https://img.logo.dev/${companyLogoDomain(company)}?token=pk_MXSjJV-uTC6-L5D_FbXZUA`;
-  // Try the stored URL first (Clearbit or explicit logo.dev), fall back to logo.dev derived
-  // from the company name, then show a letter placeholder as last resort.
   const initialSrc = logoUrl ?? logoDevUrl;
   const [src, setSrc] = useState(initialSrc);
   const [failed, setFailed] = useState(false);
@@ -99,57 +97,63 @@ export function CompanyRow({ company, title, logoUrl, logoSize = "md", wrapTitle
 }
 
 export default function ManagerCard({ boss, isPending = false }: ManagerCardProps) {
+  const rating = Number(boss.overallRating);
   return (
     <Link
       to={`/manager/${boss.id}`}
-      className={`group flex flex-col rounded-2xl border bg-card p-5 shadow-sm transition-all hover:shadow-md ${
+      className={`group rounded-2xl border bg-card p-5 shadow-sm transition-all hover:shadow-md ${
         isPending
           ? "border-amber-300 hover:border-amber-400 hover:shadow-amber-100"
-          : "border-border hover:border-primary/30 hover:shadow-primary/5"
+          : "border-border hover:border-[#2e0562]/30 hover:shadow-[#2e0562]/5"
       }`}
     >
-      {isPending && (
-        <div className="mb-3 flex justify-end">
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 whitespace-nowrap">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
-            Pending
-          </span>
+      {/* Avatar + name */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex-shrink-0">
+          <ManagerAvatar name={boss.name} size="sm" />
         </div>
-      )}
-
-      {!isPending && Number(boss.overallRating) >= 4.5 && (
-        <div className="mb-3 flex justify-end">
-          <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 whitespace-nowrap">
-            ★ Top Rated
-          </span>
-        </div>
-      )}
-
-      <ManagerAvatar name={boss.name} />
-
-      <h3 className="mt-3 text-[15px] font-semibold text-foreground group-hover:text-primary transition-colors leading-tight">
-        {boss.name}
-      </h3>
-
-      <div className="mt-2 mb-auto">
-        <CompanyRow company={boss.company} title={boss.title} logoUrl={boss.companyLogoUrl} />
-      </div>
-
-      {!isPending && (
-        <div className="mt-4 flex items-center gap-1.5">
-          <Star
-            size={14}
-            aria-hidden="true"
-            className={boss.overallRating ? "fill-amber-400 text-amber-400" : "text-muted-foreground"}
-          />
-          <span className="text-sm font-bold text-foreground">
-            {boss.overallRating ? Number(boss.overallRating).toFixed(1) : "No ratings"}
-          </span>
-          {Number(boss.overallRating) > 0 && (
-            <span className="text-xs text-muted-foreground">
-              ({(boss.reviews || 0).toLocaleString()} {boss.reviews === 1 ? "review" : "reviews"})
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-semibold text-foreground group-hover:text-[#2e0562] transition-colors leading-tight truncate">
+            {boss.name}
+          </h3>
+          {isPending && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 whitespace-nowrap mt-0.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
+              Pending
             </span>
           )}
+          {!isPending && rating >= 4.5 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 whitespace-nowrap mt-0.5">
+              ★ Top Rated
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Company row */}
+      <CompanyRow company={boss.company} title={boss.title} logoUrl={boss.companyLogoUrl} />
+
+      {/* Stars + review count */}
+      {!isPending && (
+        <div className="mt-3 flex items-center justify-between">
+          {rating > 0 ? (
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <Star
+                  key={s}
+                  size={13}
+                  aria-hidden="true"
+                  className={s <= Math.round(rating) ? "fill-amber-400 text-amber-400" : "fill-none text-border"}
+                />
+              ))}
+              <span className="ml-1 text-sm font-semibold text-foreground">{rating.toFixed(1)}</span>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">No ratings yet</p>
+          )}
+          <span className="text-xs text-muted-foreground flex-shrink-0">
+            {(boss.reviews || 0).toLocaleString()} {boss.reviews === 1 ? "review" : "reviews"}
+          </span>
         </div>
       )}
     </Link>

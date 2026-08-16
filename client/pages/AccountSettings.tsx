@@ -783,7 +783,7 @@ export default function AccountSettings() {
 
             {/* Progress bar */}
             <div className="h-1 bg-muted/60">
-              <div className="h-1 bg-primary transition-all duration-300" style={{ width: `${stepIdx * 50}%` }} />
+              <div className="h-1 bg-[#2e0562] transition-all duration-300" style={{ width: `${stepIdx * 50}%` }} />
             </div>
 
             {/* Scrollable content */}

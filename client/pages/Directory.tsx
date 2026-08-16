@@ -219,31 +219,32 @@ export default function Directory() {
                       value={firstName}
                       onChange={e => setFirstName(e.target.value)}
                       placeholder="First name"
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                     />
                     <input
                       value={lastName}
                       onChange={e => setLastName(e.target.value)}
                       placeholder="Last name"
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                     />
                   </div>
                   <input
                     value={searchTitle}
                     onChange={e => setSearchTitle(e.target.value)}
                     placeholder="Job title"
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                   />
                   <CompanyAutocomplete
                     value={searchCompany}
                     onChange={val => setSearchCompany(val)}
                     placeholder="Company"
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                   />
                   <button
                     type="submit"
                     disabled={!allFilled}
-                    className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: !allFilled ? '#c0b4d0' : '#2e0562' }}
+                    className="w-full rounded-lg px-3 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed"
                   >
                     Search
                   </button>
@@ -332,7 +333,7 @@ export default function Directory() {
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                 >
                   <option value="">Featured</option>
                   <option value="rating">Top Rated</option>
@@ -356,19 +357,21 @@ export default function Directory() {
             )}
 
             {!error && isLoading && (
-              <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-                    <div className="h-16 w-16 rounded-2xl bg-muted animate-pulse" />
-                    <div className="mt-3 h-5 w-32 rounded bg-muted animate-pulse" />
-                    <div className="mt-2 flex items-center gap-2">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="h-10 w-10 rounded-xl bg-muted animate-pulse flex-shrink-0" />
+                      <div className="h-4 w-28 rounded bg-muted animate-pulse" />
+                    </div>
+                    <div className="flex items-center gap-2">
                       <div className="h-8 w-8 rounded-md bg-muted animate-pulse" />
                       <div className="space-y-1.5">
                         <div className="h-3.5 w-24 rounded bg-muted animate-pulse" />
                         <div className="h-3 w-16 rounded bg-muted animate-pulse" />
                       </div>
                     </div>
-                    <div className="mt-4 h-4 w-20 rounded bg-muted animate-pulse" />
+                    <div className="mt-3 h-3.5 w-24 rounded bg-muted animate-pulse" />
                   </div>
                 ))}
               </div>
@@ -384,7 +387,7 @@ export default function Directory() {
                         <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
                           Your Pending Submissions
                         </p>
-                        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+                        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
                           {submittedManagers.map((boss: any) => (
                             <ManagerCard key={`pending-${boss.id}`} boss={boss} isPending />
                           ))}
@@ -394,7 +397,7 @@ export default function Directory() {
                     )}
 
                     {filteredBosses.length > 0 && (
-                      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+                      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
                         {filteredBosses.map((boss: any) =>
                           hasContributed ? (
                             <ManagerCard key={boss.id} boss={boss} />
@@ -411,7 +414,7 @@ export default function Directory() {
                         <p className="mt-1 text-xs text-muted-foreground">It's anonymous and takes 2 minutes.</p>
                         <button
                           onClick={() => navigate("/add")}
-                          className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
                         >
                           ⭐ Rate a manager
                         </button>

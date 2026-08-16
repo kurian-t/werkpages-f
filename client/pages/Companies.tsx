@@ -41,7 +41,7 @@ function LockedStars() {
       {[1, 2, 3, 4, 5].map((i) => (
         <div key={i} className="h-3 w-3 rounded-full bg-amber-300/40 blur-[2px]" />
       ))}
-      <div className="ml-1 h-3 w-6 rounded-full bg-muted-foreground/20 blur-[3px]" />
+      <div className="ml-1 h-3 w-6 rounded-full bg-[#6d5091]/20 blur-[3px]" />
     </div>
   );
 }
@@ -118,30 +118,37 @@ export default function Companies() {
       </section>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-        {/* Company search */}
-        <div className="mb-6 flex items-center gap-3">
-          <form
-            className="max-w-sm w-full"
-            onSubmit={(e) => { e.preventDefault(); goToCompany(search); }}
-          >
-            <CompanyAutocomplete
-              value={search}
-              onChange={setSearch}
-              onSuggestionSelect={(name) => goToCompany(name)}
-              onClear={() => setSearch("")}
-              placeholder="Search for a company…"
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </form>
-          {!isLoading && !isError && (
-            <p className="text-sm text-muted-foreground whitespace-nowrap">
-              {companies.length.toLocaleString()} {companies.length === 1 ? "company" : "companies"}
-            </p>
-          )}
-        </div>
+        <div className="flex flex-col gap-8 lg:flex-row">
+
+          {/* Sidebar — mirrors /directory layout */}
+          <aside className="lg:w-56 flex-shrink-0">
+            <div className="space-y-6">
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-widest text-muted-foreground block mb-3">Search Companies</label>
+                <form onSubmit={(e) => { e.preventDefault(); goToCompany(search); }}>
+                  <CompanyAutocomplete
+                    value={search}
+                    onChange={setSearch}
+                    onSuggestionSelect={(name) => goToCompany(name)}
+                    onClear={() => setSearch("")}
+                    placeholder="Search for a company…"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
+                  />
+                </form>
+                {!isLoading && !isError && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {companies.length.toLocaleString()} {companies.length === 1 ? "company" : "companies"}
+                  </p>
+                )}
+              </div>
+            </div>
+          </aside>
+
+          {/* Main content */}
+          <div className="flex-1 min-w-0">
 
         {isLoading && (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 12 }).map((_, i) => (
               <div key={i} className="rounded-2xl border border-border bg-card p-5 shadow-sm animate-pulse">
                 <div className="flex items-center gap-3 mb-3">
@@ -179,14 +186,14 @@ export default function Companies() {
                 <p className="mt-1 text-xs text-muted-foreground">Company ratings become visible after you submit your first review.</p>
                 <button
                   onClick={() => navigate("/add")}
-                  className="mt-3 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+                  className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#2e0562] px-4 py-2 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors"
                 >
                   ⭐ Rate a manager
                 </button>
               </div>
             )}
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
               {displayed.map((co) => (
                 <button
                   key={co.name}
@@ -212,13 +219,13 @@ export default function Companies() {
                     <span className="flex items-center gap-1">
                       <Users size={11} />
                       {isLocked
-                        ? <span className="inline-block h-2.5 w-14 rounded-full bg-muted-foreground/20 blur-[3px]" />
+                        ? <span className="inline-block h-2.5 w-14 rounded-full bg-[#6d5091]/20 blur-[3px]" />
                         : <>{co.managerCount} {co.managerCount === 1 ? "manager" : "managers"}</>}
                     </span>
                     <span className="flex items-center gap-1">
                       <MessageSquare size={11} />
                       {isLocked
-                        ? <span className="inline-block h-2.5 w-14 rounded-full bg-muted-foreground/20 blur-[3px]" />
+                        ? <span className="inline-block h-2.5 w-14 rounded-full bg-[#6d5091]/20 blur-[3px]" />
                         : <>{co.totalReviews} {co.totalReviews === 1 ? "review" : "reviews"}</>}
                     </span>
                   </div>
@@ -272,6 +279,8 @@ export default function Companies() {
             )}
           </>
         )}
+          </div>{/* end flex-1 */}
+        </div>{/* end flex-row */}
       </div>
     </Layout>
   );

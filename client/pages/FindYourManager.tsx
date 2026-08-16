@@ -25,7 +25,7 @@ export default function FindYourManager() {
         <div className="w-full max-w-xl mt-6 text-center">
           <p className="text-xs text-muted-foreground">
             Want to browse instead?{" "}
-            <button onClick={() => navigate("/directory")} className="text-primary hover:underline font-medium">
+            <button onClick={() => navigate("/directory")} className="text-[#2e0562] hover:underline font-medium">
               View directory
             </button>
           </p>

@@ -7,7 +7,7 @@ import { Star, Building2, Users, MessageSquare, TrendingUp, TrendingDown, Chevro
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
-import { ManagerAvatar, CompanyLogoImg } from "@/components/ManagerCard";
+import { ManagerAvatar, CompanyLogoImg, CompanyRow } from "@/components/ManagerCard";
 import { useAuth } from "@/hooks/useAuth";
 import LockedManagerCard from "@/components/LockedManagerCard";
 import { fetchGeo } from "@/lib/geo";
@@ -85,7 +85,7 @@ function RatingBar({ value, max = 5 }: { value: number; max?: number }) {
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
-        <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-full bg-[#6d5091]" style={{ width: `${pct}%` }} />
       </div>
       <span className="text-xs font-medium text-foreground w-6 text-right">{value.toFixed(1)}</span>
     </div>
@@ -136,7 +136,7 @@ function GhostManagerCard({ index, company, logoUrl, isLoggedIn }: { index: numb
 }
 
 const SIDEBAR_INPUT =
-  "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary";
+  "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]";
 
 export default function CompanyProfile() {
   const { companySlug } = useParams<{ companySlug: string }>();
@@ -466,7 +466,7 @@ export default function CompanyProfile() {
                           <div key={i} className="h-3.5 w-3.5 rounded-full bg-amber-300/40 blur-[2px]" />
                         ))}
                       </div>
-                      <div className="h-5 w-8 rounded bg-muted-foreground/20 blur-[3px]" />
+                      <div className="h-5 w-8 rounded bg-[#6d5091]/20 blur-[3px]" />
                     </>
                   ) : (
                     <>
@@ -482,11 +482,11 @@ export default function CompanyProfile() {
                   <>
                     <span className="flex items-center gap-1.5">
                       <Users size={14} />
-                      <span className="inline-block h-3 w-14 rounded-full bg-muted-foreground/20 blur-[3px]" />
+                      <span className="inline-block h-3 w-14 rounded-full bg-[#6d5091]/20 blur-[3px]" />
                     </span>
                     <span className="flex items-center gap-1.5">
                       <MessageSquare size={14} />
-                      <span className="inline-block h-3 w-14 rounded-full bg-muted-foreground/20 blur-[3px]" />
+                      <span className="inline-block h-3 w-14 rounded-full bg-[#6d5091]/20 blur-[3px]" />
                     </span>
                   </>
                 ) : (
@@ -528,7 +528,7 @@ export default function CompanyProfile() {
                             <div className="h-2.5 w-3/4 rounded bg-muted mb-1.5" />
                             <div className="flex items-center gap-2">
                               <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
-                                <div className="h-full rounded-full bg-primary" style={{ width: `${(v / 5) * 100}%` }} />
+                                <div className="h-full rounded-full bg-[#6d5091]" style={{ width: `${(v / 5) * 100}%` }} />
                               </div>
                               <span className="text-xs font-medium text-foreground w-6 text-right">{v.toFixed(1)}</span>
                             </div>
@@ -544,7 +544,7 @@ export default function CompanyProfile() {
                   <p className="mt-1 text-xs text-muted-foreground">Rate any manager to unlock</p>
                   <button
                     onClick={() => navigate(`/add?returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`)}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-4 py-2 text-xs font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
                   >
                     ⭐ Rate a manager
                   </button>
@@ -555,7 +555,7 @@ export default function CompanyProfile() {
                   <p className="mt-1 text-xs text-muted-foreground">Rate any manager to see strongest and weakest areas.</p>
                   <button
                     onClick={() => navigate(`/add?returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`)}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
                   >
                     ⭐ Rate a manager to unlock
                   </button>
@@ -641,7 +641,8 @@ export default function CompanyProfile() {
                   <button
                     type="submit"
                     disabled={!allFilled || searchLoading}
-                    className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: !allFilled || searchLoading ? '#c0b4d0' : '#2e0562' }}
+                    className="w-full rounded-lg px-3 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed"
                   >
                     {searchLoading ? "Searching…" : "Search"}
                   </button>
@@ -671,31 +672,32 @@ export default function CompanyProfile() {
                 </div>
               ) : searchResults.length > 0 ? (
                 <>
-                  <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
                     {searchResults.map((boss: any) =>
                       resultsUnlocked ? (
                         <Link
                           key={boss.id}
                           to={data.slug && boss.slug ? `/companies/${data.slug}/managers/${boss.slug}` : `/manager/${boss.id}`}
-                          className="rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all group"
+                          className="group rounded-2xl border border-border bg-card p-5 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all"
                         >
-                          <div className="flex items-start gap-3">
+                          <div className="flex items-center gap-3 mb-3">
                             <ManagerAvatar name={boss.name} size="sm" />
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors truncate">{boss.name}</p>
-                              <p className="text-xs text-muted-foreground truncate">{boss.title}</p>
-                            </div>
+                            <p className="text-sm font-semibold text-foreground group-hover:text-[#2e0562] transition-colors leading-tight truncate flex-1 min-w-0">{boss.name}</p>
                           </div>
+                          <CompanyRow company={data.name} title={boss.title} logoUrl={data.logoUrl} />
                           <div className="mt-3 flex items-center justify-between">
                             {Number(boss.overallRating) > 0 ? (
                               <div className="flex items-center gap-1">
-                                <Star size={12} className="fill-amber-400 text-amber-400" />
-                                <span className="text-sm font-semibold text-foreground">{Number(boss.overallRating).toFixed(1)}</span>
+                                {[1,2,3,4,5].map((s) => (
+                                  <Star key={s} size={13} aria-hidden="true"
+                                    className={s <= Math.round(Number(boss.overallRating)) ? "fill-amber-400 text-amber-400" : "fill-none text-border"} />
+                                ))}
+                                <span className="ml-1 text-sm font-semibold text-foreground">{Number(boss.overallRating).toFixed(1)}</span>
                               </div>
                             ) : (
-                              <span className="text-xs text-muted-foreground">No rating yet</span>
+                              <span className="text-xs text-muted-foreground">No ratings yet</span>
                             )}
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-xs text-muted-foreground flex-shrink-0">
                               {boss.reviewsCount ?? 0} {(boss.reviewsCount ?? 0) === 1 ? "review" : "reviews"}
                             </span>
                           </div>
@@ -718,7 +720,7 @@ export default function CompanyProfile() {
                       <p className="mt-1 text-xs text-muted-foreground">It's anonymous and takes 2 minutes.</p>
                       <button
                         onClick={() => navigate(`/add?returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`)}
-                        className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+                        className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
                       >
                         ⭐ Rate a manager
                       </button>
@@ -777,7 +779,7 @@ export default function CompanyProfile() {
                   <p className="mt-1 text-xs text-muted-foreground">It's anonymous and takes 2 minutes.</p>
                   <button
                     onClick={() => navigate(`/add?returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`)}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
                   >
                     ⭐ Rate a manager
                   </button>
@@ -797,32 +799,33 @@ export default function CompanyProfile() {
                 </Link>
               </div>
             ) : (
-              <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
                 {data.managers.map((mgr) => (
                   <Link
                     key={mgr.id}
                     to={data.slug && mgr.slug ? `/companies/${data.slug}/managers/${mgr.slug}` : `/manager/${mgr.id}`}
-                    className="rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all group"
+                    className="group rounded-2xl border border-border bg-card p-5 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all"
                   >
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-center gap-3 mb-3">
                       <ManagerAvatar name={mgr.name} size="sm" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors truncate">
-                          {mgr.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground truncate">{mgr.title}</p>
-                      </div>
+                      <p className="text-sm font-semibold text-foreground group-hover:text-[#2e0562] transition-colors leading-tight truncate flex-1 min-w-0">
+                        {mgr.name}
+                      </p>
                     </div>
+                    <CompanyRow company={data.name} title={mgr.title} logoUrl={data.logoUrl} />
                     <div className="mt-3 flex items-center justify-between">
                       {Number(mgr.overallRating) > 0 ? (
                         <div className="flex items-center gap-1">
-                          <Star size={12} className="fill-amber-400 text-amber-400" />
-                          <span className="text-sm font-semibold text-foreground">{Number(mgr.overallRating).toFixed(1)}</span>
+                          {[1,2,3,4,5].map((s) => (
+                            <Star key={s} size={13} aria-hidden="true"
+                              className={s <= Math.round(Number(mgr.overallRating)) ? "fill-amber-400 text-amber-400" : "fill-none text-border"} />
+                          ))}
+                          <span className="ml-1 text-sm font-semibold text-foreground">{Number(mgr.overallRating).toFixed(1)}</span>
                         </div>
                       ) : (
-                        <span className="text-xs text-muted-foreground">No rating yet</span>
+                        <span className="text-xs text-muted-foreground">No ratings yet</span>
                       )}
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground flex-shrink-0">
                         {mgr.reviewsCount} {mgr.reviewsCount === 1 ? "review" : "reviews"}
                       </span>
                     </div>

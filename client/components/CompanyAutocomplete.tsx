@@ -144,8 +144,9 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCle
             aria-selected={i === activeIndex}
             key={s.domain ?? s.name}
             onPointerDown={e => { e.preventDefault(); select(s); }}
+            style={i === activeIndex ? { backgroundColor: '#d5cde0' } : undefined}
             className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer text-sm transition-colors ${
-              i === activeIndex ? "bg-accent" : "hover:bg-accent/60"
+              i === activeIndex ? "" : "hover:bg-[#d5cde0]"
             }`}
           >
             {logo && (

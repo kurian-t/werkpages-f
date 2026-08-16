@@ -99,26 +99,26 @@ export function Header() {
             {!user && (
               <Link
                 to="/"
-                className={`text-sm font-medium transition-colors hover:text-primary ${pathname === "/" ? "text-primary" : "text-foreground"}`}
+                className={`text-sm font-medium transition-colors hover:text-[#6d5091] ${pathname === "/" ? "text-[#6d5091]" : "text-foreground"}`}
               >
                 Home
               </Link>
             )}
             <Link
               to="/find"
-              className={`text-sm font-medium transition-colors hover:text-primary ${pathname === "/find" ? "text-primary" : "text-foreground"}`}
+              className={`text-sm font-medium transition-colors hover:text-[#6d5091] ${pathname === "/find" ? "text-[#6d5091]" : "text-foreground"}`}
             >
               Search
             </Link>
             <Link
               to="/companies"
-              className={`text-sm font-medium transition-colors hover:text-primary ${pathname.startsWith("/companies") ? "text-primary" : "text-foreground"}`}
+              className={`text-sm font-medium transition-colors hover:text-[#6d5091] ${pathname.startsWith("/companies") ? "text-[#6d5091]" : "text-foreground"}`}
             >
               Companies
             </Link>
             <Link
               to="/directory"
-              className={`text-sm font-medium transition-colors hover:text-primary ${pathname.startsWith("/directory") ? "text-primary" : "text-foreground"}`}
+              className={`text-sm font-medium transition-colors hover:text-[#6d5091] ${pathname.startsWith("/directory") ? "text-[#6d5091]" : "text-foreground"}`}
             >
               Managers
             </Link>
@@ -129,7 +129,7 @@ export function Header() {
                 className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
                   isBanned
                     ? "bg-muted text-muted-foreground cursor-not-allowed"
-                    : "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "bg-[#2e0562] text-white hover:bg-[#2e0562]/90"
                 }`}
                 title={isBanned ? "Your account has been suspended" : ""}
               >
@@ -275,7 +275,7 @@ export function Header() {
                 </button>
                 <button
                   onClick={() => setAuthFlowStep("signup")}
-                  className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white transition-all hover:bg-[#6B21E8]"
+                  className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white transition-all hover:bg-[#6d5091]"
                 >
                   Sign Up
                 </button>
@@ -299,7 +299,7 @@ export function Header() {
               {!user && (
                 <Link
                   to="/"
-                  className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 ${pathname === "/" ? "text-primary bg-primary/5" : "text-foreground"}`}
+                  className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 ${pathname === "/" ? "text-[#6d5091] bg-[#6d5091]/10" : "text-foreground"}`}
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Home
@@ -307,21 +307,21 @@ export function Header() {
               )}
               <Link
                 to="/find"
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 ${pathname === "/find" ? "text-primary bg-primary/5" : "text-foreground"}`}
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 ${pathname === "/find" ? "text-[#6d5091] bg-[#6d5091]/10" : "text-foreground"}`}
                 onClick={() => setIsMenuOpen(false)}
               >
                 Search
               </Link>
               <Link
                 to="/companies"
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 ${pathname.startsWith("/companies") ? "text-primary bg-primary/5" : "text-foreground"}`}
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 ${pathname.startsWith("/companies") ? "text-[#6d5091] bg-[#6d5091]/10" : "text-foreground"}`}
                 onClick={() => setIsMenuOpen(false)}
               >
                 Companies
               </Link>
               <Link
                 to="/directory"
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 ${pathname.startsWith("/directory") ? "text-primary bg-primary/5" : "text-foreground"}`}
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 ${pathname.startsWith("/directory") ? "text-[#6d5091] bg-[#6d5091]/10" : "text-foreground"}`}
                 onClick={() => setIsMenuOpen(false)}
               >
                 Managers
@@ -336,7 +336,7 @@ export function Header() {
                   className={`rounded px-4 py-2 text-sm font-medium transition-all ${
                     isBanned
                       ? "bg-muted text-muted-foreground cursor-not-allowed"
-                      : "bg-primary text-primary-foreground hover:bg-primary/90"
+                      : "bg-[#2e0562] text-white hover:bg-[#2e0562]/90"
                   }`}
                   title={isBanned ? "Your account has been suspended" : ""}
                 >
@@ -356,7 +356,7 @@ export function Header() {
                     </button>
                     <button
                       onClick={() => { setIsMenuOpen(false); setAuthFlowStep("signup"); }}
-                      className="block w-full text-left rounded bg-black px-4 py-2 text-sm font-medium text-white transition-all hover:bg-[#6B21E8] mt-2"
+                      className="block w-full text-left rounded bg-black px-4 py-2 text-sm font-medium text-white transition-all hover:bg-[#6d5091] mt-2"
                     >
                       Sign Up
                     </button>
