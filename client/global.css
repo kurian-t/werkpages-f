@@ -151,3 +151,112 @@
     white-space: pre;
   }
 }
+
+/* ── Hero image animations (play once on page load) ──────────────────────── */
+@keyframes hero-float {
+  0%   { transform: translateY(0px); }
+  45%  { transform: translateY(-8px); }
+  100% { transform: translateY(0px); }
+}
+
+@keyframes hero-twinkle {
+  0%   { opacity: 0;   transform: scale(0.3) rotate(0deg); }
+  30%  { opacity: 1;   transform: scale(1.4) rotate(15deg); }
+  65%  { opacity: 0.9; transform: scale(1)   rotate(0deg); }
+  100% { opacity: 0;   transform: scale(0.6) rotate(-10deg); }
+}
+
+@keyframes hero-spark-blink {
+  0%   { opacity: 0;   transform: scale(0.3); }
+  15%  { opacity: 1;   transform: scale(1.3); }
+  35%  { opacity: 0.5; transform: scale(0.8); }
+  55%  { opacity: 0.9; transform: scale(1.1); }
+  80%  { opacity: 0.2; transform: scale(0.6); }
+  100% { opacity: 0;   transform: scale(0.3); }
+}
+
+@keyframes hero-bubble-pop {
+  0%   { opacity: 0;    transform: scale(0.5); }
+  30%  { opacity: 0.75; transform: scale(1); }
+  75%  { opacity: 0.4;  transform: scale(1.3); }
+  100% { opacity: 0;    transform: scale(1.6); }
+}
+
+.hero-bubble {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  border: 2px solid rgba(147, 197, 253, 0.8);
+  background: rgba(219, 234, 254, 0.15);
+  opacity: 0;
+  animation: hero-bubble-pop 1.1s ease-out 1 forwards;
+}
+.hero-bubble-main { width: 22px; height: 22px; animation-delay: 0.8s; }
+.hero-bubble-2    { width: 13px; height: 13px; animation-delay: 1.4s; }
+.hero-bubble-3    { width: 11px; height: 11px; animation-delay: 1.8s; }
+.hero-bubble-4    { width: 15px; height: 15px; animation-delay: 1.1s; }
+
+@keyframes hero-pom-swing {
+  0%   { transform: rotate(0deg); }
+  25%  { transform: rotate(-6deg); }
+  75%  { transform: rotate(6deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.hero-float {
+  animation: hero-float 3.2s ease-in-out 0.3s 1 both;
+}
+
+.hero-star {
+  position: absolute;
+  pointer-events: none;
+  color: #93c5fd;
+  line-height: 1;
+  animation: hero-twinkle 1.6s ease-in-out 1 forwards;
+  opacity: 0;
+}
+.hero-star-1 { animation-delay: 0.2s; font-size: 13px; }
+.hero-star-2 { animation-delay: 0.7s; font-size: 9px;  }
+.hero-star-3 { animation-delay: 1.1s; font-size: 11px; }
+.hero-star-4 { animation-delay: 0.45s; font-size: 8px; }
+.hero-star-5 { animation-delay: 0.9s; font-size: 10px; }
+.hero-star-6 { animation-delay: 1.4s; font-size: 9px;  }
+
+.hero-spark {
+  position: absolute;
+  pointer-events: none;
+  line-height: 1;
+  opacity: 0;
+  animation: hero-spark-blink 0.85s ease-in-out 4 forwards;
+}
+/* each spark gets a different delay, size, and color */
+.hero-spark-1 { animation-delay: 0.1s;  font-size: 8px;  color: #fbbf24; }
+.hero-spark-2 { animation-delay: 0.4s;  font-size: 6px;  color: #f97316; }
+.hero-spark-3 { animation-delay: 0.7s;  font-size: 7px;  color: #fde68a; }
+.hero-spark-4 { animation-delay: 0.2s;  font-size: 5px;  color: #ffffff; }
+.hero-spark-5 { animation-delay: 0.55s; font-size: 9px;  color: #fbbf24; }
+.hero-spark-6 { animation-delay: 0.15s; font-size: 6px;  color: #fb923c; }
+.hero-spark-7 { animation-delay: 0.45s; font-size: 7px;  color: #fde68a; }
+
+.hero-pom-keychain {
+  position: absolute;
+  pointer-events: none;
+  transform-origin: 50% 0%;
+  animation: hero-pom-swing 1.8s ease-in-out 3 forwards;
+}
+
+.hero-pom-cord {
+  width: 2px;
+  height: 8px;
+  background: #6d28d9;
+  margin: 0 auto;
+}
+
+.hero-pom-ball {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #c4b5fd, #7c3aed);
+  box-shadow: 0 0 5px 2px rgba(124, 58, 237, 0.4);
+  margin: 0 auto;
+}

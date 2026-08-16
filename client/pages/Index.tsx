@@ -31,6 +31,43 @@ function StarRow({ score, max = 5 }: { score: number; max?: number }) {
   );
 }
 
+function HeroImage({ className, imgClass }: { className?: string; imgClass?: string }) {
+  return (
+    <div className={`relative w-fit ${className ?? ""}`}>
+      <img
+        src="/hero-girl-telescope-bg-v1.png"
+        className={`w-auto ${imgClass ?? ""}`}
+        alt=""
+      />
+      {/* Twinkling stars — placed over the drawn stars in the upper-left of the image */}
+      <span className="hero-star hero-star-1" style={{ top: "6%",  left: "11%" }}>✦</span>
+      <span className="hero-star hero-star-2" style={{ top: "3%",  left: "19%" }}>✦</span>
+      <span className="hero-star hero-star-3" style={{ top: "14%", left: "6%"  }}>✦</span>
+      <span className="hero-star hero-star-4" style={{ top: "10%", left: "18%" }}>✦</span>
+      <span className="hero-star hero-star-5" style={{ top: "17%", left: "12%" }}>✦</span>
+      <span className="hero-star hero-star-6" style={{ top: "7%",  left: "24%" }}>✦</span>
+      {/* Rocket sparks — scattered around the exhaust nozzle */}
+      <span className="hero-spark hero-spark-1" style={{ top: "85%", left: "66%" }}>✦</span>
+      <span className="hero-spark hero-spark-2" style={{ top: "89%", left: "71%" }}>✦</span>
+      <span className="hero-spark hero-spark-3" style={{ top: "93%", left: "68%" }}>✦</span>
+      <span className="hero-spark hero-spark-4" style={{ top: "84%", left: "73%" }}>✦</span>
+      <span className="hero-spark hero-spark-5" style={{ top: "91%", left: "64%" }}>✦</span>
+      <span className="hero-spark hero-spark-6" style={{ top: "87%", left: "75%" }}>✦</span>
+      <span className="hero-spark hero-spark-7" style={{ top: "95%", left: "70%" }}>✦</span>
+      {/* Telescope projection bubbles — pop and disappear */}
+      <div className="hero-bubble hero-bubble-main" style={{ top: "62%", left: "12%" }} />
+      <div className="hero-bubble hero-bubble-2"    style={{ top: "53%", left: "7%"  }} />
+      <div className="hero-bubble hero-bubble-3"    style={{ top: "68%", left: "16%" }} />
+      <div className="hero-bubble hero-bubble-4"    style={{ top: "57%", left: "5%"  }} />
+      {/* Purple pom-pom keychain dangling from backpack */}
+      <div className="hero-pom-keychain" style={{ top: "63%", left: "89%" }}>
+        <div className="hero-pom-cord" />
+        <div className="hero-pom-ball" />
+      </div>
+    </div>
+  );
+}
+
 export default function Index() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -110,16 +147,12 @@ export default function Index() {
           </div>
           {heroCta}
           {browsingLink}
-          <img
-            src="/hero-girl-telescope-bg-v1.png"
-            className="mt-2 max-h-[300px] w-auto"
-            alt=""
-          />
+          <HeroImage className="mt-2" imgClass="max-h-[300px]" />
         </div>
 
         {/* Small/medium screens (<lg): image ABOVE title */}
         <div className="flex flex-col lg:hidden">
-          <img src="/hero-girl-telescope-bg-v1.png" className="max-h-[300px] w-auto mx-auto" alt="" />
+          <HeroImage className="" imgClass="max-h-[260px] mx-auto" />
           <div className="flex flex-col items-center text-center px-4 pt-4 pb-8">
             <h1 className="text-[32px] font-semibold leading-[1.15] tracking-[-0.025em] text-foreground">
               Had a great manager? A terrible one?
