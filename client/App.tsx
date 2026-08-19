@@ -30,6 +30,7 @@ import AuthCallback from "./pages/AuthCallback";
 import Companies from "./pages/Companies";
 import CompanyProfile from "./pages/CompanyProfile";
 import WhatIsWerkpages from "./pages/WhatIsWerkpages";
+import ResumeBuilder from "./pages/ResumeBuilder";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PostHogRouteTracker } from "@/components/PostHogProvider";
@@ -76,6 +77,7 @@ const App = () => (
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/companies" element={<Companies />} />
             <Route path="/companies/:companySlug" element={<CompanyProfile />} />
+            <Route path="/resume" element={<ResumeBuilder />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

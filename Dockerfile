@@ -5,11 +5,14 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Install pnpm
+RUN npm install -g pnpm@10.14.0
+
 # Copy package files first (cached layer unless dependencies change)
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml ./
 
 # Install dependencies
-RUN npm install
+RUN pnpm install --frozen-lockfile
 
 # Copy all source files
 COPY . .
@@ -33,7 +36,7 @@ ENV VITE_POSTHOG_KEY=$VITE_POSTHOG_KEY
 ARG VITE_POSTHOG_HOST=
 ENV VITE_POSTHOG_HOST=$VITE_POSTHOG_HOST
 
-RUN npm run build:client
+RUN pnpm build:client
 
 # ─────────────────────────────────────────────
 # Stage 2: Serve with Nginx

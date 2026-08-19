@@ -2,8 +2,6 @@ import { useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { Layout } from "@/components/Layout";
-import axios from "axios";
-import API_BASE from "@/lib/api";
 import { startSocialLogin } from "@/lib/auth";
 import { GoogleIcon } from "@/components/SocialIcons";
 import { Star, ShieldCheck, EyeOff, AlertCircle, CheckCircle } from "lucide-react";
@@ -102,7 +100,7 @@ export default function Index() {
     <div className="mt-5 w-full max-w-[460px] space-y-3">
       <button
         onClick={() => { track("cta_clicked", { method: "google" }); startSocialLogin("google-oauth2", "/find"); }}
-        className="flex h-[46px] w-full items-center justify-center gap-3 rounded-md border border-[#8B3BD3] bg-[#8B3BD3] px-4 text-[14px] font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(139,59,211,0.45)]"
+        className="flex h-[46px] w-full items-center justify-center gap-3 rounded-md border border-[#6d28d9] bg-[#6d28d9] px-4 text-[14px] font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(109,40,217,0.45)]"
       >
         <GoogleIcon />
         Continue with Google
@@ -139,8 +137,8 @@ export default function Index() {
 
           {/* Left: headline + CTA */}
           <div className="flex flex-col items-start pl-10 xl:pl-16 pr-6 py-10">
-            <h1 className="text-[38px] font-semibold leading-[1.15] tracking-[-0.025em] text-foreground">
-              Had a great manager?<br />A terrible one?
+            <h1 className="text-[38px] font-semibold leading-[1.15] tracking-[-0.025em] text-foreground text-balance">
+              Had a great manager? A terrible one?
             </h1>
             <div className="mt-4 w-full">
               <p className="text-[17px] font-semibold text-foreground">Rate them anonymously</p>
@@ -163,7 +161,7 @@ export default function Index() {
         <div className="flex flex-col lg:hidden">
           <HeroImage className="mx-auto" imgClass="max-h-[260px]" />
           <div className="flex flex-col items-center text-center px-4 pt-4 pb-8">
-            <h1 className="text-[32px] font-semibold leading-[1.15] tracking-[-0.025em] text-foreground">
+            <h1 className="text-[32px] font-semibold leading-[1.15] tracking-[-0.025em] text-foreground text-balance">
               Had a great manager? A terrible one?
             </h1>
             <div className="mt-5 w-full max-w-[460px]">
@@ -181,7 +179,7 @@ export default function Index() {
 
       {/* TRUST & SAFETY */}
       <section className="border-b border-border py-8 sm:py-10 bg-muted/30">
-        <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-6xl px-4 sm:px-10 xl:px-16">
           <h2 className="text-center text-[20px] font-semibold sm:text-[22px] mb-6">
             Your safety, answered
           </h2>

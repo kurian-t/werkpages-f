@@ -260,3 +260,40 @@
   box-shadow: 0 0 5px 2px rgba(124, 58, 237, 0.4);
   margin: 0 auto;
 }
+
+/* ── Resume canvas: draggable block cursor ───────────────────────────────────── */
+.canvas-block { cursor: grab; }
+.canvas-block * { cursor: inherit; }
+.canvas-block--dragging, .canvas-block--dragging * { cursor: grabbing !important; }
+
+/* ── Resume canvas: rich-text body HTML ─────────────────────────────────────── */
+.resume-body-html { line-height: inherit; }
+.resume-body-html p  { margin: 0 0 0.2em; }
+.resume-body-html p:last-child { margin-bottom: 0; }
+.resume-body-html ul,
+.resume-body-html ol { margin: 0.1em 0; padding-left: 1.4em; }
+.resume-body-html ul { list-style-type: disc; }
+.resume-body-html ol { list-style-type: decimal; }
+.resume-body-html li { margin-bottom: 0.1em; display: list-item; }
+.resume-body-html li:last-child { margin-bottom: 0; }
+/* Tiptap wraps list item content in <p> — strip its margin */
+.resume-body-html li > p { margin: 0; font-size: inherit; }
+.resume-body-html strong { font-weight: bold; }
+.resume-body-html em     { font-style: italic; }
+.resume-body-html u      { text-decoration: underline; }
+/* Inline styles from Tiptap (font-size, font-family) are preserved via the style attr */
+
+/* ── Tiptap editor list styles (Tailwind Preflight resets list-style to none) ── */
+.tiptap ul { list-style-type: disc;    padding-left: 1.4em; margin: 0.1em 0; }
+.tiptap ol { list-style-type: decimal; padding-left: 1.4em; margin: 0.1em 0; }
+.tiptap li { display: list-item; margin-bottom: 0.1em; }
+.tiptap li > p { margin: 0; }
+
+/* ── Tiptap editor placeholder ───────────────────────────────────────────────── */
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: hsl(var(--muted-foreground) / 0.6);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}

@@ -124,6 +124,14 @@ export function Header() {
             </Link>
             {user && (
               <Link
+                to="/resume"
+                className={`text-sm font-medium transition-colors hover:text-[#6d5091] ${pathname === "/resume" ? "text-[#6d5091]" : "text-foreground"}`}
+              >
+                Resume
+              </Link>
+            )}
+            {user && (
+              <Link
                 to={isBanned ? "#" : "/add"}
                 onClick={(e) => isBanned && e.preventDefault()}
                 className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
@@ -284,6 +292,7 @@ export function Header() {
 
             {/* Mobile Menu Toggle */}
             <button
+              aria-label={isMenuOpen ? "Close menu" : "Open menu"}
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               className="inline-flex md:hidden items-center justify-center rounded-md p-2 text-foreground hover:bg-accent/10"
             >
@@ -326,6 +335,15 @@ export function Header() {
               >
                 Managers
               </Link>
+              {user && (
+                <Link
+                  to="/resume"
+                  className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 ${pathname === "/resume" ? "text-[#6d5091] bg-[#6d5091]/10" : "text-foreground"}`}
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Resume
+                </Link>
+              )}
               {user && (
                 <Link
                   to={isBanned ? "#" : "/add"}
