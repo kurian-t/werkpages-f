@@ -22,15 +22,15 @@ interface CompanyEntry {
 
 function StarRating({ rating }: { rating: number }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex max-w-full flex-nowrap items-center gap-0.5 whitespace-nowrap">
       {[1, 2, 3, 4, 5].map((s) => (
         <Star
           key={s}
-          size={13}
-          className={s <= Math.round(rating) ? "fill-amber-400 text-amber-400" : "fill-none text-border"}
+          size={12}
+          className={`flex-shrink-0 ${s <= Math.round(rating) ? "fill-amber-400 text-amber-400" : "fill-none text-border"}`}
         />
       ))}
-      <span className="ml-1 text-sm font-semibold text-foreground">{rating.toFixed(1)}</span>
+      <span className="ml-1 flex-shrink-0 whitespace-nowrap text-sm font-semibold leading-none text-foreground">{rating.toFixed(1)}</span>
     </div>
   );
 }
@@ -148,10 +148,10 @@ export default function Companies() {
           <div className="flex-1 min-w-0">
 
         {isLoading && (
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 auto-rows-[180px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
             {Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} className="rounded-2xl border border-border bg-card p-5 shadow-sm animate-pulse">
-                <div className="flex items-center gap-3 mb-3">
+              <div key={i} className="h-full w-full rounded-2xl border border-border bg-card p-4 shadow-sm animate-pulse min-[420px]:w-[200px] sm:p-5">
+                <div className="flex min-w-0 items-center gap-3 mb-3">
                   <div className="h-10 w-10 rounded-lg bg-muted" />
                   <div className="h-4 w-28 rounded bg-muted" />
                 </div>
@@ -193,12 +193,12 @@ export default function Companies() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-2 auto-rows-[180px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
               {displayed.map((co) => (
                 <button
                   key={co.name}
                   onClick={() => goToCompany(co.name, co.slug)}
-                  className="text-left rounded-2xl border border-border bg-card p-5 shadow-sm hover:shadow-md hover:border-primary/30 transition-all group"
+                  className="group h-full w-full min-w-0 text-left rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all min-[420px]:w-[200px] sm:p-5"
                 >
                   <div className="flex items-center gap-3 mb-3">
                     <CompanyLogoImg
@@ -206,7 +206,7 @@ export default function Companies() {
                       logoUrl={co.logoUrl}
                       sizeClass="h-10 w-10"
                     />
-                    <h2 className="font-semibold text-sm text-foreground leading-tight group-hover:text-primary transition-colors line-clamp-2">
+                    <h2 className="min-w-0 flex-1 font-semibold text-sm text-foreground leading-tight group-hover:text-primary transition-colors line-clamp-2">
                       {co.name}
                     </h2>
                   </div>
@@ -215,18 +215,18 @@ export default function Companies() {
                   {!isLocked && co.avgRating == null && <p className="text-xs text-muted-foreground">No ratings yet</p>}
                   {isLocked && <LockedStars />}
 
-                  <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Users size={11} />
+                  <div className="mt-3 flex flex-col items-start gap-1.5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:gap-3">
+                    <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
+                      <Users size={11} className="flex-shrink-0" />
                       {isLocked
                         ? <span className="inline-block h-2.5 w-14 rounded-full bg-[#6d5091]/20 blur-[3px]" />
-                        : <>{co.managerCount} {co.managerCount === 1 ? "manager" : "managers"}</>}
+                        : <span className="whitespace-nowrap">{co.managerCount} {co.managerCount === 1 ? "manager" : "managers"}</span>}
                     </span>
-                    <span className="flex items-center gap-1">
-                      <MessageSquare size={11} />
+                    <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
+                      <MessageSquare size={11} className="flex-shrink-0" />
                       {isLocked
                         ? <span className="inline-block h-2.5 w-14 rounded-full bg-[#6d5091]/20 blur-[3px]" />
-                        : <>{co.totalReviews} {co.totalReviews === 1 ? "review" : "reviews"}</>}
+                        : <span className="whitespace-nowrap">{co.totalReviews} {co.totalReviews === 1 ? "review" : "reviews"}</span>}
                     </span>
                   </div>
                 </button>

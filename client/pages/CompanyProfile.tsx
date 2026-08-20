@@ -11,7 +11,6 @@ import { ManagerAvatar, CompanyLogoImg, CompanyRow } from "@/components/ManagerC
 import { useAuth } from "@/hooks/useAuth";
 import LockedManagerCard from "@/components/LockedManagerCard";
 import { fetchGeo } from "@/lib/geo";
-
 const FAKE_NAME_PARTS = new Set([
   "test", "fake", "admin", "null", "undefined", "anonymous",
   "unknown", "none", "nope", "asdf", "qwerty", "aaaa", "xxxx", "blah", "lorem", "ipsum",
@@ -22,8 +21,7 @@ const FAKE_FULL_NAMES = new Set([
   "foo bar", "foo foo", "bar baz",
   "first last", "firstname lastname",
 ]);
-const NAME_LETTERS_ONLY = /^[a-zA-ZÀ-ÖØ-öø-ÿ'\-\s]+$/;
-
+const NAME_LETTERS_ONLY = /^[a-zA-ZÀ-ÖØ-öø-ÿ'**\\\**-**\\\**s]+$/;
 function validateManagerName(firstName: string, lastName: string): string | null {
   const f = firstName.trim();
   const l = lastName.trim();
@@ -40,7 +38,6 @@ function validateManagerName(firstName: string, lastName: string): string | null
   }
   return null;
 }
-
 interface ManagerEntry {
   id: number;
   name: string;
@@ -53,7 +50,6 @@ interface ManagerEntry {
   approvalStatus?: string;
   slug?: string;
 }
-
 interface CompanyData {
   id: number;
   name: string;
@@ -65,7 +61,6 @@ interface CompanyData {
   categoryAverages: Record<string, number>;
   managers: ManagerEntry[];
 }
-
 function StarDisplay({ rating }: { rating: number }) {
   return (
     <div className="flex items-center gap-1">
@@ -79,7 +74,6 @@ function StarDisplay({ rating }: { rating: number }) {
     </div>
   );
 }
-
 function RatingBar({ value, max = 5 }: { value: number; max?: number }) {
   const pct = Math.min(100, (value / max) * 100);
   return (
@@ -91,13 +85,11 @@ function RatingBar({ value, max = 5 }: { value: number; max?: number }) {
     </div>
   );
 }
-
 const GHOST_SLOTS = [
   { initials: "JW", name: "James Wilson",   role: "Senior Product Manager",   color: "bg-violet-500", rating: "4.3", reviews: 12 },
   { initials: "SC", name: "Sarah Chen",     role: "Director of Engineering",  color: "bg-sky-500",    rating: "3.8", reviews: 7  },
   { initials: "MT", name: "Michael Torres", role: "VP of Operations",         color: "bg-emerald-600",rating: "4.7", reviews: 21 },
 ];
-
 function GhostManagerCard({ index, company, logoUrl, isLoggedIn }: { index: number; company: string; logoUrl?: string; isLoggedIn: boolean }) {
   const slot = GHOST_SLOTS[index % GHOST_SLOTS.length];
   return (
@@ -107,15 +99,12 @@ function GhostManagerCard({ index, company, logoUrl, isLoggedIn }: { index: numb
         <Lock size={10} />
         {"Rate to unlock"}
       </div>
-
       {/* Avatar — same size as LockedManagerCard's default ManagerAvatar, blurred */}
       <div className={`h-16 w-16 rounded-2xl ${slot.color} flex items-center justify-center blur-sm`}>
         <span className="text-xl font-bold text-white">{slot.initials}</span>
       </div>
-
       {/* Blurred name */}
       <h3 className="mt-3 text-[15px] font-semibold text-foreground leading-tight blur-sm pr-16">{slot.name}</h3>
-
       {/* Company row — logo + name visible, role blurred — matches CompanyRow layout */}
       <div className="mt-2 mb-auto flex items-center gap-2">
         <CompanyLogoImg company={company} logoUrl={logoUrl} sizeClass="h-8 w-8 rounded-md flex-shrink-0" />
@@ -124,7 +113,6 @@ function GhostManagerCard({ index, company, logoUrl, isLoggedIn }: { index: numb
           <p className="text-xs text-muted-foreground truncate blur-sm">{slot.role}</p>
         </div>
       </div>
-
       <div className="mt-4 flex items-center gap-1 blur-sm select-none">
         {[1, 2, 3, 4, 5].map((i) => (
           <span key={i} className={`text-base leading-none ${i <= Math.round(parseFloat(slot.rating)) ? "text-amber-400" : "text-muted-foreground/25"}`}>★</span>
@@ -134,16 +122,13 @@ function GhostManagerCard({ index, company, logoUrl, isLoggedIn }: { index: numb
     </div>
   );
 }
-
 const SIDEBAR_INPUT =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]";
-
 export default function CompanyProfile() {
   const { companySlug } = useParams<{ companySlug: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-
   // Sidebar search state
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -153,13 +138,10 @@ export default function CompanyProfile() {
   const [searchHasContributed, setSearchHasContributed] = useState(false);
   const [ghostAdded, setGhostAdded] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-
   const [renameMode, setRenameMode] = useState(false);
   const [newName, setNewName] = useState("");
   const [renaming, setRenaming] = useState(false);
-
   const allFilled = firstName.trim().length > 0 && lastName.trim().length >= 2 && title.trim().length > 0;
-
   const handleRename = async () => {
     if (!data || !newName.trim()) return;
     setRenaming(true);
@@ -177,7 +159,6 @@ export default function CompanyProfile() {
       setRenaming(false);
     }
   };
-
   const clearSearch = () => {
     setFirstName("");
     setLastName("");
@@ -187,11 +168,9 @@ export default function CompanyProfile() {
     setSearchHasContributed(false);
     setSearchError(null);
   };
-
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!allFilled) return;
-
     const nameError = validateManagerName(firstName, lastName);
     if (nameError) {
       setSearchError(nameError);
@@ -200,7 +179,6 @@ export default function CompanyProfile() {
       setSearchLoading(false);
       return;
     }
-
     setSearchError(null);
     setSearchLoading(true);
     setGhostAdded(false);
@@ -277,13 +255,10 @@ export default function CompanyProfile() {
       setSearchLoading(false);
     }
   };
-
   const isLocked = !user?.hasContributed;
-
   // Detect whether the URL param is a slug (lowercase, no spaces) or a legacy name.
   // Name-based navigation from the search form still works through the by-name fallback.
   const isSlugParam = !!companySlug && /^[a-z0-9-]+$/.test(companySlug);
-
   const { data, isLoading, isError } = useQuery({
     queryKey: ["company-profile-slug", companySlug],
     queryFn: async () => {
@@ -301,7 +276,6 @@ export default function CompanyProfile() {
     staleTime: 5 * 60_000,
     retry: false,
   });
-
   // Redirect legacy company-name URLs (e.g. /companies/Revolut) to the canonical slug URL.
   // This collapses all historical URL variants into one canonical form for Google.
   useEffect(() => {
@@ -309,7 +283,6 @@ export default function CompanyProfile() {
       navigate(`/companies/${data.slug}`, { replace: true });
     }
   }, [isSlugParam, data?.slug, navigate]);
-
   if (isLoading) {
     return (
       <Layout>
@@ -327,7 +300,6 @@ export default function CompanyProfile() {
       </Layout>
     );
   }
-
   if (isError || !data) {
     return (
       <Layout>
@@ -345,20 +317,15 @@ export default function CompanyProfile() {
       </Layout>
     );
   }
-
   const decoded = data.name;
-
   const catEntries = Object.entries(data.categoryAverages)
     .filter(([, v]) => typeof v === "number" && !isNaN(v))
     .sort(([, a], [, b]) => b - a);
-
   const strongest = catEntries.slice(0, 3);
   const weakest   = catEntries.slice(-3).reverse();
   const hasAreas  = catEntries.length >= 3;
-
   // Whether to show unlocked tiles in the results column
   const resultsUnlocked = searchResults !== null ? searchHasContributed : !isLocked;
-
   const canonicalUrl = `https://werkpages.com/companies/${data.slug ?? companySlug}`;
   const pageTitle = `${data.name} Manager Reviews & Ratings | Werkpages`;
   const pageDescription = `Browse anonymous reviews of managers at ${data.name}. See ratings, leadership styles, and employee experiences at ${data.name} on Werkpages.`;
@@ -380,7 +347,6 @@ export default function CompanyProfile() {
       },
     ],
   };
-
   return (
     <>
     <Helmet>
@@ -406,7 +372,6 @@ export default function CompanyProfile() {
           </button>
         </div>
       </div>
-
       {/* Hero */}
       <section className="border-b border-border bg-muted/30">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
@@ -506,9 +471,7 @@ export default function CompanyProfile() {
           </div>
         </div>
       </section>
-
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-
         {/* Strongest / Weakest areas */}
         {(isLocked || hasAreas) && (
           <div className="mb-10">
@@ -605,10 +568,8 @@ export default function CompanyProfile() {
             )}
           </div>
         )}
-
         {/* Manager section — same two-column layout as Directory */}
         <div className="flex flex-col gap-8 lg:flex-row">
-
           {/* Left sidebar — Find a Manager */}
           <aside className="lg:w-56 flex-shrink-0">
             <div className="space-y-6">
@@ -659,7 +620,6 @@ export default function CompanyProfile() {
               </div>
             </div>
           </aside>
-
           {/* Right — manager tiles */}
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground mb-4">
@@ -672,32 +632,32 @@ export default function CompanyProfile() {
                 </div>
               ) : searchResults.length > 0 ? (
                 <>
-                  <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
+                  <div className="grid grid-cols-2 auto-rows-[210px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                     {searchResults.map((boss: any) =>
                       resultsUnlocked ? (
                         <Link
                           key={boss.id}
                           to={data.slug && boss.slug ? `/companies/${data.slug}/managers/${boss.slug}` : `/manager/${boss.id}`}
-                          className="group rounded-2xl border border-border bg-card p-5 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all"
+                          className="group flex h-full w-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all min-[420px]:w-[200px] sm:p-5"
                         >
                           <div className="flex items-center gap-3 mb-3">
-                            <ManagerAvatar name={boss.name} size="sm" />
+                            <div className="flex-shrink-0"><ManagerAvatar name={boss.name} size="sm" /></div>
                             <p className="text-sm font-semibold text-foreground group-hover:text-[#2e0562] transition-colors leading-tight truncate flex-1 min-w-0">{boss.name}</p>
                           </div>
                           <CompanyRow company={data.name} title={boss.title} logoUrl={data.logoUrl} />
-                          <div className="mt-3 flex items-center justify-between">
+                          <div className="mt-auto min-w-0 pt-3">
                             {Number(boss.overallRating) > 0 ? (
-                              <div className="flex items-center gap-1">
+                              <div className="flex max-w-full flex-nowrap items-center gap-0.5 whitespace-nowrap">
                                 {[1,2,3,4,5].map((s) => (
                                   <Star key={s} size={13} aria-hidden="true"
                                     className={s <= Math.round(Number(boss.overallRating)) ? "fill-amber-400 text-amber-400" : "fill-none text-border"} />
                                 ))}
-                                <span className="ml-1 text-sm font-semibold text-foreground">{Number(boss.overallRating).toFixed(1)}</span>
+                                <span className="ml-1 flex-shrink-0 whitespace-nowrap text-sm font-semibold leading-none text-foreground">{Number(boss.overallRating).toFixed(1)}</span>
                               </div>
                             ) : (
                               <span className="text-xs text-muted-foreground">No ratings yet</span>
                             )}
-                            <span className="text-xs text-muted-foreground flex-shrink-0">
+                            <span className="mt-1.5 whitespace-nowrap text-[11px] leading-none text-muted-foreground">
                               {boss.reviewsCount ?? 0} {(boss.reviewsCount ?? 0) === 1 ? "review" : "reviews"}
                             </span>
                           </div>
@@ -756,7 +716,7 @@ export default function CompanyProfile() {
               )
             ) : isLocked ? (
               <>
-                <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-2 auto-rows-[210px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                   {data.managers.slice(0, 3).map((mgr) => (
                     <LockedManagerCard
                       key={mgr.id}
@@ -799,33 +759,33 @@ export default function CompanyProfile() {
                 </Link>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-2 auto-rows-[210px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                 {data.managers.map((mgr) => (
                   <Link
                     key={mgr.id}
                     to={data.slug && mgr.slug ? `/companies/${data.slug}/managers/${mgr.slug}` : `/manager/${mgr.id}`}
-                    className="group rounded-2xl border border-border bg-card p-5 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all"
+                    className="group flex h-full w-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all min-[420px]:w-[200px] sm:p-5"
                   >
                     <div className="flex items-center gap-3 mb-3">
-                      <ManagerAvatar name={mgr.name} size="sm" />
+                      <div className="flex-shrink-0"><ManagerAvatar name={mgr.name} size="sm" /></div>
                       <p className="text-sm font-semibold text-foreground group-hover:text-[#2e0562] transition-colors leading-tight truncate flex-1 min-w-0">
                         {mgr.name}
                       </p>
                     </div>
                     <CompanyRow company={data.name} title={mgr.title} logoUrl={data.logoUrl} />
-                    <div className="mt-3 flex items-center justify-between">
+                    <div className="mt-auto min-w-0 pt-3">
                       {Number(mgr.overallRating) > 0 ? (
-                        <div className="flex items-center gap-1">
+                        <div className="flex max-w-full flex-nowrap items-center gap-0.5 whitespace-nowrap">
                           {[1,2,3,4,5].map((s) => (
                             <Star key={s} size={13} aria-hidden="true"
                               className={s <= Math.round(Number(mgr.overallRating)) ? "fill-amber-400 text-amber-400" : "fill-none text-border"} />
                           ))}
-                          <span className="ml-1 text-sm font-semibold text-foreground">{Number(mgr.overallRating).toFixed(1)}</span>
+                          <span className="ml-1 flex-shrink-0 whitespace-nowrap text-sm font-semibold leading-none text-foreground">{Number(mgr.overallRating).toFixed(1)}</span>
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">No ratings yet</span>
                       )}
-                      <span className="text-xs text-muted-foreground flex-shrink-0">
+                      <span className="mt-1.5 whitespace-nowrap text-[11px] leading-none text-muted-foreground">
                         {mgr.reviewsCount} {mgr.reviewsCount === 1 ? "review" : "reviews"}
                       </span>
                     </div>

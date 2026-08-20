@@ -38,7 +38,6 @@ export function getAvatarColor(name: string): string {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-
 export function ManagerAvatar({ name, size = "md" }: { name: string; size?: "sm" | "md" | "lg" }) {
   const sizeClass = size === "lg" ? "h-20 w-20 rounded-2xl text-3xl" : size === "sm" ? "h-10 w-10 rounded-xl text-sm" : "h-16 w-16 rounded-2xl text-xl";
   return (
@@ -59,11 +58,8 @@ export function CompanyLogoImg({ company, logoUrl, sizeClass }: { company: strin
   const initial = company.trim().charAt(0).toUpperCase();
 
   const handleError = () => {
-    if (src !== logoDevUrl) {
-      setSrc(logoDevUrl);
-    } else {
-      setFailed(true);
-    }
+    if (src !== logoDevUrl) setSrc(logoDevUrl);
+    else setFailed(true);
   };
 
   if (failed) {
@@ -86,9 +82,9 @@ export function CompanyLogoImg({ company, logoUrl, sizeClass }: { company: strin
 export function CompanyRow({ company, title, logoUrl, logoSize = "md", wrapTitle = false, companyClassName }: { company: string; title: string; logoUrl?: string; logoSize?: "md" | "lg"; wrapTitle?: boolean; companyClassName?: string }) {
   const sizeClass = logoSize === "lg" ? "h-10 w-10" : "h-8 w-8";
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 items-center gap-2">
       <CompanyLogoImg company={company} logoUrl={logoUrl} sizeClass={sizeClass} />
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className={`text-sm font-semibold leading-tight truncate ${companyClassName ?? "text-foreground"}`}>{company}</p>
         <p className={`text-xs text-muted-foreground ${wrapTitle ? "break-words" : "truncate"}`}>{title}</p>
       </div>
@@ -101,14 +97,14 @@ export default function ManagerCard({ boss, isPending = false }: ManagerCardProp
   return (
     <Link
       to={`/manager/${boss.id}`}
-      className={`group rounded-2xl border bg-card p-5 shadow-sm transition-all hover:shadow-md ${
+      className={`group flex h-[210px] w-full min-w-0 flex-col rounded-2xl border bg-card p-4 shadow-sm transition-all hover:shadow-md min-[420px]:w-[200px] sm:p-5 ${
         isPending
           ? "border-amber-300 hover:border-amber-400 hover:shadow-amber-100"
           : "border-border hover:border-[#2e0562]/30 hover:shadow-[#2e0562]/5"
       }`}
     >
-      {/* Avatar + name */}
-      <div className="flex items-center gap-3 mb-3">
+      {/* Row 1: avatar + name */}
+      <div className="flex min-w-0 items-center gap-3 mb-3">
         <div className="flex-shrink-0">
           <ManagerAvatar name={boss.name} size="sm" />
         </div>
@@ -123,37 +119,44 @@ export default function ManagerCard({ boss, isPending = false }: ManagerCardProp
             </span>
           )}
           {!isPending && rating >= 4.5 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 whitespace-nowrap mt-0.5">
+            <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 whitespace-nowrap mt-0.5">
               ★ Top Rated
             </span>
           )}
         </div>
       </div>
 
-      {/* Company row */}
+      {/* Row 2: company row */}
       <CompanyRow company={boss.company} title={boss.title} logoUrl={boss.companyLogoUrl} />
 
-      {/* Stars + review count */}
+      {/* Row 3: rating always owns its own rows on narrow cards */}
       {!isPending && (
-        <div className="mt-3 flex items-center justify-between">
+        <div className="mt-auto min-w-0 pt-3">
           {rating > 0 ? (
-            <div className="flex items-center gap-1">
-              {[1, 2, 3, 4, 5].map((s) => (
-                <Star
-                  key={s}
-                  size={13}
-                  aria-hidden="true"
-                  className={s <= Math.round(rating) ? "fill-amber-400 text-amber-400" : "fill-none text-border"}
-                />
-              ))}
-              <span className="ml-1 text-sm font-semibold text-foreground">{rating.toFixed(1)}</span>
+            <div className="flex min-w-0 flex-col items-start">
+              <div className="flex max-w-full flex-nowrap items-center gap-0.5 whitespace-nowrap">
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <Star
+                    key={s}
+                    size={12}
+                    aria-hidden="true"
+                    className={`flex-shrink-0 ${s <= Math.round(rating) ? "fill-amber-400 text-amber-400" : "fill-none text-border"}`}
+                  />
+                ))}
+                <span className="ml-1 flex-shrink-0 whitespace-nowrap text-sm font-semibold leading-none text-foreground">
+                  {rating.toFixed(1)}
+                </span>
+              </div>
+              <div className="mt-1.5 whitespace-nowrap text-[11px] leading-none text-muted-foreground">
+                {(boss.reviews || 0).toLocaleString()} {boss.reviews === 1 ? "review" : "reviews"}
+              </div>
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">No ratings yet</p>
+            <div className="flex flex-col items-start">
+              <p className="text-xs whitespace-nowrap text-muted-foreground">No ratings yet</p>
+              <div className="mt-1.5 whitespace-nowrap text-[11px] leading-none text-muted-foreground">0 reviews</div>
+            </div>
           )}
-          <span className="text-xs text-muted-foreground flex-shrink-0">
-            {(boss.reviews || 0).toLocaleString()} {boss.reviews === 1 ? "review" : "reviews"}
-          </span>
         </div>
       )}
     </Link>

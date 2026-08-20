@@ -357,9 +357,9 @@ export default function Directory() {
             )}
 
             {!error && isLoading && (
-              <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-2 auto-rows-[210px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+                  <div key={i} className="h-full w-full rounded-2xl border border-border bg-card p-4 shadow-sm min-[420px]:w-[200px] sm:p-5">
                     <div className="flex items-center gap-3 mb-3">
                       <div className="h-10 w-10 rounded-xl bg-muted animate-pulse flex-shrink-0" />
                       <div className="h-4 w-28 rounded bg-muted animate-pulse" />
@@ -387,7 +387,7 @@ export default function Directory() {
                         <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
                           Your Pending Submissions
                         </p>
-                        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
+                        <div className="grid grid-cols-2 auto-rows-[210px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                           {submittedManagers.map((boss: any) => (
                             <ManagerCard key={`pending-${boss.id}`} boss={boss} isPending />
                           ))}
@@ -397,12 +397,17 @@ export default function Directory() {
                     )}
 
                     {filteredBosses.length > 0 && (
-                      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
+                      <div className="grid grid-cols-2 auto-rows-[210px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                         {filteredBosses.map((boss: any) =>
                           hasContributed ? (
                             <ManagerCard key={boss.id} boss={boss} />
                           ) : (
-                            <LockedManagerCard key={boss.id} boss={boss} isLoggedIn={!!user} blurRating />
+                            <div
+                              key={boss.id}
+                              className="h-full w-full min-w-0 rounded-2xl min-[420px]:w-[200px] [&>*]:box-border [&>*]:h-full [&>*]:w-full [&>*]:min-w-0 [&>*]:max-w-full"
+                            >
+                              <LockedManagerCard boss={boss} isLoggedIn={!!user} blurRating />
+                            </div>
                           )
                         )}
                       </div>

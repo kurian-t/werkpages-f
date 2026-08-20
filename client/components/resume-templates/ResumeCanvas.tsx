@@ -13,7 +13,7 @@ import { createPortal } from "react-dom";
 import { DEFAULT_DESIGN } from "./defaults";
 import type { ResumeData, ResumeDesign, TextStyle, FontFamily, WorkEntry, EducationEntry, BulletPoint, LayoutOverride } from "./types";
 import { formatDateRange, formatEduYears, genId } from "./types";
-import RichTextEditor from "@/components/RichTextEditor";
+import { Link2, Unlink2, List, ListOrdered } from "lucide-react";
 import { companyLogoDomain } from "@/lib/utils";
 
 // ── Font mapping: PDF built-ins → CSS ────────────────────────────────────────
@@ -119,52 +119,279 @@ function snapRotation(r: number): number {
 // SubDrag — wraps an individual sub-element within a section block.
 // Independently moveable (visualDx/visualDy), resizable (width), and rotatable.
 // Movement is clamped to the section bounds. All overrides are visual-only (no cascade).
-function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, children }: { overrideKey: string; defaultWidth?: number; design?: ResumeDesign; inheritFrom?: string; children: ReactNode }) {
+//
+// Repeatable work-entry elements can also be LINKED. Linked peers share layout edits
+// (move, resize, rotation) while their actual text/logo content remains entry-specific.
+// The link state is persisted on the element's LayoutOverride so it survives remeasure,
+// pagination remounts, and reloads without requiring a separate settings model.
+type LinkableLayoutOverride = LayoutOverride & { linked?: boolean };
+
+function linkedOverride(ov: LayoutOverride | undefined): LinkableLayoutOverride | undefined {
+  return ov as LinkableLayoutOverride | undefined;
+}
+
+function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, linkKeys, linkLabel, constrainToBounds = false, children }: {
+  overrideKey: string;
+  defaultWidth?: number;
+  design?: ResumeDesign;
+  inheritFrom?: string;
+  linkKeys?: string[];
+  linkLabel?: string;
+  constrainToBounds?: boolean;
+  children: ReactNode;
+}) {
   const ctx = useContext(SectionBoundsCtx);
-  const elRef   = useRef<HTMLDivElement>(null);   // content wrapper (carries transform)
+  const elRef    = useRef<HTMLDivElement>(null);  // content wrapper (carries transform)
   const outerRef = useRef<HTMLDivElement>(null);  // outer wrapper (hover zone)
-  const ctxRef  = useRef(ctx);
+  const ctxRef   = useRef(ctx);
   ctxRef.current = ctx;
   const inheritFromRef = useRef(inheritFrom);
   inheritFromRef.current = inheritFrom;
+  const linkKeysRef = useRef(linkKeys);
+  linkKeysRef.current = linkKeys;
   const [isHovered,  setIsHovered]  = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
+  // A click/drag selects this sub-element. Selection is sticky until the user clicks
+  // elsewhere, so editor-only controls remain reachable even after the pointer leaves.
+  const [isPinned,   setIsPinned]   = useState(false);
+  // Text elements already have the main formatting toolbar. Non-text repeated elements
+  // (company logo / description) get a compact matching toolbar of their own.
+  const [selectedViaText, setSelectedViaText] = useState(false);
   // Prevents onMouseLeave from collapsing handles mid-operation
   const operationRef = useRef(false);
 
-  // In pass-1 (no SectionBoundsCtx), still render a width-constraining wrapper so
-  // images with width:"100%" don't expand to fill the whole region column.
-  // Use saved width override if available so pass-1 measures the correct block height.
-  if (!ctx) {
-    const savedW = design?.layoutOverrides?.[overrideKey]?.width;
-    return <div style={{ width: savedW ?? defaultWidth ?? "fit-content", maxWidth: "100%" }}>{children}</div>;
+  function peerSource(designValue: ResumeDesign | undefined, currentKey = overrideKey): LinkableLayoutOverride | undefined {
+    if (!designValue || !linkKeysRef.current?.length) return undefined;
+    const own = linkedOverride(designValue.layoutOverrides?.[currentKey]);
+    if (own?.linked === false) return undefined;
+    for (const key of linkKeysRef.current) {
+      if (key === currentKey) continue;
+      const candidate = linkedOverride(designValue.layoutOverrides?.[key]);
+      if (candidate && candidate.linked !== false) return candidate;
+    }
+    return undefined;
   }
 
-  const override  = ctx.design.layoutOverrides?.[overrideKey];
-  // Inherit visualDx/visualDy from a peer sub-element when this one has no own override.
-  // This makes new entries automatically match the layout of existing entries (e.g. title
-  // to the right of logo). Once the user drags the element, its own override is saved and
-  // it stops inheriting. Rotation is never inherited — it's always entry-specific.
-  const hasOwnPosition = !!(override?.visualDx || override?.visualDy);
-  const inherited = (!hasOwnPosition && inheritFrom) ? ctx.design.layoutOverrides?.[inheritFrom] : undefined;
-  const dx        = override?.visualDx ?? inherited?.visualDx ?? 0;
-  const dy        = override?.visualDy ?? inherited?.visualDy ?? 0;
-  const rot       = override?.rotation  ?? 0;
-  const overrideW = override?.width;
-
-  // Merge partial updates into the existing override, strip zero/falsy fields.
-  function saveSubOverride(updates: Partial<LayoutOverride>) {
-    const current = ctxRef.current!;
-    const d = current.design;
-    const existing = d.layoutOverrides?.[overrideKey] ?? {};
-    const next: LayoutOverride = { ...existing, ...updates };
+  function sanitizeOverride(value: LinkableLayoutOverride): LinkableLayoutOverride {
+    const next: LinkableLayoutOverride = { ...value };
     if (!next.visualDx) delete next.visualDx;
     if (!next.visualDy) delete next.visualDy;
     if (!next.rotation) delete next.rotation;
     if (!next.width)    delete next.width;
-    const layoutOverrides = { ...(d.layoutOverrides ?? {}), [overrideKey]: next };
-    if (!Object.keys(next).length) delete layoutOverrides[overrideKey];
+    // linked=true is the default, so only persist the explicit opt-out.
+    if (next.linked !== false) delete next.linked;
+    return next;
+  }
+
+  // In pass-1 (no SectionBoundsCtx), still render a width-constraining wrapper so
+  // images with width:"100%" don't expand to fill the whole region column.
+  // A newly-added linked item inherits a linked peer's width so pagination measures
+  // it exactly as it will appear in pass 2.
+  if (!ctx) {
+    const own = linkedOverride(design?.layoutOverrides?.[overrideKey]);
+    const source = own?.linked === false ? undefined : peerSource(design);
+    const savedW = own?.width ?? source?.width;
+    const savedDx = own?.visualDx ?? source?.visualDx ?? 0;
+    const boundedMaxWidth = constrainToBounds
+      ? `max(20px, calc(100% - ${Math.max(0, savedDx)}px))`
+      : "100%";
+    return (
+      <div style={{
+        width: savedW ?? defaultWidth ?? "fit-content",
+        maxWidth: boundedMaxWidth,
+        boxSizing: "border-box",
+      }}>
+        {children}
+      </div>
+    );
+  }
+
+  const override = linkedOverride(ctx.design.layoutOverrides?.[overrideKey]);
+  const supportsLinking = !!linkKeys && linkKeys.length > 1;
+  const isLinked = supportsLinking && override?.linked !== false;
+
+  // Selecting a repeated element gives the linked group a short, soft amber pulse.
+  // The pulse is intentionally temporary: it teaches the relationship, then fades away
+  // so the resume itself stays visually clean. The link pill remains pinned until the
+  // user clicks elsewhere, so the control is still easy to reach after the glow ends.
+  useEffect(() => {
+    if (!isPinned) return;
+    const current = ctxRef.current;
+    if (!current) return;
+
+    const allowed = new Set(isLinked ? linkedPeerKeys(current.design) : [overrideKey]);
+    const animations: Animation[] = [];
+
+    document.querySelectorAll<HTMLDivElement>("[data-subdrag-key]").forEach(outer => {
+      const key = outer.dataset.subdragKey;
+      if (!key || !allowed.has(key)) return;
+      const content = outer.querySelector<HTMLDivElement>("[data-subdrag-content]");
+      if (!content) return;
+
+      const selected = key === overrideKey;
+      const strongGlow = selected
+        ? "0 0 17px 6px rgba(250,204,21,0.58), 0 0 34px 12px rgba(250,204,21,0.24)"
+        : "0 0 14px 5px rgba(250,204,21,0.46), 0 0 28px 10px rgba(250,204,21,0.18)";
+      const softGlow = selected
+        ? "0 0 9px 3px rgba(250,204,21,0.31), 0 0 19px 6px rgba(250,204,21,0.12)"
+        : "0 0 8px 3px rgba(250,204,21,0.24), 0 0 16px 5px rgba(250,204,21,0.09)";
+      const strongFill = selected ? "rgba(254,240,138,0.24)" : "rgba(254,240,138,0.17)";
+      const softFill   = selected ? "rgba(254,240,138,0.10)" : "rgba(254,240,138,0.07)";
+
+      const animation = content.animate(
+        [
+          { boxShadow: "0 0 0 0 rgba(250,204,21,0)", backgroundColor: "rgba(254,240,138,0)", offset: 0 },
+          { boxShadow: strongGlow, backgroundColor: strongFill, offset: 1 / 6 },
+          { boxShadow: softGlow,   backgroundColor: softFill,   offset: 2 / 6 },
+          { boxShadow: strongGlow, backgroundColor: strongFill, offset: 3 / 6 },
+          { boxShadow: softGlow,   backgroundColor: softFill,   offset: 4 / 6 },
+          { boxShadow: strongGlow, backgroundColor: strongFill, offset: 5 / 6 },
+          { boxShadow: "0 0 0 0 rgba(250,204,21,0)", backgroundColor: "rgba(254,240,138,0)", offset: 1 },
+        ],
+        {
+          duration: 4500,
+          easing: "ease-in-out",
+          fill: "none",
+        }
+      );
+      animations.push(animation);
+    });
+
+    return () => animations.forEach(animation => animation.cancel());
+  }, [isPinned, isLinked, overrideKey]);
+
+  // Exactly ONE repeated sub-element can be selected at a time. Linked peers are
+  // highlighted as a preview, but they are not themselves selected and never show
+  // their own handles/link pills. A small custom event lets sibling SubDrag instances
+  // clear their sticky selection even though canvas mouse events stop propagation.
+  useEffect(() => {
+    function clearForAnotherSelection(e: Event) {
+      const selectedKey = (e as CustomEvent<string>).detail;
+      if (selectedKey !== overrideKey) {
+        setIsPinned(false);
+        setSelectedViaText(false);
+      }
+    }
+    window.addEventListener("resume-subdrag-select", clearForAnotherSelection);
+    return () => window.removeEventListener("resume-subdrag-select", clearForAnotherSelection);
+  }, [overrideKey]);
+
+  function selectThisSubDrag(viaText = false) {
+    window.dispatchEvent(new CustomEvent<string>("resume-subdrag-select", { detail: overrideKey }));
+    setSelectedViaText(viaText);
+    setIsPinned(true);
+  }
+
+  // Keep the one selected control available until the user deliberately clicks away.
+  useEffect(() => {
+    if (!isPinned) return;
+    function clearPinned(e: MouseEvent) {
+      const outer = outerRef.current;
+      if (outer && outer.contains(e.target as Node)) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.(`[data-subdrag-toolbar-key="${overrideKey}"]`)) return;
+      setIsPinned(false);
+      setSelectedViaText(false);
+    }
+    document.addEventListener("mousedown", clearPinned);
+    return () => document.removeEventListener("mousedown", clearPinned);
+  }, [isPinned]);
+
+  // Linked peers are the preferred inheritance source. `inheritFrom` remains as a
+  // backwards-compatible fallback for layouts saved before linking existed.
+  const linkedSource = isLinked ? peerSource(ctx.design) : undefined;
+  const hasOwnPosition = !!(override?.visualDx || override?.visualDy);
+  const legacyInherited = (!hasOwnPosition && inheritFrom)
+    ? linkedOverride(ctx.design.layoutOverrides?.[inheritFrom])
+    : undefined;
+  const inherited = linkedSource ?? legacyInherited;
+
+  const dx        = override?.visualDx ?? inherited?.visualDx ?? 0;
+  const dy        = override?.visualDy ?? inherited?.visualDy ?? 0;
+  const rot       = override?.rotation  ?? inherited?.rotation ?? 0;
+  const overrideW = override?.width     ?? inherited?.width;
+
+  function linkedPeerKeys(designValue: ResumeDesign): string[] {
+    if (!linkKeysRef.current?.length) return [overrideKey];
+    return linkKeysRef.current.filter(key => {
+      if (key === overrideKey) return true;
+      return linkedOverride(designValue.layoutOverrides?.[key])?.linked !== false;
+    });
+  }
+
+  // Update rendered linked peers while the pointer is moving so the relationship is
+  // obvious immediately — peers do not wait until mouse-up to snap into place.
+  function forEachRenderedLinkedPeer(fn: (el: HTMLDivElement) => void) {
+    const current = ctxRef.current;
+    if (!current || !isLinked) return;
+    const allowed = new Set(linkedPeerKeys(current.design));
+    document.querySelectorAll<HTMLDivElement>("[data-subdrag-key]").forEach(outer => {
+      const key = outer.dataset.subdragKey;
+      if (!key || key === overrideKey || !allowed.has(key)) return;
+      const content = outer.querySelector<HTMLDivElement>("[data-subdrag-content]");
+      if (content) fn(content);
+    });
+  }
+
+  // Merge partial updates into this element. When linked, the exact same geometry is
+  // committed to every peer that has not explicitly opted out.
+  function saveSubOverride(updates: Partial<LayoutOverride>) {
+    const current = ctxRef.current!;
+    const d = current.design;
+    const layoutOverrides = { ...(d.layoutOverrides ?? {}) };
+    const targets = isLinked ? linkedPeerKeys(d) : [overrideKey];
+
+    for (const key of targets) {
+      const existing = linkedOverride(layoutOverrides[key]) ?? {};
+      const next = sanitizeOverride({ ...existing, ...updates });
+      if (Object.keys(next).length) layoutOverrides[key] = next;
+      else delete layoutOverrides[key];
+    }
+    current.onDesignChange({ ...d, layoutOverrides });
+  }
+
+  function toggleLinked(ev: React.MouseEvent) {
+    ev.stopPropagation();
+    ev.preventDefault();
+    const current = ctxRef.current!;
+    const d = current.design;
+    const layoutOverrides = { ...(d.layoutOverrides ?? {}) };
+    const existing = linkedOverride(layoutOverrides[overrideKey]) ?? {};
+
+    if (isLinked) {
+      // Freeze the CURRENT effective geometry before detaching so the item does not jump
+      // when it stops inheriting values from its peers.
+      layoutOverrides[overrideKey] = sanitizeOverride({
+        ...existing,
+        visualDx: dx || undefined,
+        visualDy: dy || undefined,
+        rotation: rot || undefined,
+        width: typeof overrideW === "number" ? overrideW : undefined,
+        linked: false,
+      });
+    } else {
+      // Relinking intentionally snaps this item back to the shared geometry.
+      const source = (() => {
+        for (const key of linkKeysRef.current ?? []) {
+          if (key === overrideKey) continue;
+          const candidate = linkedOverride(d.layoutOverrides?.[key]);
+          if (candidate && candidate.linked !== false) return candidate;
+        }
+        return undefined;
+      })();
+      const next = sanitizeOverride({
+        ...existing,
+        visualDx: source?.visualDx,
+        visualDy: source?.visualDy,
+        rotation: source?.rotation,
+        width: source?.width,
+        linked: true,
+      });
+      if (Object.keys(next).length) layoutOverrides[overrideKey] = next;
+      else delete layoutOverrides[overrideKey];
+    }
+
     current.onDesignChange({ ...d, layoutOverrides });
   }
 
@@ -176,9 +403,9 @@ function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, children }: {
     const outer = outerRef.current;
     if (!outer) return;
     const rect = outer.getBoundingClientRect();
-    // Extend check 14px above to cover the rotation handle zone
-    const over = e.clientX >= rect.left && e.clientX <= rect.right &&
-                 e.clientY >= rect.top - 14 && e.clientY <= rect.bottom;
+    // Extend check 18px above to cover both the rotation and link controls.
+    const over = e.clientX >= rect.left - 18 && e.clientX <= rect.right + 18 &&
+                 e.clientY >= rect.top - 18 && e.clientY <= rect.bottom;
     if (!over) setIsHovered(false);
   }
 
@@ -188,22 +415,27 @@ function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, children }: {
   // ── Move ──────────────────────────────────────────────────────────────────
   function handleMouseDown(ev: React.MouseEvent) {
     if (ev.button !== 0) return;
+    if ((ev.target as HTMLElement).closest("[data-subdrag-handle]")) return;
     ev.stopPropagation();
+    const viaText = !!(ev.target as HTMLElement).closest("[data-selectable-key]");
+    selectThisSubDrag(viaText);
     const el = elRef.current;
     const container = ctxRef.current?.containerRef.current;
     if (!el || !container) return;
     const s = ctxRef.current?.scale ?? 1;
     const startCX = ev.clientX, startCY = ev.clientY;
-    const startOvr = ctxRef.current?.design.layoutOverrides?.[overrideKey];
+    const startOvr = linkedOverride(ctxRef.current?.design.layoutOverrides?.[overrideKey]);
+    const source = startOvr?.linked === false ? undefined : peerSource(ctxRef.current?.design);
+    const hasOwnPos = !!(startOvr?.visualDx || startOvr?.visualDy);
+    const legacyOvr = (!hasOwnPos && inheritFromRef.current)
+      ? linkedOverride(ctxRef.current?.design.layoutOverrides?.[inheritFromRef.current])
+      : undefined;
+    const inheritedOvr = source ?? legacyOvr;
     // Use effective position (own or inherited) as the drag baseline so the first drag
     // from an inherited position doesn't snap back to zero.
-    const hasOwnPos = !!(startOvr?.visualDx || startOvr?.visualDy);
-    const inheritedOvr = (!hasOwnPos && inheritFromRef.current)
-      ? ctxRef.current?.design.layoutOverrides?.[inheritFromRef.current]
-      : undefined;
     const startDx  = startOvr?.visualDx ?? inheritedOvr?.visualDx ?? 0;
     const startDy  = startOvr?.visualDy ?? inheritedOvr?.visualDy ?? 0;
-    const startRot = startOvr?.rotation  ?? 0;
+    const startRot = startOvr?.rotation  ?? inheritedOvr?.rotation ?? 0;
     const elRect  = el.getBoundingClientRect();
     const conRect = container.getBoundingClientRect();
     const elLeft  = (elRect.left - conRect.left) / s;
@@ -226,6 +458,7 @@ function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, children }: {
         const tf = (nDx || nDy || startRot)
           ? `translate(${nDx}px, ${nDy}px) rotate(${startRot}deg)` : "";
         elRef.current.style.transform = tf;
+        forEachRenderedLinkedPeer(peer => { peer.style.transform = tf; });
       }
     }
 
@@ -240,6 +473,7 @@ function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, children }: {
       saveSubOverride({
         visualDx: startDx + (cL - elLeft) || undefined,
         visualDy: startDy + (cT - elTop)  || undefined,
+        rotation: startRot || undefined,
       });
     }
 
@@ -253,6 +487,7 @@ function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, children }: {
   function makeResizeDown(leftEdge: boolean) {
     return (ev: React.MouseEvent) => {
       ev.stopPropagation(); ev.preventDefault();
+      selectThisSubDrag(selectedViaText);
       operationRef.current = true;
       setIsResizing(true);
       const el = elRef.current;
@@ -260,10 +495,11 @@ function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, children }: {
       const s = ctxRef.current?.scale ?? 1;
       const startCX  = ev.clientX;
       const startW   = el.getBoundingClientRect().width / s;
-      const startOvr = ctxRef.current?.design.layoutOverrides?.[overrideKey];
-      const startDx  = startOvr?.visualDx ?? 0;
-      const startDy  = startOvr?.visualDy ?? 0;
-      const startRot = startOvr?.rotation  ?? 0;
+      const startOvr = linkedOverride(ctxRef.current?.design.layoutOverrides?.[overrideKey]);
+      const source = startOvr?.linked === false ? undefined : peerSource(ctxRef.current?.design);
+      const startDx  = startOvr?.visualDx ?? source?.visualDx ?? 0;
+      const startDy  = startOvr?.visualDy ?? source?.visualDy ?? 0;
+      const startRot = startOvr?.rotation  ?? source?.rotation ?? 0;
 
       function onMove(e: MouseEvent) {
         if (!elRef.current) return;
@@ -275,8 +511,14 @@ function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, children }: {
           const tf = (newDx || startDy || startRot)
             ? `translate(${newDx}px, ${startDy}px) rotate(${startRot}deg)` : "";
           elRef.current.style.transform = tf;
+          forEachRenderedLinkedPeer(peer => {
+            peer.style.width = `${newW}px`;
+            peer.style.transform = tf;
+          });
         } else {
-          elRef.current.style.width = `${Math.max(20, startW + ddx)}px`;
+          const newW = Math.max(20, startW + ddx);
+          elRef.current.style.width = `${newW}px`;
+          forEachRenderedLinkedPeer(peer => { peer.style.width = `${newW}px`; });
         }
       }
 
@@ -302,6 +544,7 @@ function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, children }: {
   // ── Rotation ──────────────────────────────────────────────────────────────
   function handleRotateDown(ev: React.MouseEvent) {
     ev.stopPropagation(); ev.preventDefault();
+    selectThisSubDrag(selectedViaText);
     operationRef.current = true;
     setIsRotating(true);
     const el = elRef.current;
@@ -309,10 +552,11 @@ function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, children }: {
     const rect = el.getBoundingClientRect();
     const cx = rect.left + rect.width  / 2;
     const cy = rect.top  + rect.height / 2;
-    const startOvr = ctxRef.current?.design.layoutOverrides?.[overrideKey];
-    const startDx  = startOvr?.visualDx ?? 0;
-    const startDy  = startOvr?.visualDy ?? 0;
-    let newRot = startOvr?.rotation ?? 0;
+    const startOvr = linkedOverride(ctxRef.current?.design.layoutOverrides?.[overrideKey]);
+    const source = startOvr?.linked === false ? undefined : peerSource(ctxRef.current?.design);
+    const startDx  = startOvr?.visualDx ?? source?.visualDx ?? 0;
+    const startDy  = startOvr?.visualDy ?? source?.visualDy ?? 0;
+    let newRot = startOvr?.rotation ?? source?.rotation ?? 0;
 
     function onMove(e: MouseEvent) {
       newRot = snapRotation(Math.round((Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI + 90) * 10) / 10);
@@ -320,6 +564,7 @@ function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, children }: {
         const tf = (startDx || startDy || newRot)
           ? `translate(${startDx}px, ${startDy}px) rotate(${newRot}deg)` : "";
         elRef.current.style.transform = tf;
+        forEachRenderedLinkedPeer(peer => { peer.style.transform = tf; });
       }
     }
 
@@ -334,7 +579,7 @@ function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, children }: {
     document.addEventListener("mouseup",   onUp);
   }
 
-  const showHandles = isHovered || isResizing || isRotating;
+  const showHandles = isHovered || isPinned || isResizing || isRotating;
 
   const subEdgeH = (p: CSSProperties): CSSProperties => ({
     position: "absolute", ...p,
@@ -346,13 +591,22 @@ function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, children }: {
   return (
     <div
       ref={outerRef}
-      style={{ position: "relative", width: overrideW ?? defaultWidth ?? "fit-content", maxWidth: overrideW ? undefined : "100%" }}
+      data-subdrag-key={overrideKey}
+      style={{
+        position: "relative",
+        width: overrideW ?? defaultWidth ?? "fit-content",
+        maxWidth: constrainToBounds
+          ? `max(20px, calc(100% - ${Math.max(0, dx)}px))`
+          : overrideW ? undefined : "100%",
+        boxSizing: "border-box",
+      }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => { if (!operationRef.current) setIsHovered(false); }}
     >
       {/* Content wrapper — carries transform + rotation handle + resize handles */}
       <div
         ref={elRef}
+        data-subdrag-content
         onMouseDown={handleMouseDown}
         style={{
           position: "relative",
@@ -381,11 +635,80 @@ function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, children }: {
                 cursor: "crosshair", zIndex: 20, userSelect: "none",
               }}
             />
+
+            {/* Link / unlink now lives in the contextual toolbar, not on the canvas. */}
+
             <div data-subdrag-handle="left"  onMouseDown={makeResizeDown(true)}  onClick={e => e.stopPropagation()} style={subEdgeH({ left: 0 })} />
             <div data-subdrag-handle="right" onMouseDown={makeResizeDown(false)} onClick={e => e.stopPropagation()} style={subEdgeH({ right: 0 })} />
           </>
         )}
       </div>
+
+      {/* Logos and rich descriptions do not use the regular text ContextToolbar.
+          Give those repeated elements a compact matching toolbar, with linking first. */}
+      {supportsLinking && isPinned && !selectedViaText && elRef.current && createPortal((() => {
+        const rect = elRef.current!.getBoundingClientRect();
+        const toolbarH = 34;
+        const top = rect.bottom + 6 + toolbarH < window.innerHeight
+          ? rect.bottom + 6
+          : Math.max(4, rect.top - toolbarH - 6);
+        const left = Math.min(window.innerWidth - 210, Math.max(4, rect.left));
+        return (
+          <div
+            data-subdrag-toolbar-key={overrideKey}
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: "fixed", top, left, zIndex: 9999,
+              height: toolbarH,
+              display: "flex", alignItems: "center", gap: 5,
+              padding: "4px 6px",
+              background: "white",
+              border: "1px solid #e2e8f0",
+              borderRadius: 8,
+              boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
+              fontFamily: "system-ui, sans-serif",
+              userSelect: "none",
+            }}
+          >
+            <span style={{
+              fontSize: 10, color: "#9ca3af", padding: "0 6px 0 2px",
+              borderRight: "1px solid #e5e7eb", whiteSpace: "nowrap",
+            }}>
+              {linkLabel ?? "Element"}
+            </span>
+            <button
+              type="button"
+              aria-label={isLinked ? `Unlink ${linkLabel ?? "element"}` : `Link ${linkLabel ?? "element"}`}
+              title={isLinked
+                ? `${linkLabel ?? "Element"} is linked across roles`
+                : `${linkLabel ?? "Element"} is independent`}
+              onMouseDown={e => { e.stopPropagation(); e.preventDefault(); }}
+              onClick={toggleLinked}
+              style={{
+                height: 24,
+                padding: "0 8px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+                borderRadius: 6,
+                border: isLinked ? "1px solid rgba(245,158,11,0.38)" : "1px solid #d1d5db",
+                background: isLinked ? "rgba(255,251,235,0.98)" : "#fff",
+                color: isLinked ? "#a16207" : "#64748b",
+                fontSize: 10,
+                fontWeight: 600,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {isLinked
+                ? <><Link2 size={13} strokeWidth={2.1} /><span>Linked · {linkedPeerKeys(ctx.design).length}</span></>
+                : <><Unlink2 size={13} strokeWidth={2} /><span>Unlinked</span></>}
+            </button>
+          </div>
+        );
+      })(), document.body)}
     </div>
   );
 }
@@ -472,6 +795,7 @@ function Sel({ k, ctx, style, block, children, editInfo }: {
     return (
       <Tag
         ref={(el: HTMLElement | null) => { editRef.current = el; }}
+        data-selectable-key={k}
         contentEditable
         suppressContentEditableWarning
         onInput={(e: React.FormEvent<HTMLElement>) => {
@@ -516,6 +840,7 @@ function Sel({ k, ctx, style, block, children, editInfo }: {
 
   return (
     <Tag
+      data-selectable-key={k}
       style={{
         ...style,
         cursor: "inherit",
@@ -973,14 +1298,28 @@ function EntryBody({ body, d }: { body?: string; d: ResumeDesign }) {
   const base = toCss(d.entryBullet);
   if (!body) {
     return (
-      <div style={{ ...base, opacity: 0.3, fontStyle: "italic" }}>
+      <div style={{
+        ...base,
+        opacity: 0.3,
+        fontStyle: "italic",
+        maxWidth: "100%",
+        overflowWrap: "anywhere",
+        wordBreak: "break-word",
+        boxSizing: "border-box",
+      }}>
         Describe this role — use the editor on the left to add text and bullet points.
       </div>
     );
   }
   return (
     <div
-      style={base}
+      style={{
+        ...base,
+        maxWidth: "100%",
+        overflowWrap: "anywhere",
+        wordBreak: "break-word",
+        boxSizing: "border-box",
+      }}
       className="resume-body-html"
       dangerouslySetInnerHTML={{ __html: applyListMarkerSizes(body) }}
     />
@@ -1319,17 +1658,18 @@ function SingleWorkEntryC({ entry: e, i, data, d, ctx, setData }: SectionProps &
   }
   const pfx = `work.${e.id}`;
   const [editingBody, setEditingBody] = useState(false);
+  const [bodyDraft, setBodyDraft] = useState(e.body ?? "");
+  const [bodyFontSize, setBodyFontSize] = useState(d.entryBullet.fontSize);
+  const [bodyFontBase, setBodyFontBase] = useState<"default" | "Helvetica" | "Times" | "Courier">("default");
   const bodyWrapRef = useRef<HTMLDivElement>(null);
-  const [bodyRect,   setBodyRect]     = useState<DOMRect | null>(null);
+  const bodyEditRef = useRef<HTMLDivElement>(null);
+  const bodyRoleBaseHeightRef = useRef<number | null>(null);
 
-  // Effective logo width: this entry's saved override → any peer entry's saved override → 20.
-  // Passed as defaultWidth so new entries inherit the user's chosen logo size automatically,
-  // and pass-1 measures the correct block height even for entries without their own override.
-  const ownLogoW = d.layoutOverrides?.[`${pfx}.logo`]?.width;
-  const peerLogoW = ownLogoW == null
-    ? data.workEntries.map(we => d.layoutOverrides?.[`work.${we.id}.logo`]?.width).find(w => w != null)
-    : undefined;
-  const effectiveLogoW = ownLogoW ?? peerLogoW ?? 20;
+  // Repeated role elements are linked by default. SubDrag itself inherits the shared
+  // geometry from a linked peer; an explicitly unlinked element falls back to its own
+  // saved geometry (or the normal default) instead of accidentally borrowing a peer.
+  const workLinkKeys = (part: "logo" | "title" | "org" | "date" | "body") =>
+    data.workEntries.map(we => `work.${we.id}.${part}`);
 
   // First peer entry: used as the inheritance source for sub-element positions (dx/dy).
   // When this entry has no own override for a sub-element (e.g. title), it inherits the
@@ -1337,21 +1677,166 @@ function SingleWorkEntryC({ entry: e, i, data, d, ctx, setData }: SectionProps &
   const firstPeerId = data.workEntries.find(we => we.id !== e.id)?.id;
   const peerPfx = firstPeerId ? `work.${firstPeerId}` : undefined;
 
+  function normalizeBodyHtml(html: string): string | undefined {
+    const probe = document.createElement("div");
+    probe.innerHTML = html;
+    const meaningfulText = (probe.textContent ?? "").replace(/\u200B/g, "").trim();
+    return meaningfulText ? html : undefined;
+  }
+
+  function commitBodyEditor() {
+    const html = bodyEditRef.current?.innerHTML ?? bodyDraft;
+    const normalized = normalizeBodyHtml(html);
+    if ((e.body ?? undefined) !== normalized) update({ body: normalized });
+    setBodyDraft(normalized ?? "");
+    setEditingBody(false);
+  }
+
   function openBodyEditor(ev: React.MouseEvent) {
     ev.stopPropagation();
+    ev.preventDefault();
     ctx.onClearSelect();
-    if (bodyWrapRef.current) setBodyRect(bodyWrapRef.current.getBoundingClientRect());
+    setBodyDraft(e.body ?? "");
+    setBodyFontSize(d.entryBullet.fontSize);
+    setBodyFontBase("default");
     setEditingBody(true);
+  }
+
+  useLayoutEffect(() => {
+    if (!editingBody || !bodyEditRef.current) return;
+    const el = bodyEditRef.current;
+    el.innerHTML = e.body ?? "";
+    el.focus();
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    } catch { /* Safari can throw while the node is settling. */ }
+  }, [editingBody]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useLayoutEffect(() => {
+    if (!editingBody || !bodyWrapRef.current) return;
+
+    // Measure the whole role block, not just the description. The role is absolutely
+    // positioned in pass 2, so its intrinsic growth does not naturally move siblings.
+    const roleOuter = bodyWrapRef.current.closest<HTMLElement>(`[data-blockid="${pfx}"]`);
+    const roleInner = roleOuter?.querySelector<HTMLElement>(".canvas-block");
+    if (!roleInner) return;
+
+    bodyRoleBaseHeightRef.current = roleInner.offsetHeight;
+
+    const emitDelta = () => {
+      const base = bodyRoleBaseHeightRef.current;
+      if (base == null) return;
+      const delta = Math.max(0, roleInner.offsetHeight - base);
+      window.dispatchEvent(new CustomEvent("resume-inline-block-resize", {
+        detail: { blockId: pfx, delta },
+      }));
+    };
+
+    emitDelta();
+    const observer = new ResizeObserver(emitDelta);
+    observer.observe(roleInner);
+
+    return () => {
+      observer.disconnect();
+      bodyRoleBaseHeightRef.current = null;
+      window.dispatchEvent(new CustomEvent("resume-inline-block-resize", {
+        detail: { blockId: pfx, delta: 0 },
+      }));
+    };
+  }, [editingBody, pfx]);
+
+  useEffect(() => {
+    if (!editingBody) return;
+    function closeOnOutsideClick(ev: MouseEvent) {
+      const target = ev.target as HTMLElement | null;
+      if (bodyWrapRef.current?.contains(target as Node)) return;
+      if (target?.closest?.(`[data-inline-body-toolbar="${pfx}"]`)) return;
+      commitBodyEditor();
+    }
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [editingBody, bodyDraft]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function richBodyCommand(command: string, value?: string) {
+    const el = bodyEditRef.current;
+    if (!el) return;
+    el.focus();
+    document.execCommand(command, false, value);
+    setBodyDraft(el.innerHTML);
+  }
+
+  function applyBodyFontSize(pt: number) {
+    const el = bodyEditRef.current;
+    if (!el) return;
+    el.focus();
+
+    // execCommand's fontSize API only accepts 1–7, so use a temporary marker and
+    // immediately convert it to the exact point size used everywhere else in the resume.
+    document.execCommand("fontSize", false, "7");
+    el.querySelectorAll<HTMLFontElement>('font[size="7"]').forEach(font => {
+      font.removeAttribute("size");
+      font.style.fontSize = `${pt}pt`;
+    });
+
+    setBodyFontSize(pt);
+    setBodyDraft(el.innerHTML);
+  }
+
+  function applyBodyFontFamily(base: "default" | "Helvetica" | "Times" | "Courier") {
+    const el = bodyEditRef.current;
+    if (!el) return;
+    el.focus();
+
+    const face = base === "default"
+      ? parseFontFamily(d.entryBullet.fontFamily).base
+      : base;
+
+    const cssFace = face === "Times"
+      ? "Times New Roman"
+      : face === "Courier"
+      ? "Courier New"
+      : "Helvetica";
+
+    document.execCommand("fontName", false, cssFace);
+    setBodyFontBase(base);
+    setBodyDraft(el.innerHTML);
+  }
+
+  function richButton(label: ReactNode, title: string, command: string, value?: string, active?: boolean) {
+    return (
+      <button
+        type="button"
+        title={title}
+        onMouseDown={ev => { ev.preventDefault(); ev.stopPropagation(); }}
+        onClick={ev => { ev.stopPropagation(); richBodyCommand(command, value); }}
+        style={{
+          width: 27, height: 27, border: "none", borderRadius: 4,
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          background: active ? "#ede9fe" : "transparent",
+          color: active ? "#7c3aed" : "#374151",
+          cursor: "pointer", fontSize: 12, flexShrink: 0,
+        }}
+      >
+        {label}
+      </button>
+    );
   }
 
   return (
     <div>
       {d.showCompanyLogos && e.company && (
-        <SubDrag overrideKey={`${pfx}.logo`} defaultWidth={effectiveLogoW} design={d}>
+        <SubDrag overrideKey={`${pfx}.logo`} defaultWidth={20} design={d}
+          linkKeys={workLinkKeys("logo")} linkLabel="Company logo">
           <CanvasLogo company={e.company} logoUrl={e.logoUrl} />
         </SubDrag>
       )}
-      <SubDrag overrideKey={`${pfx}.title`} inheritFrom={peerPfx ? `${peerPfx}.title` : undefined}>
+      <SubDrag overrideKey={`${pfx}.title`} inheritFrom={peerPfx ? `${peerPfx}.title` : undefined}
+        linkKeys={workLinkKeys("title")} linkLabel="Job title">
         {d.entryDate.position === "right" ? (
           <div style={{ display: "flex", alignItems: "flex-start" }}>
             <Sel k="entryTitle" ctx={ctx} style={{ ...toCss(d.entryTitle), flex: 1, marginRight: 8 }}
@@ -1369,57 +1854,189 @@ function SingleWorkEntryC({ entry: e, i, data, d, ctx, setData }: SectionProps &
           </Sel>
         )}
       </SubDrag>
-      <SubDrag overrideKey={`${pfx}.org`} inheritFrom={peerPfx ? `${peerPfx}.org` : undefined}>
+      <SubDrag overrideKey={`${pfx}.org`} inheritFrom={peerPfx ? `${peerPfx}.org` : undefined}
+        linkKeys={workLinkKeys("org")} linkLabel="Company">
         <Sel k="entryOrg" ctx={ctx} block style={toCss(d.entryOrg)}
           editInfo={{ value: e.company, onChange: v => update({ company: v }) }}>
           {e.company || <em style={{ opacity: 0.3 }}>Company name</em>}
         </Sel>
       </SubDrag>
       {d.entryDate.position === "below" && (
-        <SubDrag overrideKey={`${pfx}.date`} inheritFrom={peerPfx ? `${peerPfx}.date` : undefined}>
+        <SubDrag overrideKey={`${pfx}.date`} inheritFrom={peerPfx ? `${peerPfx}.date` : undefined}
+          linkKeys={workLinkKeys("date")} linkLabel="Date">
           <Sel k="entryDate" ctx={ctx} block style={toCss(d.entryDate)}>
             {formatDateRange(e.startDate, e.endDate, e.current)}
           </Sel>
         </SubDrag>
       )}
-      <SubDrag overrideKey={`${pfx}.body`} inheritFrom={peerPfx ? `${peerPfx}.body` : undefined}>
-        <div ref={bodyWrapRef} onDoubleClick={openBodyEditor}>
-          <EntryBody body={e.body} d={d} />
+      <SubDrag overrideKey={`${pfx}.body`} inheritFrom={peerPfx ? `${peerPfx}.body` : undefined}
+        linkKeys={workLinkKeys("body")} linkLabel="Description" constrainToBounds>
+        <div
+          ref={bodyWrapRef}
+          data-selectable-key="entryBullet"
+          onMouseEnter={() => { if (!editingBody) ctx.onHover("entryBullet"); }}
+          onMouseLeave={() => { if (!editingBody) ctx.onHover(null); }}
+          onClick={ev => {
+            if (editingBody) return;
+            ev.stopPropagation();
+            ctx.onSelect("entryBullet", ev.currentTarget);
+          }}
+          onDoubleClick={openBodyEditor}
+          onContextMenu={ev => {
+            if (editingBody) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            ctx.onRightClick("entryBullet", ev.currentTarget);
+          }}
+          style={{
+            position: "relative",
+            borderRadius: 2,
+            cursor: editingBody ? "text" : "inherit",
+            boxShadow: !editingBody && ctx.selected === "entryBullet"
+              ? "0 0 0 1px #9ca3af"
+              : !editingBody && ctx.hovered === "entryBullet"
+              ? "0 0 0 1px rgba(0,0,0,0.12)"
+              : "none",
+            transition: "box-shadow 0.1s",
+          }}
+        >
+          {editingBody ? (
+            <div
+              ref={bodyEditRef}
+              contentEditable
+              suppressContentEditableWarning
+              className="resume-body-html"
+              onMouseDown={ev => ev.stopPropagation()}
+              onClick={ev => ev.stopPropagation()}
+              onDoubleClick={ev => ev.stopPropagation()}
+              onInput={ev => setBodyDraft((ev.currentTarget as HTMLDivElement).innerHTML)}
+              onPaste={ev => {
+                ev.preventDefault();
+                const plain = ev.clipboardData.getData("text/plain");
+                document.execCommand("insertText", false, plain);
+                requestAnimationFrame(() => {
+                  if (bodyEditRef.current) setBodyDraft(bodyEditRef.current.innerHTML);
+                });
+              }}
+              onKeyDown={ev => {
+                ev.stopPropagation();
+                if (ev.key === "Escape") {
+                  ev.preventDefault();
+                  commitBodyEditor();
+                }
+              }}
+              style={{
+                ...toCss(d.entryBullet),
+                minHeight: 16,
+                outline: "1px solid rgba(124,58,237,0.5)",
+                outlineOffset: 2,
+                borderRadius: 2,
+                cursor: "text",
+                width: "100%",
+                maxWidth: "100%",
+                overflowWrap: "anywhere",
+                wordBreak: "break-word",
+                boxSizing: "border-box",
+              }}
+            />
+          ) : (
+            <EntryBody body={e.body} d={d} />
+          )}
         </div>
       </SubDrag>
 
-      {editingBody && bodyRect && createPortal(
-        <div
-          style={{
-            position: "fixed",
-            left: bodyRect.left - 2,
-            top: bodyRect.top - 2,
-            width: Math.max(bodyRect.width + 4, 340),
-            zIndex: 9999,
-            boxShadow: "0 8px 32px rgba(0,0,0,0.22)",
-            borderRadius: 8,
-            overflow: "hidden",
-            border: "2px solid #7c3aed",
-          }}
-          onMouseDown={e => e.stopPropagation()}
-        >
-          <RichTextEditor
-            value={e.body ?? ""}
-            onChange={html => update({ body: html || undefined })}
-            minHeight={Math.max(bodyRect.height, 80)}
-          />
-          <div style={{ padding: "4px 8px", background: "#f9fafb", borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "flex-end" }}>
+      {editingBody && bodyWrapRef.current && createPortal((() => {
+        const rect = bodyWrapRef.current!.getBoundingClientRect();
+        const toolbarH = 38;
+        const toolbarW = Math.min(590, window.innerWidth - 8);
+        const top = rect.top - toolbarH - 6 >= 4
+          ? rect.top - toolbarH - 6
+          : Math.min(window.innerHeight - toolbarH - 4, rect.bottom + 6);
+        const left = Math.min(window.innerWidth - toolbarW - 4, Math.max(4, rect.left));
+        const divider = <span style={{ width: 1, height: 17, background: "#e5e7eb", margin: "0 3px", flexShrink: 0 }} />;
+        return (
+          <div
+            data-inline-body-toolbar={pfx}
+            onMouseDown={ev => { ev.preventDefault(); ev.stopPropagation(); }}
+            onClick={ev => ev.stopPropagation()}
+            style={{
+              position: "fixed", top, left, zIndex: 10000,
+              minHeight: toolbarH,
+              display: "flex", alignItems: "center", gap: 2,
+              padding: "4px 6px",
+              background: "white",
+              border: "1px solid #e2e8f0",
+              borderRadius: 8,
+              boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
+              fontFamily: "system-ui, sans-serif",
+              userSelect: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {/* Keep description editing consistent with the other text toolbars:
+                font family/style and size come first, then inline formatting. */}
+            <select
+              value={bodyFontBase}
+              title="Font"
+              onMouseDown={ev => ev.stopPropagation()}
+              onChange={ev => applyBodyFontFamily(ev.target.value as "default" | "Helvetica" | "Times" | "Courier")}
+              style={{
+                height: 27, maxWidth: 92, border: "1px solid #d1d5db", borderRadius: 5,
+                background: "white", color: "#374151", fontSize: 11, padding: "0 5px",
+                cursor: "pointer",
+              }}
+            >
+              <option value="default">Default</option>
+              <option value="Helvetica">Helvetica</option>
+              <option value="Times">Times</option>
+              <option value="Courier">Courier</option>
+            </select>
+
             <button
-              onMouseDown={e => e.stopPropagation()}
-              onClick={() => setEditingBody(false)}
-              style={{ fontSize: 11, padding: "3px 10px", background: "#7c3aed", color: "white", border: "none", borderRadius: 4, cursor: "pointer" }}
+              type="button"
+              title="Decrease font size"
+              onMouseDown={ev => { ev.preventDefault(); ev.stopPropagation(); }}
+              onClick={ev => { ev.stopPropagation(); applyBodyFontSize(Math.max(6, bodyFontSize - 1)); }}
+              style={{ ...TB_BTN, width: 25, height: 27 }}
+            >−</button>
+            <span style={{ minWidth: 21, textAlign: "center", fontSize: 11, color: "#374151" }}>
+              {bodyFontSize}
+            </span>
+            <button
+              type="button"
+              title="Increase font size"
+              onMouseDown={ev => { ev.preventDefault(); ev.stopPropagation(); }}
+              onClick={ev => { ev.stopPropagation(); applyBodyFontSize(Math.min(72, bodyFontSize + 1)); }}
+              style={{ ...TB_BTN, width: 25, height: 27 }}
+            >+</button>
+
+            {divider}
+            {richButton(<strong>B</strong>, "Bold selected text", "bold")}
+            {richButton(<em>I</em>, "Italic selected text", "italic")}
+            {richButton(<span style={{ textDecoration: "underline" }}>U</span>, "Underline selected text", "underline")}
+            {divider}
+            {richButton(<List size={14} strokeWidth={1.8} />, "Bulleted list", "insertUnorderedList")}
+            {richButton(<ListOrdered size={14} strokeWidth={1.8} />, "Numbered list", "insertOrderedList")}
+            {divider}
+            {richButton(<AlignIcon align="left" />, "Align left", "justifyLeft")}
+            {richButton(<AlignIcon align="center" />, "Align center", "justifyCenter")}
+            {richButton(<AlignIcon align="right" />, "Align right", "justifyRight")}
+            {divider}
+            <button
+              type="button"
+              onMouseDown={ev => { ev.preventDefault(); ev.stopPropagation(); }}
+              onClick={ev => { ev.stopPropagation(); commitBodyEditor(); }}
+              style={{
+                height: 27, padding: "0 9px", border: "none", borderRadius: 5,
+                background: "#7c3aed", color: "white", cursor: "pointer",
+                fontSize: 11, fontWeight: 600,
+              }}
             >
               Done
             </button>
           </div>
-        </div>,
-        document.body
-      )}
+        );
+      })(), document.body)}
     </div>
   );
 }
@@ -1876,6 +2493,7 @@ function DraggableBlock({ id, computedPos, override, scale, design, onDesignChan
             </>
           )}
         </div>
+
       </div>
     </SectionBoundsCtx.Provider>
   );
@@ -1968,8 +2586,32 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
 
   // ── Pass-1: measure natural positions in correct flow regions ──────────
   const [naturalPositions, setNaturalPositions] = useState<Record<string, ComputedPos> | null>(null);
+  const [liveBlockHeightDeltas, setLiveBlockHeightDeltas] = useState<Record<string, number>>({});
   const blockRefs    = useRef<Record<string, HTMLDivElement | null>>({});
   const regionRefs   = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // Inline description editing happens entirely inside pass 2 so the editor keeps
+  // focus. Receive temporary role-height growth here and use it only for live visual
+  // reflow. The committed body still goes through the normal pass-1 measurement path.
+  useEffect(() => {
+    function handleInlineBlockResize(ev: Event) {
+      const detail = (ev as CustomEvent<{ blockId?: string; delta?: number }>).detail;
+      if (!detail?.blockId) return;
+      const delta = Math.max(0, Number(detail.delta) || 0);
+      setLiveBlockHeightDeltas(prev => {
+        if (delta === 0) {
+          if (!(detail.blockId! in prev)) return prev;
+          const next = { ...prev };
+          delete next[detail.blockId!];
+          return next;
+        }
+        if (prev[detail.blockId!] === delta) return prev;
+        return { ...prev, [detail.blockId!]: delta };
+      });
+    }
+    window.addEventListener("resume-inline-block-resize", handleInlineBlockResize);
+    return () => window.removeEventListener("resume-inline-block-resize", handleInlineBlockResize);
+  }, []);
 
   // Reset measurement when anything that affects block heights changes:
   //   • block set changes (entries added/removed/reordered) via allBlockIds
@@ -1977,18 +2619,39 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
   //   • font sizes / entry spacing (change intrinsic heights of every block)
   //   • layout geometry (column widths affect text wrap → heights)
   const contentHeightSig = [
-    data.workEntries.map(e => `${e.id}:${(e.body ?? "").length}`).join("|"),
+    // Use the actual body HTML, not only its length. A formatting change such as
+    // font-size:12pt -> font-size:13pt can keep the exact same string length while
+    // changing line wrapping and role height. The full HTML guarantees remeasurement.
+    data.workEntries.map(e => `${e.id}:${e.body ?? ""}`).join("|"),
     data.education.map(e => e.id).join("|"),
     data.summary.length,
     d.sectionHeading.fontSize, d.entryTitle.fontSize,
     d.entryBullet.fontSize, d.entryOrg.fontSize,
     d.entrySpacing,
+    d.showCompanyLogos ? "logos:1" : "logos:0",
   ].join("~");
+
+  // Resizing a child SubDrag (especially a company logo) changes the intrinsic
+  // height of its role block. Those widths/heights live in layoutOverrides, so
+  // they must participate in the pass-1 measurement key. Without this, a larger
+  // logo renders immediately in pass 2 while the next role keeps its OLD measured
+  // y-position/height, which makes role boxes overlap and prevents pagination from
+  // seeing that the section has grown beyond the current page.
+  //
+  // Deliberately exclude visualDx/visualDy/rotation: those are visual-only edits and
+  // should not force a full remeasure/re-pagination on ordinary dragging/rotation.
+  const geometryOverrideSig = Object.entries(d.layoutOverrides ?? {})
+    .filter(([key, ov]) => ov.width != null || ov.height != null || (key.endsWith(".body") && ov.visualDx != null))
+    .map(([key, ov]) => `${key}:${ov.width ?? ""}:${ov.height ?? ""}:${key.endsWith(".body") ? (ov.visualDx ?? "") : ""}`)
+    .sort()
+    .join("|");
+
   const measureResetKey = [
     remeasureKey,
     d.layout, d.sidebarWidth, d.columnGap,
     allBlockIds.join(","),
     contentHeightSig,
+    geometryOverrideSig,
   ].join("_");
   const prevMeasureKey  = useRef(measureResetKey);
   if (prevMeasureKey.current !== measureResetKey) {
@@ -2051,9 +2714,18 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
                 >
                   {region.blockIds.map(bid => {
                     const widthOverride = d.layoutOverrides?.[bid]?.width;
+                    const isHeading = bid.endsWith(".heading");
+                    const heightOverride = !isHeading ? d.layoutOverrides?.[bid]?.height : undefined;
                     return (
                       <div key={bid} ref={el => { blockRefs.current[bid] = el; }}
-                        style={{ overflow: "hidden", ...(widthOverride ? { width: widthOverride } : {}) }}>
+                        style={{
+                          overflow: "hidden",
+                          ...(widthOverride ? { width: widthOverride } : {}),
+                          // A manually enlarged role/body block must reserve that vertical
+                          // space in pass 1 so the following role starts below it. Heading
+                          // height is editor group-box metadata, so it must NOT enter flow.
+                          ...(heightOverride ? { minHeight: heightOverride } : {}),
+                        }}>
                         {renderContent(bid)}
                       </div>
                     );
@@ -2162,7 +2834,45 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
     return { positions: out, pageCount: maxPage + 1 };
   }
 
-  const { positions: computedPositions, pageCount } = paginatePositions();
+  const { positions: baseComputedPositions, pageCount } = paginatePositions();
+
+  // Live inline-description reflow:
+  // - preserve the paginator's current page assignment while typing, so the active
+  //   contenteditable never gets unmounted and loses focus;
+  // - grow the edited role's effective box height;
+  // - shift every later block in the same flow region + physical page by that delta.
+  // Once the edit is committed, contentHeightSig triggers a real pass-1 remeasure and
+  // the normal paginator takes over (including moving a role to the next page if needed).
+  const computedPositions: Record<string, PageComputedPos> = Object.fromEntries(
+    Object.entries(baseComputedPositions).map(([key, value]) => [key, { ...value }])
+  );
+
+  if (Object.keys(liveBlockHeightDeltas).length > 0) {
+    for (const region of regions) {
+      let currentPage = -1;
+      let cumulativeLiveDy = 0;
+
+      for (const bid of region.blockIds) {
+        const pos = computedPositions[bid];
+        if (!pos) continue;
+
+        if (pos.page !== currentPage) {
+          currentPage = pos.page;
+          cumulativeLiveDy = 0;
+        }
+
+        if (cumulativeLiveDy) {
+          pos.y += cumulativeLiveDy;
+        }
+
+        const delta = liveBlockHeightDeltas[bid] ?? 0;
+        if (delta > 0) {
+          pos.h += delta;
+          cumulativeLiveDy += delta;
+        }
+      }
+    }
+  }
 
   function sectionIds(prefix: string): string[] {
     if (prefix === "education" || prefix === "edu") {
@@ -2598,10 +3308,13 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
   const [hoveredBlock,  setHoveredBlock] = useState<string | null>(null);
   const [blockActionId, setBlockActionId]   = useState<string | null>(null);
   const [blockActionRect, setBlockActionRect] = useState<DOMRect | null>(null);
+  const [selectedSubDragKey, setSelectedSubDragKey] = useState<string | null>(null);
 
   function handleSelect(key: SelectableKey, el: HTMLElement) {
     setSelected(key);
     setAnchorRect(el.getBoundingClientRect());
+    const subDrag = el.closest("[data-subdrag-key]") as HTMLElement | null;
+    setSelectedSubDragKey(subDrag?.dataset.subdragKey ?? null);
     setRightKey(null); setRightAnchor(null);
   }
 
@@ -2610,12 +3323,14 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     setRightAnchor(el.getBoundingClientRect());
     setRightBlockId(hoveredBlock);
     setSelected(null); setAnchorRect(null);
+    setSelectedSubDragKey(null);
   }
 
   function clearSelection() {
     setSelected(null); setAnchorRect(null);
     setRightKey(null); setRightAnchor(null);
     setBlockActionId(null); setBlockActionRect(null);
+    setSelectedSubDragKey(null);
   }
 
   function handleBlockClick(id: string, rect: DOMRect | null) {
@@ -2657,6 +3372,91 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     if (!Object.keys(next).length) delete layoutOverrides[id];
     onDesignChange({ ...d, layoutOverrides });
   }
+
+  function linkKeysForSubDrag(key: string): string[] {
+    const m = key.match(/^work\.[^.]+\.(logo|title|org|date|body)$/);
+    if (!m) return [];
+    const part = m[1];
+    return data.workEntries.map(entry => `work.${entry.id}.${part}`);
+  }
+
+  function linkLabelForSubDrag(key: string): string {
+    if (key.endsWith(".logo")) return "Company logo";
+    if (key.endsWith(".title")) return "Job title";
+    if (key.endsWith(".org")) return "Company";
+    if (key.endsWith(".date")) return "Date";
+    if (key.endsWith(".body")) return "Description";
+    return "Element";
+  }
+
+  function cleanLinkOverride(value: LinkableLayoutOverride): LinkableLayoutOverride {
+    const next: LinkableLayoutOverride = { ...value };
+    if (!next.visualDx) delete next.visualDx;
+    if (!next.visualDy) delete next.visualDy;
+    if (!next.rotation) delete next.rotation;
+    if (!next.width) delete next.width;
+    if (next.linked !== false) delete next.linked;
+    return next;
+  }
+
+  function toggleSubDragLink(key: string) {
+    const keys = linkKeysForSubDrag(key);
+    if (keys.length <= 1) return;
+
+    const layoutOverrides = { ...(d.layoutOverrides ?? {}) };
+    const existing = linkedOverride(layoutOverrides[key]) ?? {};
+    const isCurrentlyLinked = existing.linked !== false;
+
+    const source = (() => {
+      for (const peerKey of keys) {
+        if (peerKey === key) continue;
+        const candidate = linkedOverride(d.layoutOverrides?.[peerKey]);
+        if (candidate && candidate.linked !== false) return candidate;
+      }
+      return undefined;
+    })();
+
+    if (isCurrentlyLinked) {
+      layoutOverrides[key] = cleanLinkOverride({
+        ...existing,
+        visualDx: existing.visualDx ?? source?.visualDx,
+        visualDy: existing.visualDy ?? source?.visualDy,
+        rotation: existing.rotation ?? source?.rotation,
+        width: existing.width ?? source?.width,
+        linked: false,
+      });
+    } else {
+      const next = cleanLinkOverride({
+        ...existing,
+        visualDx: source?.visualDx,
+        visualDy: source?.visualDy,
+        rotation: source?.rotation,
+        width: source?.width,
+        linked: true,
+      });
+      if (Object.keys(next).length) layoutOverrides[key] = next;
+      else delete layoutOverrides[key];
+    }
+
+    onDesignChange({ ...d, layoutOverrides });
+  }
+
+  const selectedLinkControl = (() => {
+    if (!selectedSubDragKey) return undefined;
+    const keys = linkKeysForSubDrag(selectedSubDragKey);
+    if (keys.length <= 1) return undefined;
+    const own = linkedOverride(d.layoutOverrides?.[selectedSubDragKey]);
+    const linked = own?.linked !== false;
+    const count = keys.filter(key =>
+      key === selectedSubDragKey || linkedOverride(d.layoutOverrides?.[key])?.linked !== false
+    ).length;
+    return {
+      label: linkLabelForSubDrag(selectedSubDragKey),
+      linked,
+      count,
+      onToggle: () => toggleSubDragLink(selectedSubDragKey),
+    };
+  })();
 
   const ctx: SelectCtx = {
     selected,
@@ -2722,6 +3522,7 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
           design={d}
           anchorRect={anchorRect}
           onChangeTs={changeTs}
+          linkControl={selectedLinkControl}
           onOpenFull={() => handleRightClick(selected, { getBoundingClientRect: () => anchorRect } as HTMLElement)}
           onClose={clearSelection}
         />,
@@ -2867,12 +3668,13 @@ function BlockActionBar({ anchorRect, onSnapBack, onClose }: {
 }
 
 function ContextToolbar({
-  elementKey, design, anchorRect, onChangeTs, onOpenFull, onClose,
+  elementKey, design, anchorRect, onChangeTs, linkControl, onOpenFull, onClose,
 }: {
   elementKey: SelectableKey;
   design: ResumeDesign;
   anchorRect: DOMRect;
   onChangeTs: (key: SelectableKey, partial: Partial<TextStyle>) => void;
+  linkControl?: { label: string; linked: boolean; count: number; onToggle: () => void };
   onOpenFull: () => void;
   onClose: () => void;
 }) {
@@ -2919,6 +3721,39 @@ function ContextToolbar({
       <span style={{ fontSize: 10, color: "#9ca3af", paddingRight: 6, borderRight: "1px solid #e5e7eb", marginRight: 2, whiteSpace: "nowrap" }}>
         {ELEMENT_LABELS[elementKey]}
       </span>
+
+      {/* Linking is first because it controls the repeated layout relationship;
+          everything after it is ordinary text styling. */}
+      {linkControl && (
+        <>
+          <button
+            type="button"
+            title={linkControl.linked
+              ? `${linkControl.label} is linked across roles`
+              : `${linkControl.label} is independent`}
+            onClick={linkControl.onToggle}
+            style={{
+              ...TB_BTN,
+              width: "auto",
+              minWidth: 0,
+              padding: "0 7px",
+              gap: 4,
+              display: "inline-flex",
+              alignItems: "center",
+              border: linkControl.linked ? "1px solid rgba(245,158,11,0.34)" : "1px solid #d1d5db",
+              background: linkControl.linked ? "rgba(255,251,235,0.98)" : "#fff",
+              color: linkControl.linked ? "#a16207" : "#64748b",
+              fontSize: 10,
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {linkControl.linked ? <Link2 size={13} strokeWidth={2.1} /> : <Unlink2 size={13} strokeWidth={2} />}
+            <span>{linkControl.linked ? `Linked · ${linkControl.count}` : "Unlinked"}</span>
+          </button>
+          {divider}
+        </>
+      )}
 
       {/* Font size */}
       <button style={TB_BTN} onClick={() => onChangeTs(elementKey, { fontSize: Math.max(6, ts.fontSize - 1) })}>−</button>
