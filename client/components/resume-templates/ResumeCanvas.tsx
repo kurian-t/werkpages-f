@@ -67,6 +67,13 @@ function CanvasLogo({ company, logoUrl }: { company: string; logoUrl?: string })
   const [src, setSrc] = useState(logoUrl ?? logoDevUrl);
   const [failed, setFailed] = useState(false);
 
+  // Reset when company or logoUrl changes so the logo refreshes without a page reload.
+  useEffect(() => {
+    const fresh = `https://img.logo.dev/${companyLogoDomain(company)}?token=${LOGO_TOKEN}`;
+    setSrc(logoUrl ?? fresh);
+    setFailed(false);
+  }, [company, logoUrl]);
+
   if (failed || !company.trim()) return null;
   return (
     // width:"100%" fills the SubDrag wrapper — default is 20px (from defaultWidth={20}),
@@ -112,12 +119,14 @@ function snapRotation(r: number): number {
 // SubDrag — wraps an individual sub-element within a section block.
 // Independently moveable (visualDx/visualDy), resizable (width), and rotatable.
 // Movement is clamped to the section bounds. All overrides are visual-only (no cascade).
-function SubDrag({ overrideKey, defaultWidth, children }: { overrideKey: string; defaultWidth?: number; children: ReactNode }) {
+function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, children }: { overrideKey: string; defaultWidth?: number; design?: ResumeDesign; inheritFrom?: string; children: ReactNode }) {
   const ctx = useContext(SectionBoundsCtx);
   const elRef   = useRef<HTMLDivElement>(null);   // content wrapper (carries transform)
   const outerRef = useRef<HTMLDivElement>(null);  // outer wrapper (hover zone)
   const ctxRef  = useRef(ctx);
   ctxRef.current = ctx;
+  const inheritFromRef = useRef(inheritFrom);
+  inheritFromRef.current = inheritFrom;
   const [isHovered,  setIsHovered]  = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
@@ -126,11 +135,21 @@ function SubDrag({ overrideKey, defaultWidth, children }: { overrideKey: string;
 
   // In pass-1 (no SectionBoundsCtx), still render a width-constraining wrapper so
   // images with width:"100%" don't expand to fill the whole region column.
-  if (!ctx) return <div style={{ width: defaultWidth ?? "fit-content", maxWidth: "100%" }}>{children}</div>;
+  // Use saved width override if available so pass-1 measures the correct block height.
+  if (!ctx) {
+    const savedW = design?.layoutOverrides?.[overrideKey]?.width;
+    return <div style={{ width: savedW ?? defaultWidth ?? "fit-content", maxWidth: "100%" }}>{children}</div>;
+  }
 
   const override  = ctx.design.layoutOverrides?.[overrideKey];
-  const dx        = override?.visualDx ?? 0;
-  const dy        = override?.visualDy ?? 0;
+  // Inherit visualDx/visualDy from a peer sub-element when this one has no own override.
+  // This makes new entries automatically match the layout of existing entries (e.g. title
+  // to the right of logo). Once the user drags the element, its own override is saved and
+  // it stops inheriting. Rotation is never inherited — it's always entry-specific.
+  const hasOwnPosition = !!(override?.visualDx || override?.visualDy);
+  const inherited = (!hasOwnPosition && inheritFrom) ? ctx.design.layoutOverrides?.[inheritFrom] : undefined;
+  const dx        = override?.visualDx ?? inherited?.visualDx ?? 0;
+  const dy        = override?.visualDy ?? inherited?.visualDy ?? 0;
   const rot       = override?.rotation  ?? 0;
   const overrideW = override?.width;
 
@@ -176,8 +195,14 @@ function SubDrag({ overrideKey, defaultWidth, children }: { overrideKey: string;
     const s = ctxRef.current?.scale ?? 1;
     const startCX = ev.clientX, startCY = ev.clientY;
     const startOvr = ctxRef.current?.design.layoutOverrides?.[overrideKey];
-    const startDx  = startOvr?.visualDx ?? 0;
-    const startDy  = startOvr?.visualDy ?? 0;
+    // Use effective position (own or inherited) as the drag baseline so the first drag
+    // from an inherited position doesn't snap back to zero.
+    const hasOwnPos = !!(startOvr?.visualDx || startOvr?.visualDy);
+    const inheritedOvr = (!hasOwnPos && inheritFromRef.current)
+      ? ctxRef.current?.design.layoutOverrides?.[inheritFromRef.current]
+      : undefined;
+    const startDx  = startOvr?.visualDx ?? inheritedOvr?.visualDx ?? 0;
+    const startDy  = startOvr?.visualDy ?? inheritedOvr?.visualDy ?? 0;
     const startRot = startOvr?.rotation  ?? 0;
     const elRect  = el.getBoundingClientRect();
     const conRect = container.getBoundingClientRect();
@@ -580,6 +605,7 @@ interface FlowRegion {
 }
 
 interface ComputedPos { x: number; y: number; w: number; h: number }
+interface PageComputedPos extends ComputedPos { page: number }
 
 function buildSectionBlockIds(sectionId: SectionId, data: ResumeData): string[] {
   if (!sectionHasContent(sectionId, data)) return [];
@@ -1296,6 +1322,21 @@ function SingleWorkEntryC({ entry: e, i, data, d, ctx, setData }: SectionProps &
   const bodyWrapRef = useRef<HTMLDivElement>(null);
   const [bodyRect,   setBodyRect]     = useState<DOMRect | null>(null);
 
+  // Effective logo width: this entry's saved override → any peer entry's saved override → 20.
+  // Passed as defaultWidth so new entries inherit the user's chosen logo size automatically,
+  // and pass-1 measures the correct block height even for entries without their own override.
+  const ownLogoW = d.layoutOverrides?.[`${pfx}.logo`]?.width;
+  const peerLogoW = ownLogoW == null
+    ? data.workEntries.map(we => d.layoutOverrides?.[`work.${we.id}.logo`]?.width).find(w => w != null)
+    : undefined;
+  const effectiveLogoW = ownLogoW ?? peerLogoW ?? 20;
+
+  // First peer entry: used as the inheritance source for sub-element positions (dx/dy).
+  // When this entry has no own override for a sub-element (e.g. title), it inherits the
+  // peer's offset so new entries automatically match the existing layout (e.g. title beside logo).
+  const firstPeerId = data.workEntries.find(we => we.id !== e.id)?.id;
+  const peerPfx = firstPeerId ? `work.${firstPeerId}` : undefined;
+
   function openBodyEditor(ev: React.MouseEvent) {
     ev.stopPropagation();
     ctx.onClearSelect();
@@ -1306,11 +1347,11 @@ function SingleWorkEntryC({ entry: e, i, data, d, ctx, setData }: SectionProps &
   return (
     <div>
       {d.showCompanyLogos && e.company && (
-        <SubDrag overrideKey={`${pfx}.logo`} defaultWidth={20}>
+        <SubDrag overrideKey={`${pfx}.logo`} defaultWidth={effectiveLogoW} design={d}>
           <CanvasLogo company={e.company} logoUrl={e.logoUrl} />
         </SubDrag>
       )}
-      <SubDrag overrideKey={`${pfx}.title`}>
+      <SubDrag overrideKey={`${pfx}.title`} inheritFrom={peerPfx ? `${peerPfx}.title` : undefined}>
         {d.entryDate.position === "right" ? (
           <div style={{ display: "flex", alignItems: "flex-start" }}>
             <Sel k="entryTitle" ctx={ctx} style={{ ...toCss(d.entryTitle), flex: 1, marginRight: 8 }}
@@ -1328,20 +1369,20 @@ function SingleWorkEntryC({ entry: e, i, data, d, ctx, setData }: SectionProps &
           </Sel>
         )}
       </SubDrag>
-      <SubDrag overrideKey={`${pfx}.org`}>
+      <SubDrag overrideKey={`${pfx}.org`} inheritFrom={peerPfx ? `${peerPfx}.org` : undefined}>
         <Sel k="entryOrg" ctx={ctx} block style={toCss(d.entryOrg)}
           editInfo={{ value: e.company, onChange: v => update({ company: v }) }}>
           {e.company || <em style={{ opacity: 0.3 }}>Company name</em>}
         </Sel>
       </SubDrag>
       {d.entryDate.position === "below" && (
-        <SubDrag overrideKey={`${pfx}.date`}>
+        <SubDrag overrideKey={`${pfx}.date`} inheritFrom={peerPfx ? `${peerPfx}.date` : undefined}>
           <Sel k="entryDate" ctx={ctx} block style={toCss(d.entryDate)}>
             {formatDateRange(e.startDate, e.endDate, e.current)}
           </Sel>
         </SubDrag>
       )}
-      <SubDrag overrideKey={`${pfx}.body`}>
+      <SubDrag overrideKey={`${pfx}.body`} inheritFrom={peerPfx ? `${peerPfx}.body` : undefined}>
         <div ref={bodyWrapRef} onDoubleClick={openBodyEditor}>
           <EntryBody body={e.body} d={d} />
         </div>
@@ -1463,9 +1504,11 @@ interface DragBlockProps {
   // heading's rotation here so they visually rotate with the group. Kept separate
   // from override.rotation so each entry's own rotation drag is still independent.
   additionalRotation?: number;
-  // For section heading blocks: computed height encompassing all entries below.
-  // Makes the block visually span the whole section group.
+  // For section heading blocks: computed height encompassing the entries in this page fragment.
+  // Makes the block visually span the visible portion of the section on this page.
   groupHeight?: number;
+  // When a section spans pages, clamp a saved manual height to the current page.
+  groupMaxHeight?: number;
   // Forced hover: true when any block in this section is hovered (makes group border visible).
   forcedHover?: boolean;
   children: ReactNode;
@@ -1475,7 +1518,7 @@ interface DragBlockProps {
 const ABOVE_PAD = 30;
 const HC = "#7c3aed"; // handle colour
 
-function DraggableBlock({ id, computedPos, override, scale, design, onDesignChange, onHoverBlock, onBlockClick, onDragMove, onDragEnd, onRotate, onRotateEnd, additionalDy, additionalDx, additionalRotation, groupHeight, forcedHover, children }: DragBlockProps) {
+function DraggableBlock({ id, computedPos, override, scale, design, onDesignChange, onHoverBlock, onBlockClick, onDragMove, onDragEnd, onRotate, onRotateEnd, additionalDy, additionalDx, additionalRotation, groupHeight, groupMaxHeight, forcedHover, children }: DragBlockProps) {
   // abovePad = 0: every block's outer div starts exactly at its visible content top.
   // No block's invisible zone extends into the space above it, so adjacent blocks
   // never intercept each other's hover/click events when stacked closely.
@@ -1793,7 +1836,7 @@ function DraggableBlock({ id, computedPos, override, scale, design, onDesignChan
             position: "relative",
             width: "100%",
             minHeight: groupHeight != null
-              ? Math.max(groupHeight, height ?? 0)          // heading: computed group size OR user-dragged size, whichever is larger
+              ? Math.max(groupHeight, Math.min(height ?? 0, groupMaxHeight ?? Number.POSITIVE_INFINITY))
               : height != null ? height * scale : undefined, // entry blocks: user resize override only
             transform:       (rotation || additionalRotation) ? `rotate(${rotation + (additionalRotation ?? 0)}deg)` : undefined,
             transformOrigin: "center center",
@@ -1850,13 +1893,14 @@ function DraggableBlock({ id, computedPos, override, scale, design, onDesignChan
 interface FreeFormProps extends SectionProps {
   scale: number;
   pageW: number;
+  pageH: number;
   remeasureKey: number;
   onDesignChange: (d: ResumeDesign) => void;
   onHoverBlock: (id: string | null) => void;
   onBlockClick?: (id: string, rect: DOMRect | null) => void;
 }
 
-function FreeFormLayout({ data, d, ctx, setData, scale, pageW, remeasureKey, onDesignChange, onHoverBlock, onBlockClick }: FreeFormProps) {
+function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureKey, onDesignChange, onHoverBlock, onBlockClick }: FreeFormProps) {
   const sp: SectionProps = { data, d, ctx, setData };
 
   // ── Bullet editing state — lifted here so it survives pass-1 ↔ pass-2 remounts ──
@@ -1974,70 +2018,218 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, remeasureKey, onD
   });
 
   if (naturalPositions === null) {
-    // ── Pass 1 — invisible, stacked in correct region columns for accurate measurement
+    // ── Pass 1 — invisible continuous flow used only for measurement.
+    // Render it inside a visible blank first-page shell so remeasurement never makes
+    // the entire canvas collapse. Overflow stays visible here because content may be
+    // taller than one page and still needs a measurable DOM rect.
     return (
       <BulletEditCtx.Provider value={bulletEditCtxValue}>
-        <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", opacity: 0, pointerEvents: "none", userSelect: "none" }}>
-          {regions.map(region => (
-            <div
-              key={region.id}
-              ref={el => { regionRefs.current[region.id] = el; }}
-              style={{ position: "absolute", left: region.x, top: region.y, width: region.width }}
-            >
-              {region.blockIds.map(bid => {
-                const widthOverride = d.layoutOverrides?.[bid]?.width;
-                return (
-                  <div key={bid} ref={el => { blockRefs.current[bid] = el; }}
-                    style={{ overflow: "hidden", ...(widthOverride ? { width: widthOverride } : {}) }}>
-                    {renderContent(bid)}
-                  </div>
-                );
-              })}
+        <div style={{ width: pageW * scale, height: pageH * scale, position: "relative", flexShrink: 0 }}>
+          <div style={{
+            transform: `scale(${scale})`,
+            transformOrigin: "top left",
+            width: pageW,
+            height: pageH,
+            backgroundColor: d.pageBackground,
+            boxShadow: "0 2px 16px rgba(0,0,0,0.15)",
+            boxSizing: "border-box",
+            position: "relative",
+            overflow: "visible",
+          }}>
+            <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", opacity: 0, pointerEvents: "none", userSelect: "none" }}>
+              {regions.map(region => (
+                <div
+                  key={region.id}
+                  ref={el => { regionRefs.current[region.id] = el; }}
+                  style={{ position: "absolute", left: region.x, top: region.y, width: region.width }}
+                >
+                  {region.blockIds.map(bid => {
+                    const widthOverride = d.layoutOverrides?.[bid]?.width;
+                    return (
+                      <div key={bid} ref={el => { blockRefs.current[bid] = el; }}
+                        style={{ overflow: "hidden", ...(widthOverride ? { width: widthOverride } : {}) }}>
+                        {renderContent(bid)}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
       </BulletEditCtx.Provider>
     );
   }
 
-  // ── Pass 2 — compute final positions, render draggable blocks
-  const overrides     = d.layoutOverrides ?? {};
-  const computedPositions = computeBlockPositions(regions, naturalPositions, overrides);
+  // ── Pass 2 — paginate the measured flow, then render draggable blocks ───────
+  const overrides = d.layoutOverrides ?? {};
+  // Keep the existing single-page computation as the source of truth for horizontal
+  // position and width; pagination only remaps the vertical flow onto physical pages.
+  const singlePagePositions = computeBlockPositions(regions, naturalPositions, overrides);
 
-  // Compute the section's natural height (heading top → bottom of last entry) using
-  // naturalPositions — ignores visualDy overrides so the box never shrinks when an
-  // entry is dragged to a different location. Only content changes (add/remove entries,
-  // text reflow) affect the box size.
-  function sectionGroupHeight(prefix: string): number | undefined {
-    const headingNat = naturalPositions[`${prefix}.heading`];
-    if (!headingNat) return undefined;
-    const bottoms = allBlockIds
-      .filter(bid => bid.startsWith(prefix + ".") && !bid.endsWith(".heading"))
-      .map(bid => { const cp = naturalPositions[bid]; return cp ? cp.y + cp.h : 0; });
-    if (bottoms.length === 0) return undefined;
-    return Math.max(...bottoms) - headingNat.y;
+  // The current design has a top margin but no separate bottom-margin field.
+  // Use the top margin symmetrically so automatic page breaks never hug the paper edge.
+  const pageBottom = Math.max(d.pageMarginTop + 40, pageH - d.pageMarginTop);
+
+  // Pagination deliberately follows FLOW geometry, not visual nudges or rotation.
+  // That keeps page assignment stable when the user rotates a section or drags an
+  // individual role a few pixels. Width changes still repaginate because pass-1
+  // re-measures the resulting text height.
+  function paginatePositions(): { positions: Record<string, PageComputedPos>; pageCount: number } {
+    const out: Record<string, PageComputedPos> = {};
+    let maxPage = 0;
+
+    for (const region of regions) {
+      // Recreate the flow-only y coordinate used by computeBlockPositions. Role blocks
+      // keep their manual visual Y offsets out of this value so dragging a role does not
+      // unexpectedly teleport it to another page.
+      const flowTop: Record<string, number> = {};
+      let cumulativeY = 0;
+      for (const bid of region.blockIds) {
+        const ov = overrides[bid] ?? {};
+        const isRoleBlock = (bid.startsWith("work.") || bid.startsWith("edu.")) && !bid.endsWith(".heading");
+        if (!isRoleBlock) cumulativeY += ov.flowDisplacementY ?? 0;
+        const nat = naturalPositions[bid];
+        if (nat) flowTop[bid] = nat.y + cumulativeY;
+      }
+
+      let page = 0;
+      let cursorY = region.y;
+      let prevFlowBottom: number | null = null;
+      let pageHasBlock = false;
+
+      for (let i = 0; i < region.blockIds.length; i++) {
+        const bid = region.blockIds[i];
+        const nat = naturalPositions[bid];
+        if (!nat) continue;
+
+        const ov = overrides[bid] ?? {};
+        const isRoleBlock = (bid.startsWith("work.") || bid.startsWith("edu.")) && !bid.endsWith(".heading");
+        const roleVisualY = (ov.visualDy ?? 0) + (isRoleBlock ? (ov.flowDisplacementY ?? 0) : 0);
+        const fy = flowTop[bid] ?? nat.y;
+
+        // Preserve the natural gap between adjacent blocks while they remain on the
+        // same page. After a page break the first block starts at the region's top.
+        const gap = prevFlowBottom == null ? fy - region.y : fy - prevFlowBottom;
+        let candidateY = pageHasBlock ? cursorY + gap : (page === 0 ? fy : region.y);
+
+        // Avoid orphaning a section heading at the very bottom of a page. If the next
+        // block belongs to the same logical section, require both to fit together.
+        let requiredBottom = candidateY + nat.h;
+        if (bid.endsWith(".heading")) {
+          const nextBid = region.blockIds[i + 1];
+          const headingPrefix = bid.slice(0, -".heading".length);
+          const nextIsSameSection = !!nextBid && (
+            nextBid.startsWith(headingPrefix + ".") ||
+            (headingPrefix === "education" && nextBid.startsWith("edu."))
+          );
+          const nextNat = nextBid ? naturalPositions[nextBid] : undefined;
+          if (nextIsSameSection && nextNat) {
+            const nextFy = flowTop[nextBid] ?? nextNat.y;
+            const nextGap = Math.max(0, nextFy - (fy + nat.h));
+            requiredBottom += nextGap + nextNat.h;
+          }
+        }
+
+        if (requiredBottom > pageBottom && pageHasBlock) {
+          page += 1;
+          candidateY = region.y;
+          pageHasBlock = false;
+        }
+
+        const singlePage = singlePagePositions[bid];
+        out[bid] = {
+          page,
+          x: singlePage?.x ?? (nat.x + (ov.visualDx ?? 0)),
+          y: candidateY + roleVisualY,
+          w: singlePage?.w ?? (ov.width ?? nat.w),
+          h: nat.h,
+        };
+
+        cursorY = candidateY + nat.h;
+        prevFlowBottom = fy + nat.h;
+        pageHasBlock = true;
+        maxPage = Math.max(maxPage, page);
+      }
+    }
+
+    return { positions: out, pageCount: maxPage + 1 };
   }
 
-  // IMPORTANT: the heading DraggableBlock can be manually height-resized. Its CSS
-  // transform rotates around the center of the ACTUAL rendered box, which is
-  // max(natural group height, saved height override). Group-rotated entries must orbit
-  // around that exact same center or they drift outside the purple group rectangle.
-  function sectionRenderedGroupHeight(prefix: string): number {
-    const naturalH = sectionGroupHeight(prefix) ?? 0;
-    const savedH   = overrides[`${prefix}.heading`]?.height ?? 0;
-    return Math.max(naturalH, savedH);
+  const { positions: computedPositions, pageCount } = paginatePositions();
+
+  function sectionIds(prefix: string): string[] {
+    if (prefix === "education" || prefix === "edu") {
+      return allBlockIds.filter(bid => bid === "education.heading" || bid.startsWith("edu."));
+    }
+    return allBlockIds.filter(bid => bid === `${prefix}.heading` || bid.startsWith(prefix + "."));
   }
+
+  function headingIdForSection(prefix: string): string {
+    return prefix === "edu" ? "education.heading" : `${prefix}.heading`;
+  }
+
+  // Bounds of only the part of a logical section that appears on one physical page.
+  // This is also the transform origin for linked section rotation on continuation pages.
+  function sectionFragmentBounds(prefix: string, page: number): ComputedPos | undefined {
+    const cps = sectionIds(prefix)
+      .map(bid => computedPositions[bid])
+      .filter((cp): cp is PageComputedPos => !!cp && cp.page === page);
+    if (cps.length === 0) return undefined;
+
+    const headingCp = computedPositions[headingIdForSection(prefix)];
+    const x = headingCp?.x ?? Math.min(...cps.map(cp => cp.x));
+    const w = headingCp?.w ?? (Math.max(...cps.map(cp => cp.x + cp.w)) - x);
+    const y = Math.min(...cps.map(cp => cp.y));
+    const bottom = Math.max(...cps.map(cp => cp.y + cp.h));
+    return { x, y, w, h: Math.max(0, bottom - y) };
+  }
+
+  // The saved heading height is allowed to enlarge the group on the page containing
+  // the heading, but never beyond that physical page. This keeps the CSS transform
+  // origin and the entry-orbit transform origin identical.
+  function sectionRenderedFragmentHeight(prefix: string, page: number): number {
+    const fragment = sectionFragmentBounds(prefix, page);
+    if (!fragment) return 0;
+    const headingId = headingIdForSection(prefix);
+    const headingCp = computedPositions[headingId];
+    if (!headingCp || headingCp.page !== page) return fragment.h;
+
+    const savedH = overrides[headingId]?.height ?? 0;
+    const maxH = Math.max(fragment.h, pageBottom - fragment.y);
+    return Math.max(fragment.h, Math.min(savedH, maxH));
+  }
+
+  const PAGE_GAP_PX = 18;
 
   return (
     <BulletEditCtx.Provider value={bulletEditCtxValue}>
-      <>
-        {allBlockIds.map(bid => {
-          const content = renderContent(bid);
-          if (!content) return null;
-          let cp = computedPositions[bid];
-          if (!cp) return null;
+      <div style={{ display: "flex", flexDirection: "column", gap: PAGE_GAP_PX, width: pageW * scale }}>
+        {Array.from({ length: pageCount }, (_, pageIndex) => (
+          <div
+            key={`page-${pageIndex}`}
+            data-resume-page={pageIndex + 1}
+            style={{ width: pageW * scale, height: pageH * scale, position: "relative", flexShrink: 0 }}
+          >
+            <div style={{
+              transform: `scale(${scale})`,
+              transformOrigin: "top left",
+              width: pageW,
+              height: pageH,
+              backgroundColor: d.pageBackground,
+              boxShadow: "0 2px 16px rgba(0,0,0,0.15)",
+              overflow: "hidden",
+              boxSizing: "border-box",
+              position: "relative",
+            }}>
+              {allBlockIds.map(bid => {
+                const content = renderContent(bid);
+                if (!content) return null;
+                let cp = computedPositions[bid];
+                if (!cp || cp.page !== pageIndex) return null;
           const isHeading = bid.endsWith(".heading");
-          const sectionPrefix = isHeading ? bid.replace(".heading", "") : bid.split(".")[0];
+          const rawSectionPrefix = isHeading ? bid.replace(".heading", "") : bid.split(".")[0];
+          const sectionPrefix = rawSectionPrefix === "edu" ? "education" : rawSectionPrefix;
 
           // Group rotation: when a work/edu heading is rotated, orbit its entries around
           // the group center so they follow the heading as a rigid body.
@@ -2049,35 +2241,40 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, remeasureKey, onD
           // re-applied in the rotated coordinate frame, keeping manual tweaks intact.
           let entryAdditionalRotation: number | undefined;
           if (bid.startsWith("work.") || bid.startsWith("edu.")) {
-            const headingBid = isHeading ? bid : `${sectionPrefix}.heading`;
-            // Live rotation during drag takes priority over saved override
+            const headingBid = headingIdForSection(sectionPrefix);
+            // Live rotation during drag takes priority over the saved logical-section angle.
             const liveRot    = groupRotation?.prefix === sectionPrefix + "." ? groupRotation.rot : undefined;
             const headingRot = liveRot ?? overrides[headingBid]?.rotation ?? 0;
             const headingCp  = computedPositions[headingBid];
-            if (headingRot !== 0 && headingCp && !isHeading) {
+            const fragment   = sectionFragmentBounds(sectionPrefix, cp.page);
+            if (headingRot !== 0 && headingCp && fragment && !isHeading) {
               const θ    = headingRot * Math.PI / 180;
               const cosT = Math.cos(θ), sinT = Math.sin(θ);
-              // Use the same rendered height that DraggableBlock rotates. If the
-              // user resized the outer section box, using only the natural height here
-              // produces a different rotation center and makes entries fly outside.
-              const renderedGroupH = sectionRenderedGroupHeight(sectionPrefix);
-              const gcx  = headingCp.x + headingCp.w / 2;
-              const gcy  = headingCp.y + renderedGroupH / 2;
 
-              // Strip visualDy/visualDx before orbit so the rotation center is stable
-              // regardless of how the entry was manually positioned.
-              const vdx = overrides[bid]?.visualDx ?? 0;
-              const vdy = overrides[bid]?.visualDy ?? 0;
+              // Each physical page fragment rotates around its OWN local center, while
+              // every fragment shares the same logical section angle. This prevents a
+              // page-2 role from orbiting around a center that lives back on page 1.
+              const renderedGroupH = sectionRenderedFragmentHeight(sectionPrefix, cp.page);
+              const gcx  = headingCp.x + headingCp.w / 2;
+              const gcy  = fragment.y + renderedGroupH / 2;
+
+              // Strip visual-only displacement before orbit so page assignment and the
+              // fragment center remain stable. Legacy role flowDisplacementY is visual.
+              const roleOv = overrides[bid] ?? {};
+              const vdx = roleOv.visualDx ?? 0;
+              const vdy = (roleOv.visualDy ?? 0) + (roleOv.flowDisplacementY ?? 0);
               const natCx = cp.x - vdx + cp.w / 2;
               const natCy = cp.y - vdy + cp.h / 2;
 
               const relX = natCx - gcx, relY = natCy - gcy;
-              // CSS uses screen coordinates (x right, y down), so positive rotate()
-              // angles use this matrix for the same clockwise visual rotation.
+              // Match CSS rotate() exactly. CSS uses the standard 2D transform matrix:
+              // x' = x·cos - y·sin, y' = x·sin + y·cos.
+              // Using the opposite signs makes the entries orbit opposite to the outer
+              // section rectangle, which is what caused the section to tear apart visually.
               const orbitCx = gcx + relX * cosT - relY * sinT;
               const orbitCy = gcy + relX * sinT + relY * cosT;
 
-              // Re-apply visual displacement in that same rotated coordinate frame.
+              // Re-apply each entry's manual displacement in that same rotated frame.
               const newCx = orbitCx + vdx * cosT - vdy * sinT;
               const newCy = orbitCy + vdx * sinT + vdy * cosT;
 
@@ -2101,8 +2298,7 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, remeasureKey, onD
                 const newHeadingW = newD.layoutOverrides?.[bid]?.width;
                 const prevHeadingW = d.layoutOverrides?.[bid]?.width;
                 if (newHeadingW !== undefined && newHeadingW !== prevHeadingW) {
-                  const prefix = bid.replace(".heading", ".");
-                  const entryBids = allBlockIds.filter(b => b.startsWith(prefix) && !b.endsWith(".heading"));
+                  const entryBids = sectionIds(sectionPrefix).filter(b => !b.endsWith(".heading"));
                   const cascaded = { ...(newD.layoutOverrides ?? {}) };
                   for (const ebid of entryBids) {
                     cascaded[ebid] = { ...(cascaded[ebid] ?? {}), width: newHeadingW };
@@ -2113,19 +2309,19 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, remeasureKey, onD
                 }
               } : onDesignChange}
               onHoverBlock={blockId => {
-                setGroupHoveredSection(blockId ? blockId.split(".")[0] : null);
+                const raw = blockId ? blockId.split(".")[0] : null;
+                setGroupHoveredSection(raw === "edu" ? "education" : raw);
                 onHoverBlock(blockId);
               }}
               onBlockClick={onBlockClick}
-              onRotate={isHeading ? rot => setGroupRotation({ prefix: bid.replace(".heading", "."), rot }) : undefined}
+              onRotate={isHeading ? rot => setGroupRotation({ prefix: sectionPrefix + ".", rot }) : undefined}
               onRotateEnd={isHeading ? () => setGroupRotation(null) : undefined}
-              onDragMove={isHeading ? (dy, dx) => setGroupDrag({ prefix: bid.replace(".heading", "."), dy, dx }) : undefined}
+              onDragMove={isHeading ? (dy, dx) => setGroupDrag({ prefix: sectionPrefix + ".", dy, dx }) : undefined}
               onDragEnd={isHeading ? (dx, dy) => {
                 // One atomic onDesignChange: heading flowDisplacementY + visualDx,
                 // plus entries' visualDx propagation. Must be one call so React
                 // batching doesn't clobber the heading's flowDisplacementY.
-                const prefix = bid.replace(".heading", ".");
-                const entryBids = allBlockIds.filter(b => b.startsWith(prefix) && !b.endsWith(".heading"));
+                const entryBids = sectionIds(sectionPrefix).filter(b => !b.endsWith(".heading"));
                 const curOverrides = d.layoutOverrides ?? {};
                 const headingOv = curOverrides[bid] ?? {};
                 const newOverrides = { ...curOverrides };
@@ -2151,20 +2347,26 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, remeasureKey, onD
               } : undefined}
               additionalDy={(() => {
                 if (!groupDrag || isHeading) return 0;
-                return bid.startsWith(groupDrag.prefix) ? groupDrag.dy : 0;
+                const logicalPrefix = groupDrag.prefix.slice(0, -1);
+                return sectionIds(logicalPrefix).includes(bid) ? groupDrag.dy : 0;
               })()}
               additionalDx={(() => {
                 if (!groupDrag || isHeading) return 0;
-                return bid.startsWith(groupDrag.prefix) ? groupDrag.dx : 0;
+                const logicalPrefix = groupDrag.prefix.slice(0, -1);
+                return sectionIds(logicalPrefix).includes(bid) ? groupDrag.dx : 0;
               })()}
-              groupHeight={isHeading ? sectionGroupHeight(sectionPrefix) : undefined}
+              groupHeight={isHeading ? sectionRenderedFragmentHeight(sectionPrefix, cp.page) : undefined}
+              groupMaxHeight={isHeading ? Math.max(0, pageBottom - cp.y) : undefined}
               forcedHover={isHeading && groupHoveredSection === sectionPrefix}
             >
               {content}
             </DraggableBlock>
           );
-        })}
-      </>
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
     </BulletEditCtx.Provider>
   );
 }
@@ -2296,33 +2498,21 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
             </>}
       </div>
 
-      {/* Scaled resume page */}
-      <div style={{ width: containerWidth, height: PAGE_H * scale, position: "relative", flexShrink: 0 }}>
-        <div style={{
-          transform: `scale(${scale})`,
-          transformOrigin: "top left",
-          width: PAGE_W,
-          height: PAGE_H,
-          backgroundColor: d.pageBackground,
-          boxShadow: "0 2px 16px rgba(0,0,0,0.15)",
-          overflow: "hidden",
-          boxSizing: "border-box",
-          position: "relative",
-        }}>
-          <FreeFormLayout
-            data={data}
-            d={d}
-            ctx={ctx}
-            setData={onDataChange}
-            scale={scale}
-            pageW={PAGE_W}
-            remeasureKey={remeasureKey}
-            onDesignChange={onDesignChange}
-            onHoverBlock={setHoveredBlock}
-            onBlockClick={handleBlockClick}
-          />
-        </div>
-      </div>
+      {/* Paginated resume pages — FreeFormLayout owns the physical page shells so
+          it can add page 2/3/etc. as soon as measured flow exceeds the current page. */}
+      <FreeFormLayout
+        data={data}
+        d={d}
+        ctx={ctx}
+        setData={onDataChange}
+        scale={scale}
+        pageW={PAGE_W}
+        pageH={PAGE_H}
+        remeasureKey={remeasureKey}
+        onDesignChange={onDesignChange}
+        onHoverBlock={setHoveredBlock}
+        onBlockClick={handleBlockClick}
+      />
 
       {/* Context toolbar — single click */}
       {selected && anchorRect && createPortal(
