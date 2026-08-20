@@ -1911,9 +1911,15 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
   const [groupDrag,     setGroupDrag]     = useState<{ prefix: string; dy: number; dx: number } | null>(null);
   const [groupRotation, setGroupRotation] = useState<{ prefix: string; rot: number } | null>(null);
 
-  // ── Group hover: tracks which section prefix is currently hovered ─────────
-  // Used to force the heading block's border visible when hovering any entry.
-  const [groupHoveredSection, setGroupHoveredSection] = useState<string | null>(null);
+  // ── Group hover: page-aware because one logical section may have fragments
+  // on several physical pages. Hovering an entry reveals only that page fragment's box.
+  const [groupHoveredFragment, setGroupHoveredFragment] = useState<{ section: string; page: number } | null>(null);
+
+  // Continuation-page group drag. Page 1 keeps using the real heading block as the
+  // group handle; continuation fragments get an editor-only drag tab. The temporary
+  // delta is applied live to just the entries on that physical page, then persisted
+  // as visualDx/visualDy so pagination itself stays stable.
+  const [continuationDrag, setContinuationDrag] = useState<{ section: string; page: number; dx: number; dy: number } | null>(null);
 
   // ── Stable memoized flow regions ────────────────────────────────────────
   // Re-built when content count, layout type, or sidebar config changes.
@@ -2200,6 +2206,179 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
     return Math.max(fragment.h, Math.min(savedH, maxH));
   }
 
+  // Entries belonging to one logical section fragment on one physical page.
+  // The heading is intentionally excluded: continuation pages have no duplicate
+  // printed heading, only an editor-only fragment control box.
+  function sectionEntryIdsOnPage(prefix: string, page: number): string[] {
+    return sectionIds(prefix).filter(bid => {
+      if (bid.endsWith(".heading")) return false;
+      return computedPositions[bid]?.page === page;
+    });
+  }
+
+  function saveLogicalSectionRotation(prefix: string, rot: number) {
+    const headingId = headingIdForSection(prefix);
+    const existing = d.layoutOverrides?.[headingId] ?? {};
+    const next: LayoutOverride = { ...existing };
+    if (rot) next.rotation = rot; else delete next.rotation;
+    const layoutOverrides = { ...(d.layoutOverrides ?? {}) };
+    if (Object.keys(next).length) layoutOverrides[headingId] = next;
+    else delete layoutOverrides[headingId];
+    onDesignChange({ ...d, layoutOverrides });
+  }
+
+  function finishContinuationDrag(prefix: string, page: number, dx: number, dy: number) {
+    const ids = sectionEntryIdsOnPage(prefix, page);
+    if (ids.length === 0) { setContinuationDrag(null); return; }
+    const cur = d.layoutOverrides ?? {};
+    const next = { ...cur };
+    for (const bid of ids) {
+      const ov = next[bid] ?? {};
+      const n: LayoutOverride = {
+        ...ov,
+        visualDx: (ov.visualDx ?? 0) + dx,
+        visualDy: (ov.visualDy ?? 0) + dy,
+      };
+      if (!n.visualDx) delete n.visualDx;
+      if (!n.visualDy) delete n.visualDy;
+      // Role flowDisplacementY is legacy visual Y. Fold it into visualDy when a
+      // continuation fragment is group-dragged so the saved model stays unambiguous.
+      if (n.flowDisplacementY) {
+        n.visualDy = (n.visualDy ?? 0) + n.flowDisplacementY;
+        delete n.flowDisplacementY;
+      }
+      next[bid] = n;
+    }
+    onDesignChange({ ...d, layoutOverrides: next });
+    setContinuationDrag(null);
+  }
+
+  function ContinuationSectionBox({ prefix, page }: { prefix: "work" | "education"; page: number }) {
+    const fragment = sectionFragmentBounds(prefix, page);
+    const headingId = headingIdForSection(prefix);
+    const headingCp = computedPositions[headingId];
+    if (!fragment || !headingCp || headingCp.page === page) return null;
+
+    const logicalRot = groupRotation?.prefix === prefix + "."
+      ? groupRotation.rot
+      : overrides[headingId]?.rotation ?? 0;
+    const h = sectionRenderedFragmentHeight(prefix, page);
+    const externallyActive = groupHoveredFragment?.section === prefix && groupHoveredFragment.page === page;
+    const draggingThis = continuationDrag?.section === prefix && continuationDrag.page === page;
+    const rotatingThis = groupRotation?.prefix === prefix + ".";
+    const active = externallyActive || draggingThis || rotatingThis;
+
+    function rotateDown(ev: React.MouseEvent) {
+      ev.stopPropagation(); ev.preventDefault();
+      const box = (ev.currentTarget as HTMLElement).closest("[data-section-fragment]") as HTMLElement | null;
+      const rect = box?.getBoundingClientRect();
+      if (!rect) return;
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      let rot = logicalRot;
+      function onMove(e: MouseEvent) {
+        rot = snapRotation(Math.round((Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI + 90) * 10) / 10);
+        setGroupRotation({ prefix: prefix + ".", rot });
+      }
+      function onUp() {
+        saveLogicalSectionRotation(prefix, rot);
+        setGroupRotation(null);
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      }
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    }
+
+    function dragDown(ev: React.MouseEvent) {
+      if (ev.button !== 0) return;
+      ev.stopPropagation(); ev.preventDefault();
+      const startX = ev.clientX, startY = ev.clientY;
+      let lastDx = 0, lastDy = 0;
+      let moved = false;
+      function onMove(e: MouseEvent) {
+        const dx = (e.clientX - startX) / (scale || 1);
+        const dy = (e.clientY - startY) / (scale || 1);
+        if (!moved && (Math.abs(e.clientX - startX) > 3 || Math.abs(e.clientY - startY) > 3)) moved = true;
+        if (!moved) return;
+        lastDx = dx; lastDy = dy;
+        setContinuationDrag({ section: prefix, page, dx, dy });
+      }
+      function onUp() {
+        if (moved) finishContinuationDrag(prefix, page, lastDx, lastDy);
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      }
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    }
+
+    const label = SECTION_LABELS[prefix];
+    return (
+      <div
+        key={`${prefix}-${page}`}
+        data-section-fragment={`${prefix}:${page}`}
+        style={{
+          position: "absolute",
+          left: fragment.x + (draggingThis ? continuationDrag!.dx : 0),
+          top: fragment.y + (draggingThis ? continuationDrag!.dy : 0),
+          width: fragment.w,
+          height: h,
+          boxSizing: "border-box",
+          transform: logicalRot ? `rotate(${logicalRot}deg)` : undefined,
+          transformOrigin: "center center",
+          outline: active ? `1px solid ${HC}66` : `1px solid ${HC}20`,
+          zIndex: active ? 12 : 2,
+          pointerEvents: "none",
+        }}
+      >
+        {/* Editor-only continuation label. It is the fragment's group-drag handle;
+            it never becomes resume content. */}
+        <div
+          data-handle="fragment-drag"
+          onMouseDown={dragDown}
+          onMouseEnter={() => setGroupHoveredFragment({ section: prefix, page })}
+          onMouseLeave={() => {
+            setGroupHoveredFragment(cur => cur?.section === prefix && cur.page === page ? null : cur);
+          }}
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: "absolute", top: -17, left: 0,
+            fontSize: 9, lineHeight: "14px", height: 14,
+            padding: "0 5px", borderRadius: 3,
+            fontFamily: "system-ui, sans-serif", fontWeight: 600,
+            color: HC, background: "rgba(255,255,255,0.94)",
+            border: `1px solid ${HC}33`, cursor: "grab",
+            userSelect: "none", whiteSpace: "nowrap",
+            opacity: active ? 1 : 0.58,
+            pointerEvents: "auto",
+          }}
+        >
+          {label} · continued
+        </div>
+
+        <div
+          data-handle="fragment-rotate"
+          onMouseDown={rotateDown}
+          onMouseEnter={() => setGroupHoveredFragment({ section: prefix, page })}
+          onMouseLeave={() => {
+            setGroupHoveredFragment(cur => cur?.section === prefix && cur.page === page ? null : cur);
+          }}
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: "absolute", top: -14, left: "50%",
+            transform: "translateX(-50%)",
+            width: 14, height: 14, borderRadius: "50%",
+            backgroundColor: HC, border: "2px solid white",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.22)",
+            cursor: "crosshair", zIndex: 30, pointerEvents: "auto",
+            opacity: active ? 1 : 0.5,
+          }}
+        />
+      </div>
+    );
+  }
+
   const PAGE_GAP_PX = 18;
 
   return (
@@ -2222,6 +2401,13 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
               boxSizing: "border-box",
               position: "relative",
             }}>
+              {/* Continuation pages get their own editor-only Experience/Education
+                  fragment box. It shares the logical section rotation but uses this
+                  page fragment's local center and position. */}
+              {(["work", "education"] as const).map(prefix =>
+                ContinuationSectionBox({ prefix, page: pageIndex })
+              )}
+
               {allBlockIds.map(bid => {
                 const content = renderContent(bid);
                 if (!content) return null;
@@ -2310,7 +2496,8 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
               } : onDesignChange}
               onHoverBlock={blockId => {
                 const raw = blockId ? blockId.split(".")[0] : null;
-                setGroupHoveredSection(raw === "edu" ? "education" : raw);
+                const logical = raw === "edu" ? "education" : raw;
+                setGroupHoveredFragment(logical ? { section: logical, page: cp.page } : null);
                 onHoverBlock(blockId);
               }}
               onBlockClick={onBlockClick}
@@ -2346,18 +2533,32 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
                 setGroupDrag(null);
               } : undefined}
               additionalDy={(() => {
-                if (!groupDrag || isHeading) return 0;
-                const logicalPrefix = groupDrag.prefix.slice(0, -1);
-                return sectionIds(logicalPrefix).includes(bid) ? groupDrag.dy : 0;
+                let dy = 0;
+                if (groupDrag && !isHeading) {
+                  const logicalPrefix = groupDrag.prefix.slice(0, -1);
+                  if (sectionIds(logicalPrefix).includes(bid)) dy += groupDrag.dy;
+                }
+                if (continuationDrag && !isHeading && continuationDrag.page === cp.page &&
+                    sectionIds(continuationDrag.section).includes(bid)) {
+                  dy += continuationDrag.dy;
+                }
+                return dy;
               })()}
               additionalDx={(() => {
-                if (!groupDrag || isHeading) return 0;
-                const logicalPrefix = groupDrag.prefix.slice(0, -1);
-                return sectionIds(logicalPrefix).includes(bid) ? groupDrag.dx : 0;
+                let dx = 0;
+                if (groupDrag && !isHeading) {
+                  const logicalPrefix = groupDrag.prefix.slice(0, -1);
+                  if (sectionIds(logicalPrefix).includes(bid)) dx += groupDrag.dx;
+                }
+                if (continuationDrag && !isHeading && continuationDrag.page === cp.page &&
+                    sectionIds(continuationDrag.section).includes(bid)) {
+                  dx += continuationDrag.dx;
+                }
+                return dx;
               })()}
               groupHeight={isHeading ? sectionRenderedFragmentHeight(sectionPrefix, cp.page) : undefined}
               groupMaxHeight={isHeading ? Math.max(0, pageBottom - cp.y) : undefined}
-              forcedHover={isHeading && groupHoveredSection === sectionPrefix}
+              forcedHover={isHeading && groupHoveredFragment?.section === sectionPrefix && groupHoveredFragment.page === cp.page}
             >
               {content}
             </DraggableBlock>
