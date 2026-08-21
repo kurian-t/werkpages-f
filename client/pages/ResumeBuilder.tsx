@@ -17,7 +17,7 @@ import ResumeDesignPanel from "@/components/ResumeDesignPanel";
 import ResumeDesignIntelligence from "@/components/resume-templates/ResumeDesignIntelligence";
 import type { ResumeData, WorkEntry, EducationEntry } from "@/components/resume-templates/types";
 import { genId } from "@/components/resume-templates/types";
-import { Lock, Download, Plus, Trash2, ChevronDown, ChevronUp, Save, Loader2, AlertCircle, LayoutTemplate, Check, X, Sparkles, FileText, Globe2, ExternalLink } from "lucide-react";
+import { Lock, Download, Plus, Trash2, ChevronDown, ChevronUp, Save, Loader2, AlertCircle, LayoutTemplate, Check, X, Sparkles, FileText, Globe2, ExternalLink, CloudUpload } from "lucide-react";
 import { Component, type ReactNode } from "react";
 import axios from "axios";
 import { toast } from "sonner";
@@ -33,6 +33,17 @@ import {
 import { compactResumeDesignImages } from "@/components/resume-templates/resumeImageCompression";
 import { buildAnimatedStandaloneResumeWebHtml } from "@/components/resume-templates/resumeWebAnimation";
 import { buildStandaloneInteractiveResumeHtml } from "@/components/resume-templates/resumeInteractivePublish";
+import {
+  analyzeInteractivePublish,
+  formatBytes,
+  prepareInteractiveDataForPublish,
+} from "@/components/resume-templates/resumeInteractivePerformance";
+import {
+  createInteractivePublishSnapshot,
+  downloadInteractivePublishSnapshot,
+  recordPreparedInteractiveSnapshot,
+  InteractivePublishBlockedError,
+} from "@/components/resume-templates/resumeInteractivePublishing";
 import {
   getResumeProjects,
   migrateLegacyWebPortfolioData,
@@ -1134,10 +1145,56 @@ export default function ResumeBuilder() {
     if (!data) return;
     try {
       if (previewMode === "web") {
-        const html =
-          webExperienceMode === "interactive"
-            ? buildStandaloneInteractiveResumeHtml(data)
-            : buildAnimatedStandaloneResumeWebHtml(data);
+        let html: string;
+
+        if (webExperienceMode === "interactive") {
+          const prepared =
+            await prepareInteractiveDataForPublish(data);
+          html = buildStandaloneInteractiveResumeHtml(
+            prepared.data,
+          );
+
+          const report = analyzeInteractivePublish(
+            prepared.data,
+            html,
+          );
+
+          if (report.readiness === "blocked") {
+            toast.error(
+              report.issues.find(
+                issue => issue.severity === "error",
+              )?.detail ??
+                "Interactive export is too large to publish safely.",
+            );
+            return;
+          }
+
+          if (prepared.compressedAssetCount > 0) {
+            const savedChars =
+              prepared.embeddedCharsBefore -
+              prepared.embeddedCharsAfter;
+            toast.success(
+              `Optimized ${prepared.compressedAssetCount} Interactive image${
+                prepared.compressedAssetCount === 1 ? "" : "s"
+              } for export${
+                savedChars > 0
+                  ? ` · saved about ${formatBytes(savedChars)}`
+                  : ""
+              }.`,
+            );
+          }
+
+          if (report.warningCount > 0) {
+            toast.warning(
+              `Exporting with ${report.warningCount} performance warning${
+                report.warningCount === 1 ? "" : "s"
+              }. The visitor runtime will simplify effects on lower-powered devices.`,
+            );
+          }
+        } else {
+          html = buildAnimatedStandaloneResumeWebHtml(data);
+        }
+
         const blob = new Blob([html], { type: "text/html;charset=utf-8" });
         const url = URL.createObjectURL(blob);
         const a = window.document.createElement("a");
@@ -1170,25 +1227,59 @@ export default function ResumeBuilder() {
     }
   };
 
-  const handleOpenWebPreview = () => {
+  const handleOpenWebPreview = async () => {
     if (!data) return;
 
+    const opened = window.open("about:blank", "_blank");
+    if (!opened) {
+      toast.error("Your browser blocked the preview window");
+      return;
+    }
+
     try {
-      const html =
-        webExperienceMode === "interactive"
-          ? buildStandaloneInteractiveResumeHtml(data)
-          : buildAnimatedStandaloneResumeWebHtml(data);
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const opened = window.open("about:blank", "_blank");
-      if (!opened) {
-        URL.revokeObjectURL(url);
-        toast.error("Your browser blocked the preview window");
-        return;
+      opened.opener = null;
+
+      let html: string;
+      if (webExperienceMode === "interactive") {
+        const prepared =
+          await prepareInteractiveDataForPublish(data);
+        html = buildStandaloneInteractiveResumeHtml(
+          prepared.data,
+        );
+
+        const report = analyzeInteractivePublish(
+          prepared.data,
+          html,
+        );
+
+        if (report.readiness === "blocked") {
+          opened.close();
+          toast.error(
+            report.issues.find(
+              issue => issue.severity === "error",
+            )?.detail ??
+              "Interactive preview is too large to open safely.",
+          );
+          return;
+        }
+
+        if (report.warningCount > 0) {
+          toast.warning(
+            `Preview has ${report.warningCount} performance warning${
+              report.warningCount === 1 ? "" : "s"
+            }. Lower-powered visitors automatically receive a lighter runtime.`,
+          );
+        }
+      } else {
+        html = buildAnimatedStandaloneResumeWebHtml(data);
       }
 
+      const blob = new Blob([html], {
+        type: "text/html;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+
       try {
-        opened.opener = null;
         opened.location.href = url;
       } catch {
         opened.close();
@@ -1199,7 +1290,63 @@ export default function ResumeBuilder() {
 
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch {
+      opened.close();
       toast.error("Failed to open web preview");
+    }
+  };
+
+  const handlePrepareInteractivePublish = async () => {
+    if (
+      !data ||
+      previewMode !== "web" ||
+      webExperienceMode !== "interactive"
+    ) {
+      return;
+    }
+
+    try {
+      const snapshot =
+        await createInteractivePublishSnapshot(data);
+
+      const nextDesign =
+        recordPreparedInteractiveSnapshot(
+          data.design,
+          snapshot.metadata,
+        );
+
+      onChange({
+        ...data,
+        design: nextDesign,
+      });
+
+      downloadInteractivePublishSnapshot(snapshot);
+
+      toast.success(
+        `Prepared immutable publish snapshot ${snapshot.metadata.versionId}.`,
+      );
+
+      if (snapshot.report.warningCount > 0) {
+        toast.warning(
+          `${snapshot.report.warningCount} publish warning${
+            snapshot.report.warningCount === 1 ? "" : "s"
+          } remain. The snapshot is still deployable.`,
+        );
+      }
+    } catch (error) {
+      if (
+        error instanceof InteractivePublishBlockedError
+      ) {
+        toast.error(error.message);
+        return;
+      }
+
+      console.error(
+        "Failed to prepare Interactive publish snapshot",
+        error,
+      );
+      toast.error(
+        "Failed to prepare Interactive publish snapshot.",
+      );
     }
   };
 
@@ -1300,6 +1447,19 @@ export default function ResumeBuilder() {
                 }}
               />
             )}
+
+            {previewMode === "web" &&
+              webExperienceMode === "interactive" && (
+                <button
+                  type="button"
+                  onClick={handlePrepareInteractivePublish}
+                  className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-[#2e0562]/25 bg-[#2e0562]/5 px-3 py-2 text-xs font-semibold text-[#2e0562] hover:bg-[#2e0562]/10 transition-colors"
+                  title="Create an immutable HTML snapshot and deployment manifest"
+                >
+                  <CloudUpload size={13} />
+                  Prepare publish
+                </button>
+              )}
 
             {previewMode === "web" && (
               <button

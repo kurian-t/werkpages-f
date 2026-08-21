@@ -147,6 +147,35 @@ export interface InteractiveObjectGeometry {
   hidden?: boolean;
 }
 
+export type InteractiveBreakpoint = "desktop" | "tablet" | "mobile";
+
+export interface InteractiveResponsiveGeometryOverride {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  rotation?: number;
+  opacity?: number;
+  zIndex?: number;
+  hidden?: boolean;
+}
+
+export interface InteractiveResponsiveObjectLayout {
+  tablet?: InteractiveResponsiveGeometryOverride;
+  mobile?: InteractiveResponsiveGeometryOverride;
+}
+
+export interface InteractiveResponsiveSceneOverride {
+  width?: number;
+  height?: number;
+  scrollLength?: number;
+}
+
+export interface InteractiveResponsiveSceneLayout {
+  tablet?: InteractiveResponsiveSceneOverride;
+  mobile?: InteractiveResponsiveSceneOverride;
+}
+
 export type InteractiveObjectAppearanceVariant =
   | "card"
   | "plain"
@@ -233,6 +262,8 @@ interface InteractiveObjectBase {
   parallaxDepth?: number;
   /** Template/user-controlled visual surface without changing shared content. */
   appearance?: InteractiveObjectAppearance;
+  /** Tablet/mobile layout overrides. Desktop remains the canonical base geometry. */
+  responsive?: InteractiveResponsiveObjectLayout;
 }
 
 export interface InteractiveResumeContentObject
@@ -295,6 +326,8 @@ export interface InteractiveScene {
   ambient: InteractiveSceneAmbient;
   /** Transition from this scene into the next scene. */
   transition: InteractiveSceneTransition;
+  /** Tablet/mobile scene viewport overrides. */
+  responsive?: InteractiveResponsiveSceneLayout;
 
   objectOrder: string[];
   objects: Record<string, InteractiveSceneObject>;
@@ -309,6 +342,23 @@ export interface InteractiveSceneCollection {
 const DEFAULT_SCENE_WIDTH = 1440;
 const DEFAULT_SCENE_HEIGHT = 900;
 const DEFAULT_SCROLL_LENGTH = 900;
+
+export const INTERACTIVE_BREAKPOINT_VIEWPORTS: Record<
+  InteractiveBreakpoint,
+  { width: number; height: number }
+> = {
+  desktop: { width: 1440, height: 900 },
+  tablet: { width: 1024, height: 900 },
+  mobile: { width: 430, height: 900 },
+};
+
+export function getInteractiveBreakpointForViewport(
+  viewportWidth: number,
+): InteractiveBreakpoint {
+  if (viewportWidth < 700) return "mobile";
+  if (viewportWidth < 1100) return "tablet";
+  return "desktop";
+}
 
 const SECTION_LABELS: Record<WebSectionId, string> = {
   video: "Video Intro",
@@ -897,6 +947,7 @@ export function createInteractiveScene(
     background: normalizeBackground(options?.background),
     ambient: normalizeSceneAmbient(options?.ambient),
     transition: normalizeSceneTransition(options?.transition),
+    responsive: undefined,
     objectOrder: [],
     objects: {},
   };
@@ -932,6 +983,202 @@ function normalizeObjectAppearance(
         ? undefined
         : finiteNumber(source.radius, 12, 0, 80),
   };
+}
+
+function normalizeResponsiveGeometryOverride(
+  value: unknown,
+): InteractiveResponsiveGeometryOverride | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const source = value as Record<string, unknown>;
+  const next: InteractiveResponsiveGeometryOverride = {};
+
+  if (source.x != null) next.x = finiteNumber(source.x, 0, -10000, 10000);
+  if (source.y != null) next.y = finiteNumber(source.y, 0, -10000, 10000);
+  if (source.width != null) {
+    next.width = finiteNumber(source.width, 320, 8, 6000);
+  }
+  if (source.height != null) {
+    next.height = finiteNumber(source.height, 120, 8, 6000);
+  }
+  if (source.rotation != null) {
+    next.rotation = finiteNumber(source.rotation, 0, -3600, 3600);
+  }
+  if (source.opacity != null) {
+    next.opacity = finiteNumber(source.opacity, 1, 0, 1);
+  }
+  if (source.zIndex != null) {
+    next.zIndex = finiteNumber(source.zIndex, 0, -1000, 1000);
+  }
+  if ("hidden" in source && typeof source.hidden === "boolean") {
+    next.hidden = source.hidden;
+  }
+
+  return Object.keys(next).length ? next : undefined;
+}
+
+function normalizeResponsiveObjectLayout(
+  value: unknown,
+): InteractiveResponsiveObjectLayout | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const source = value as Partial<InteractiveResponsiveObjectLayout>;
+  const tablet = normalizeResponsiveGeometryOverride(source.tablet);
+  const mobile = normalizeResponsiveGeometryOverride(source.mobile);
+
+  return tablet || mobile
+    ? {
+        tablet,
+        mobile,
+      }
+    : undefined;
+}
+
+function normalizeResponsiveSceneOverride(
+  value: unknown,
+): InteractiveResponsiveSceneOverride | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const source = value as Record<string, unknown>;
+  const next: InteractiveResponsiveSceneOverride = {};
+
+  if (source.width != null) {
+    next.width = finiteNumber(source.width, 1024, 320, 3840);
+  }
+  if (source.height != null) {
+    next.height = finiteNumber(source.height, 900, 320, 3000);
+  }
+  if (source.scrollLength != null) {
+    next.scrollLength = finiteNumber(source.scrollLength, 900, 320, 12000);
+  }
+
+  return Object.keys(next).length ? next : undefined;
+}
+
+function normalizeResponsiveSceneLayout(
+  value: unknown,
+): InteractiveResponsiveSceneLayout | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const source = value as Partial<InteractiveResponsiveSceneLayout>;
+  const tablet = normalizeResponsiveSceneOverride(source.tablet);
+  const mobile = normalizeResponsiveSceneOverride(source.mobile);
+
+  return tablet || mobile
+    ? {
+        tablet,
+        mobile,
+      }
+    : undefined;
+}
+
+export function getInteractiveObjectGeometry(
+  object: InteractiveSceneObject,
+  breakpoint: InteractiveBreakpoint,
+  scene?: InteractiveScene,
+): InteractiveObjectGeometry {
+  if (breakpoint === "desktop") return object.geometry;
+
+  const override = object.responsive?.[breakpoint];
+  const fallback =
+    scene && scene.width > 0
+      ? (() => {
+          const layout = getInteractiveSceneLayout(
+            scene,
+            breakpoint,
+          );
+          const scale = layout.width / scene.width;
+          return {
+            ...object.geometry,
+            x: object.geometry.x * scale,
+            y: object.geometry.y * scale,
+            width: object.geometry.width * scale,
+            height: object.geometry.height * scale,
+          };
+        })()
+      : object.geometry;
+
+  if (!override) return fallback;
+
+  return {
+    ...fallback,
+    ...override,
+    hidden:
+      override.hidden === undefined
+        ? fallback.hidden
+        : override.hidden || undefined,
+  };
+}
+
+export function getInteractiveSceneLayout(
+  scene: InteractiveScene,
+  breakpoint: InteractiveBreakpoint,
+): {
+  width: number;
+  height: number;
+  scrollLength: number;
+} {
+  if (breakpoint === "desktop") {
+    return {
+      width: scene.width,
+      height: scene.height,
+      scrollLength: scene.scrollLength,
+    };
+  }
+
+  const override = scene.responsive?.[breakpoint];
+  const recommended = INTERACTIVE_BREAKPOINT_VIEWPORTS[breakpoint];
+
+  return {
+    width: override?.width ?? recommended.width,
+    height: override?.height ?? scene.height,
+    scrollLength: override?.scrollLength ?? scene.scrollLength,
+  };
+}
+
+export function withInteractiveObjectGeometryForBreakpoint(
+  object: InteractiveSceneObject,
+  breakpoint: InteractiveBreakpoint,
+  geometry: InteractiveObjectGeometry,
+): InteractiveSceneObject {
+  if (breakpoint === "desktop") {
+    return {
+      ...object,
+      geometry,
+    } as InteractiveSceneObject;
+  }
+
+  return {
+    ...object,
+    responsive: {
+      ...(object.responsive ?? {}),
+      [breakpoint]: {
+        x: geometry.x,
+        y: geometry.y,
+        width: geometry.width,
+        height: geometry.height,
+        rotation: geometry.rotation,
+        opacity: geometry.opacity,
+        zIndex: geometry.zIndex,
+        hidden: geometry.hidden === true,
+      },
+    },
+  } as InteractiveSceneObject;
+}
+
+export function clearInteractiveObjectBreakpointOverride(
+  object: InteractiveSceneObject,
+  breakpoint: Exclude<InteractiveBreakpoint, "desktop">,
+): InteractiveSceneObject {
+  if (!object.responsive?.[breakpoint]) return object;
+  const responsive = {
+    ...(object.responsive ?? {}),
+  };
+  delete responsive[breakpoint];
+
+  return {
+    ...object,
+    responsive:
+      responsive.tablet || responsive.mobile
+        ? responsive
+        : undefined,
+  } as InteractiveSceneObject;
 }
 
 function normalizeGeometry(
@@ -987,6 +1234,7 @@ function normalizeObject(
         ? undefined
         : finiteNumber(source.parallaxDepth, 0, -2, 2),
     appearance: normalizeObjectAppearance(source.appearance),
+    responsive: normalizeResponsiveObjectLayout(source.responsive),
   };
 
   if (type === "resume-content") {
@@ -1152,6 +1400,7 @@ export function normalizeInteractiveScene(
     background: normalizeBackground(source.background),
     ambient: normalizeSceneAmbient(source.ambient),
     transition: normalizeSceneTransition(source.transition),
+    responsive: normalizeResponsiveSceneLayout(source.responsive),
     objectOrder,
     objects,
   };
@@ -1349,6 +1598,7 @@ export function updateInteractiveScene(
       | "background"
       | "ambient"
       | "transition"
+      | "responsive"
     >
   >,
 ): InteractiveSceneCollection {
@@ -1377,6 +1627,12 @@ export function updateInteractiveScene(
             ...patch.transition,
           }
         : current.transition,
+      responsive: patch.responsive
+        ? {
+            ...(current.responsive ?? {}),
+            ...patch.responsive,
+          }
+        : current.responsive,
     },
     current.name,
   );
@@ -1438,8 +1694,31 @@ export function duplicateInteractiveScene(
       ...object,
       id: nextId,
       geometry: { ...object.geometry },
+      responsive: object.responsive
+        ? {
+            tablet: object.responsive.tablet
+              ? { ...object.responsive.tablet }
+              : undefined,
+            mobile: object.responsive.mobile
+              ? { ...object.responsive.mobile }
+              : undefined,
+          }
+        : undefined,
       motion: object.motion ? { ...object.motion } : undefined,
       animationTracks: object.animationTracks?.map(track => ({ ...track })),
+      scrollTracks: object.scrollTracks?.map(track => ({
+        ...track,
+        keyframes: track.keyframes.map(keyframe => ({ ...keyframe })),
+      })),
+      motionPath: object.motionPath
+        ? {
+            ...object.motionPath,
+            points: object.motionPath.points.map(point => ({ ...point })),
+          }
+        : undefined,
+      appearance: object.appearance
+        ? { ...object.appearance }
+        : undefined,
     } as InteractiveSceneObject;
   });
 
@@ -1449,6 +1728,16 @@ export function duplicateInteractiveScene(
     name: `${current.name} copy`,
     background: { ...current.background },
     transition: { ...current.transition },
+    responsive: current.responsive
+      ? {
+          tablet: current.responsive.tablet
+            ? { ...current.responsive.tablet }
+            : undefined,
+          mobile: current.responsive.mobile
+            ? { ...current.responsive.mobile }
+            : undefined,
+        }
+      : undefined,
     ambient: {
       twinkle: { ...current.ambient.twinkle },
       particles: { ...current.ambient.particles },
@@ -1662,6 +1951,36 @@ export function duplicateInteractiveObject(
     appearance: current.appearance
       ? { ...current.appearance }
       : undefined,
+    responsive: current.responsive
+      ? {
+          tablet: current.responsive.tablet
+            ? {
+                ...current.responsive.tablet,
+                x:
+                  (current.responsive.tablet.x ??
+                    current.geometry.x) + 24,
+                y:
+                  (current.responsive.tablet.y ??
+                    current.geometry.y) + 24,
+                zIndex: maxZ + 1,
+                hidden: false,
+              }
+            : undefined,
+          mobile: current.responsive.mobile
+            ? {
+                ...current.responsive.mobile,
+                x:
+                  (current.responsive.mobile.x ??
+                    current.geometry.x) + 24,
+                y:
+                  (current.responsive.mobile.y ??
+                    current.geometry.y) + 24,
+                zIndex: maxZ + 1,
+                hidden: false,
+              }
+            : undefined,
+        }
+      : undefined,
     geometry: {
       ...current.geometry,
       x: current.geometry.x + 24,
@@ -1747,6 +2066,22 @@ export function moveInteractiveObjectLayer(
         ...object.geometry,
         zIndex,
       },
+      responsive: object.responsive
+        ? {
+            tablet: object.responsive.tablet
+              ? {
+                  ...object.responsive.tablet,
+                  zIndex,
+                }
+              : undefined,
+            mobile: object.responsive.mobile
+              ? {
+                  ...object.responsive.mobile,
+                  zIndex,
+                }
+              : undefined,
+          }
+        : undefined,
     } as InteractiveSceneObject;
   });
 

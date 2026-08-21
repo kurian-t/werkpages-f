@@ -177,8 +177,10 @@ function renderAmbient(scene: InteractiveVisitorScene): string {
 
   const twinkle = scene.ambient.twinkle
     .map(
-      particle => `<span
+      (particle, index) => `<span
         class="wp-ambient wp-twinkle"
+        data-ambient-kind="twinkle"
+        data-ambient-index="${index}"
         aria-hidden="true"
         style="${styleString({
           left: `${particle.x}%`,
@@ -197,8 +199,10 @@ function renderAmbient(scene: InteractiveVisitorScene): string {
 
   const particles = scene.ambient.particles
     .map(
-      particle => `<span
+      (particle, index) => `<span
         class="wp-ambient wp-particle"
+        data-ambient-kind="particles"
+        data-ambient-index="${index}"
         aria-hidden="true"
         style="${styleString({
           left: `${particle.x}%`,
@@ -218,8 +222,10 @@ function renderAmbient(scene: InteractiveVisitorScene): string {
 
   const shapes = scene.ambient.floatingShapes
     .map(
-      particle => `<span
+      (particle, index) => `<span
         class="wp-ambient wp-floating-shape wp-floating-shape-${attr(particle.shape)}"
+        data-ambient-kind="floatingShapes"
+        data-ambient-index="${index}"
         aria-hidden="true"
         style="${styleString({
           left: `${particle.x}%`,
@@ -488,6 +494,7 @@ function renderObject(visitorObject: InteractiveVisitorObject): string {
       opacity: geometry.opacity,
       rotate: geometry.rotation ? `${geometry.rotation}deg` : undefined,
       "z-index": geometry.zIndex,
+      display: geometry.hidden ? "none" : "block",
     })}"
   >
     <div class="wp-parallax-layer">
@@ -556,6 +563,7 @@ function runtimeScript(projection: InteractiveVisitorProjection): string {
     ? window.matchMedia("(prefers-reduced-motion: reduce)")
     : { matches: false, addEventListener(){} };
   let reduceMotion = !!reduceMotionQuery.matches;
+  let performanceTier = "full";
   let raf = 0;
   let activeSceneIndex = -1;
 
@@ -566,6 +574,200 @@ function runtimeScript(projection: InteractiveVisitorProjection): string {
       : String(value).replace(/[^a-zA-Z0-9_-]/g, character =>
           "\\" + character.charCodeAt(0).toString(16) + " "
         );
+
+  const breakpointForWidth = width => {
+    if (width < 700) return "mobile";
+    if (width < 1100) return "tablet";
+    return "desktop";
+  };
+
+  const sceneLayout = (scene, breakpoint) => {
+    if (breakpoint === "desktop") {
+      return {
+        width: scene.width,
+        height: scene.height,
+        scrollLength: scene.scrollLength,
+      };
+    }
+
+    const override = scene.responsive && scene.responsive[breakpoint];
+    const recommendedWidth = breakpoint === "mobile" ? 430 : 1024;
+
+    return {
+      width: override && override.width != null
+        ? override.width
+        : recommendedWidth,
+      height: override && override.height != null
+        ? override.height
+        : scene.height,
+      scrollLength: override && override.scrollLength != null
+        ? override.scrollLength
+        : scene.scrollLength,
+    };
+  };
+
+  const objectGeometry = (
+    object,
+    breakpoint,
+    scene,
+    layout
+  ) => {
+    if (breakpoint === "desktop") return { ...object.geometry };
+
+    const scale =
+      scene && scene.width
+        ? layout.width / scene.width
+        : 1;
+    const fallback = {
+      ...object.geometry,
+      x: object.geometry.x * scale,
+      y: object.geometry.y * scale,
+      width: object.geometry.width * scale,
+      height: object.geometry.height * scale,
+    };
+    const override =
+      object.responsive && object.responsive[breakpoint]
+        ? object.responsive[breakpoint]
+        : null;
+
+    return override
+      ? { ...fallback, ...override }
+      : fallback;
+  };
+
+  const currentBreakpoint = () =>
+    breakpointForWidth(
+      Math.max(
+        1,
+        document.documentElement.clientWidth || window.innerWidth || 1440
+      )
+    );
+
+  const applyResponsiveLayout = (section, visitorScene) => {
+    const breakpoint = currentBreakpoint();
+    const scene = visitorScene.scene;
+    const layout = sceneLayout(scene, breakpoint);
+    section.dataset.breakpoint = breakpoint;
+    section.style.setProperty(
+      "--wp-scroll-length",
+      layout.scrollLength + "px"
+    );
+
+    const canvas = section.querySelector(".wp-scene-canvas");
+    if (canvas) {
+      canvas.dataset.sceneWidth = String(layout.width);
+      canvas.dataset.sceneHeight = String(layout.height);
+      canvas.style.width = layout.width + "px";
+      canvas.style.height = layout.height + "px";
+    }
+
+    visitorScene.objects.forEach(visitorObject => {
+      const object = visitorObject.object;
+      const root = section.querySelector(
+        '[data-object-id="' + cssEscape(object.id) + '"]'
+      );
+      if (!root) return;
+      const geometry = objectGeometry(
+        object,
+        breakpoint,
+        scene,
+        layout
+      );
+      root.style.left = geometry.x + "px";
+      root.style.top = geometry.y + "px";
+      root.style.width = geometry.width + "px";
+      root.style.height = geometry.height + "px";
+      root.style.opacity = String(geometry.opacity);
+      root.style.rotate = geometry.rotation
+        ? geometry.rotation + "deg"
+        : "";
+      root.style.zIndex = String(geometry.zIndex);
+      root.style.display = geometry.hidden ? "none" : "block";
+    });
+
+    return layout;
+  };
+
+  const choosePerformanceTier = () => {
+    if (reduceMotion) return "reduced";
+
+    const connection =
+      navigator.connection ||
+      navigator.mozConnection ||
+      navigator.webkitConnection;
+    const saveData = !!(connection && connection.saveData);
+    const memory = Number(navigator.deviceMemory || 0);
+    const cores = Number(navigator.hardwareConcurrency || 0);
+    const breakpoint = currentBreakpoint();
+
+    if (
+      saveData ||
+      (memory > 0 && memory <= 4) ||
+      (cores > 0 && cores <= 4)
+    ) {
+      return "lite";
+    }
+
+    if (
+      breakpoint === "mobile" ||
+      (memory > 0 && memory <= 8) ||
+      (cores > 0 && cores <= 6)
+    ) {
+      return "balanced";
+    }
+
+    return "full";
+  };
+
+  const applyPerformanceTier = () => {
+    performanceTier = choosePerformanceTier();
+    document.documentElement.dataset.wpPerformance =
+      performanceTier;
+
+    const caps =
+      performanceTier === "lite"
+        ? {
+            twinkle: 12,
+            particles: 8,
+            floatingShapes: 4,
+          }
+        : performanceTier === "balanced"
+          ? {
+              twinkle: 30,
+              particles: 18,
+              floatingShapes: 8,
+            }
+          : {
+              twinkle: Infinity,
+              particles: Infinity,
+              floatingShapes: Infinity,
+            };
+
+    document
+      .querySelectorAll("[data-ambient-kind]")
+      .forEach(element => {
+        const kind = element.dataset.ambientKind;
+        const index = Number(element.dataset.ambientIndex || 0);
+        const cap = caps[kind] ?? Infinity;
+        element.hidden = index >= cap;
+      });
+
+    document
+      .querySelectorAll('.wp-advanced-layer[data-trigger="loop"]')
+      .forEach(element => {
+        if (typeof element.getAnimations !== "function") return;
+        element.getAnimations().forEach(animation => {
+          if (
+            performanceTier === "lite" ||
+            performanceTier === "reduced"
+          ) {
+            animation.pause();
+          } else {
+            animation.play();
+          }
+        });
+      });
+  };
 
   const ease = (value, easing) => {
     const t = clamp(value, 0, 1);
@@ -695,6 +897,11 @@ function runtimeScript(projection: InteractiveVisitorProjection): string {
       return;
     }
 
+    if (track.trigger === "loop" && performanceTier === "lite") {
+      activate(true);
+      return;
+    }
+
     if (track.trigger === "loop" && layer.animate) {
       const from = propertyStyle(track.property, track.from);
       const to = propertyStyle(track.property, track.to);
@@ -775,17 +982,42 @@ function runtimeScript(projection: InteractiveVisitorProjection): string {
     });
   };
 
-  const fitScene = section => {
-    const stage = section.querySelector(".wp-stage");
+  const positionSceneCanvas = (
+    section,
+    visitorScene,
+    progress = 0
+  ) => {
+    const stage = section.querySelector(".wp-stage-fit");
     const canvas = section.querySelector(".wp-scene-canvas");
     if (!stage || !canvas) return;
 
-    const width = Number(canvas.dataset.sceneWidth) || 1440;
-    const height = Number(canvas.dataset.sceneHeight) || 900;
+    const layout = applyResponsiveLayout(section, visitorScene);
+    const width = layout.width;
+    const height = layout.height;
     const rect = stage.getBoundingClientRect();
-    const scale = Math.min(rect.width / width, rect.height / height);
-    const x = (rect.width - width * scale) / 2;
-    const y = (rect.height - height * scale) / 2;
+    if (!rect.width || !rect.height) return;
+
+    const breakpoint = currentBreakpoint();
+    const containScale = Math.min(
+      rect.width / width,
+      rect.height / height
+    );
+    const widthScale = rect.width / width;
+    const tallResponsiveCanvas =
+      breakpoint !== "desktop" &&
+      height * widthScale > rect.height * 1.05;
+    const scale = tallResponsiveCanvas
+      ? widthScale
+      : containScale;
+
+    const scaledWidth = width * scale;
+    const scaledHeight = height * scale;
+    const x = (rect.width - scaledWidth) / 2;
+    const overflowY = Math.max(0, scaledHeight - rect.height);
+    const y = tallResponsiveCanvas
+      ? -overflowY * clamp(progress / 100, 0, 1)
+      : (rect.height - scaledHeight) / 2;
+
     canvas.style.transform =
       "translate3d(" + x + "px," + y + "px,0) scale(" + scale + ")";
   };
@@ -850,7 +1082,9 @@ function runtimeScript(projection: InteractiveVisitorProjection): string {
     let opacity = 1;
     let transform = "";
 
-    if (transition.type === "fade") {
+    if (performanceTier === "lite") {
+      opacity = incoming ? p : 1 - p;
+    } else if (transition.type === "fade") {
       opacity = incoming ? p : 1 - p;
     } else if (transition.type === "slide-left") {
       transform = incoming
@@ -877,6 +1111,8 @@ function runtimeScript(projection: InteractiveVisitorProjection): string {
     const scene = visitorScene.scene;
     const progress = sceneProgress(section);
     const stage = section.querySelector(".wp-stage");
+
+    positionSceneCanvas(section, visitorScene, progress);
 
     visitorScene.objects.forEach(visitorObject => {
       const object = visitorObject.object;
@@ -968,12 +1204,18 @@ function runtimeScript(projection: InteractiveVisitorProjection): string {
       };
 
       stage.addEventListener("pointermove", event => {
-        if (reduceMotion) return reset();
+        if (
+          reduceMotion ||
+          performanceTier === "lite"
+        ) return reset();
+
         const rect = stage.getBoundingClientRect();
         if (!rect.width || !rect.height) return;
         const x = ((event.clientX - rect.left) / rect.width - .5) * 2;
         const y = ((event.clientY - rect.top) / rect.height - .5) * 2;
-        const strength = 4 + intensity * .13;
+        const tierMultiplier =
+          performanceTier === "balanced" ? .62 : 1;
+        const strength = (4 + intensity * .13) * tierMultiplier;
 
         const bg = section.querySelector(".wp-scene-background");
         if (bg) {
@@ -1012,20 +1254,32 @@ function runtimeScript(projection: InteractiveVisitorProjection): string {
     });
   };
 
-  const fitAll = () => sections.forEach(fitScene);
+  const fitAll = () =>
+    sections.forEach((section, index) => {
+      const visitorScene = DATA.scenes[index];
+      if (!visitorScene) return;
+      positionSceneCanvas(
+        section,
+        visitorScene,
+        sceneProgress(section)
+      );
+    });
 
   const onReducedMotionChange = event => {
     reduceMotion = !!event.matches;
+    applyPerformanceTier();
     schedule();
   };
 
   reduceMotionQuery.addEventListener?.("change", onReducedMotionChange);
   window.addEventListener("scroll", schedule, { passive: true });
   window.addEventListener("resize", () => {
+    applyPerformanceTier();
     fitAll();
     schedule();
   }, { passive: true });
 
+  applyPerformanceTier();
   fitAll();
   initializeAdvancedMotion();
   initializeParallax();
@@ -1206,6 +1460,17 @@ button,a{font:inherit}
 .wp-scene-dot:hover,.wp-scene-dot:focus-visible{transform:scale(1.08);outline:none;border-color:white}
 .wp-scene-dot.is-active{background:white;color:#2e0562;border-color:white}
 ${css(INTERACTIVE_MOTION_CSS)}
+html[data-wp-performance="balanced"] .wp-gradient-drift{
+  animation-duration:34s!important
+}
+html[data-wp-performance="lite"] .wp-gradient-drift,
+html[data-wp-performance="lite"] .wp-easy-motion{
+  animation:none!important;
+  transition:none!important
+}
+html[data-wp-performance="lite"] .wp-scene-background{
+  will-change:auto
+}
 @media (max-width:700px){
   .wp-scene-nav{right:8px;gap:5px;padding:6px}
   .wp-scene-dot{width:21px;height:21px}

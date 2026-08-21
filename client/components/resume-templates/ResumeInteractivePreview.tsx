@@ -19,14 +19,17 @@ import {
   Layers3,
   LayoutTemplate,
   Lock,
+  Monitor,
   MousePointer2,
   Plus,
   Redo2,
   RefreshCcw,
   Search,
   Sparkles,
+  Smartphone,
   Square,
   SquareDashed,
+  Tablet,
   Trash2,
   Type,
   Undo2,
@@ -47,6 +50,7 @@ import InteractiveParallaxLayer, {
 } from "./InteractiveParallaxLayer";
 import InteractiveSceneTransitionOverlay from "./InteractiveSceneTransition";
 import InteractiveTemplateGallery from "./InteractiveTemplateGallery";
+import InteractivePublishingPanel from "./InteractivePublishingPanel";
 import {
   buildInteractiveTemplate,
   normalizeInteractiveTemplateId,
@@ -57,11 +61,14 @@ import {
   addInteractiveObject,
   addInteractiveScene,
   animationTrackDefaults,
+  clearInteractiveObjectBreakpointOverride,
   createInteractiveAnimationTrack,
   createInteractiveObject,
   duplicateInteractiveObject,
   duplicateInteractiveScene,
   getActiveInteractiveScene,
+  getInteractiveObjectGeometry,
+  getInteractiveSceneLayout,
   getOrderedInteractiveScenes,
   moveInteractiveObjectLayer,
   moveInteractiveScene,
@@ -72,6 +79,7 @@ import {
   updateInteractiveScene,
   type InteractiveAmbientEffect,
   type InteractiveAnimationEasing,
+  type InteractiveBreakpoint,
   type InteractiveAnimationProperty,
   type InteractiveAnimationTrack,
   type InteractiveAnimationTrigger,
@@ -86,12 +94,23 @@ import {
   type InteractiveScrollBehavior,
   type InteractiveSceneCollection,
   type InteractiveSceneObject,
+  withInteractiveObjectGeometryForBreakpoint,
 } from "./resumeInteractive";
 import {
   buildAmbientParticles,
   INTERACTIVE_MOTION_CSS,
   objectMotionAnimation,
 } from "./resumeInteractiveMotion";
+import {
+  clearInteractiveSceneBreakpointLayout,
+  seedInteractiveSceneBreakpointLayout,
+  updateInteractiveObjectBreakpointGeometry,
+  updateInteractiveSceneBreakpointLayout,
+} from "./resumeInteractiveResponsive";
+import {
+  analyzeInteractivePublish,
+  formatBytes,
+} from "./resumeInteractivePerformance";
 import {
   getInteractiveBindingOptions,
   interactiveBindingDisplayName,
@@ -1275,11 +1294,14 @@ function TransitionSceneSnapshot({
   scene,
   data,
   progress,
+  breakpoint,
 }: {
   scene: InteractiveScene;
   data: ResumeData;
   progress: number;
+  breakpoint: InteractiveBreakpoint;
 }) {
+  const sceneLayout = getInteractiveSceneLayout(scene, breakpoint);
   return (
     <div
       className="relative h-full w-full overflow-hidden"
@@ -1292,18 +1314,23 @@ function TransitionSceneSnapshot({
 
       {scene.objectOrder.map(objectId => {
         const object = scene.objects[objectId];
-        if (!object || object.geometry.hidden) return null;
-        const geometry = object.geometry;
+        if (!object) return null;
+        const geometry = getInteractiveObjectGeometry(
+          object,
+          breakpoint,
+          scene,
+        );
+        if (geometry.hidden) return null;
 
         return (
           <div
             key={object.id}
             style={{
               position: "absolute",
-              left: `${(geometry.x / scene.width) * 100}%`,
-              top: `${(geometry.y / scene.height) * 100}%`,
-              width: `${(geometry.width / scene.width) * 100}%`,
-              height: `${(geometry.height / scene.height) * 100}%`,
+              left: `${(geometry.x / sceneLayout.width) * 100}%`,
+              top: `${(geometry.y / sceneLayout.height) * 100}%`,
+              width: `${(geometry.width / sceneLayout.width) * 100}%`,
+              height: `${(geometry.height / sceneLayout.height) * 100}%`,
               opacity: geometry.opacity,
               rotate: geometry.rotation
                 ? `${geometry.rotation}deg`
@@ -1836,6 +1863,8 @@ function InteractiveEditor({
     useState<LiveGeometry | null>(null);
   const [guides, setGuides] = useState<SnapGuides>({});
   const [zoom, setZoom] = useState(1);
+  const [activeBreakpoint, setActiveBreakpoint] =
+    useState<InteractiveBreakpoint>("desktop");
   const [motionReplayKey, setMotionReplayKey] = useState(0);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [scrollWheelPreview, setScrollWheelPreview] = useState(false);
@@ -1853,6 +1882,7 @@ function InteractiveEditor({
   const [, setHistoryVersion] = useState(0);
 
   const bindingOptions = getInteractiveBindingOptions(data);
+  const publishReport = analyzeInteractivePublish(data);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<{
@@ -1866,6 +1896,47 @@ function InteractiveEditor({
   const currentCollection = collectionFromInteractive(interactive);
   const selectedObject = selectedObjectId
     ? activeScene.objects[selectedObjectId] ?? null
+    : null;
+  const activeSceneLayout = getInteractiveSceneLayout(
+    activeScene,
+    activeBreakpoint,
+  );
+  const editorScene: InteractiveScene = {
+    ...activeScene,
+    width: activeSceneLayout.width,
+    height: activeSceneLayout.height,
+    scrollLength: activeSceneLayout.scrollLength,
+    objects: Object.fromEntries(
+      activeScene.objectOrder
+        .map(objectId => {
+          const object = activeScene.objects[objectId];
+          if (!object) return null;
+          return [
+            objectId,
+            {
+              ...object,
+              geometry: getInteractiveObjectGeometry(
+                object,
+                activeBreakpoint,
+                activeScene,
+              ),
+            } as InteractiveSceneObject,
+          ] as const;
+        })
+        .filter(
+          (
+            entry,
+          ): entry is readonly [string, InteractiveSceneObject] =>
+            !!entry,
+        ),
+    ),
+  };
+  const selectedGeometry = selectedObject
+    ? getInteractiveObjectGeometry(
+        selectedObject,
+        activeBreakpoint,
+        activeScene,
+      )
     : null;
 
   const applyCollection = useCallback(
@@ -1999,23 +2070,65 @@ function InteractiveEditor({
     );
   };
 
+  const patchActiveSceneLayout = (
+    patch: {
+      width?: number;
+      height?: number;
+      scrollLength?: number;
+    },
+  ) => {
+    mutateScenes(collection =>
+      updateInteractiveSceneBreakpointLayout(
+        collection,
+        activeScene.id,
+        activeBreakpoint,
+        patch,
+      ),
+    );
+  };
+
   const commitObjectGeometry = (
     objectId: string,
     geometry: InteractiveObjectGeometry,
   ) => {
     const current = activeScene.objects[objectId];
-    if (!current || sameGeometry(current.geometry, geometry)) return;
+    if (!current) return;
+
+    const currentGeometry = getInteractiveObjectGeometry(
+      current,
+      activeBreakpoint,
+      activeScene,
+    );
+    if (sameGeometry(currentGeometry, geometry)) return;
 
     mutateScenes(collection =>
-      updateInteractiveObject(
+      updateInteractiveObjectBreakpointGeometry(
         collection,
         activeScene.id,
         objectId,
-        object => ({
-          ...object,
-          geometry,
-        } as InteractiveSceneObject),
+        activeBreakpoint,
+        geometry,
       ),
+    );
+  };
+
+  const patchSelectedGeometry = (
+    updater: (
+      geometry: InteractiveObjectGeometry,
+    ) => InteractiveObjectGeometry,
+  ) => {
+    if (!selectedObjectId) return;
+    const object = activeScene.objects[selectedObjectId];
+    if (!object) return;
+
+    const currentGeometry = getInteractiveObjectGeometry(
+      object,
+      activeBreakpoint,
+      activeScene,
+    );
+    commitObjectGeometry(
+      selectedObjectId,
+      updater(currentGeometry),
     );
   };
 
@@ -2037,15 +2150,28 @@ function InteractiveEditor({
       },
     });
 
+    const placed =
+      activeBreakpoint === "desktop"
+        ? object
+        : withInteractiveObjectGeometryForBreakpoint(
+            object,
+            activeBreakpoint,
+            {
+              ...object.geometry,
+              x: Math.round((activeSceneLayout.width - width) / 2),
+              y: Math.round((activeSceneLayout.height - height) / 2),
+            },
+          );
+
     mutateScenes(collection =>
       addInteractiveObject(
         collection,
         activeScene.id,
-        object,
+        placed,
       ),
     );
 
-    setSelectedObjectId(object.id);
+    setSelectedObjectId(placed.id);
     setAddMenuOpen(false);
     setBindingPickerMode(null);
   };
@@ -2079,15 +2205,32 @@ function InteractiveEditor({
         }
       : object;
 
+    const placed =
+      activeBreakpoint === "desktop"
+        ? bound
+        : withInteractiveObjectGeometryForBreakpoint(
+            bound,
+            activeBreakpoint,
+            {
+              ...bound.geometry,
+              x: Math.round(
+                (activeSceneLayout.width - suggested.width) / 2,
+              ),
+              y: Math.round(
+                (activeSceneLayout.height - suggested.height) / 2,
+              ),
+            },
+          );
+
     mutateScenes(collection =>
       addInteractiveObject(
         collection,
         activeScene.id,
-        bound,
+        placed,
       ),
     );
 
-    setSelectedObjectId(bound.id);
+    setSelectedObjectId(placed.id);
     setAddMenuOpen(false);
     setBindingPickerMode(null);
     setBindingSearch("");
@@ -2099,26 +2242,29 @@ function InteractiveEditor({
   ) => {
     const suggested = suggestedBoundContentSize(bindingValue);
 
-    patchSelectedObject(current =>
-      current.type === "resume-content"
-        ? {
-            ...current,
-            name: label,
-            binding: bindingValue,
-            geometry: {
-              ...current.geometry,
-              width: Math.max(
-                current.geometry.width,
-                suggested.width,
-              ),
-              height: Math.max(
-                current.geometry.height,
-                suggested.height,
-              ),
-            },
-          }
-        : current,
-    );
+    patchSelectedObject(current => {
+      if (current.type !== "resume-content") return current;
+
+      const geometry = getInteractiveObjectGeometry(
+        current,
+        activeBreakpoint,
+        activeScene,
+      );
+
+      return withInteractiveObjectGeometryForBreakpoint(
+        {
+          ...current,
+          name: label,
+          binding: bindingValue,
+        },
+        activeBreakpoint,
+        {
+          ...geometry,
+          width: Math.max(geometry.width, suggested.width),
+          height: Math.max(geometry.height, suggested.height),
+        },
+      );
+    });
     setBindingPickerMode(null);
     setBindingSearch("");
   };
@@ -2164,23 +2310,27 @@ function InteractiveEditor({
       const object = activeScene.objects[selectedObjectId];
       if (!object || object.locked) return;
 
+      const geometry = getInteractiveObjectGeometry(
+        object,
+        activeBreakpoint,
+        activeScene,
+      );
       mutateScenes(collection =>
-        updateInteractiveObject(
+        updateInteractiveObjectBreakpointGeometry(
           collection,
           activeScene.id,
           selectedObjectId,
-          current => ({
-            ...current,
-            geometry: {
-              ...current.geometry,
-              x: current.geometry.x + dx,
-              y: current.geometry.y + dy,
-            },
-          } as InteractiveSceneObject),
+          activeBreakpoint,
+          {
+            ...geometry,
+            x: geometry.x + dx,
+            y: geometry.y + dy,
+          },
         ),
       );
     },
     [
+      activeBreakpoint,
       activeScene.id,
       activeScene.objects,
       mutateScenes,
@@ -2193,7 +2343,9 @@ function InteractiveEditor({
     setScrollWheelPreview(false);
     setParallaxPointer({ x: 0, y: 0 });
     setLiveMotionPath(null);
-  }, [activeScene.id]);
+    setLiveGeometry(null);
+    setGuides({});
+  }, [activeBreakpoint, activeScene.id]);
 
   useEffect(() => {
     if (
@@ -2301,7 +2453,13 @@ function InteractiveEditor({
 
     const startX = event.clientX;
     const startY = event.clientY;
-    const startGeometry = { ...object.geometry };
+    const startGeometry = {
+      ...getInteractiveObjectGeometry(
+        object,
+        activeBreakpoint,
+        activeScene,
+      ),
+    };
     let finalGeometry = startGeometry;
     let moved = false;
 
@@ -2309,10 +2467,10 @@ function InteractiveEditor({
       pointer.preventDefault();
       const dx =
         (pointer.clientX - startX) *
-        (activeScene.width / rect.width);
+        (activeSceneLayout.width / rect.width);
       const dy =
         (pointer.clientY - startY) *
-        (activeScene.height / rect.height);
+        (activeSceneLayout.height / rect.height);
 
       if (!moved && Math.hypot(dx, dy) < 2) return;
       moved = true;
@@ -2324,7 +2482,7 @@ function InteractiveEditor({
       };
 
       const snapped = snapMoveGeometry(
-        activeScene,
+        editorScene,
         object.id,
         candidate,
         !pointer.altKey,
@@ -2373,7 +2531,13 @@ function InteractiveEditor({
 
     const startX = event.clientX;
     const startY = event.clientY;
-    const start = { ...object.geometry };
+    const start = {
+      ...getInteractiveObjectGeometry(
+        object,
+        activeBreakpoint,
+        activeScene,
+      ),
+    };
     const radians = (start.rotation * Math.PI) / 180;
     const cos = Math.cos(radians);
     const sin = Math.sin(radians);
@@ -2402,10 +2566,10 @@ function InteractiveEditor({
 
       const screenDx =
         (pointer.clientX - startX) *
-        (activeScene.width / rect.width);
+        (activeSceneLayout.width / rect.width);
       const screenDy =
         (pointer.clientY - startY) *
-        (activeScene.height / rect.height);
+        (activeSceneLayout.height / rect.height);
 
       const localDx = screenDx * cos + screenDy * sin;
       const localDy = -screenDx * sin + screenDy * cos;
@@ -2479,15 +2643,19 @@ function InteractiveEditor({
     const geometry =
       liveGeometry?.objectId === object.id
         ? liveGeometry.geometry
-        : object.geometry;
+        : getInteractiveObjectGeometry(
+            object,
+            activeBreakpoint,
+            activeScene,
+          );
 
     const centerX =
       rect.left +
-      ((geometry.x + geometry.width / 2) / activeScene.width) *
+      ((geometry.x + geometry.width / 2) / activeSceneLayout.width) *
         rect.width;
     const centerY =
       rect.top +
-      ((geometry.y + geometry.height / 2) / activeScene.height) *
+      ((geometry.y + geometry.height / 2) / activeSceneLayout.height) *
         rect.height;
 
     const startPointerAngle =
@@ -2547,7 +2715,11 @@ function InteractiveEditor({
     const geometry =
       liveGeometry?.objectId === object.id
         ? liveGeometry.geometry
-        : object.geometry;
+        : getInteractiveObjectGeometry(
+            object,
+            activeBreakpoint,
+            activeScene,
+          );
     const displayObject =
       selectedObjectId === object.id && liveMotionPath
         ? ({
@@ -2560,7 +2732,7 @@ function InteractiveEditor({
       <EditorObject
         key={object.id}
         object={displayObject}
-        scene={activeScene}
+        scene={editorScene}
         data={data}
         selected={selectedObjectId === object.id}
         geometry={geometry}
@@ -2607,7 +2779,7 @@ function InteractiveEditor({
     ),
   ).sort((a, b) => a - b);
   const virtualScrollPx = Math.round(
-    (activeScene.scrollLength * scrollProgress) / 100,
+    (activeSceneLayout.scrollLength * scrollProgress) / 100,
   );
 
   return (
@@ -2848,6 +3020,11 @@ function InteractiveEditor({
                     const object = activeScene.objects[objectId];
                     if (!object) return null;
                     const selected = object.id === selectedObjectId;
+                    const layerGeometry = getInteractiveObjectGeometry(
+                      object,
+                      activeBreakpoint,
+                      activeScene,
+                    );
                     const actualIndex =
                       activeScene.objectOrder.indexOf(object.id);
 
@@ -2893,24 +3070,21 @@ function InteractiveEditor({
                             <button
                               type="button"
                               title={
-                                object.geometry.hidden
+                                layerGeometry.hidden
                                   ? "Show"
                                   : "Hide"
                               }
                               onClick={() =>
-                                patchSelectedObject(current => ({
-                                  ...current,
-                                  geometry: {
-                                    ...current.geometry,
-                                    hidden:
-                                      !current.geometry.hidden ||
-                                      undefined,
-                                  },
-                                } as InteractiveSceneObject))
+                                patchSelectedGeometry(geometry => ({
+                                  ...geometry,
+                                  hidden:
+                                    !geometry.hidden ||
+                                    undefined,
+                                }))
                               }
                               className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground"
                             >
-                              {object.geometry.hidden ? (
+                              {layerGeometry.hidden ? (
                                 <EyeOff size={9} />
                               ) : (
                                 <Eye size={9} />
@@ -2994,11 +3168,11 @@ function InteractiveEditor({
 
                         {!selected &&
                           (object.locked ||
-                            object.geometry.hidden) && (
+                            layerGeometry.hidden) && (
                             <div className="ml-[26px] mt-0.5 flex gap-1 text-[6px] font-semibold text-muted-foreground">
                               {object.locked && <span>Locked</span>}
-                              {object.geometry.hidden && (
-                                <span>Hidden</span>
+                              {layerGeometry.hidden && (
+                                <span>Hidden on {activeBreakpoint}</span>
                               )}
                             </div>
                           )}
@@ -3028,8 +3202,8 @@ function InteractiveEditor({
                   {activeScene.name}
                 </div>
                 <div className="text-[7.5px] text-muted-foreground">
-                  {activeScene.width} × {activeScene.height}px ·{" "}
-                  {activeScene.scrollLength}px visitor scroll
+                  {activeSceneLayout.width} × {activeSceneLayout.height}px ·{" "}
+                  {activeSceneLayout.scrollLength}px visitor scroll
                 </div>
               </div>
 
@@ -3189,6 +3363,76 @@ function InteractiveEditor({
               </div>
             </div>
 
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-2.5 py-2">
+              <div className="flex items-center gap-1">
+                {([
+                  ["desktop", "Desktop", <Monitor size={10} key="desktop" />],
+                  ["tablet", "Tablet", <Tablet size={10} key="tablet" />],
+                  ["mobile", "Mobile", <Smartphone size={10} key="mobile" />],
+                ] as const).map(([breakpoint, label, icon]) => (
+                  <button
+                    key={breakpoint}
+                    type="button"
+                    onClick={() => {
+                      setActiveBreakpoint(breakpoint);
+                      setSelectedObjectId(null);
+                    }}
+                    aria-pressed={activeBreakpoint === breakpoint}
+                    className={`inline-flex h-7 items-center gap-1.5 rounded-lg border px-2 text-[7.5px] font-semibold ${
+                      activeBreakpoint === breakpoint
+                        ? "border-[#2e0562]/30 bg-[#2e0562] text-white"
+                        : "border-border bg-background text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {icon}
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-1">
+                <span className="mr-1 text-[6.8px] text-muted-foreground">
+                  Editing {activeBreakpoint}
+                </span>
+                {activeBreakpoint !== "desktop" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        mutateScenes(collection =>
+                          seedInteractiveSceneBreakpointLayout(
+                            collection,
+                            activeScene.id,
+                            activeBreakpoint,
+                          ),
+                        )
+                      }
+                      className="rounded-md border border-[#2e0562]/20 bg-[#2e0562]/5 px-2 py-1 text-[6.8px] font-semibold text-[#2e0562]"
+                      title="Generate a useful starting layout from Desktop. You can keep editing it afterward."
+                    >
+                      Auto layout
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        mutateScenes(collection =>
+                          clearInteractiveSceneBreakpointLayout(
+                            collection,
+                            activeScene.id,
+                            activeBreakpoint,
+                          ),
+                        )
+                      }
+                      className="rounded-md border border-border bg-background px-2 py-1 text-[6.8px] font-semibold text-muted-foreground hover:text-foreground"
+                      title="Remove this scene's device overrides and inherit Desktop again."
+                    >
+                      Reset device
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
             <div
               className="relative rounded-xl border border-border bg-muted/30 p-2"
               style={{
@@ -3266,7 +3510,7 @@ function InteractiveEditor({
 
                       const delta =
                         (event.deltaY /
-                          Math.max(320, activeScene.scrollLength)) *
+                          Math.max(320, activeSceneLayout.scrollLength)) *
                         100;
 
                       setScrollProgress(current =>
@@ -3277,7 +3521,7 @@ function InteractiveEditor({
                       );
                     }}
                     style={{
-                      aspectRatio: `${activeScene.width} / ${activeScene.height}`,
+                      aspectRatio: `${activeSceneLayout.width} / ${activeSceneLayout.height}`,
                       zIndex: 0,
                       isolation: "isolate",
                       background: "transparent",
@@ -3301,7 +3545,7 @@ function InteractiveEditor({
                         aria-hidden="true"
                         className="pointer-events-none absolute bottom-0 top-0 z-[400] border-l border-dashed border-[#7c3aed]"
                         style={{
-                          left: `${(guides.x / activeScene.width) * 100}%`,
+                          left: `${(guides.x / activeSceneLayout.width) * 100}%`,
                         }}
                       />
                     )}
@@ -3311,7 +3555,7 @@ function InteractiveEditor({
                         aria-hidden="true"
                         className="pointer-events-none absolute left-0 right-0 z-[400] border-t border-dashed border-[#7c3aed]"
                         style={{
-                          top: `${(guides.y / activeScene.height) * 100}%`,
+                          top: `${(guides.y / activeSceneLayout.height) * 100}%`,
                         }}
                       />
                     )}
@@ -3320,13 +3564,13 @@ function InteractiveEditor({
 
                     {selectedObject &&
                       selectedMotionPath &&
-                      !selectedObject.geometry.hidden && (
+                      !selectedGeometry?.hidden && (
                         <InteractiveMotionPathOverlay
-                          scene={activeScene}
+                          scene={editorScene}
                           geometry={
                             liveGeometry?.objectId === selectedObject.id
                               ? liveGeometry.geometry
-                              : selectedObject.geometry
+                              : selectedGeometry
                           }
                           path={selectedMotionPath}
                           progress={scrollProgress}
@@ -3352,6 +3596,7 @@ function InteractiveEditor({
                               scene={activeScene}
                               data={data}
                               progress={100}
+                              breakpoint={activeBreakpoint}
                             />
                           }
                           nextScene={
@@ -3359,6 +3604,7 @@ function InteractiveEditor({
                               scene={nextScene}
                               data={data}
                               progress={0}
+                              breakpoint={activeBreakpoint}
                             />
                           }
                         />
@@ -3395,7 +3641,7 @@ function InteractiveEditor({
                     {activeScene.scrollBehavior === "pinned"
                       ? "Pinned scene"
                       : "Flow scene"}{" "}
-                    · {activeScene.scrollLength}px virtual scroll
+                    · {activeSceneLayout.scrollLength}px virtual scroll
                   </div>
                 </div>
 
@@ -3501,6 +3747,118 @@ function InteractiveEditor({
 
           {/* Inspector */}
           <aside className="space-y-2.5">
+            <InteractivePublishingPanel
+              data={data}
+              onDesignChange={onDesignChange}
+            />
+
+            <div className="rounded-xl border border-border bg-card p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Publish readiness
+                  </div>
+                  <div className="mt-0.5 text-[6.8px] text-muted-foreground">
+                    Live performance and payload guardrails
+                  </div>
+                </div>
+                <span
+                  className={`rounded-full px-2 py-1 text-[6.5px] font-bold uppercase tracking-wider ${
+                    publishReport.readiness === "ready"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : publishReport.readiness === "blocked"
+                        ? "bg-red-50 text-red-600"
+                        : "bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  {publishReport.readiness === "ready"
+                    ? "Ready"
+                    : publishReport.readiness === "blocked"
+                      ? "Blocked"
+                      : "Review"}
+                </span>
+              </div>
+
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                {[
+                  ["Score", `${publishReport.score}/100`],
+                  ["Scenes", String(publishReport.metrics.sceneCount)],
+                  ["Objects", String(publishReport.metrics.totalObjects)],
+                  [
+                    "Animated",
+                    String(publishReport.metrics.animatedObjects),
+                  ],
+                  [
+                    "Ambient",
+                    String(publishReport.metrics.ambientNodeCount),
+                  ],
+                  [
+                    "Embedded",
+                    formatBytes(
+                      publishReport.metrics.embeddedImageBytes,
+                    ),
+                  ],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="rounded-lg border border-border bg-background px-2 py-1.5"
+                  >
+                    <div className="text-[5.8px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {label}
+                    </div>
+                    <div className="mt-0.5 text-[8px] font-semibold text-foreground">
+                      {value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {publishReport.issues.length ? (
+                <div className="mt-2 space-y-1.5">
+                  {publishReport.issues.slice(0, 4).map(issue => (
+                    <div
+                      key={issue.id}
+                      className={`rounded-lg border px-2 py-1.5 ${
+                        issue.severity === "error"
+                          ? "border-red-200 bg-red-50/70"
+                          : issue.severity === "warning"
+                            ? "border-amber-200 bg-amber-50/70"
+                            : "border-sky-200 bg-sky-50/70"
+                      }`}
+                    >
+                      <div
+                        className={`text-[6.8px] font-bold ${
+                          issue.severity === "error"
+                            ? "text-red-600"
+                            : issue.severity === "warning"
+                              ? "text-amber-700"
+                              : "text-sky-700"
+                        }`}
+                      >
+                        {issue.title}
+                      </div>
+                      <div className="mt-0.5 text-[6.2px] leading-relaxed text-muted-foreground">
+                        {issue.detail}
+                      </div>
+                    </div>
+                  ))}
+
+                  {publishReport.issues.length > 4 && (
+                    <div className="text-[6.2px] text-muted-foreground">
+                      +{publishReport.issues.length - 4} more publish note
+                      {publishReport.issues.length - 4 === 1 ? "" : "s"}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-2 py-1.5 text-[6.5px] leading-relaxed text-emerald-700">
+                  No current publish warnings. The visitor runtime will still
+                  adapt automatically for reduced-motion and lower-powered
+                  devices.
+                </div>
+              )}
+            </div>
+
             {selectedObject ? (
               <div className="rounded-xl border border-[#2e0562]/20 bg-card p-3">
                 <div className="flex items-center justify-between gap-2">
@@ -3547,106 +3905,114 @@ function InteractiveEditor({
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <NumberField
                     label="X"
-                    value={selectedObject.geometry.x}
+                    value={selectedGeometry?.x ?? 0}
                     min={-10000}
                     max={10000}
                     suffix="px"
                     onChange={x =>
-                      patchSelectedObject(current => ({
-                        ...current,
-                        geometry: {
-                          ...current.geometry,
-                          x,
-                        },
-                      } as InteractiveSceneObject))
+                      patchSelectedGeometry(geometry => ({
+                        ...geometry,
+                        x,
+                      }))
                     }
                   />
                   <NumberField
                     label="Y"
-                    value={selectedObject.geometry.y}
+                    value={selectedGeometry?.y ?? 0}
                     min={-10000}
                     max={10000}
                     suffix="px"
                     onChange={y =>
-                      patchSelectedObject(current => ({
-                        ...current,
-                        geometry: {
-                          ...current.geometry,
-                          y,
-                        },
-                      } as InteractiveSceneObject))
+                      patchSelectedGeometry(geometry => ({
+                        ...geometry,
+                        y,
+                      }))
                     }
                   />
                   <NumberField
                     label="Width"
-                    value={selectedObject.geometry.width}
+                    value={selectedGeometry?.width ?? 24}
                     min={24}
                     max={6000}
                     suffix="px"
                     onChange={width =>
-                      patchSelectedObject(current => ({
-                        ...current,
-                        geometry: {
-                          ...current.geometry,
-                          width,
-                        },
-                      } as InteractiveSceneObject))
+                      patchSelectedGeometry(geometry => ({
+                        ...geometry,
+                        width,
+                      }))
                     }
                   />
                   <NumberField
                     label="Height"
-                    value={selectedObject.geometry.height}
+                    value={selectedGeometry?.height ?? 24}
                     min={24}
                     max={6000}
                     suffix="px"
                     onChange={height =>
-                      patchSelectedObject(current => ({
-                        ...current,
-                        geometry: {
-                          ...current.geometry,
-                          height,
-                        },
-                      } as InteractiveSceneObject))
+                      patchSelectedGeometry(geometry => ({
+                        ...geometry,
+                        height,
+                      }))
                     }
                   />
                   <NumberField
                     label="Rotation"
-                    value={selectedObject.geometry.rotation}
+                    value={selectedGeometry?.rotation ?? 0}
                     min={-180}
                     max={180}
                     suffix="°"
                     onChange={rotation =>
-                      patchSelectedObject(current => ({
-                        ...current,
-                        geometry: {
-                          ...current.geometry,
-                          rotation: normalizeRotation(rotation),
-                        },
-                      } as InteractiveSceneObject))
+                      patchSelectedGeometry(geometry => ({
+                        ...geometry,
+                        rotation: normalizeRotation(rotation),
+                      }))
                     }
                   />
                   <NumberField
                     label="Opacity"
                     value={Math.round(
-                      selectedObject.geometry.opacity * 100,
+                      (selectedGeometry?.opacity ?? 1) * 100,
                     )}
                     min={0}
                     max={100}
                     suffix="%"
                     onChange={opacity =>
-                      patchSelectedObject(current => ({
-                        ...current,
-                        geometry: {
-                          ...current.geometry,
-                          opacity: Math.max(
-                            0,
-                            Math.min(1, opacity / 100),
-                          ),
-                        },
-                      } as InteractiveSceneObject))
+                      patchSelectedGeometry(geometry => ({
+                        ...geometry,
+                        opacity: Math.max(
+                          0,
+                          Math.min(1, opacity / 100),
+                        ),
+                      }))
                     }
                   />
                 </div>
+
+                {activeBreakpoint !== "desktop" && (
+                  <div className="mt-2 flex items-center justify-between rounded-lg border border-[#2e0562]/10 bg-[#2e0562]/[0.025] px-2 py-1.5">
+                    <div className="text-[6.8px] text-muted-foreground">
+                      {selectedObject.responsive?.[activeBreakpoint]
+                        ? `${activeBreakpoint} override`
+                        : `Inheriting desktop geometry`}
+                    </div>
+                    {selectedObject.responsive?.[activeBreakpoint] && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          patchSelectedObject(current =>
+                            clearInteractiveObjectBreakpointOverride(
+                              current,
+                              activeBreakpoint,
+                            ),
+                          )
+                        }
+                        className="text-[6.8px] font-semibold text-[#2e0562]"
+                      >
+                        Reset object
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <div className="mt-2 grid grid-cols-2 gap-1.5">
                   <button
@@ -3673,27 +4039,23 @@ function InteractiveEditor({
                   <button
                     type="button"
                     onClick={() =>
-                      patchSelectedObject(current => ({
-                        ...current,
-                        geometry: {
-                          ...current.geometry,
-                          hidden:
-                            !current.geometry.hidden || undefined,
-                        },
-                      } as InteractiveSceneObject))
+                      patchSelectedGeometry(geometry => ({
+                        ...geometry,
+                        hidden: !geometry.hidden || undefined,
+                      }))
                     }
                     className={`flex items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-[8px] font-semibold ${
-                      selectedObject.geometry.hidden
+                      selectedGeometry?.hidden
                         ? "border-zinc-300 bg-zinc-100 text-zinc-600"
                         : "border-border text-muted-foreground"
                     }`}
                   >
-                    {selectedObject.geometry.hidden ? (
+                    {selectedGeometry?.hidden ? (
                       <EyeOff size={9} />
                     ) : (
                       <Eye size={9} />
                     )}
-                    {selectedObject.geometry.hidden
+                    {selectedGeometry?.hidden
                       ? "Hidden"
                       : "Visible"}
                   </button>
@@ -4267,35 +4629,55 @@ function InteractiveEditor({
                 />
               </label>
 
+              <div className="mt-2 rounded-lg border border-[#2e0562]/10 bg-[#2e0562]/[0.025] px-2 py-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[7px] font-semibold text-foreground">
+                    {activeBreakpoint[0].toUpperCase() +
+                      activeBreakpoint.slice(1)} layout
+                  </div>
+                  <div className="text-[6.5px] text-muted-foreground">
+                    {activeBreakpoint === "desktop"
+                      ? "Base"
+                      : activeScene.responsive?.[activeBreakpoint]
+                        ? "Custom override"
+                        : "Recommended viewport + desktop fallback"}
+                  </div>
+                </div>
+              </div>
+
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <NumberField
                   label="Width"
-                  value={activeScene.width}
+                  value={activeSceneLayout.width}
                   min={320}
                   max={3840}
                   suffix="px"
-                  onChange={width => patchScene({ width })}
+                  onChange={width =>
+                    patchActiveSceneLayout({ width })
+                  }
                 />
                 <NumberField
                   label="Height"
-                  value={activeScene.height}
+                  value={activeSceneLayout.height}
                   min={320}
                   max={3000}
                   suffix="px"
-                  onChange={height => patchScene({ height })}
+                  onChange={height =>
+                    patchActiveSceneLayout({ height })
+                  }
                 />
               </div>
 
               <div className="mt-2">
                 <NumberField
                   label="Visitor scroll"
-                  value={activeScene.scrollLength}
+                  value={activeSceneLayout.scrollLength}
                   min={320}
                   max={12000}
                   step={50}
                   suffix="px"
                   onChange={scrollLength =>
-                    patchScene({ scrollLength })
+                    patchActiveSceneLayout({ scrollLength })
                   }
                 />
               </div>
@@ -4324,7 +4706,8 @@ function InteractiveEditor({
                 <p className="mt-1 text-[6.8px] leading-relaxed text-muted-foreground">
                   Pinned keeps the scene stationary while its virtual
                   {` `}
-                  {activeScene.scrollLength}px scroll timeline progresses.
+                  {activeSceneLayout.scrollLength}px scroll timeline progresses.
+                  Layout size is saved independently for the active device.
                 </p>
               </label>
 

@@ -273,7 +273,8 @@ export default function CompanyProfile() {
       return res.data as CompanyData;
     },
     enabled: !!companySlug,
-    staleTime: 5 * 60_000,
+    // Inherit the global staleTime: 0 so the company's manager count / stats refresh in the
+    // background on every mount/focus — keeping them current for all users, not 5-min stale.
     retry: false,
   });
   // Redirect legacy company-name URLs (e.g. /companies/Revolut) to the canonical slug URL.

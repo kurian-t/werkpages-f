@@ -71,7 +71,9 @@ export default function Companies() {
       const res = await axios.get(`${API_BASE}/api/companies/listing`);
       return res.data.data as CompanyEntry[];
     },
-    staleTime: 5 * 60_000,
+    // Inherit the global staleTime: 0 so persisted data shows instantly and a background
+    // refetch runs on every mount/focus. This keeps manager counts current for ALL users
+    // as soon as they open the Companies tab, rather than showing a 5-minute-stale snapshot.
   });
 
   const companies = data ?? [];
