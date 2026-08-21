@@ -25,7 +25,7 @@ import {
   withResumeProjects,
   type ResumeProjectEntry,
 } from "./resumeProjects";
-import { Link2, Unlink2, List, ListOrdered, Plus, ChevronDown, Square, Circle, Minus, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, MoreHorizontal, Trash2, Image as ImageIcon, User, Upload, Layers3, Eye, EyeOff, Lock, Unlock, GripVertical, X, FileText, Check, MoveHorizontal, MoveVertical } from "lucide-react";
+import { Link2, Unlink2, List, ListOrdered, Plus, ChevronDown, Square, Circle, Minus, ArrowUp, ArrowDown, Trash2, Image as ImageIcon, User, Upload, Layers3, Eye, EyeOff, Lock, Unlock, GripVertical, X, FileText, Check, MoveHorizontal, MoveVertical } from "lucide-react";
 import { companyLogoDomain } from "@/lib/utils";
 import {
   applyLinkedDesignObjectChange,
@@ -6860,8 +6860,6 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
   const [imageMenuOpen, setImageMenuOpen] = useState(false);
   const [componentMenuOpen, setComponentMenuOpen] = useState(false);
   const [layersPanelOpen, setLayersPanelOpen] = useState(false);
-  const [arrangeMenuOpen, setArrangeMenuOpen] = useState(false);
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [pendingImageKind, setPendingImageKind] = useState<ImageDesignKind>("image");
   const [pendingReplaceObjectId, setPendingReplaceObjectId] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -6943,9 +6941,6 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     setBackgroundMenuOpen(false);
     setImageMenuOpen(false);
     setComponentMenuOpen(false);
-    setArrangeMenuOpen(false);
-    setMoreMenuOpen(false);
-    setLayersPanelOpen(false);
   }
 
   function handleBlockClick(id: string, rect: DOMRect | null) {
@@ -7404,37 +7399,6 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     const zById = new Map(reordered.map((o, i) => [o.id, i + 1]));
     const next = all.map(o => zById.has(o.id) ? { ...o, zIndex: zById.get(o.id)! } as ResumeDesignObject : o);
     onDesignChange(withDesignObjects(d, next));
-  }
-
-  function moveSelectedDesignObjectToEdge(edge: "front" | "back") {
-    if (!selectedDesignObject) return;
-
-    const all = getDesignObjects(d);
-    const layer = designObjectDefaultLayer(selectedDesignObject);
-    const group = all
-      .filter(object => designObjectDefaultLayer(object) === layer)
-      .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
-
-    const index = group.findIndex(object => object.id === selectedDesignObject.id);
-    if (index < 0 || group.length < 2) return;
-
-    const target = edge === "front" ? group.length - 1 : 0;
-    if (index === target) return;
-
-    const reordered = [...group];
-    const [moving] = reordered.splice(index, 1);
-    if (edge === "front") reordered.push(moving);
-    else reordered.unshift(moving);
-
-    const zById = new Map(reordered.map((object, i) => [object.id, i + 1]));
-    onDesignChange(withDesignObjects(
-      d,
-      all.map(object =>
-        zById.has(object.id)
-          ? { ...object, zIndex: zById.get(object.id)! } as ResumeDesignObject
-          : object
-      ),
-    ));
   }
 
   function deleteSelectedDesignObject() {
@@ -8026,595 +7990,469 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
             </>}
       </div>
 
-      {/* Phase 6 toolbar: keep the canvas calm by grouping creation and arrangement
-          tools. Text formatting remains contextual on-canvas and is intentionally not
-          duplicated here. */}
+      {/* Design objects — shapes, images, backgrounds and resume-aware smart
+          components. They share one selection/layer model while staying outside
+          structured resume flow and pagination. */}
       <div
         style={{
-          minHeight: 36,
+          height: 34,
           marginBottom: 8,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: 10,
+          gap: 8,
           fontFamily: "system-ui, sans-serif",
           userSelect: "none",
-          paddingBottom: 1,
         }}
         onMouseDown={e => e.stopPropagation()}
         onClick={e => e.stopPropagation()}
       >
-        <div
-          style={{
-            minWidth: "max-content",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          {/* One creation menu replaces separate Shape / Image / Components buttons. */}
-          <div style={{ position: "relative" }}>
-            <button
-              type="button"
-              onClick={() => {
-                setBackgroundMenuOpen(false);
-                setImageMenuOpen(false);
-                setComponentMenuOpen(false);
-                setArrangeMenuOpen(false);
-                setMoreMenuOpen(false);
-                setLayersPanelOpen(false);
-                setShapeMenuOpen(value => !value);
-              }}
-              aria-expanded={shapeMenuOpen}
-              style={{
-                height: 31,
-                padding: "0 11px",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                borderRadius: 7,
-                border: shapeMenuOpen ? "1px solid #c4b5fd" : "1px solid #ddd6fe",
-                background: shapeMenuOpen ? "#faf5ff" : "#fff",
-                color: "#6d28d9",
-                fontSize: 11,
-                fontWeight: 650,
-                cursor: "pointer",
-                boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-            >
-              <Plus size={13} />
-              Add
-              <ChevronDown size={12} />
-            </button>
-
-            {shapeMenuOpen && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: 35,
-                  left: 0,
-                  zIndex: 10002,
-                  width: 244,
-                  maxHeight: "min(460px, calc(100vh - 130px))",
-                  overflowY: "auto",
-                  padding: 6,
-                  background: "white",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 9,
-                  boxShadow: "0 10px 28px rgba(15,23,42,0.16)",
-                }}
-              >
-                <div style={{ padding: "4px 7px 5px", fontSize: 8.5, fontWeight: 750, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                  Shapes
-                </div>
-                {[
-                  { type: "rectangle" as const, label: "Rectangle", icon: <Square size={14} /> },
-                  { type: "ellipse" as const, label: "Circle", icon: <Circle size={14} /> },
-                  { type: "line" as const, label: "Line", icon: <Minus size={15} /> },
-                ].map(item => (
-                  <button
-                    key={item.type}
-                    type="button"
-                    onClick={() => addShape(item.type)}
-                    style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 11, cursor: "pointer", textAlign: "left" }}
-                    onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-                  >
-                    {item.icon}
-                    {item.label}
-                  </button>
-                ))}
-
-                <div style={{ marginTop: 4, padding: "5px 7px", borderTop: "1px solid #f1f5f9", fontSize: 8.5, fontWeight: 750, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                  Images
-                </div>
-                <button
-                  type="button"
-                  onClick={() => requestImageUpload("photo")}
-                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 11, cursor: "pointer", textAlign: "left" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-                >
-                  <User size={14} />
-                  Profile photo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => requestImageUpload("image")}
-                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 11, cursor: "pointer", textAlign: "left" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-                >
-                  <ImageIcon size={14} />
-                  Image / graphic
-                </button>
-
-                <div style={{ marginTop: 4, padding: "5px 7px", borderTop: "1px solid #f1f5f9", fontSize: 8.5, fontWeight: 750, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                  Page components
-                </div>
-                {[
-                  ["sidebar-left", "Left sidebar"],
-                  ["sidebar-right", "Right sidebar"],
-                  ["header-accent", "Header accent bar"],
-                ].map(([key, label]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => addSmartComponent(key as SmartComponentPreset)}
-                    style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 10.5, cursor: "pointer", textAlign: "left" }}
-                    onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-                  >
-                    <Square size={12} />
-                    {label}
-                  </button>
-                ))}
-
-                <div style={{ marginTop: 4, padding: "5px 7px", borderTop: "1px solid #f1f5f9", fontSize: 8.5, fontWeight: 750, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                  Resume-aware components
-                </div>
-                {[
-                  ["work-timeline", "Experience timeline"],
-                  ["education-timeline", "Education timeline"],
-                  ["work-divider", "Experience divider"],
-                  ["education-divider", "Education divider"],
-                  ["skills-divider", "Skills divider"],
-                  ["bio-divider", "Summary divider"],
-                  ["links-divider", "Links divider"],
-                ].map(([key, label]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => addSmartComponent(key as SmartComponentPreset)}
-                    style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 10.5, cursor: "pointer", textAlign: "left" }}
-                    onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-                  >
-                    {key.endsWith("timeline") ? <Circle size={11} /> : <Minus size={13} />}
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Background stays top-level because it is a frequent, conceptually distinct action. */}
-          <div style={{ position: "relative" }}>
-            <button
-              type="button"
-              onClick={() => {
-                setShapeMenuOpen(false);
-                setImageMenuOpen(false);
-                setComponentMenuOpen(false);
-                setArrangeMenuOpen(false);
-                setMoreMenuOpen(false);
-                setLayersPanelOpen(false);
-                setBackgroundMenuOpen(value => !value);
-              }}
-              aria-expanded={backgroundMenuOpen}
-              style={{
-                height: 31,
-                padding: "0 10px",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                borderRadius: 7,
-                border: backgroundMenuOpen ? "1px solid #c4b5fd" : "1px solid #e2e8f0",
-                background: backgroundMenuOpen ? "#faf5ff" : "#fff",
-                color: backgroundMenuOpen ? "#6d28d9" : "#475569",
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-            >
-              <Square size={13} />
-              Background
-              <ChevronDown size={12} />
-            </button>
-
-            {backgroundMenuOpen && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: 35,
-                  left: 0,
-                  zIndex: 10002,
-                  width: 184,
-                  padding: 5,
-                  background: "white",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 8,
-                  boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
-                }}
-              >
-                {[
-                  { key: "page" as const, label: `Page ${activePageIndex + 1}` },
-                  { key: "header" as const, label: "Header" },
-                  { key: "work" as const, label: "Experience" },
-                  { key: "education" as const, label: "Education" },
-                  { key: "skills" as const, label: "Skills" },
-                  { key: "bio" as const, label: "Summary" },
-                  { key: "links" as const, label: "Links" },
-                ].map(item => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => addSmartBackground(item.key)}
-                    style={{ width: "100%", height: 30, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 11, cursor: "pointer", textAlign: "left" }}
-                    onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-                  >
-                    <Square size={12} />
-                    {item.label} background
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Arrange groups layers and selection-dependent object ordering/grouping. */}
-          <div style={{ position: "relative" }}>
-            <button
-              type="button"
-              onClick={() => {
-                setShapeMenuOpen(false);
-                setBackgroundMenuOpen(false);
-                setImageMenuOpen(false);
-                setComponentMenuOpen(false);
-                setMoreMenuOpen(false);
-                if (layersPanelOpen) {
-                  setLayersPanelOpen(false);
-                  setArrangeMenuOpen(true);
-                } else {
-                  setArrangeMenuOpen(value => !value);
-                }
-              }}
-              aria-expanded={arrangeMenuOpen || layersPanelOpen}
-              style={{
-                height: 31,
-                padding: "0 10px",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                borderRadius: 7,
-                border: arrangeMenuOpen || layersPanelOpen ? "1px solid #c4b5fd" : "1px solid #e2e8f0",
-                background: arrangeMenuOpen || layersPanelOpen ? "#faf5ff" : "#fff",
-                color: arrangeMenuOpen || layersPanelOpen ? "#6d28d9" : "#475569",
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-            >
-              <Layers3 size={13} />
-              Arrange
-              {getDesignObjects(d).length > 0 && (
-                <span
-                  style={{
-                    minWidth: 16,
-                    height: 16,
-                    padding: "0 4px",
-                    borderRadius: 999,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: arrangeMenuOpen || layersPanelOpen ? "#ede9fe" : "#f1f5f9",
-                    color: arrangeMenuOpen || layersPanelOpen ? "#7c3aed" : "#64748b",
-                    fontSize: 8.5,
-                    fontWeight: 700,
-                  }}
-                >
-                  {getDesignObjects(d).length}
-                </span>
-              )}
-              <ChevronDown size={12} />
-            </button>
-
-            {arrangeMenuOpen && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: 35,
-                  left: 0,
-                  zIndex: 10002,
-                  width: 206,
-                  padding: 5,
-                  background: "white",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 8,
-                  boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setArrangeMenuOpen(false);
-                    setLayersPanelOpen(true);
-                  }}
-                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 11, cursor: "pointer", textAlign: "left" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-                >
-                  <Layers3 size={13} />
-                  Layers
-                  <span style={{ marginLeft: "auto", color: "#94a3b8", fontSize: 9 }}>{getDesignObjects(d).length}</span>
-                </button>
-
-                <div style={{ margin: "4px 3px", borderTop: "1px solid #f1f5f9" }} />
-                {[
-                  { label: "Bring forward", icon: <ArrowUp size={13} />, enabled: selectedDesignObjectIds.length === 1, action: () => reorderSelectedDesignObject(1) },
-                  { label: "Send backward", icon: <ArrowDown size={13} />, enabled: selectedDesignObjectIds.length === 1, action: () => reorderSelectedDesignObject(-1) },
-                  { label: "Bring to front", icon: <ChevronsUp size={13} />, enabled: selectedDesignObjectIds.length === 1, action: () => moveSelectedDesignObjectToEdge("front") },
-                  { label: "Send to back", icon: <ChevronsDown size={13} />, enabled: selectedDesignObjectIds.length === 1, action: () => moveSelectedDesignObjectToEdge("back") },
-                ].map(item => (
-                  <button
-                    key={item.label}
-                    type="button"
-                    disabled={!item.enabled}
-                    onClick={() => {
-                      item.action();
-                      setArrangeMenuOpen(false);
-                    }}
-                    style={{ width: "100%", height: 30, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: item.enabled ? "#334155" : "#cbd5e1", fontSize: 10.5, cursor: item.enabled ? "pointer" : "default", textAlign: "left" }}
-                    onMouseEnter={e => { if (item.enabled) e.currentTarget.style.background = "#f8fafc"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-                  >
-                    {item.icon}
-                    {item.label}
-                  </button>
-                ))}
-
-                <div style={{ margin: "4px 3px", borderTop: "1px solid #f1f5f9" }} />
-                <button
-                  type="button"
-                  disabled={selectedDesignObjectIds.length < 2}
-                  onClick={() => {
-                    groupSelectedDesignObjects();
-                    setArrangeMenuOpen(false);
-                  }}
-                  style={{ width: "100%", height: 30, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: selectedDesignObjectIds.length >= 2 ? "#334155" : "#cbd5e1", fontSize: 10.5, cursor: selectedDesignObjectIds.length >= 2 ? "pointer" : "default", textAlign: "left" }}
-                >
-                  <Layers3 size={13} />
-                  Group selection
-                </button>
-                <button
-                  type="button"
-                  disabled={!selectedDesignObjects.some(object => !!object.groupId)}
-                  onClick={() => {
-                    ungroupSelectedDesignObjects();
-                    setArrangeMenuOpen(false);
-                  }}
-                  style={{ width: "100%", height: 30, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: selectedDesignObjects.some(object => !!object.groupId) ? "#334155" : "#cbd5e1", fontSize: 10.5, cursor: selectedDesignObjects.some(object => !!object.groupId) ? "pointer" : "default", textAlign: "left" }}
-                >
-                  <Unlink2 size={13} />
-                  Ungroup selection
-                </button>
-                <button
-                  type="button"
-                  disabled={selectedDesignObjectIds.length === 0}
-                  onClick={() => {
-                    toggleSelectedDesignObjectLock();
-                    setArrangeMenuOpen(false);
-                  }}
-                  style={{ width: "100%", height: 30, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: selectedDesignObjectIds.length > 0 ? "#334155" : "#cbd5e1", fontSize: 10.5, cursor: selectedDesignObjectIds.length > 0 ? "pointer" : "default", textAlign: "left" }}
-                >
-                  {selectedDesignObjects.length > 0 && selectedDesignObjects.every(object => !!object.locked)
-                    ? <Unlock size={13} />
-                    : <Lock size={13} />}
-                  {selectedDesignObjects.length > 0 && selectedDesignObjects.every(object => !!object.locked)
-                    ? "Unlock selection"
-                    : "Lock selection"}
-                </button>
-              </div>
-            )}
-
-            {layersPanelOpen && (
-              <LayersPanel
-                objects={getDesignObjects(d)}
-                activePage={activePageIndex}
-                selectedIds={selectedDesignObjectIds}
-                onSelect={selectDesignObjectFromLayers}
-                onToggleHidden={toggleDesignObjectHidden}
-                onToggleLocked={toggleDesignObjectLocked}
-                onRename={renameDesignObject}
-                onReorder={reorderDesignObjectsFromLayers}
-                onClose={() => setLayersPanelOpen(false)}
-              />
-            )}
-          </div>
-
-          {/* Editor zoom — intentionally separate from PDF design/export state. */}
-          <div
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setBackgroundMenuOpen(false);
+              setImageMenuOpen(false);
+              setComponentMenuOpen(false);
+              setLayersPanelOpen(false);
+              setShapeMenuOpen(v => !v);
+            }}
             style={{
               height: 31,
+              padding: "0 10px",
               display: "inline-flex",
               alignItems: "center",
-              border: "1px solid #e2e8f0",
+              gap: 6,
               borderRadius: 7,
+              border: "1px solid #ddd6fe",
               background: "#fff",
+              color: "#6d28d9",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
               boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
-              overflow: "hidden",
-              flexShrink: 0,
             }}
-            title="PDF canvas zoom — editor only"
           >
-            <button
-              type="button"
-              aria-label="Zoom PDF canvas out"
-              title="Zoom out"
-              disabled={canvasZoom <= PDF_CANVAS_ZOOM_MIN + 0.001}
-              onClick={() =>
-                setCanvasZoom(current =>
-                  clampPdfCanvasZoom(
-                    Math.round((current - PDF_CANVAS_ZOOM_STEP) * 10) / 10,
-                  ),
-                )
-              }
-              style={{
-                width: 30,
-                height: "100%",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                border: "none",
-                borderRight: "1px solid #e2e8f0",
-                background: "transparent",
-                color: canvasZoom <= PDF_CANVAS_ZOOM_MIN + 0.001 ? "#cbd5e1" : "#475569",
-                cursor: canvasZoom <= PDF_CANVAS_ZOOM_MIN + 0.001 ? "default" : "pointer",
-              }}
-            >
-              <Minus size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setCanvasZoom(1)}
-              title="Fit canvas to available width"
-              style={{
-                minWidth: 50,
-                height: "100%",
-                padding: "0 7px",
-                border: "none",
-                borderRight: "1px solid #e2e8f0",
-                background: canvasZoom === 1 ? "#faf5ff" : "transparent",
-                color: canvasZoom === 1 ? "#6d28d9" : "#475569",
-                fontSize: 10.5,
-                fontWeight: 700,
-                cursor: "pointer",
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {Math.round(canvasZoom * 100)}%
-            </button>
-            <button
-              type="button"
-              aria-label="Zoom PDF canvas in"
-              title="Zoom in"
-              disabled={canvasZoom >= PDF_CANVAS_ZOOM_MAX - 0.001}
-              onClick={() =>
-                setCanvasZoom(current =>
-                  clampPdfCanvasZoom(
-                    Math.round((current + PDF_CANVAS_ZOOM_STEP) * 10) / 10,
-                  ),
-                )
-              }
-              style={{
-                width: 30,
-                height: "100%",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                border: "none",
-                background: "transparent",
-                color: canvasZoom >= PDF_CANVAS_ZOOM_MAX - 0.001 ? "#cbd5e1" : "#475569",
-                cursor: canvasZoom >= PDF_CANVAS_ZOOM_MAX - 0.001 ? "default" : "pointer",
-              }}
-            >
-              <Plus size={13} />
-            </button>
-          </div>
+            <Plus size={13} />
+            Add shape
+            <ChevronDown size={12} />
+          </button>
 
-          <div style={{ position: "relative" }}>
-            <button
-              type="button"
-              aria-label="More PDF canvas actions"
-              title="More canvas actions"
-              onClick={() => {
-                setShapeMenuOpen(false);
-                setBackgroundMenuOpen(false);
-                setArrangeMenuOpen(false);
-                setLayersPanelOpen(false);
-                setImageMenuOpen(false);
-                setComponentMenuOpen(false);
-                setMoreMenuOpen(value => !value);
-              }}
+          {shapeMenuOpen && (
+            <div
               style={{
-                width: 32,
-                height: 31,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 7,
-                border: moreMenuOpen ? "1px solid #c4b5fd" : "1px solid #e2e8f0",
-                background: moreMenuOpen ? "#faf5ff" : "#fff",
-                color: moreMenuOpen ? "#6d28d9" : "#475569",
-                cursor: "pointer",
-                boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
-                flexShrink: 0,
+                position: "absolute",
+                top: 35,
+                left: 0,
+                zIndex: 10002,
+                width: 150,
+                padding: 5,
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 8,
+                boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
               }}
             >
-              <MoreHorizontal size={15} />
-            </button>
+              {[
+                { type: "rectangle" as const, label: "Rectangle", icon: <Square size={14} /> },
+                { type: "ellipse" as const, label: "Circle", icon: <Circle size={14} /> },
+                { type: "line" as const, label: "Line", icon: <Minus size={15} /> },
+              ].map(item => (
+                <button
+                  key={item.type}
+                  type="button"
+                  onClick={() => addShape(item.type)}
+                  style={{
+                    width: "100%",
+                    height: 31,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "0 8px",
+                    border: "none",
+                    borderRadius: 6,
+                    background: "transparent",
+                    color: "#334155",
+                    fontSize: 11,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  {item.icon}
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
-            {moreMenuOpen && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: 35,
-                  right: 0,
-                  zIndex: 10002,
-                  width: 174,
-                  padding: 5,
-                  background: "white",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 8,
-                  boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
-                }}
-              >
+        {/* Editor zoom — intentionally separate from PDF design/export state. */}
+        <div
+          style={{
+            height: 31,
+            display: "inline-flex",
+            alignItems: "center",
+            border: "1px solid #e2e8f0",
+            borderRadius: 7,
+            background: "#fff",
+            boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+            overflow: "hidden",
+            flexShrink: 0,
+          }}
+          title="PDF canvas zoom — editor only"
+        >
+          <button
+            type="button"
+            aria-label="Zoom PDF canvas out"
+            title="Zoom out"
+            disabled={canvasZoom <= PDF_CANVAS_ZOOM_MIN + 0.001}
+            onClick={() =>
+              setCanvasZoom(current =>
+                clampPdfCanvasZoom(
+                  Math.round((current - PDF_CANVAS_ZOOM_STEP) * 10) / 10,
+                ),
+              )
+            }
+            style={{
+              width: 30,
+              height: "100%",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "none",
+              borderRight: "1px solid #e2e8f0",
+              background: "transparent",
+              color:
+                canvasZoom <= PDF_CANVAS_ZOOM_MIN + 0.001
+                  ? "#cbd5e1"
+                  : "#475569",
+              cursor:
+                canvasZoom <= PDF_CANVAS_ZOOM_MIN + 0.001
+                  ? "default"
+                  : "pointer",
+            }}
+          >
+            <Minus size={13} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setCanvasZoom(1)}
+            title="Fit canvas to available width"
+            style={{
+              minWidth: 50,
+              height: "100%",
+              padding: "0 7px",
+              border: "none",
+              borderRight: "1px solid #e2e8f0",
+              background: canvasZoom === 1 ? "#faf5ff" : "transparent",
+              color: canvasZoom === 1 ? "#6d28d9" : "#475569",
+              fontSize: 10.5,
+              fontWeight: 700,
+              cursor: "pointer",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {Math.round(canvasZoom * 100)}%
+          </button>
+
+          <button
+            type="button"
+            aria-label="Zoom PDF canvas in"
+            title="Zoom in"
+            disabled={canvasZoom >= PDF_CANVAS_ZOOM_MAX - 0.001}
+            onClick={() =>
+              setCanvasZoom(current =>
+                clampPdfCanvasZoom(
+                  Math.round((current + PDF_CANVAS_ZOOM_STEP) * 10) / 10,
+                ),
+              )
+            }
+            style={{
+              width: 30,
+              height: "100%",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "none",
+              background: "transparent",
+              color:
+                canvasZoom >= PDF_CANVAS_ZOOM_MAX - 0.001
+                  ? "#cbd5e1"
+                  : "#475569",
+              cursor:
+                canvasZoom >= PDF_CANVAS_ZOOM_MAX - 0.001
+                  ? "default"
+                  : "pointer",
+            }}
+          >
+            <Plus size={13} />
+          </button>
+        </div>
+
+        <div style={{ position: "relative", marginRight: "auto" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setShapeMenuOpen(false);
+              setImageMenuOpen(false);
+              setComponentMenuOpen(false);
+              setLayersPanelOpen(false);
+              setBackgroundMenuOpen(v => !v);
+            }}
+            style={{
+              height: 31,
+              padding: "0 10px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 7,
+              border: "1px solid #e2e8f0",
+              background: "#fff",
+              color: "#475569",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+            }}
+          >
+            <Square size={13} />
+            Background
+            <ChevronDown size={12} />
+          </button>
+
+          {backgroundMenuOpen && (
+            <div
+              style={{
+                position: "absolute",
+                top: 35,
+                left: 0,
+                zIndex: 10002,
+                width: 180,
+                padding: 5,
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 8,
+                boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
+              }}
+            >
+              {[
+                { key: "page" as const, label: `Page ${activePageIndex + 1}` },
+                { key: "header" as const, label: "Header" },
+                { key: "work" as const, label: "Experience" },
+                { key: "education" as const, label: "Education" },
+                { key: "skills" as const, label: "Skills" },
+                { key: "bio" as const, label: "Summary" },
+                { key: "links" as const, label: "Links" },
+              ].map(item => (
                 <button
+                  key={item.key}
                   type="button"
-                  disabled={!d.layoutOverrides || Object.keys(d.layoutOverrides).length === 0}
-                  onClick={() => {
-                    if (d.layoutOverrides && Object.keys(d.layoutOverrides).length > 0) {
-                      onDesignChange({ ...d, layoutOverrides: undefined });
-                    }
-                    setMoreMenuOpen(false);
+                  onClick={() => addSmartBackground(item.key)}
+                  style={{
+                    width: "100%",
+                    height: 30,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "0 8px",
+                    border: "none",
+                    borderRadius: 6,
+                    background: "transparent",
+                    color: "#334155",
+                    fontSize: 11,
+                    cursor: "pointer",
+                    textAlign: "left",
                   }}
-                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: d.layoutOverrides && Object.keys(d.layoutOverrides).length > 0 ? "#334155" : "#cbd5e1", fontSize: 10.5, cursor: d.layoutOverrides && Object.keys(d.layoutOverrides).length > 0 ? "pointer" : "default", textAlign: "left" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
                 >
-                  <FileText size={13} />
-                  Reset layout
+                  <Square size={12} />
+                  {item.label} background
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearSelection();
-                    setMoreMenuOpen(false);
-                  }}
-                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 10.5, cursor: "pointer", textAlign: "left" }}
-                >
-                  <X size={13} />
-                  Clear selection
-                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Resume-aware smart components. */}
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setShapeMenuOpen(false);
+              setBackgroundMenuOpen(false);
+              setImageMenuOpen(false);
+              setLayersPanelOpen(false);
+              setComponentMenuOpen(v => !v);
+            }}
+            style={{
+              height: 31,
+              padding: "0 10px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 7,
+              border: componentMenuOpen ? "1px solid #c4b5fd" : "1px solid #e2e8f0",
+              background: componentMenuOpen ? "#faf5ff" : "#fff",
+              color: componentMenuOpen ? "#6d28d9" : "#475569",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+            }}
+          >
+            <Layers3 size={13} />
+            Components
+            <ChevronDown size={12} />
+          </button>
+
+          {componentMenuOpen && (
+            <div
+              style={{
+                position: "absolute",
+                top: 35,
+                left: 0,
+                zIndex: 10002,
+                width: 218,
+                maxHeight: 330,
+                overflowY: "auto",
+                padding: 5,
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 8,
+                boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
+              }}
+            >
+              <div style={{ padding: "4px 7px 5px", fontSize: 8.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Page accents
               </div>
-            )}
-          </div>
+              {[
+                ["sidebar-left", "Left sidebar"],
+                ["sidebar-right", "Right sidebar"],
+                ["header-accent", "Header accent bar"],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => addSmartComponent(key as SmartComponentPreset)}
+                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 10.5, cursor: "pointer", textAlign: "left" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <Square size={12} /> {label}
+                </button>
+              ))}
+
+              <div style={{ marginTop: 4, padding: "5px 7px", borderTop: "1px solid #f1f5f9", fontSize: 8.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Resume-aware
+              </div>
+              {[
+                ["work-timeline", "Experience timeline"],
+                ["education-timeline", "Education timeline"],
+                ["work-divider", "Experience divider"],
+                ["education-divider", "Education divider"],
+                ["skills-divider", "Skills divider"],
+                ["bio-divider", "Summary divider"],
+                ["links-divider", "Links divider"],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => addSmartComponent(key as SmartComponentPreset)}
+                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 10.5, cursor: "pointer", textAlign: "left" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  {key.endsWith("timeline") ? <Circle size={11} /> : <Minus size={13} />} {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Images / photos. */}
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setShapeMenuOpen(false);
+              setBackgroundMenuOpen(false);
+              setComponentMenuOpen(false);
+              setLayersPanelOpen(false);
+              setImageMenuOpen(v => !v);
+            }}
+            style={{
+              height: 31,
+              padding: "0 10px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 7,
+              border: "1px solid #e2e8f0",
+              background: "#fff",
+              color: "#475569",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+            }}
+          >
+            <ImageIcon size={13} />
+            Image
+            <ChevronDown size={12} />
+          </button>
+
+          {imageMenuOpen && (
+            <div
+              style={{
+                position: "absolute",
+                top: 35,
+                left: 0,
+                zIndex: 10002,
+                width: 166,
+                padding: 5,
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 8,
+                boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => requestImageUpload("photo")}
+                style={{
+                  width: "100%", height: 32, display: "flex", alignItems: "center", gap: 8,
+                  padding: "0 8px", border: "none", borderRadius: 6,
+                  background: "transparent", color: "#334155", fontSize: 11,
+                  cursor: "pointer", textAlign: "left",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+              >
+                <User size={14} />
+                Profile photo
+              </button>
+
+              <button
+                type="button"
+                onClick={() => requestImageUpload("image")}
+                style={{
+                  width: "100%", height: 32, display: "flex", alignItems: "center", gap: 8,
+                  padding: "0 8px", border: "none", borderRadius: 6,
+                  background: "transparent", color: "#334155", fontSize: 11,
+                  cursor: "pointer", textAlign: "left",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+              >
+                <ImageIcon size={14} />
+                Image / graphic
+              </button>
+            </div>
+          )}
         </div>
 
         <input
@@ -8629,15 +8467,72 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
           }}
         />
 
-        <span
-          style={{
-            flexShrink: 0,
-            fontSize: 9.5,
-            color: "#94a3b8",
-            whiteSpace: "nowrap",
-          }}
-        >
-          Page {activePageIndex + 1} · Shift-click to multi-select
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setShapeMenuOpen(false);
+              setBackgroundMenuOpen(false);
+              setImageMenuOpen(false);
+              setComponentMenuOpen(false);
+              setLayersPanelOpen(v => !v);
+            }}
+            style={{
+              height: 31,
+              padding: "0 10px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 7,
+              border: layersPanelOpen ? "1px solid #c4b5fd" : "1px solid #e2e8f0",
+              background: layersPanelOpen ? "#faf5ff" : "#fff",
+              color: layersPanelOpen ? "#6d28d9" : "#475569",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+            }}
+          >
+            <Layers3 size={13} />
+            Layers
+            {getDesignObjects(d).length > 0 && (
+              <span
+                style={{
+                  minWidth: 16,
+                  height: 16,
+                  padding: "0 4px",
+                  borderRadius: 999,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: layersPanelOpen ? "#ede9fe" : "#f1f5f9",
+                  color: layersPanelOpen ? "#7c3aed" : "#64748b",
+                  fontSize: 8.5,
+                  fontWeight: 700,
+                }}
+              >
+                {getDesignObjects(d).length}
+              </span>
+            )}
+          </button>
+
+          {layersPanelOpen && (
+            <LayersPanel
+              objects={getDesignObjects(d)}
+              activePage={activePageIndex}
+              selectedIds={selectedDesignObjectIds}
+              onSelect={selectDesignObjectFromLayers}
+              onToggleHidden={toggleDesignObjectHidden}
+              onToggleLocked={toggleDesignObjectLocked}
+              onRename={renameDesignObject}
+              onReorder={reorderDesignObjectsFromLayers}
+              onClose={() => setLayersPanelOpen(false)}
+            />
+          )}
+        </div>
+
+        <span style={{ fontSize: 10, color: "#94a3b8" }}>
+          Active page {activePageIndex + 1} · Shift-click to multi-select · Link = shared design
         </span>
       </div>
 

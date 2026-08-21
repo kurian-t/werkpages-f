@@ -64,10 +64,12 @@ export default function InteractiveScrollMotionEditor({
   tracks,
   progress,
   onChange,
+  embedded = false,
 }: {
   tracks: InteractiveScrollTrack[] | undefined;
   progress: number;
   onChange: (tracks: InteractiveScrollTrack[] | undefined) => void;
+  embedded?: boolean;
 }) {
   const current = tracks ?? [];
 
@@ -114,14 +116,18 @@ export default function InteractiveScrollMotionEditor({
   };
 
   return (
-    <div className="mt-2.5 rounded-lg border border-[#2e0562]/15 bg-[#2e0562]/[0.025] p-2">
+    <div className={embedded ? "space-y-2" : "mt-2.5 rounded-lg border border-[#2e0562]/15 bg-[#2e0562]/[0.025] p-2"}>
       <div className="flex items-start justify-between gap-2">
         <div>
-          <div className="text-[7px] font-bold uppercase tracking-wider text-[#2e0562]">
-            Scroll motion
-          </div>
-          <div className="mt-0.5 text-[6.5px] leading-relaxed text-muted-foreground">
-            Values follow the scene&apos;s 0–100% visitor scroll.
+          {!embedded && (
+            <div className="text-[7px] font-bold uppercase tracking-wider text-[#2e0562]">
+              Scroll motion
+            </div>
+          )}
+          <div className={`${embedded ? "text-[7px] font-semibold text-foreground" : "mt-0.5 text-[6.5px] leading-relaxed text-muted-foreground"}`}>
+            {embedded
+              ? `Timeline position · ${Math.round(progress)}%`
+              : "Values follow the scene's 0–100% visitor scroll."}
           </div>
         </div>
 
@@ -136,10 +142,11 @@ export default function InteractiveScrollMotionEditor({
         </button>
       </div>
 
-      <div className="mt-2 rounded-md bg-background/80 px-2 py-1.5 text-[6.5px] leading-relaxed text-muted-foreground">
-        Drag the timeline below the scene, then add a keyframe at the current
-        percentage. Scroll motion never changes the object&apos;s saved X/Y.
-      </div>
+      {!embedded && (
+        <div className="mt-2 rounded-md bg-background/80 px-2 py-1.5 text-[6.5px] leading-relaxed text-muted-foreground">
+          Drag the timeline below the scene, then add a keyframe at the current percentage. Scroll motion never changes the object&apos;s saved X/Y.
+        </div>
+      )}
 
       <div className="mt-2 space-y-2">
         {current.map((track, trackIndex) => {

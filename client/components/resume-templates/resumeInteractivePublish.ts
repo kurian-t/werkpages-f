@@ -125,9 +125,10 @@ function appearanceStyle(
           : "none",
     "backdrop-filter": variant === "glass" ? "blur(10px)" : undefined,
     "font-family":
-      variant === "terminal"
+      appearance?.fontFamily ??
+      (variant === "terminal"
         ? "ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace"
-        : undefined,
+        : undefined),
   });
 
   return {
@@ -389,8 +390,19 @@ function renderText(
   object: Extract<InteractiveSceneObject, { type: "text" }>,
 ): string {
   const appearance = appearanceStyle(object.appearance);
+  const textStyle = styleString({
+    color: appearance.text,
+    "font-family": object.appearance?.fontFamily,
+    "font-size": `${object.appearance?.fontSize ?? 24}px`,
+    "font-weight": object.appearance?.fontWeight ?? 650,
+    "font-style": object.appearance?.fontStyle ?? "normal",
+    "text-align": object.appearance?.textAlign ?? "left",
+    "line-height": object.appearance?.lineHeight ?? 1.35,
+    "letter-spacing": `${object.appearance?.letterSpacing ?? 0}px`,
+    width: "100%",
+  });
   return `<div class="wp-text" style="${appearance.shell}">
-    <div style="color:${appearance.text}">${escapeHtml(object.text)}</div>
+    <div style="${textStyle}">${escapeHtml(object.text)}</div>
   </div>`;
 }
 
@@ -433,6 +445,17 @@ function renderAdvancedLayers(
       style="${initialTrackStyle(track)};width:100%;height:100%;transform-origin:center"
     >${html}</div>`,
     content,
+  );
+}
+
+function hasSynchronizedGroupMotion(object: InteractiveSceneObject): boolean {
+  return !!(
+    object.groupId &&
+    (object.groupMotion ||
+      object.groupAnimationTracks?.length ||
+      object.groupScrollTracks?.length ||
+      object.groupMotionPath ||
+      Math.abs(object.groupParallaxDepth ?? 0) > 0.001)
   );
 }
 
@@ -479,8 +502,28 @@ function renderObject(visitorObject: InteractiveVisitorObject): string {
     object.type === "resume-content" &&
     !!safeHref(visitorObject.resolved?.href);
 
-  content = renderEasyMotion(object, content);
-  content = renderAdvancedLayers(object, content, !hasBoundLink);
+  const groupMotionActive = hasSynchronizedGroupMotion(object);
+
+  if (groupMotionActive) {
+    // Group motion is authoritative. Do not compose the object's previous
+    // individual animation underneath it.
+    const groupObject = {
+      ...object,
+      motion: object.groupMotion,
+      animationTracks: object.groupAnimationTracks,
+    } as InteractiveSceneObject;
+    content = renderEasyMotion(groupObject, content).replace(
+      'class="wp-easy-motion"',
+      'class="wp-group-easy-motion"',
+    );
+    content = renderAdvancedLayers(groupObject, content, false)
+      .split('class="wp-advanced-layer"')
+      .join('class="wp-group-advanced-layer"');
+  } else {
+    // Grouping without group motion leaves each member's own animation intact.
+    content = renderEasyMotion(object, content);
+    content = renderAdvancedLayers(object, content, !hasBoundLink);
+  }
 
   return `<div
     class="wp-object"
@@ -497,10 +540,16 @@ function renderObject(visitorObject: InteractiveVisitorObject): string {
       display: geometry.hidden ? "none" : "block",
     })}"
   >
-    <div class="wp-parallax-layer">
-      <div class="wp-path-layer">
-        <div class="wp-scroll-layer">
-          ${content}
+    <div class="wp-group-parallax-layer">
+      <div class="wp-group-path-layer">
+        <div class="wp-group-scroll-layer">
+          <div class="wp-parallax-layer">
+            <div class="wp-path-layer">
+              <div class="wp-scroll-layer">
+                ${content}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -974,10 +1023,25 @@ function runtimeScript(projection: InteractiveVisitorProjection): string {
           '[data-object-id="' + cssEscape(object.id) + '"]'
         );
         if (!root) return;
-        const layers = Array.from(root.querySelectorAll(".wp-advanced-layer"));
-        (object.animationTracks || []).slice(0, 12).forEach((track, index) => {
-          if (layers[index]) initializeAdvancedTrack(layers[index], track);
-        });
+        const groupMotionActive = !!(
+          object.groupId &&
+          (object.groupMotion ||
+            (object.groupAnimationTracks || []).length ||
+            (object.groupScrollTracks || []).length ||
+            object.groupMotionPath ||
+            Math.abs(Number(object.groupParallaxDepth || 0)) > 0.001)
+        );
+        if (groupMotionActive) {
+          const groupLayers = Array.from(root.querySelectorAll(".wp-group-advanced-layer"));
+          (object.groupAnimationTracks || []).slice(0, 12).forEach((track, index) => {
+            if (groupLayers[index]) initializeAdvancedTrack(groupLayers[index], track);
+          });
+        } else {
+          const layers = Array.from(root.querySelectorAll(".wp-advanced-layer"));
+          (object.animationTracks || []).slice(0, 12).forEach((track, index) => {
+            if (layers[index]) initializeAdvancedTrack(layers[index], track);
+          });
+        }
       });
     });
   };
@@ -1122,8 +1186,27 @@ function runtimeScript(projection: InteractiveVisitorProjection): string {
       if (!root) return;
       const scrollLayer = root.querySelector(".wp-scroll-layer");
       const pathLayer = root.querySelector(".wp-path-layer");
-      if (scrollLayer) applyScrollTracks(scrollLayer, object.scrollTracks, progress);
-      if (pathLayer) applyPath(pathLayer, object.motionPath, progress);
+      const groupScrollLayer = root.querySelector(".wp-group-scroll-layer");
+      const groupPathLayer = root.querySelector(".wp-group-path-layer");
+      const groupMotionActive = !!(
+        object.groupId &&
+        (object.groupMotion ||
+          (object.groupAnimationTracks || []).length ||
+          (object.groupScrollTracks || []).length ||
+          object.groupMotionPath ||
+          Math.abs(Number(object.groupParallaxDepth || 0)) > 0.001)
+      );
+      if (groupMotionActive) {
+        if (groupScrollLayer) applyScrollTracks(groupScrollLayer, object.groupScrollTracks, progress);
+        if (groupPathLayer) applyPath(groupPathLayer, object.groupMotionPath, progress);
+        if (scrollLayer) scrollLayer.style.transform = "";
+        if (pathLayer) pathLayer.style.transform = "";
+      } else {
+        if (scrollLayer) applyScrollTracks(scrollLayer, object.scrollTracks, progress);
+        if (pathLayer) applyPath(pathLayer, object.motionPath, progress);
+        if (groupScrollLayer) groupScrollLayer.style.transform = "";
+        if (groupPathLayer) groupPathLayer.style.transform = "";
+      }
     });
 
     if (stage && !reduceMotion) {
@@ -1226,16 +1309,37 @@ function runtimeScript(projection: InteractiveVisitorProjection): string {
 
         visitorScene.objects.forEach(visitorObject => {
           const object = visitorObject.object;
-          const depth = clamp(Number(object.parallaxDepth || 0), -2, 2);
+          const groupMotionActive = !!(
+            object.groupId &&
+            (object.groupMotion ||
+              (object.groupAnimationTracks || []).length ||
+              (object.groupScrollTracks || []).length ||
+              object.groupMotionPath ||
+              Math.abs(Number(object.groupParallaxDepth || 0)) > 0.001)
+          );
+          const depth = groupMotionActive
+            ? 0
+            : clamp(Number(object.parallaxDepth || 0), -2, 2);
           const root = section.querySelector(
             '[data-object-id="' + cssEscape(object.id) + '"]'
           );
           const layer = root && root.querySelector(".wp-parallax-layer");
-          if (!layer) return;
-          layer.style.transform = depth
-            ? "translate3d(" + (x * depth * strength) + "px," +
-              (y * depth * strength) + "px,0)"
-            : "";
+          const groupLayer = root && root.querySelector(".wp-group-parallax-layer");
+          if (layer) {
+            layer.style.transform = depth
+              ? "translate3d(" + (x * depth * strength) + "px," +
+                (y * depth * strength) + "px,0)"
+              : "";
+          }
+          if (groupLayer) {
+            const groupDepth = groupMotionActive
+              ? clamp(Number(object.groupParallaxDepth || 0), -2, 2)
+              : 0;
+            groupLayer.style.transform = groupDepth
+              ? "translate3d(" + (x * groupDepth * strength) + "px," +
+                (y * groupDepth * strength) + "px,0)"
+              : "";
+          }
         });
       });
 
@@ -1397,7 +1501,7 @@ button,a{font:inherit}
   will-change:transform,opacity
 }
 .wp-parallax-layer,.wp-path-layer,.wp-scroll-layer,
-.wp-advanced-layer,.wp-easy-motion{width:100%;height:100%;transform-origin:center center}
+.wp-advanced-layer,.wp-easy-motion,.wp-group-advanced-layer,.wp-group-easy-motion,.wp-group-parallax-layer,.wp-group-path-layer,.wp-group-scroll-layer{width:100%;height:100%;transform-origin:center center}
 .wp-text{
   display:flex;align-items:center;width:100%;height:100%;overflow:hidden;padding:12px 18px;
 }
@@ -1478,7 +1582,7 @@ html[data-wp-performance="lite"] .wp-scene-background{
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   .wp-stage,.wp-scene-background,.wp-parallax-layer,.wp-path-layer,
-  .wp-scroll-layer,.wp-advanced-layer,.wp-easy-motion{
+  .wp-scroll-layer,.wp-advanced-layer,.wp-easy-motion,.wp-group-scroll-layer,.wp-group-advanced-layer,.wp-group-easy-motion{
     transition:none!important;animation:none!important
   }
 }

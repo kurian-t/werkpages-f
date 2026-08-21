@@ -13,20 +13,29 @@ export default function InteractiveMotionPathEditor({
   path,
   progress,
   onChange,
+  embedded = false,
 }: {
   path: InteractiveMotionPath | undefined;
   progress: number;
   onChange: (path: InteractiveMotionPath | undefined) => void;
+  embedded?: boolean;
 }) {
   if (!path) {
     return (
-      <div className="mt-2.5 rounded-lg border border-border bg-background p-2">
-        <div className="text-[7px] font-bold uppercase tracking-wider text-muted-foreground">
-          Motion path
+      <div className={`${embedded ? "rounded-xl" : "mt-2.5 rounded-lg"} border border-border bg-background p-2.5`}>
+        {!embedded && (
+          <div className="text-[7px] font-bold uppercase tracking-wider text-muted-foreground">
+            Motion path
+          </div>
+        )}
+        <div className={`${embedded ? "text-[7.5px] font-semibold text-foreground" : "mt-0.5 text-[6.5px] leading-relaxed text-muted-foreground"}`}>
+          {embedded ? "No path yet" : "Follow a visible route through this scene as scroll progresses."}
         </div>
-        <div className="mt-0.5 text-[6.5px] leading-relaxed text-muted-foreground">
-          Follow a visible route through this scene as scroll progresses.
-        </div>
+        {embedded && (
+          <div className="mt-0.5 text-[6.5px] leading-relaxed text-muted-foreground">
+            Add a route controlled by the scene scroll timeline.
+          </div>
+        )}
         <button
           type="button"
           onClick={() => onChange(createInteractiveMotionPath())}
@@ -68,14 +77,18 @@ export default function InteractiveMotionPathEditor({
   };
 
   return (
-    <div className="mt-2.5 rounded-lg border border-[#2e0562]/15 bg-[#2e0562]/[0.025] p-2">
+    <div className={embedded ? "space-y-2" : "mt-2.5 rounded-lg border border-[#2e0562]/15 bg-[#2e0562]/[0.025] p-2"}>
       <div className="flex items-start justify-between gap-2">
         <div>
-          <div className="text-[7px] font-bold uppercase tracking-wider text-[#2e0562]">
-            Motion path
-          </div>
-          <div className="mt-0.5 text-[6.5px] leading-relaxed text-muted-foreground">
-            Path offsets compose with Scroll, Advanced and Easy Motion.
+          {!embedded && (
+            <div className="text-[7px] font-bold uppercase tracking-wider text-[#2e0562]">
+              Motion path
+            </div>
+          )}
+          <div className={`${embedded ? "text-[7px] font-semibold text-foreground" : "mt-0.5 text-[6.5px] leading-relaxed text-muted-foreground"}`}>
+            {embedded
+              ? `${path.points.length} path point${path.points.length === 1 ? "" : "s"} · ${Math.round(progress)}%`
+              : "Path offsets compose with Scroll, Triggered and Quick Motion."}
           </div>
         </div>
 
@@ -130,10 +143,11 @@ export default function InteractiveMotionPathEditor({
         </label>
       </div>
 
-      <div className="mt-2 rounded-md bg-background/80 px-2 py-1.5 text-[6.5px] leading-relaxed text-muted-foreground">
-        Purple path handles are draggable directly on the canvas. X/Y are
-        offsets from the object&apos;s saved base position.
-      </div>
+      {!embedded && (
+        <div className="mt-2 rounded-md bg-background/80 px-2 py-1.5 text-[6.5px] leading-relaxed text-muted-foreground">
+          Purple path handles are draggable directly on the canvas. X/Y are offsets from the object&apos;s saved base position.
+        </div>
+      )}
 
       <div className="mt-2 space-y-1">
         {path.points.map(point => (

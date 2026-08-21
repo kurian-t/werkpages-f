@@ -190,6 +190,14 @@ export interface InteractiveObjectAppearance {
   accentColor?: string;
   borderColor?: string;
   radius?: number;
+  /** Optional text styling used by freeform text objects. */
+  fontFamily?: string;
+  fontSize?: number;
+  fontWeight?: number;
+  fontStyle?: "normal" | "italic";
+  textAlign?: "left" | "center" | "right";
+  lineHeight?: number;
+  letterSpacing?: number;
 }
 
 export type InteractiveResumeContentSource =
@@ -247,6 +255,10 @@ interface InteractiveObjectBase {
   geometry: InteractiveObjectGeometry;
   /** Editor-only manipulation guard; locked objects still publish/render. */
   locked?: boolean;
+  /** Optional editor grouping id. Grouping never changes visitor content. */
+  groupId?: string;
+  /** Optional editor-facing label shared by every member of the same group. */
+  groupName?: string;
   /** Simple Phase 22 loop preset. */
   motion?: InteractiveObjectMotion;
   /** Phase 23 advanced property tracks. */
@@ -255,6 +267,17 @@ interface InteractiveObjectBase {
   scrollTracks?: InteractiveScrollTrack[];
   /** Phase 25 route driven by the same scene scroll progress. */
   motionPath?: InteractiveMotionPath;
+  /**
+   * Optional synchronized motion applied to every member of an editor group.
+   * Grouping alone preserves individual motion. Once any group-motion channel
+   * is active, group motion becomes authoritative and individual motion is
+   * cleared/ignored for the grouped objects.
+   */
+  groupMotion?: InteractiveObjectMotion;
+  groupAnimationTracks?: InteractiveAnimationTrack[];
+  groupScrollTracks?: InteractiveScrollTrack[];
+  groupMotionPath?: InteractiveMotionPath;
+  groupParallaxDepth?: number;
   /**
    * Pointer-depth multiplier. 0 = fixed, positive = foreground,
    * negative = deeper/background movement.
@@ -972,6 +995,15 @@ function normalizeObjectAppearance(
     return value || undefined;
   };
 
+  const fontStyle =
+    source.fontStyle === "italic" || source.fontStyle === "normal"
+      ? source.fontStyle
+      : undefined;
+  const textAlign =
+    source.textAlign === "center" || source.textAlign === "right" || source.textAlign === "left"
+      ? source.textAlign
+      : undefined;
+
   return {
     variant,
     textColor: color(source.textColor),
@@ -982,6 +1014,25 @@ function normalizeObjectAppearance(
       source.radius == null
         ? undefined
         : finiteNumber(source.radius, 12, 0, 80),
+    fontFamily: color(source.fontFamily),
+    fontSize:
+      source.fontSize == null
+        ? undefined
+        : finiteNumber(source.fontSize, 24, 8, 160),
+    fontWeight:
+      source.fontWeight == null
+        ? undefined
+        : finiteNumber(source.fontWeight, 650, 100, 900),
+    fontStyle,
+    textAlign,
+    lineHeight:
+      source.lineHeight == null
+        ? undefined
+        : finiteNumber(source.lineHeight, 1.35, 0.8, 2.4),
+    letterSpacing:
+      source.letterSpacing == null
+        ? undefined
+        : finiteNumber(source.letterSpacing, 0, -2, 12),
   };
 }
 
@@ -1211,6 +1262,30 @@ function normalizeObject(
   const source = value as Record<string, unknown>;
   const id = stringValue(source.id, fallbackId).trim() || fallbackId;
   const type = source.type;
+  const groupId =
+    typeof source.groupId === "string" && source.groupId.trim()
+      ? source.groupId.trim()
+      : undefined;
+  const groupName =
+    groupId && typeof source.groupName === "string" && source.groupName.trim()
+      ? source.groupName.trim().slice(0, 80)
+      : undefined;
+  const groupMotion = normalizeObjectMotion(source.groupMotion);
+  const groupAnimationTracks = normalizeAnimationTracks(source.groupAnimationTracks);
+  const groupScrollTracks = normalizeScrollTracks(source.groupScrollTracks);
+  const groupMotionPath = normalizeMotionPath(source.groupMotionPath);
+  const groupParallaxDepth =
+    source.groupParallaxDepth == null
+      ? undefined
+      : finiteNumber(source.groupParallaxDepth, 0, -2, 2);
+  const groupMotionActive = !!(
+    groupId &&
+    (groupMotion ||
+      groupAnimationTracks?.length ||
+      groupScrollTracks?.length ||
+      groupMotionPath ||
+      Math.abs(groupParallaxDepth ?? 0) > 0.001)
+  );
 
   const base = {
     id,
@@ -1225,12 +1300,27 @@ function normalizeObject(
             : "Text"),
     geometry: normalizeGeometry(source.geometry, index),
     locked: source.locked === true || undefined,
-    motion: normalizeObjectMotion(source.motion),
-    animationTracks: normalizeAnimationTracks(source.animationTracks),
-    scrollTracks: normalizeScrollTracks(source.scrollTracks),
-    motionPath: normalizeMotionPath(source.motionPath),
-    parallaxDepth:
-      source.parallaxDepth == null
+    groupId,
+    groupName,
+    // Migration/normalization for the earlier additive group-motion behavior:
+    // once synchronized group motion exists, individual motion is no longer
+    // retained as a second animation layer.
+    motion: groupMotionActive ? undefined : normalizeObjectMotion(source.motion),
+    animationTracks: groupMotionActive
+      ? undefined
+      : normalizeAnimationTracks(source.animationTracks),
+    scrollTracks: groupMotionActive
+      ? undefined
+      : normalizeScrollTracks(source.scrollTracks),
+    motionPath: groupMotionActive ? undefined : normalizeMotionPath(source.motionPath),
+    groupMotion,
+    groupAnimationTracks,
+    groupScrollTracks,
+    groupMotionPath,
+    groupParallaxDepth,
+    parallaxDepth: groupMotionActive
+      ? undefined
+      : source.parallaxDepth == null
         ? undefined
         : finiteNumber(source.parallaxDepth, 0, -2, 2),
     appearance: normalizeObjectAppearance(source.appearance),
@@ -1716,6 +1806,18 @@ export function duplicateInteractiveScene(
             points: object.motionPath.points.map(point => ({ ...point })),
           }
         : undefined,
+      groupMotion: object.groupMotion ? { ...object.groupMotion } : undefined,
+      groupAnimationTracks: object.groupAnimationTracks?.map(track => ({ ...track })),
+      groupScrollTracks: object.groupScrollTracks?.map(track => ({
+        ...track,
+        keyframes: track.keyframes.map(keyframe => ({ ...keyframe })),
+      })),
+      groupMotionPath: object.groupMotionPath
+        ? {
+            ...object.groupMotionPath,
+            points: object.groupMotionPath.points.map(point => ({ ...point })),
+          }
+        : undefined,
       appearance: object.appearance
         ? { ...object.appearance }
         : undefined,
@@ -1936,6 +2038,8 @@ export function duplicateInteractiveObject(
     id: duplicateId,
     name: `${current.name} copy`,
     locked: false,
+    groupId: undefined,
+    groupName: undefined,
     motion: current.motion ? { ...current.motion } : undefined,
     animationTracks: current.animationTracks?.map(track => ({ ...track })),
     scrollTracks: current.scrollTracks?.map(track => ({
@@ -1948,6 +2052,11 @@ export function duplicateInteractiveObject(
           points: current.motionPath.points.map(point => ({ ...point })),
         }
       : undefined,
+    groupMotion: undefined,
+    groupAnimationTracks: undefined,
+    groupScrollTracks: undefined,
+    groupMotionPath: undefined,
+    groupParallaxDepth: undefined,
     appearance: current.appearance
       ? { ...current.appearance }
       : undefined,

@@ -28,6 +28,10 @@ export interface ResponsiveImportSeed {
 
 export type InteractivePublishVisibility = "public" | "unlisted";
 
+export type InteractivePublishAddressMode =
+  | "werkpages"
+  | "custom-domain";
+
 export type InteractiveCustomDomainStatus =
   | "unconfigured"
   | "pending-verification"
@@ -48,15 +52,20 @@ export interface InteractiveCustomDomainState {
 }
 
 export interface InteractivePublishSettings {
+  addressMode: InteractivePublishAddressMode;
+  /** Used only for the free Werkpages route: /resume/<slug>. */
   slug: string;
   visibility: InteractivePublishVisibility;
+  /** Used only when addressMode === "custom-domain". */
   customDomain?: InteractiveCustomDomainState;
 }
 
 export interface InteractivePublishSnapshotMetadata {
   versionId: string;
   preparedAt: string;
-  slug: string;
+  addressMode: InteractivePublishAddressMode;
+  /** Present for the free Werkpages address. */
+  slug?: string;
   visibility: InteractivePublishVisibility;
   draftFingerprint: string;
   contentHash: string;
@@ -77,7 +86,7 @@ export interface InteractivePublishedVersionMetadata
 }
 
 export interface InteractivePublishingState {
-  version: 1;
+  version: 2;
   settings: InteractivePublishSettings;
   lastPrepared?: InteractivePublishSnapshotMetadata;
   latestPublished?: InteractivePublishedVersionMetadata;
@@ -124,6 +133,20 @@ function normalizePublishVisibility(
   value: unknown,
 ): InteractivePublishVisibility {
   return value === "unlisted" ? "unlisted" : "public";
+}
+
+function normalizePublishAddressMode(
+  value: unknown,
+  customDomainHostname?: string,
+): InteractivePublishAddressMode {
+  if (value === "custom-domain") return "custom-domain";
+  if (value === "werkpages") return "werkpages";
+
+  // Phase 30 v1 compatibility: an existing custom-domain snapshot/settings
+  // implied custom-domain mode even though the mode was not stored explicitly.
+  return customDomainHostname
+    ? "custom-domain"
+    : "werkpages";
 }
 
 function normalizeDomainStatus(
@@ -181,13 +204,20 @@ function normalizePreparedSnapshot(
   const slug = cleanText(source.slug);
   const draftFingerprint = cleanText(source.draftFingerprint);
   const contentHash = cleanText(source.contentHash);
+  const customDomainHostname =
+    cleanText(source.customDomainHostname).toLowerCase();
+  const addressMode = normalizePublishAddressMode(
+    source.addressMode,
+    customDomainHostname,
+  );
 
   if (
     !versionId ||
     !preparedAt ||
-    !slug ||
     !draftFingerprint ||
-    !contentHash
+    !contentHash ||
+    (addressMode === "werkpages" && !slug) ||
+    (addressMode === "custom-domain" && !customDomainHostname)
   ) {
     return undefined;
   }
@@ -195,7 +225,8 @@ function normalizePreparedSnapshot(
   return {
     versionId,
     preparedAt,
-    slug,
+    addressMode,
+    slug: addressMode === "werkpages" ? slug : undefined,
     visibility: normalizePublishVisibility(source.visibility),
     draftFingerprint,
     contentHash,
@@ -217,8 +248,9 @@ function normalizePreparedSnapshot(
         ? Math.max(0, Number(source.warningCount))
         : 0,
     customDomainHostname:
-      cleanText(source.customDomainHostname).toLowerCase() ||
-      undefined,
+      addressMode === "custom-domain"
+        ? customDomainHostname || undefined
+        : undefined,
   };
 }
 
@@ -265,16 +297,23 @@ function normalizePublishingState(
     normalizePublishedVersion(source.latestPublished) ??
     publishedVersions[publishedVersions.length - 1];
 
+  const customDomain = normalizeCustomDomain(
+    source.settings?.customDomain,
+  );
+  const addressMode = normalizePublishAddressMode(
+    source.settings?.addressMode,
+    customDomain?.hostname,
+  );
+
   return {
-    version: 1,
+    version: 2,
     settings: {
+      addressMode,
       slug: cleanText(source.settings?.slug).toLowerCase(),
       visibility: normalizePublishVisibility(
         source.settings?.visibility,
       ),
-      customDomain: normalizeCustomDomain(
-        source.settings?.customDomain,
-      ),
+      customDomain,
     },
     lastPrepared: normalizePreparedSnapshot(
       source.lastPrepared,
@@ -452,8 +491,9 @@ export function getInteractivePublishingState(
 ): InteractivePublishingState {
   return (
     getResumeWebExperienceState(design).publishing ?? {
-      version: 1,
+      version: 2,
       settings: {
+        addressMode: "werkpages",
         slug: "",
         visibility: "public",
       },
@@ -471,8 +511,9 @@ export function updateInteractivePublishingState(
   const current = getResumeWebExperienceState(design);
   const publishing = updater(
     current.publishing ?? {
-      version: 1,
+      version: 2,
       settings: {
+        addressMode: "werkpages",
         slug: "",
         visibility: "public",
       },
@@ -486,7 +527,7 @@ export function updateInteractivePublishingState(
       ...current,
       publishing: {
         ...publishing,
-        version: 1,
+        version: 2,
       },
     },
   } as ResumeDesign;

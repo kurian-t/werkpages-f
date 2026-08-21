@@ -118,7 +118,7 @@ type DropGuide = {
   zoneHeight?: number;
 };
 
-type InspectorTab = "layout" | "style" | "animate" | "more";
+type InspectorTab = "text" | "layout" | "style" | "animate" | "more";
 
 const BREAKPOINT_WIDTH: Record<WebBreakpoint, number> = {
   desktop: 980,
@@ -1083,6 +1083,200 @@ function StyleInspector({
   );
 }
 
+function TextInspector({
+  textStyle,
+  linked,
+  onPatch,
+  onToggleLink,
+}: {
+  textStyle: ResumeTextStylePatch;
+  linked: boolean;
+  onPatch: (patch: ResumeTextStylePatch) => void;
+  onToggleLink: () => void;
+}) {
+  const traits = fontTraits(textStyle.fontFamily);
+  const align = textStyle.textAlign ?? "left";
+
+  return (
+    <div style={{ display: "grid", gap: 11 }}>
+      <div style={{ color: "#71717a", fontSize: 9, lineHeight: 1.45 }}>
+        Double-click the selected text on the page to change the words. Use these controls for its Web typography.
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 74px", gap: 8 }}>
+        <label>
+          <MiniFieldLabel>Font</MiniFieldLabel>
+          <select
+            value={
+              traits.family === "Times"
+                ? "Times-Roman"
+                : traits.family === "Courier"
+                  ? "Courier"
+                  : "Helvetica"
+            }
+            onChange={event => onPatch({
+              fontFamily: fontVariant(textStyle.fontFamily, {
+                family:
+                  event.target.value.startsWith("Times")
+                    ? "Times"
+                    : event.target.value.startsWith("Courier")
+                      ? "Courier"
+                      : "Helvetica",
+              }),
+            })}
+            style={smallInput}
+          >
+            {FONT_FAMILIES.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          <MiniFieldLabel>Size</MiniFieldLabel>
+          <input
+            type="number"
+            min={7}
+            max={72}
+            step={0.5}
+            value={textStyle.fontSize ?? 12}
+            onChange={event => onPatch({
+              fontSize: Math.max(7, Math.min(72, Number(event.target.value) || 12)),
+            })}
+            style={{ ...smallInput, textAlign: "center" }}
+          />
+        </label>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          onClick={() => onPatch({
+            fontFamily: fontVariant(textStyle.fontFamily, { bold: !traits.bold }),
+          })}
+          aria-pressed={traits.bold}
+          title="Bold"
+          style={{
+            ...iconButton,
+            borderColor: traits.bold ? "#ddd6fe" : "#e4e4e7",
+            background: traits.bold ? "#f5f3ff" : "#fff",
+            color: traits.bold ? "#6d28d9" : "#52525b",
+          }}
+        >
+          B
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onPatch({
+            fontFamily: fontVariant(textStyle.fontFamily, { italic: !traits.italic }),
+          })}
+          aria-pressed={traits.italic}
+          title="Italic"
+          style={{
+            ...iconButton,
+            fontStyle: "italic",
+            borderColor: traits.italic ? "#ddd6fe" : "#e4e4e7",
+            background: traits.italic ? "#f5f3ff" : "#fff",
+            color: traits.italic ? "#6d28d9" : "#52525b",
+          }}
+        >
+          I
+        </button>
+
+        <label
+          title="Text colour"
+          style={{
+            display: "inline-flex",
+            height: 28,
+            alignItems: "center",
+            gap: 5,
+            border: "1px solid #e4e4e7",
+            borderRadius: 7,
+            background: "#fff",
+            padding: "0 6px",
+            color: "#52525b",
+            fontSize: 8.5,
+            fontWeight: 750,
+          }}
+        >
+          <span>Colour</span>
+          <input
+            type="color"
+            value={
+              textStyle.color && /^#[0-9a-f]{6}$/i.test(textStyle.color)
+                ? textStyle.color
+                : "#18181b"
+            }
+            onChange={event => onPatch({ color: event.target.value })}
+            style={{ width: 20, height: 20, border: 0, background: "transparent", padding: 1 }}
+          />
+        </label>
+
+        <span style={{ width: 1, height: 21, background: "#e4e4e7", margin: "0 1px" }} />
+
+        {(["left", "center", "right"] as const).map(value => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => onPatch({ textAlign: value })}
+            aria-pressed={align === value}
+            title={`Align ${value}`}
+            style={{
+              ...iconButton,
+              minWidth: 30,
+              borderColor: align === value ? "#ddd6fe" : "#e4e4e7",
+              background: align === value ? "#f5f3ff" : "#fff",
+              color: align === value ? "#6d28d9" : "#52525b",
+              fontSize: 9,
+            }}
+          >
+            <span style={{
+              display: "inline-block",
+              width: 13,
+              textAlign: value,
+              letterSpacing: "-2px",
+            }}>
+              ≡
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={onToggleLink}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+          minHeight: 38,
+          border: linked ? "1px solid #ddd6fe" : "1px solid #fed7aa",
+          borderRadius: 9,
+          background: linked ? "#faf5ff" : "#fff7ed",
+          padding: "7px 9px",
+          color: linked ? "#5b21b6" : "#c2410c",
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <span>
+          <span style={{ display: "block", fontSize: 9, fontWeight: 800 }}>
+            {linked ? "Typography linked to Designed PDF" : "Web typography override"}
+          </span>
+          <span style={{ display: "block", marginTop: 2, fontSize: 8, opacity: .78, lineHeight: 1.35 }}>
+            {linked
+              ? "Changes stay synchronized until you create a Web override."
+              : "This text styling is independent on the Web resume."}
+          </span>
+        </span>
+        <span style={{ flex: "none", fontSize: 12 }}>{linked ? "🔗" : "⛓"}</span>
+      </button>
+    </div>
+  );
+}
+
 function AnimationInspector({
   spec,
   onPatch,
@@ -1402,15 +1596,9 @@ function SelectionToolbar({
   viewportScrollTop,
   parentGroupLabel,
   role,
-  textStyle,
-  linked,
-  logoSameTypeLink,
-  logoCrossFormatLink,
-  rotationCrossFormatLink,
+  showMore,
   activeTab,
   onActiveTab,
-  onTextPatch,
-  onToggleLink,
   onSelectParent,
   onClear,
 }: {
@@ -1421,42 +1609,45 @@ function SelectionToolbar({
   viewportScrollTop: number;
   parentGroupLabel?: string | null;
   role: ResumeVisualRole | null;
-  textStyle: ResumeTextStylePatch | null;
-  linked: boolean;
-  logoSameTypeLink?: {
-    linked: boolean;
-    count: number;
-    onToggle: () => void;
-  };
-  logoCrossFormatLink?: {
-    linked: boolean;
-    onToggle: () => void;
-  };
-  rotationCrossFormatLink?: {
-    linked: boolean;
-    onToggle: () => void;
-  };
+  showMore: boolean;
   activeTab: InspectorTab | null;
   onActiveTab: (tab: InspectorTab | null) => void;
-  onTextPatch: (patch: ResumeTextStylePatch) => void;
-  onToggleLink: () => void;
   onSelectParent?: () => void;
   onClear: () => void;
 }) {
-  const traits = fontTraits(textStyle?.fontFamily);
-  const estimatedWidth =
-    role ? 560 : rotationCrossFormatLink ? 420 : 300;
+  const estimatedWidth = role ? (showMore ? 355 : 322) : (showMore ? 310 : 277);
   const minLeft = viewportScrollLeft + 8;
   const maxLeft = Math.max(
     minLeft,
     viewportScrollLeft + viewportWidth - estimatedWidth - 8,
   );
   const left = Math.max(minLeft, Math.min(rect.left, maxLeft));
-  const aboveTop = rect.top - 62;
+  const aboveTop = rect.top - 52;
   const top =
     aboveTop >= viewportScrollTop + 8
       ? aboveTop
       : rect.top + rect.height + 12;
+
+  const tabButton = (tab: InspectorTab, label: string, minWidth = 42) => (
+    <button
+      type="button"
+      onClick={() => onActiveTab(activeTab === tab ? null : tab)}
+      aria-pressed={activeTab === tab}
+      title={`${label} controls`}
+      style={{
+        ...iconButton,
+        minWidth,
+        padding: "0 6px",
+        borderColor: activeTab === tab ? "#ddd6fe" : "transparent",
+        background: activeTab === tab ? "#f5f3ff" : "transparent",
+        color: activeTab === tab ? "#6d28d9" : "#52525b",
+        fontSize: 8.5,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div
@@ -1468,12 +1659,12 @@ function SelectionToolbar({
         zIndex: 300,
         display: "flex",
         alignItems: "center",
-        gap: 3,
+        gap: 2,
         minHeight: 34,
         maxWidth: "calc(100% - 20px)",
         padding: "3px 4px",
         border: "1px solid #e4e4e7",
-        borderRadius: 9,
+        borderRadius: 10,
         background: "#fff",
         boxShadow: "0 8px 24px rgba(15,23,42,.13)",
         color: "#27272a",
@@ -1484,7 +1675,7 @@ function SelectionToolbar({
         display: "flex",
         alignItems: "center",
         minWidth: 0,
-        maxWidth: parentGroupLabel ? 170 : 115,
+        maxWidth: parentGroupLabel ? 135 : 105,
       }}>
         {parentGroupLabel && onSelectParent && (
           <>
@@ -1495,12 +1686,15 @@ function SelectionToolbar({
               style={{
                 border: 0,
                 background: "transparent",
-                padding: "0 4px 0 6px",
+                padding: "0 3px 0 5px",
                 color: "#6d28d9",
                 cursor: "pointer",
-                fontSize: 8.5,
+                fontSize: 8,
                 fontWeight: 800,
                 whiteSpace: "nowrap",
+                maxWidth: 68,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
               }}
             >
               {parentGroupLabel}
@@ -1512,9 +1706,9 @@ function SelectionToolbar({
           minWidth: 0,
           overflow: "hidden",
           textOverflow: "ellipsis",
-          padding: "0 6px",
-          color: "#71717a",
-          fontSize: 9,
+          padding: "0 5px",
+          color: "#52525b",
+          fontSize: 8.5,
           fontWeight: 800,
           whiteSpace: "nowrap",
         }}>
@@ -1522,287 +1716,30 @@ function SelectionToolbar({
         </span>
       </div>
 
-      {logoSameTypeLink && (
-        <>
-          <span style={{ width: 1, height: 19, background: "#e4e4e7" }} />
-          <button
-            type="button"
-            onClick={logoSameTypeLink.onToggle}
-            title={
-              logoSameTypeLink.linked
-                ? `All ${logoSameTypeLink.count} company logos share size on Web. Click for an individual logo.`
-                : "This logo has its own Web size. Click to match all company logos."
-            }
-            style={{
-              ...iconButton,
-              width: "auto",
-              minWidth: 0,
-              padding: "0 7px",
-              borderColor: logoSameTypeLink.linked ? "#fde68a" : "#e4e4e7",
-              background: logoSameTypeLink.linked ? "#fffbeb" : "#fff",
-              color: logoSameTypeLink.linked ? "#a16207" : "#71717a",
-              fontSize: 8.5,
-              whiteSpace: "nowrap",
-            }}
-          >
-            {logoSameTypeLink.linked
-              ? `⛓ All logos · ${logoSameTypeLink.count}`
-              : "Individual logo"}
-          </button>
-        </>
-      )}
-
-      {logoCrossFormatLink && (
-        <>
-          <button
-            type="button"
-            onClick={logoCrossFormatLink.onToggle}
-            title={
-              logoCrossFormatLink.linked
-                ? "Logo size is synchronized between Designed PDF and Web. Position remains layout-specific."
-                : "Web and PDF logo sizes are independent. Click to synchronize them."
-            }
-            style={{
-              ...iconButton,
-              width: "auto",
-              minWidth: 0,
-              padding: "0 7px",
-              borderColor: logoCrossFormatLink.linked ? "#ddd6fe" : "#e4e4e7",
-              background: logoCrossFormatLink.linked ? "#f5f3ff" : "#fff",
-              color: logoCrossFormatLink.linked ? "#6d28d9" : "#71717a",
-              fontSize: 8.5,
-              whiteSpace: "nowrap",
-            }}
-          >
-            {logoCrossFormatLink.linked
-              ? "⇄ PDF + Web"
-              : "Web only"}
-          </button>
-          <span style={{ width: 1, height: 19, background: "#e4e4e7" }} />
-        </>
-      )}
-
-      {rotationCrossFormatLink && (
-        <>
-          <button
-            type="button"
-            onClick={rotationCrossFormatLink.onToggle}
-            title={
-              rotationCrossFormatLink.linked
-                ? "Rotation is synchronized between Designed PDF and Web. Click to give Web its own rotation."
-                : "Web rotation is independent from Designed PDF. Click to synchronize rotation again."
-            }
-            style={{
-              ...iconButton,
-              width: "auto",
-              minWidth: 0,
-              padding: "0 7px",
-              borderColor: rotationCrossFormatLink.linked
-                ? "#ddd6fe"
-                : "#e4e4e7",
-              background: rotationCrossFormatLink.linked
-                ? "#f5f3ff"
-                : "#fff",
-              color: rotationCrossFormatLink.linked
-                ? "#6d28d9"
-                : "#71717a",
-              fontSize: 8.5,
-              whiteSpace: "nowrap",
-            }}
-          >
-            {rotationCrossFormatLink.linked
-              ? "↻ PDF + Web"
-              : "↻ Web only"}
-          </button>
-          <span style={{ width: 1, height: 19, background: "#e4e4e7" }} />
-        </>
-      )}
-
-      {role && textStyle && (
-        <>
-          <span style={{ width: 1, height: 19, background: "#e4e4e7" }} />
-
-          <select
-            value={traits.family === "Times" ? "Times-Roman" : traits.family === "Courier" ? "Courier" : "Helvetica"}
-            onChange={event => onTextPatch({
-              fontFamily: fontVariant(textStyle.fontFamily, {
-                family:
-                  event.target.value.startsWith("Times") ? "Times" :
-                  event.target.value.startsWith("Courier") ? "Courier" :
-                  "Helvetica",
-              }),
-            })}
-            title="Font family"
-            style={{
-              height: 27,
-              maxWidth: 98,
-              border: "none",
-              background: "transparent",
-              color: "#27272a",
-              fontSize: 9,
-              outline: "none",
-            }}
-          >
-            {FONT_FAMILIES.map(option => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-
-          <input
-            type="number"
-            min={7}
-            max={72}
-            step={0.5}
-            value={textStyle.fontSize ?? 12}
-            onChange={event => onTextPatch({
-              fontSize: Math.max(7, Math.min(72, Number(event.target.value) || 12)),
-            })}
-            title="Font size"
-            style={{
-              width: 43,
-              height: 26,
-              border: "1px solid #ececf0",
-              borderRadius: 6,
-              padding: "0 4px",
-              fontSize: 9,
-              textAlign: "center",
-              outline: "none",
-            }}
-          />
-
-          <button
-            type="button"
-            onClick={() => onTextPatch({
-              fontFamily: fontVariant(textStyle.fontFamily, { bold: !traits.bold }),
-            })}
-            style={{
-              ...iconButton,
-              background: traits.bold ? "#f3e8ff" : "transparent",
-              color: traits.bold ? "#6d28d9" : "#52525b",
-            }}
-            title="Bold"
-          >
-            B
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onTextPatch({
-              fontFamily: fontVariant(textStyle.fontFamily, { italic: !traits.italic }),
-            })}
-            style={{
-              ...iconButton,
-              fontStyle: "italic",
-              background: traits.italic ? "#f3e8ff" : "transparent",
-              color: traits.italic ? "#6d28d9" : "#52525b",
-            }}
-            title="Italic"
-          >
-            I
-          </button>
-
-          <input
-            type="color"
-            value={
-              textStyle.color && /^#[0-9a-f]{6}$/i.test(textStyle.color)
-                ? textStyle.color
-                : "#18181b"
-            }
-            onChange={event => onTextPatch({ color: event.target.value })}
-            title="Text color"
-            style={{
-              width: 28,
-              height: 25,
-              border: "none",
-              background: "transparent",
-              padding: 2,
-              cursor: "pointer",
-            }}
-          />
-
-          {(["left", "center", "right"] as const).map(align => (
-            <button
-              key={align}
-              type="button"
-              onClick={() => onTextPatch({ textAlign: align })}
-              title={`Align ${align}`}
-              style={{
-                ...iconButton,
-                minWidth: 25,
-                background: (textStyle.textAlign ?? "left") === align
-                  ? "#f3e8ff"
-                  : "transparent",
-                color: (textStyle.textAlign ?? "left") === align
-                  ? "#6d28d9"
-                  : "#52525b",
-                fontSize: 9,
-              }}
-            >
-              <span style={{
-                display: "inline-block",
-                width: align === "center" ? 12 : 13,
-                textAlign: align,
-                letterSpacing: "-2px",
-              }}>
-                ≡
-              </span>
-            </button>
-          ))}
-
-          <button
-            type="button"
-            onClick={onToggleLink}
-            title={
-              linked
-                ? "Typography is linked between Designed PDF and Web. Click to create a Web override."
-                : "Web typography is overridden. Click to relink it to the Designed PDF."
-            }
-            style={{
-              ...iconButton,
-              minWidth: 31,
-              background: linked ? "#f3e8ff" : "#fff7ed",
-              color: linked ? "#6d28d9" : "#c2410c",
-              borderColor: linked ? "#ddd6fe" : "#fed7aa",
-            }}
-          >
-            {linked ? "🔗" : "⛓"}
-          </button>
-        </>
-      )}
-
       <span style={{ width: 1, height: 19, background: "#e4e4e7" }} />
 
-      {(["layout", "style", "animate"] as InspectorTab[]).map(tab => (
+      {role && tabButton("text", "Text", 38)}
+      {tabButton("layout", "Layout", 44)}
+      {tabButton("style", "Style", 38)}
+      {tabButton("animate", "Motion", 44)}
+
+      {showMore && (
         <button
           type="button"
-          key={tab}
-          onClick={() => onActiveTab(activeTab === tab ? null : tab)}
+          onClick={() => onActiveTab(activeTab === "more" ? null : "more")}
+          aria-pressed={activeTab === "more"}
           style={{
             ...iconButton,
-            minWidth: 46,
-            padding: "0 6px",
-            background: activeTab === tab ? "#f5f3ff" : "transparent",
-            color: activeTab === tab ? "#6d28d9" : "#52525b",
-            fontSize: 8.5,
-            textTransform: "capitalize",
+            minWidth: 28,
+            borderColor: activeTab === "more" ? "#ddd6fe" : "transparent",
+            background: activeTab === "more" ? "#f5f3ff" : "transparent",
+            color: activeTab === "more" ? "#6d28d9" : "#52525b",
           }}
+          title="More options"
         >
-          {tab === "animate" ? "✦ Motion" : tab}
+          ⋯
         </button>
-      ))}
-
-      <button
-        type="button"
-        onClick={() => onActiveTab(activeTab === "more" ? null : "more")}
-        style={{
-          ...iconButton,
-          background: activeTab === "more" ? "#f5f3ff" : "transparent",
-          color: activeTab === "more" ? "#6d28d9" : "#52525b",
-        }}
-        title="More"
-      >
-        ⋯
-      </button>
+      )}
 
       <button
         type="button"
@@ -1819,32 +1756,49 @@ function SelectionToolbar({
 function InspectorPopover({
   rect,
   viewportWidth,
+  viewportHeight,
   viewportScrollLeft,
+  viewportScrollTop,
   children,
 }: {
   rect: EditorRect;
   viewportWidth: number;
+  viewportHeight: number;
   viewportScrollLeft: number;
+  viewportScrollTop: number;
   children: ReactNode;
 }) {
+  const width = 300;
+  const margin = 10;
+  const belowStart = rect.top + rect.height + 52;
+  const viewportBottom = viewportScrollTop + viewportHeight;
+  const spaceBelow = viewportBottom - belowStart - margin;
+  const spaceAbove = rect.top - viewportScrollTop - 54 - margin;
+  const openBelow = spaceBelow >= 190 || spaceBelow >= spaceAbove;
+  const maxHeight = Math.max(150, Math.min(410, openBelow ? spaceBelow : spaceAbove));
+  const top = openBelow
+    ? belowStart
+    : Math.max(viewportScrollTop + margin, rect.top - 54 - maxHeight - margin);
+
   return (
     <div
       data-web-selection-ui
       style={{
         position: "absolute",
-        top: Math.max(48, rect.top + 4),
+        top,
         left: Math.max(
           viewportScrollLeft + 8,
           Math.min(
             rect.left,
-            viewportScrollLeft + Math.max(8, viewportWidth - 308),
+            viewportScrollLeft + Math.max(8, viewportWidth - width - 8),
           ),
         ),
         zIndex: 290,
-        width: 300,
+        width,
         maxWidth: "calc(100% - 20px)",
-        maxHeight: 410,
+        maxHeight,
         overflowY: "auto",
+        overscrollBehavior: "contain",
         border: "1px solid #e4e4e7",
         borderRadius: 11,
         background: "#fff",
@@ -2955,7 +2909,6 @@ export default function ResumeWebPreview({
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     const startPlacement = placementForSelection(selection);
-    const originalRotate = element.style.rotate;
     let rotation = startPlacement.rotation ?? 0;
 
     const move = (moveEvent: PointerEvent) => {
@@ -2974,7 +2927,11 @@ export default function ResumeWebPreview({
       document.removeEventListener("pointermove", move);
       document.removeEventListener("pointerup", up);
 
-      element.style.rotate = originalRotate;
+      // Keep the final live angle on the DOM node until React commits the saved
+      // design update. Restoring `originalRotate` here caused the actual Web
+      // content to snap back while the editor overlay still showed the dropped
+      // angle; a refresh then appeared to "fix" it because persistence was fine.
+      element.style.rotate = rotation ? `${rotation}deg` : "";
 
       const syncTarget = getWebRotationSyncTarget({
         sectionId: selection.sectionId,
@@ -2997,7 +2954,15 @@ export default function ResumeWebPreview({
         });
       }
 
-      requestAnimationFrame(() => updateSelectionRect());
+      // Keep the overlay at the same live angle immediately. Once React applies
+      // the persisted design, normal selection measurement takes over.
+      updateSelectionRect(rotation);
+
+      // A second measurement after paint reconciles dimensions if the rotated
+      // element reflowed as part of the design commit.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => updateSelectionRect());
+      });
     };
 
     document.addEventListener("pointermove", move);
@@ -4585,7 +4550,7 @@ export default function ResumeWebPreview({
   const photoPlacement = elementPlacementStyle("photo");
 
   return (
-    <div style={{ width: "100%", minWidth: 0 }}>
+    <div style={{ width: "100%", minWidth: 0, height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
       <style>{`
         @keyframes web-editor-gradient {
           0%,100% { background-position:0% 50%; }
@@ -4621,73 +4586,178 @@ export default function ResumeWebPreview({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          flexWrap: "wrap",
           gap: 10,
-          marginBottom: 8,
+          marginBottom: 10,
           padding: "0 2px",
+          flex: "0 0 auto",
         }}
       >
-        <div style={{
-          color: "#71717a",
-          fontSize: 9,
-          lineHeight: 1.35,
-        }}>
-          Click to select · drag selected items · double-click text to edit
+        <div
+          style={{
+            minWidth: 180,
+            flex: "1 1 260px",
+            color: "#71717a",
+            fontSize: 9,
+            lineHeight: 1.35,
+          }}
+        >
+          Select anything on the page to edit it.
         </div>
 
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 3,
-          padding: 3,
-          border: "1px solid #e4e4e7",
-          borderRadius: 8,
-          background: "#fff",
-        }}>
-          {([
-            ["desktop", "▰", "Desktop"],
-            ["tablet", "▯", "Tablet"],
-            ["mobile", "▯", "Mobile"],
-          ] as Array<[WebBreakpoint, string, string]>).map(([bp, icon, title]) => (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            flexWrap: "wrap",
+            gap: 7,
+          }}
+        >
+          <div
+            role="group"
+            aria-label="Responsive preview size"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 2,
+              padding: 3,
+              border: "1px solid #e4e4e7",
+              borderRadius: 9,
+              background: "#fff",
+              boxShadow: "0 1px 2px rgba(15,23,42,.035)",
+            }}
+          >
+            {([
+              ["desktop", "Desktop", "Base layout"],
+              ["tablet", "Tablet", "Responsive layout"],
+              ["mobile", "Mobile", "Responsive layout"],
+            ] as Array<[WebBreakpoint, string, string]>).map(([bp, label, hint]) => {
+              const active = breakpoint === bp;
+              const glyphWidth = bp === "desktop" ? 15 : bp === "tablet" ? 11 : 8;
+              const glyphHeight = bp === "mobile" ? 15 : bp === "tablet" ? 14 : 11;
+
+              return (
+                <button
+                  key={bp}
+                  type="button"
+                  aria-pressed={active}
+                  title={`${label} · ${BREAKPOINT_WIDTH[bp]}px · ${hint}`}
+                  onClick={() => {
+                    setBreakpoint(bp);
+                    clearSelection();
+                    window.requestAnimationFrame(() => {
+                      viewportRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+                    });
+                  }}
+                  style={{
+                    height: 32,
+                    minWidth: 78,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    padding: "0 9px",
+                    border: active ? "1px solid #ddd6fe" : "1px solid transparent",
+                    borderRadius: 7,
+                    background: active ? "#f5f3ff" : "transparent",
+                    color: active ? "#5b21b6" : "#71717a",
+                    cursor: "pointer",
+                    fontSize: 9.5,
+                    fontWeight: active ? 800 : 650,
+                    lineHeight: 1,
+                    whiteSpace: "nowrap",
+                    transition: "background .15s ease, color .15s ease, border-color .15s ease",
+                  }}
+                >
+                  <span
+                    aria-hidden
+                    style={{
+                      display: "inline-block",
+                      width: glyphWidth,
+                      height: glyphHeight,
+                      border: "1.4px solid currentColor",
+                      borderRadius: bp === "mobile" ? 3 : 2.5,
+                      boxSizing: "border-box",
+                      position: "relative",
+                    }}
+                  >
+                    {bp === "desktop" && (
+                      <span
+                        style={{
+                          position: "absolute",
+                          left: "50%",
+                          bottom: -4,
+                          width: 7,
+                          height: 1.4,
+                          borderRadius: 2,
+                          background: "currentColor",
+                          transform: "translateX(-50%)",
+                        }}
+                      />
+                    )}
+                  </span>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          <span
+            title={
+              breakpoint === "desktop"
+                ? "Desktop is the base Web layout."
+                : `${breakpoint === "tablet" ? "Tablet" : "Mobile"} inherits the larger layout until you make an override.`
+            }
+            style={{
+              display: "inline-flex",
+              height: 28,
+              alignItems: "center",
+              borderRadius: 999,
+              background: "#f4f4f5",
+              padding: "0 8px",
+              color: "#71717a",
+              fontSize: 8.5,
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {BREAKPOINT_WIDTH[breakpoint]}px
+          </span>
+
+          <span style={{ width: 1, height: 20, background: "#e4e4e7" }} />
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 2,
+              padding: 3,
+              border: "1px solid #e4e4e7",
+              borderRadius: 8,
+              background: "#fff",
+            }}
+          >
             <button
-              key={bp}
               type="button"
-              title={title}
-              onClick={() => {
-                setBreakpoint(bp);
-                clearSelection();
-              }}
-              style={{
-                ...iconButton,
-                minWidth: 31,
-                height: 26,
-                background: breakpoint === bp ? "#f5f3ff" : "transparent",
-                color: breakpoint === bp ? "#6d28d9" : "#71717a",
-                borderColor: breakpoint === bp ? "#ddd6fe" : "transparent",
-              }}
+              title="Replay animations"
+              aria-label="Replay animations"
+              onClick={() => setMotionReplay(value => value + 1)}
+              style={{ ...iconButton, minWidth: 31, height: 26 }}
             >
-              {bp === "desktop" ? "🖥" : bp === "tablet" ? "▭" : "▯"}
+              ↻
             </button>
-          ))}
 
-          <span style={{ width: 1, height: 18, background: "#e4e4e7" }} />
-
-          <button
-            type="button"
-            title="Replay animations"
-            onClick={() => setMotionReplay(value => value + 1)}
-            style={{ ...iconButton, minWidth: 31, height: 26 }}
-          >
-            ↻
-          </button>
-
-          <button
-            type="button"
-            title="Switch preview theme"
-            onClick={() => setRuntimeTheme(theme => theme === "dark" ? "light" : "dark")}
-            style={{ ...iconButton, minWidth: 31, height: 26 }}
-          >
-            {runtimeTheme === "dark" ? "☀" : "◐"}
-          </button>
+            <button
+              type="button"
+              title="Switch preview theme"
+              aria-label="Switch preview theme"
+              onClick={() => setRuntimeTheme(theme => theme === "dark" ? "light" : "dark")}
+              style={{ ...iconButton, minWidth: 31, height: 26 }}
+            >
+              {runtimeTheme === "dark" ? "☀" : "◐"}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -4707,8 +4777,8 @@ export default function ResumeWebPreview({
         style={{
           position: "relative",
           width: "100%",
-          height: "min(920px, calc(100vh - 190px))",
-          minHeight: 580,
+          flex: "1 1 auto",
+          minHeight: 0,
           overflow: "auto",
           border: "1px solid #e5e7eb",
           background: "#f6f6f7",
@@ -5112,91 +5182,15 @@ export default function ResumeWebPreview({
               viewportScrollTop={viewportRef.current?.scrollTop ?? 0}
               parentGroupLabel={parentGroupLabel}
               role={roleForSelection}
-              textStyle={selectedTextStyle}
-              linked={textLinked}
-              logoSameTypeLink={
-                selectedWorkLogoEntryId
-                  ? {
-                      linked: selectedLogoSameTypeLinked,
-                      count: workEntryIds.length,
-                      onToggle: () => {
-                        if (!onDesignChange) return;
-                        onDesignChange(
-                          setWebCompanyLogoGroupLinked(
-                            data.design,
-                            breakpoint,
-                            selectedWorkLogoEntryId,
-                            workEntryIds,
-                            !selectedLogoSameTypeLinked,
-                          ),
-                        );
-                      },
-                    }
-                  : undefined
-              }
-              logoCrossFormatLink={
-                selectedWorkLogoEntryId
-                  ? {
-                      linked: companyLogoCrossFormatLinked,
-                      onToggle: () => {
-                        if (!onDesignChange) return;
-
-                        if (companyLogoCrossFormatLinked) {
-                          onDesignChange(
-                            setCompanyLogoCrossFormatLinked(
-                              data.design,
-                              false,
-                            ),
-                          );
-                          return;
-                        }
-
-                        let next = setCompanyLogoCrossFormatLinked(
-                          data.design,
-                          true,
-                        );
-                        next = syncCompanyLogoSizeFromWebNow(
-                          next,
-                          breakpoint,
-                          selectedWorkLogoEntryId,
-                          workEntryIds,
-                        );
-                        onDesignChange(next);
-                      },
-                    }
-                  : undefined
-              }
-              rotationCrossFormatLink={
-                selectedRotationSyncTarget
-                  ? {
-                      linked: selectedRotationCrossFormatLinked,
-                      onToggle: () => {
-                        if (!onDesignChange) return;
-                        onDesignChange(
-                          setWebRotationCrossFormatLinked(
-                            data.design,
-                            breakpoint,
-                            selectedRotationSyncTarget,
-                            !selectedRotationCrossFormatLinked,
-                          ),
-                        );
-                      },
-                    }
-                  : undefined
-              }
+              showMore={!!(
+                selectedWorkLogoEntryId ||
+                selectedRotationSyncTarget ||
+                selectedWorkLogoEntry ||
+                (roleForSelection && !textLinked) ||
+                (selection.instanceId && studio.instances[selection.instanceId])
+              )}
               activeTab={inspectorTab}
               onActiveTab={setInspectorTab}
-              onTextPatch={patchText}
-              onToggleLink={() => {
-                if (!onDesignChange || !roleForSelection) return;
-                onDesignChange(
-                  setWebTextLinked(
-                    data.design,
-                    roleForSelection,
-                    !textLinked,
-                  ),
-                );
-              }}
               onSelectParent={parentGroupLabel ? selectParentGroup : undefined}
               onClear={clearSelection}
             />
@@ -5205,8 +5199,28 @@ export default function ResumeWebPreview({
               <InspectorPopover
                 rect={selectionRect}
                 viewportWidth={viewportRef.current?.clientWidth ?? 900}
+                viewportHeight={viewportRef.current?.clientHeight ?? 700}
                 viewportScrollLeft={viewportRef.current?.scrollLeft ?? 0}
+                viewportScrollTop={viewportRef.current?.scrollTop ?? 0}
               >
+                {inspectorTab === "text" && roleForSelection && selectedTextStyle && (
+                  <TextInspector
+                    textStyle={selectedTextStyle}
+                    linked={textLinked}
+                    onPatch={patchText}
+                    onToggleLink={() => {
+                      if (!onDesignChange || !roleForSelection) return;
+                      onDesignChange(
+                        setWebTextLinked(
+                          data.design,
+                          roleForSelection,
+                          !textLinked,
+                        ),
+                      );
+                    }}
+                  />
+                )}
+
                 {inspectorTab === "layout" && (
                   <LayoutInspector
                     selection={selection}
@@ -5256,43 +5270,118 @@ export default function ResumeWebPreview({
 
                 {inspectorTab === "more" && (
                   <div style={{ display: "grid", gap: 9 }}>
-                    <div style={{
-                      borderRadius: 8,
-                      background: "#f8fafc",
-                      padding: "8px 9px",
-                      color: "#64748b",
-                      fontSize: 8.5,
-                      lineHeight: 1.5,
-                    }}>
-                      <strong style={{ color: "#334155" }}>One resume, three presentations.</strong><br />
-                      Content is shared. Typography is linked between Designed PDF + Web until you
-                      unlink it. Project content is shared across Designed PDF, ATS and Web. Responsive layout, motion, video and hover behavior are Web-only.
-                      ATS remains semantic.
-                    </div>
-
-                    {selectedWorkLogoEntry && (
+                    {(selectedWorkLogoEntryId || selectedRotationSyncTarget) && (
                       <div style={{
                         display: "grid",
-                        gap: 6,
-                        borderRadius: 8,
-                        background: "#f8fafc",
-                        padding: "8px 9px",
-                        color: "#64748b",
-                        fontSize: 8.5,
-                        lineHeight: 1.45,
+                        gap: 7,
+                        border: "1px solid #e4e4e7",
+                        borderRadius: 9,
+                        padding: 9,
                       }}>
-                        <strong style={{ color: "#334155" }}>
-                          Two independent logo relationships
-                        </strong>
-                        <span>
-                          <strong>All logos</strong> controls whether logo size matches
-                          other company logos in this Web presentation.
-                          <strong> PDF + Web</strong> synchronizes compatible logo
-                          appearance across formats. Position always remains
-                          layout-specific.
-                        </span>
+                        <div>
+                          <div style={{ fontSize: 9, fontWeight: 800 }}>Relationships</div>
+                          <div style={{ marginTop: 2, color: "#71717a", fontSize: 8, lineHeight: 1.4 }}>
+                            Choose what this Web element should keep synchronized.
+                          </div>
+                        </div>
+
+                        {selectedWorkLogoEntryId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!onDesignChange) return;
+                              onDesignChange(
+                                setWebCompanyLogoGroupLinked(
+                                  data.design,
+                                  breakpoint,
+                                  selectedWorkLogoEntryId,
+                                  workEntryIds,
+                                  !selectedLogoSameTypeLinked,
+                                ),
+                              );
+                            }}
+                            style={{
+                              height: 30,
+                              border: selectedLogoSameTypeLinked ? "1px solid #fde68a" : "1px solid #e4e4e7",
+                              borderRadius: 8,
+                              background: selectedLogoSameTypeLinked ? "#fffbeb" : "#fafafa",
+                              color: selectedLogoSameTypeLinked ? "#a16207" : "#52525b",
+                              cursor: "pointer",
+                              fontSize: 8.5,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {selectedLogoSameTypeLinked
+                              ? `⛓ Match all company logos · ${workEntryIds.length}`
+                              : "Use an individual logo size"}
+                          </button>
+                        )}
+
+                        {selectedWorkLogoEntryId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!onDesignChange) return;
+                              if (companyLogoCrossFormatLinked) {
+                                onDesignChange(setCompanyLogoCrossFormatLinked(data.design, false));
+                                return;
+                              }
+                              let next = setCompanyLogoCrossFormatLinked(data.design, true);
+                              next = syncCompanyLogoSizeFromWebNow(
+                                next,
+                                breakpoint,
+                                selectedWorkLogoEntryId,
+                                workEntryIds,
+                              );
+                              onDesignChange(next);
+                            }}
+                            style={{
+                              height: 30,
+                              border: companyLogoCrossFormatLinked ? "1px solid #ddd6fe" : "1px solid #e4e4e7",
+                              borderRadius: 8,
+                              background: companyLogoCrossFormatLinked ? "#f5f3ff" : "#fafafa",
+                              color: companyLogoCrossFormatLinked ? "#6d28d9" : "#52525b",
+                              cursor: "pointer",
+                              fontSize: 8.5,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {companyLogoCrossFormatLinked ? "⇄ Logo size · PDF + Web" : "Logo size · Web only"}
+                          </button>
+                        )}
+
+                        {selectedRotationSyncTarget && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!onDesignChange || !selectedRotationSyncTarget) return;
+                              onDesignChange(
+                                setWebRotationCrossFormatLinked(
+                                  data.design,
+                                  breakpoint,
+                                  selectedRotationSyncTarget,
+                                  !selectedRotationCrossFormatLinked,
+                                ),
+                              );
+                            }}
+                            style={{
+                              height: 30,
+                              border: selectedRotationCrossFormatLinked ? "1px solid #ddd6fe" : "1px solid #e4e4e7",
+                              borderRadius: 8,
+                              background: selectedRotationCrossFormatLinked ? "#f5f3ff" : "#fafafa",
+                              color: selectedRotationCrossFormatLinked ? "#6d28d9" : "#52525b",
+                              cursor: "pointer",
+                              fontSize: 8.5,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {selectedRotationCrossFormatLinked ? "↻ Rotation · PDF + Web" : "↻ Rotation · Web only"}
+                          </button>
+                        )}
                       </div>
                     )}
+
+
 
                     {selectedWorkLogoEntry && (
                       <div style={{
@@ -5361,6 +5450,7 @@ export default function ResumeWebPreview({
                         type="button"
                         onClick={() => {
                           if (!onDesignChange) return;
+                          setInspectorTab(null);
                           onDesignChange(
                             setWebTextLinked(data.design, roleForSelection, true),
                           );
@@ -5385,6 +5475,7 @@ export default function ResumeWebPreview({
                         type="button"
                         onClick={() => {
                           if (!onDesignChange || !selection.instanceId) return;
+                          setInspectorTab(null);
                           onDesignChange(
                             clearWebInstanceAnimation(
                               data.design,
@@ -5447,7 +5538,7 @@ export default function ResumeWebPreview({
               </div>
               <button
                 type="button"
-                onClick={() => setSelection(null)}
+                onClick={clearSelection}
                 style={{ ...iconButton, minWidth: 24 }}
               >
                 ×

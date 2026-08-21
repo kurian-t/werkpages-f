@@ -16,6 +16,7 @@ import {
   type InteractiveCustomDomainState,
   type InteractivePublishedVersionMetadata,
   type InteractivePublishingState,
+  type InteractivePublishAddressMode,
   type InteractivePublishSettings,
   type InteractivePublishSnapshotMetadata,
   type InteractivePublishVisibility,
@@ -86,6 +87,17 @@ export interface InteractiveStaticDeploymentManifest {
   immutablePrefix: string;
   canonicalPath: string;
   visibility: InteractivePublishVisibility;
+  address:
+    | {
+        mode: "werkpages";
+        path: string;
+        slug: string;
+      }
+    | {
+        mode: "custom-domain";
+        hostname: string;
+        path: "/";
+      };
   customDomain?: {
     hostname: string;
     status: InteractiveCustomDomainState["status"];
@@ -458,12 +470,17 @@ function resolvedSettings(
     data.design,
   ).settings;
 
+  const addressMode: InteractivePublishAddressMode =
+    override?.addressMode ??
+    stored.addressMode ??
+    "werkpages";
   const slug =
     override?.slug ??
     stored.slug ??
     defaultInteractiveSlug(data);
 
   return {
+    addressMode,
     slug: normalizeInteractiveSlug(
       slug || defaultInteractiveSlug(data),
     ),
@@ -500,16 +517,23 @@ export function getInteractiveDraftPublicationStatus(
   const contentChanged =
     latestPublished.draftFingerprint !== draftFingerprint;
   const settingsChanged =
-    latestPublished.slug !== settings.slug ||
+    latestPublished.addressMode !== settings.addressMode ||
     latestPublished.visibility !== settings.visibility ||
-    (latestPublished.customDomainHostname ?? "") !==
-      (
-        settings.customDomain?.hostname
-          ? normalizeCustomDomainHostname(
-              settings.customDomain.hostname,
-            )
-          : ""
-      );
+    (
+      settings.addressMode === "werkpages" &&
+      (latestPublished.slug ?? "") !== settings.slug
+    ) ||
+    (
+      settings.addressMode === "custom-domain" &&
+      (latestPublished.customDomainHostname ?? "") !==
+        (
+          settings.customDomain?.hostname
+            ? normalizeCustomDomainHostname(
+                settings.customDomain.hostname,
+              )
+            : ""
+        )
+    );
 
   return {
     status:
@@ -564,6 +588,14 @@ function buildManifest(
   const immutablePrefix =
     `versions/${metadata.versionId}`;
   const entrypoint = `${immutablePrefix}/index.html`;
+  const customHostname =
+    metadata.addressMode === "custom-domain"
+      ? metadata.customDomainHostname
+      : undefined;
+  const canonicalPath =
+    metadata.addressMode === "werkpages"
+      ? `/resume/${metadata.slug}`
+      : "/";
 
   return {
     format: "werkpages-interactive-static",
@@ -573,14 +605,26 @@ function buildManifest(
     version: metadata,
     entrypoint,
     immutablePrefix,
-    canonicalPath: `/${metadata.slug}`,
+    canonicalPath,
     visibility: metadata.visibility,
-    customDomain: settings.customDomain?.hostname
+    address:
+      metadata.addressMode === "werkpages"
+        ? {
+            mode: "werkpages",
+            path: canonicalPath,
+            slug: metadata.slug!,
+          }
+        : {
+            mode: "custom-domain",
+            hostname: customHostname!,
+            path: "/",
+          },
+    customDomain: customHostname
       ? {
-          hostname: normalizeCustomDomainHostname(
-            settings.customDomain.hostname,
-          ),
-          status: settings.customDomain.status,
+          hostname: customHostname,
+          status:
+            settings.customDomain?.status ??
+            "pending-verification",
         }
       : undefined,
     files: [
@@ -600,7 +644,10 @@ function buildManifest(
       },
     ],
     pointer: {
-      path: `slugs/${metadata.slug}/current.json`,
+      path:
+        metadata.addressMode === "werkpages"
+          ? `resume-slugs/${metadata.slug}/current.json`
+          : `domains/${customHostname}/current.json`,
       cacheControl:
         "public, max-age=0, must-revalidate",
       body: {
@@ -635,26 +682,39 @@ export async function createInteractivePublishSnapshot(
     data,
     settingsOverride,
   );
-  const slugValidation = validateInteractiveSlug(
-    settings.slug,
-  );
+  const slugValidation =
+    settings.addressMode === "werkpages"
+      ? validateInteractiveSlug(settings.slug)
+      : {
+          value: "",
+          valid: true,
+        };
 
-  if (!slugValidation.valid) {
+  if (
+    settings.addressMode === "werkpages" &&
+    !slugValidation.valid
+  ) {
     throw new InteractivePublishBlockedError(
-      slugValidation.error || "Invalid publish slug.",
+      slugValidation.error ||
+        "Invalid Werkpages resume address.",
     );
   }
 
   const domain = assessCustomDomainReadiness(
     settings.customDomain,
   );
-  if (
-    domain.configured &&
-    !domain.syntacticallyValid
-  ) {
-    throw new InteractivePublishBlockedError(
-      domain.detail,
-    );
+  if (settings.addressMode === "custom-domain") {
+    if (!domain.configured) {
+      throw new InteractivePublishBlockedError(
+        "Enter a domain you already own.",
+      );
+    }
+
+    if (!domain.syntacticallyValid) {
+      throw new InteractivePublishBlockedError(
+        domain.detail,
+      );
+    }
   }
 
   const prepared =
@@ -692,7 +752,11 @@ export async function createInteractivePublishSnapshot(
       preparedAt,
     ),
     preparedAt,
-    slug: slugValidation.value,
+    addressMode: settings.addressMode,
+    slug:
+      settings.addressMode === "werkpages"
+        ? slugValidation.value
+        : undefined,
     visibility: settings.visibility,
     draftFingerprint,
     contentHash,
@@ -706,6 +770,7 @@ export async function createInteractivePublishSnapshot(
     readinessScore: report.score,
     warningCount: report.warningCount,
     customDomainHostname:
+      settings.addressMode === "custom-domain" &&
       settings.customDomain?.hostname
         ? normalizeCustomDomainHostname(
             settings.customDomain.hostname,
@@ -722,7 +787,10 @@ export async function createInteractivePublishSnapshot(
       metadata,
       {
         ...settings,
-        slug: slugValidation.value,
+        slug:
+          settings.addressMode === "werkpages"
+            ? slugValidation.value
+            : settings.slug,
       },
     ),
     optimization: {
@@ -747,8 +815,22 @@ export function recordPreparedInteractiveSnapshot(
       lastPrepared: metadata,
       settings: {
         ...current.settings,
-        slug: metadata.slug,
+        addressMode: metadata.addressMode,
+        slug:
+          metadata.addressMode === "werkpages"
+            ? metadata.slug ?? current.settings.slug
+            : current.settings.slug,
         visibility: metadata.visibility,
+        customDomain:
+          metadata.addressMode === "custom-domain" &&
+          metadata.customDomainHostname
+            ? {
+                ...(current.settings.customDomain ?? {
+                  status: "pending-verification" as const,
+                }),
+                hostname: metadata.customDomainHostname,
+              }
+            : current.settings.customDomain,
       },
     }),
   );
@@ -788,8 +870,22 @@ export function recordPublishedInteractiveSnapshot(
         publishedVersions: versions,
         settings: {
           ...current.settings,
-          slug: metadata.slug,
+          addressMode: metadata.addressMode,
+          slug:
+            metadata.addressMode === "werkpages"
+              ? metadata.slug ?? current.settings.slug
+              : current.settings.slug,
           visibility: metadata.visibility,
+          customDomain:
+            metadata.addressMode === "custom-domain" &&
+            metadata.customDomainHostname
+              ? {
+                  ...(current.settings.customDomain ?? {
+                    status: "pending-verification" as const,
+                  }),
+                  hostname: metadata.customDomainHostname,
+                }
+              : current.settings.customDomain,
         },
       };
     },
@@ -943,29 +1039,35 @@ function browserDownload(
   );
 }
 
-export function downloadInteractivePublishSnapshot(
+export function downloadInteractivePublishHtml(
   snapshot: InteractivePublishSnapshot,
 ): void {
-  const base =
-    `${snapshot.metadata.slug}-${snapshot.metadata.versionId}`;
+  const addressLabel =
+    snapshot.metadata.addressMode === "werkpages"
+      ? snapshot.metadata.slug ?? "resume"
+      : (
+          snapshot.metadata.customDomainHostname ??
+          "custom-domain"
+        ).replace(/[^a-z0-9.-]+/gi, "-");
 
   browserDownload(
     snapshot.html,
-    `${base}.html`,
+    `${addressLabel}-${snapshot.metadata.versionId}.html`,
     "text/html;charset=utf-8",
   );
+}
 
-  // A short delay prevents browsers that coalesce synchronous synthetic
-  // clicks from dropping the second file.
-  if (typeof window !== "undefined") {
-    window.setTimeout(() => {
-      browserDownload(
-        buildInteractivePublishManifestJson(snapshot),
-        `${base}.manifest.json`,
-        "application/json;charset=utf-8",
-      );
-    }, 120);
-  }
+/**
+ * Phase 30 compatibility alias.
+ *
+ * Older ResumeBuilder / PublishingPanel files imported this name. Keep the
+ * export so mixed-phase local files do not crash, but it now downloads ONLY
+ * the standalone HTML. Internal manifest/pointer JSON is never downloaded.
+ */
+export function downloadInteractivePublishSnapshot(
+  snapshot: InteractivePublishSnapshot,
+): void {
+  downloadInteractivePublishHtml(snapshot);
 }
 
 export function describePublishSnapshot(

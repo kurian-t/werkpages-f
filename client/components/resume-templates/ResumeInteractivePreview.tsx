@@ -7,34 +7,41 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowDown,
   ArrowRight,
   ArrowUp,
+  BriefcaseBusiness,
   Check,
+  CloudUpload,
+  ChevronDown,
   Copy,
   Eye,
   EyeOff,
   Image as ImageIcon,
+  FolderKanban,
+  GraduationCap,
   Layers3,
   LayoutTemplate,
+  Link2,
+  ListChecks,
   Lock,
-  Monitor,
   MousePointer2,
+  Pencil,
   Plus,
   Redo2,
   RefreshCcw,
   Search,
   Sparkles,
-  Smartphone,
   Square,
   SquareDashed,
-  Tablet,
   Trash2,
   Type,
   Undo2,
   Unlock,
   UserRound,
+  X,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -49,14 +56,17 @@ import InteractiveParallaxLayer, {
   type InteractiveParallaxPointer,
 } from "./InteractiveParallaxLayer";
 import InteractiveSceneTransitionOverlay from "./InteractiveSceneTransition";
-import InteractiveTemplateGallery from "./InteractiveTemplateGallery";
-import InteractivePublishingPanel from "./InteractivePublishingPanel";
+import InteractiveTemplateOverlay from "./InteractiveTemplateOverlay";
+import InteractivePublishingOverlay from "./InteractivePublishingOverlay";
+import InteractivePublishReadinessOverlay from "./InteractivePublishReadinessOverlay";
+import InteractiveTimeline from "./InteractiveTimeline";
+import InteractiveDeviceToolbar from "./InteractiveDeviceToolbar";
+import InteractiveObjectContextToolbar from "./InteractiveObjectContextToolbar";
 import {
   buildInteractiveTemplate,
   normalizeInteractiveTemplateId,
   type InteractiveTemplateId,
 } from "./resumeInteractiveTemplates";
-import { getResumeProjects } from "./resumeProjects";
 import {
   addInteractiveObject,
   addInteractiveScene,
@@ -107,10 +117,7 @@ import {
   updateInteractiveObjectBreakpointGeometry,
   updateInteractiveSceneBreakpointLayout,
 } from "./resumeInteractiveResponsive";
-import {
-  analyzeInteractivePublish,
-  formatBytes,
-} from "./resumeInteractivePerformance";
+import { analyzeInteractivePublish } from "./resumeInteractivePerformance";
 import {
   getInteractiveBindingOptions,
   interactiveBindingDisplayName,
@@ -129,6 +136,51 @@ const SELECTION = "#7c3aed";
 const GRID = 8;
 const SNAP_THRESHOLD = 9;
 const MAX_HISTORY = 60;
+
+type AmbientInspectorMode =
+  | "twinkle"
+  | "particles"
+  | "shapes"
+  | "gradient"
+  | "parallax";
+
+const AMBIENT_MODE_META: Array<{
+  id: AmbientInspectorMode;
+  label: string;
+  shortLabel: string;
+  description: string;
+}> = [
+  {
+    id: "twinkle",
+    label: "Twinkle",
+    shortLabel: "Twinkle",
+    description: "Soft procedural stars that blink behind the scene.",
+  },
+  {
+    id: "particles",
+    label: "Particles",
+    shortLabel: "Particles",
+    description: "Tiny dots drift gently through the background.",
+  },
+  {
+    id: "shapes",
+    label: "Floating shapes",
+    shortLabel: "Shapes",
+    description: "Circles, squares and diamonds float behind content.",
+  },
+  {
+    id: "gradient",
+    label: "Gradient drift",
+    shortLabel: "Gradient",
+    description: "Slowly shifts a gradient background for subtle motion.",
+  },
+  {
+    id: "parallax",
+    label: "Background parallax",
+    shortLabel: "Parallax",
+    description: "Adds gentle pointer depth to the scene background.",
+  },
+];
 
 type SnapGuides = {
   x?: number;
@@ -164,20 +216,20 @@ function ChoiceCard({
           {icon}
         </div>
         {badge && (
-          <span className="rounded-full bg-[#2e0562]/8 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-[#2e0562]">
+          <span className="rounded-full bg-[#2e0562]/8 px-2 py-1 text-[12px] font-bold uppercase tracking-wider text-[#2e0562]">
             {badge}
           </span>
         )}
       </div>
 
-      <div className="mt-4 text-[12px] font-semibold text-foreground">
+      <div className="mt-4 text-[15px] font-semibold text-foreground">
         {title}
       </div>
-      <p className="mt-1 text-[9.5px] leading-relaxed text-muted-foreground">
+      <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
         {description}
       </p>
 
-      <div className="mt-auto flex items-center gap-1 pt-3 text-[9px] font-semibold text-[#2e0562]">
+      <div className="mt-auto flex items-center gap-1 pt-3 text-[13px] font-semibold text-[#2e0562]">
         Choose
         <ArrowRight
           size={11}
@@ -422,34 +474,20 @@ function AmbientEffectEditor({
   onChange: (next: InteractiveAmbientEffect) => void;
 }) {
   return (
-    <div
-      className={`rounded-lg border p-2 ${
-        effect.enabled
-          ? "border-[#2e0562]/25 bg-[#2e0562]/5"
-          : "border-border bg-background"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <button
-          type="button"
-          onClick={() =>
-            onChange({
-              ...effect,
-              enabled: !effect.enabled,
-            })
-          }
-          className="min-w-0 flex-1 text-left"
-        >
-          <div className="text-[8.5px] font-semibold text-foreground">
+    <div className="rounded-lg border border-border bg-card p-2.5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[12px] font-semibold text-foreground">
             {label}
           </div>
-          <div className="mt-0.5 text-[6.8px] leading-relaxed text-muted-foreground">
+          <div className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
             {description}
           </div>
-        </button>
+        </div>
 
         <button
           type="button"
+          aria-label={`${effect.enabled ? "Disable" : "Enable"} ${label}`}
           aria-pressed={effect.enabled}
           onClick={() =>
             onChange({
@@ -458,9 +496,7 @@ function AmbientEffectEditor({
             })
           }
           className={`relative mt-0.5 h-[18px] w-[32px] flex-none rounded-full transition-colors ${
-            effect.enabled
-              ? "bg-[#2e0562]"
-              : "bg-muted"
+            effect.enabled ? "bg-[#2e0562]" : "bg-muted"
           }`}
         >
           <span
@@ -475,11 +511,11 @@ function AmbientEffectEditor({
         </button>
       </div>
 
-      {effect.enabled && (
-        <div className="mt-2 space-y-1.5 border-t border-[#2e0562]/10 pt-2">
+      {effect.enabled ? (
+        <div className="mt-2.5 space-y-2 border-t border-border pt-2.5">
           {showDensity && (
-            <label className="grid grid-cols-[48px_1fr_28px] items-center gap-1.5">
-              <span className="text-[6.8px] font-semibold text-muted-foreground">
+            <label className="grid grid-cols-[50px_1fr_30px] items-center gap-1.5">
+              <span className="text-[12px] font-semibold text-muted-foreground">
                 Amount
               </span>
               <input
@@ -496,14 +532,14 @@ function AmbientEffectEditor({
                 }
                 className="min-w-0"
               />
-              <span className="text-right text-[6.5px] text-muted-foreground">
+              <span className="text-right text-[12px] tabular-nums text-muted-foreground">
                 {Math.round(effect.density)}
               </span>
             </label>
           )}
 
-          <label className="grid grid-cols-[48px_1fr_28px] items-center gap-1.5">
-            <span className="text-[6.8px] font-semibold text-muted-foreground">
+          <label className="grid grid-cols-[50px_1fr_30px] items-center gap-1.5">
+            <span className="text-[12px] font-semibold text-muted-foreground">
               Speed
             </span>
             <input
@@ -520,13 +556,13 @@ function AmbientEffectEditor({
               }
               className="min-w-0"
             />
-            <span className="text-right text-[6.5px] text-muted-foreground">
+            <span className="text-right text-[12px] tabular-nums text-muted-foreground">
               {effect.speed.toFixed(1)}×
             </span>
           </label>
 
-          <label className="grid grid-cols-[48px_1fr_28px] items-center gap-1.5">
-            <span className="text-[6.8px] font-semibold text-muted-foreground">
+          <label className="grid grid-cols-[50px_1fr_30px] items-center gap-1.5">
+            <span className="text-[12px] font-semibold text-muted-foreground">
               Strength
             </span>
             <input
@@ -543,11 +579,20 @@ function AmbientEffectEditor({
               }
               className="min-w-0"
             />
-            <span className="text-right text-[6.5px] text-muted-foreground">
+            <span className="text-right text-[12px] tabular-nums text-muted-foreground">
               {Math.round(effect.intensity)}
             </span>
           </label>
         </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onChange({ ...effect, enabled: true })}
+          className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#2e0562]/25 bg-[#2e0562]/[0.025] px-2 py-1.5 text-[12px] font-semibold text-[#2e0562] hover:bg-[#2e0562]/5"
+        >
+          <Sparkles size={9} />
+          Turn on {label.toLowerCase()}
+        </button>
       )}
     </div>
   );
@@ -764,7 +809,7 @@ function NumberField({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[8.5px] font-semibold text-muted-foreground">
+      <span className="mb-1 block text-[12px] font-semibold text-muted-foreground">
         {label}
       </span>
       <div className="flex items-center rounded-lg border border-border bg-background px-2">
@@ -782,15 +827,69 @@ function NumberField({
             const next = Number(event.target.value);
             if (Number.isFinite(next)) onChange(next);
           }}
-          className="min-w-0 flex-1 bg-transparent py-1.5 text-[10px] text-foreground outline-none"
+          className="min-w-0 flex-1 bg-transparent py-1.5 text-[13px] text-foreground outline-none"
         />
         {suffix && (
-          <span className="ml-1 text-[8px] text-muted-foreground">
+          <span className="ml-1 text-[12px] text-muted-foreground">
             {suffix}
           </span>
         )}
       </div>
     </label>
+  );
+}
+
+function InspectorSection({
+  title,
+  description,
+  badge,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  description?: string;
+  badge?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  useEffect(() => {
+    setOpen(defaultOpen);
+  }, [defaultOpen]);
+
+  return (
+    <div className="mt-2 overflow-hidden rounded-lg border border-border bg-background">
+      <button
+        type="button"
+        onClick={() => setOpen(value => !value)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left transition-colors hover:bg-muted/25"
+      >
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[12px] font-bold uppercase tracking-[0.1em] text-foreground">
+              {title}
+            </span>
+            {badge && (
+              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[12px] font-semibold text-muted-foreground">
+                {badge}
+              </span>
+            )}
+          </div>
+          {description && (
+            <div className="mt-0.5 truncate text-[12px] text-muted-foreground">
+              {description}
+            </div>
+          )}
+        </div>
+        <ChevronDown
+          size={11}
+          className={`flex-none text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && <div className="border-t border-border p-2.5">{children}</div>}
+    </div>
   );
 }
 
@@ -849,9 +948,10 @@ function interactiveObjectAppearanceStyle(
     backdropFilter:
       variant === "glass" ? "blur(10px)" : undefined,
     fontFamily:
-      variant === "terminal"
+      appearance?.fontFamily ??
+      (variant === "terminal"
         ? "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
-        : undefined,
+        : undefined),
   };
 
   return {
@@ -865,9 +965,11 @@ function interactiveObjectAppearanceStyle(
 function SceneObjectContent({
   object,
   data,
+  sceneWidth,
 }: {
   object: InteractiveSceneObject;
   data: ResumeData;
+  sceneWidth: number;
 }) {
   const appearance = interactiveObjectAppearanceStyle(object.appearance);
 
@@ -1057,14 +1159,26 @@ function SceneObjectContent({
     );
   }
 
+  const logicalFontSize = object.appearance?.fontSize ?? 24;
+  const logicalLetterSpacing = object.appearance?.letterSpacing ?? 0;
+
   return (
     <div
       className="flex h-full w-full items-center overflow-hidden px-3"
       style={appearance.shell}
     >
       <div
-        className="line-clamp-4 text-[8px] font-semibold leading-relaxed"
-        style={{ color: appearance.textColor }}
+        className="line-clamp-4 w-full"
+        style={{
+          color: appearance.textColor,
+          fontFamily: object.appearance?.fontFamily,
+          fontSize: `${(logicalFontSize / Math.max(1, sceneWidth)) * 100}cqw`,
+          fontWeight: object.appearance?.fontWeight ?? 650,
+          fontStyle: object.appearance?.fontStyle ?? "normal",
+          textAlign: object.appearance?.textAlign ?? "left",
+          lineHeight: object.appearance?.lineHeight ?? 1.35,
+          letterSpacing: `${(logicalLetterSpacing / Math.max(1, sceneWidth)) * 100}cqw`,
+        }}
       >
         {object.text || "Text"}
       </div>
@@ -1077,12 +1191,12 @@ function EditorObject({
   scene,
   data,
   selected,
+  showHandles,
   geometry,
   motionReplayKey,
   scrollProgress,
   parallaxPointer,
   onPointerDown,
-  onSelect,
   onResizePointerDown,
   onRotatePointerDown,
 }: {
@@ -1090,6 +1204,7 @@ function EditorObject({
   scene: InteractiveScene;
   data: ResumeData;
   selected: boolean;
+  showHandles: boolean;
   geometry: InteractiveObjectGeometry;
   motionReplayKey: number;
   scrollProgress: number;
@@ -1098,7 +1213,6 @@ function EditorObject({
     event: ReactPointerEvent<HTMLDivElement>,
     object: InteractiveSceneObject,
   ) => void;
-  onSelect: (objectId: string) => void;
   onResizePointerDown: (
     event: ReactPointerEvent<HTMLDivElement>,
     object: InteractiveSceneObject,
@@ -1125,7 +1239,6 @@ function EditorObject({
       onPointerDown={event => onPointerDown(event, object)}
       onClick={event => {
         event.stopPropagation();
-        onSelect(object.id);
       }}
       style={{
         position: "absolute",
@@ -1165,33 +1278,71 @@ function EditorObject({
           ...(motion.variables ?? {}),
         };
 
-        return (
+        const groupMotionActive = hasSynchronizedGroupMotion(object);
+        const groupAnimation = groupMotionActive
+          ? objectMotionAnimation(object.groupMotion)
+          : objectMotionAnimation(undefined);
+        const groupMotionStyle: CSSProperties & Record<string, string | number> = {
+          width: "100%",
+          height: "100%",
+          animationName: groupAnimation.animationName,
+          animationDuration: groupAnimation.animationDuration,
+          animationDelay: groupAnimation.animationDelay,
+          animationTimingFunction: groupAnimation.animationTimingFunction,
+          animationIterationCount: groupAnimation.animationIterationCount,
+          animationDirection: groupAnimation.animationDirection,
+          transformOrigin: groupAnimation.transformOrigin,
+          ...(groupAnimation.variables ?? {}),
+        };
+
+        const rawContent = (
+          <SceneObjectContent object={object} data={data} sceneWidth={scene.width} />
+        );
+
+        // Grouping alone is organizational: keep each member's existing motion.
+        // Once synchronized group motion exists, it is the single source of motion
+        // for every member and individual motion is intentionally suppressed.
+        const individualMotion = (
           <InteractiveParallaxLayer
             depth={object.parallaxDepth}
             pointer={parallaxPointer}
             intensity={scene.ambient.parallax.intensity}
             enabled={scene.ambient.parallax.enabled}
           >
-            <InteractivePathMotion
-              path={object.motionPath}
-              progress={scrollProgress}
-            >
-              <InteractiveScrollMotion
-                tracks={object.scrollTracks}
-                progress={scrollProgress}
-              >
-                <InteractiveAdvancedMotion
-                  tracks={object.animationTracks}
-                  replayKey={motionReplayKey}
-                >
+            <InteractivePathMotion path={object.motionPath} progress={scrollProgress}>
+              <InteractiveScrollMotion tracks={object.scrollTracks} progress={scrollProgress}>
+                <InteractiveAdvancedMotion tracks={object.animationTracks} replayKey={motionReplayKey}>
                   <div
-                    data-wp-interactive-motion={
-                      object.motion?.preset || undefined
-                    }
+                    data-wp-interactive-motion={object.motion?.preset || undefined}
                     className="h-full w-full overflow-hidden"
                     style={motionStyle}
                   >
-                    <SceneObjectContent object={object} data={data} />
+                    {rawContent}
+                  </div>
+                </InteractiveAdvancedMotion>
+              </InteractiveScrollMotion>
+            </InteractivePathMotion>
+          </InteractiveParallaxLayer>
+        );
+
+        if (!groupMotionActive) return individualMotion;
+
+        return (
+          <InteractiveParallaxLayer
+            depth={object.groupParallaxDepth}
+            pointer={parallaxPointer}
+            intensity={scene.ambient.parallax.intensity}
+            enabled={scene.ambient.parallax.enabled}
+          >
+            <InteractivePathMotion path={object.groupMotionPath} progress={scrollProgress}>
+              <InteractiveScrollMotion tracks={object.groupScrollTracks} progress={scrollProgress}>
+                <InteractiveAdvancedMotion tracks={object.groupAnimationTracks} replayKey={motionReplayKey}>
+                  <div
+                    data-wp-interactive-group-motion={object.groupMotion?.preset || undefined}
+                    className="h-full w-full overflow-hidden"
+                    style={groupMotionStyle}
+                  >
+                    {rawContent}
                   </div>
                 </InteractiveAdvancedMotion>
               </InteractiveScrollMotion>
@@ -1215,13 +1366,13 @@ function EditorObject({
 
           {object.locked ? (
             <div
-              className="absolute left-1/2 top-[-22px] flex h-[17px] -translate-x-1/2 items-center gap-1 rounded bg-amber-500 px-1.5 text-[6px] font-bold text-white"
+              className="absolute left-1/2 top-[-22px] flex h-[17px] -translate-x-1/2 items-center gap-1 rounded bg-amber-500 px-1.5 text-[12px] font-bold text-white"
               style={{ pointerEvents: "none" }}
             >
               <Lock size={8} />
               LOCKED
             </div>
-          ) : (
+          ) : showHandles ? (
             <>
               {handles.map(([horizontal, vertical]) => (
                 <div
@@ -1283,7 +1434,7 @@ function EditorObject({
                 }}
               />
             </>
-          )}
+          ) : null}
         </>
       )}
     </div>
@@ -1349,7 +1500,7 @@ function TransitionSceneSnapshot({
                 progress={progress}
               >
                 <div className="h-full w-full overflow-hidden">
-                  <SceneObjectContent object={object} data={data} />
+                  <SceneObjectContent object={object} data={data} sceneWidth={scene.width} />
                 </div>
               </InteractiveScrollMotion>
             </InteractivePathMotion>
@@ -1360,31 +1511,55 @@ function TransitionSceneSnapshot({
   );
 }
 
+function bindingGroupIcon(
+  group: InteractiveBindingOption["group"],
+) {
+  if (group === "Experience") return <BriefcaseBusiness size={12} />;
+  if (group === "Projects") return <FolderKanban size={12} />;
+  if (group === "Education") return <GraduationCap size={12} />;
+  if (group === "Skills") return <ListChecks size={12} />;
+  if (group === "Links") return <Link2 size={12} />;
+  return <UserRound size={14} />;
+}
+
 function BindingPicker({
   options,
   query,
+  mode,
   onQueryChange,
   onChoose,
   onClose,
 }: {
   options: InteractiveBindingOption[];
   query: string;
+  mode: "add" | "change";
   onQueryChange: (value: string) => void;
   onChoose: (option: InteractiveBindingOption) => void;
   onClose: () => void;
 }) {
+  const [groupFilter, setGroupFilter] = useState<
+    InteractiveBindingOption["group"] | "All"
+  >("All");
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   const normalized = query.trim().toLowerCase();
-  const filtered = normalized
-    ? options.filter(option =>
-        [
-          option.group,
-          option.label,
-          option.detail ?? "",
-        ].some(value =>
-          value.toLowerCase().includes(normalized),
-        ),
-      )
-    : options;
+  const filtered = options.filter(option => {
+    const matchesGroup =
+      groupFilter === "All" || option.group === groupFilter;
+    const matchesQuery =
+      !normalized ||
+      [option.group, option.label, option.detail ?? ""].some(value =>
+        value.toLowerCase().includes(normalized),
+      );
+    return matchesGroup && matchesQuery;
+  });
 
   const groups = [
     "Personal",
@@ -1395,93 +1570,172 @@ function BindingPicker({
     "Links",
   ] as const;
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div
       data-interactive-binding-picker
-      className="absolute right-0 top-9 z-[1300] overflow-hidden rounded-xl border border-border bg-background shadow-xl"
-      style={{
-        width: 330,
-        minWidth: 330,
-        maxWidth: "min(330px, calc(100vw - 32px))",
-      }}
+      className="fixed inset-0 z-[1600]"
+      role="dialog"
+      aria-modal="true"
+      aria-label={
+        mode === "add"
+          ? "Add shared resume content"
+          : "Change shared resume content"
+      }
     >
-      <div className="border-b border-border p-2">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <div className="text-[9px] font-bold uppercase tracking-wider text-[#2e0562]">
-              Resume content
+      <button
+        type="button"
+        aria-label="Close shared resume content"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/10"
+      />
+
+      <div className="absolute inset-y-3 right-3 flex w-[min(420px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl sm:inset-y-4 sm:right-4">
+        <div className="flex flex-none items-start justify-between gap-3 border-b border-border px-4 py-3.5">
+          <div className="min-w-0">
+            <div className="text-[13px] font-bold uppercase tracking-[0.16em] text-[#2e0562]">
+              Shared resume content
             </div>
-            <div className="mt-0.5 text-[7.5px] text-muted-foreground">
-              Bind to shared resume data
+            <div className="mt-1 text-[16px] font-semibold text-foreground">
+              {mode === "add"
+                ? "Add content to this scene"
+                : "Change linked content"}
             </div>
+            <p className="mt-1 max-w-[330px] text-[13px] leading-relaxed text-muted-foreground">
+              Choose live resume data. When the shared resume changes, this
+              object updates automatically.
+            </p>
           </div>
+
           <button
             type="button"
             onClick={onClose}
-            className="rounded px-1.5 py-1 text-[8px] font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            aria-label="Close"
+            className="inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
           >
-            Close
+            <X size={14} />
           </button>
         </div>
 
-        <div className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-background px-2">
-          <Search size={10} className="flex-none text-muted-foreground" />
-          <input
-            autoFocus
-            value={query}
-            onChange={event => onQueryChange(event.target.value)}
-            placeholder="Search name, role, project, skill…"
-            className="min-w-0 flex-1 bg-transparent py-1.5 text-[9px] text-foreground outline-none placeholder:text-muted-foreground"
-          />
+        <div className="flex-none border-b border-border px-3 py-3">
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-3">
+            <Search size={12} className="flex-none text-muted-foreground" />
+            <input
+              autoFocus
+              value={query}
+              onChange={event => onQueryChange(event.target.value)}
+              placeholder="Search name, role, project, skill…"
+              className="min-w-0 flex-1 bg-transparent py-2.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
+            />
+          </div>
+
+          <div className="mt-2 flex gap-1 overflow-x-auto pb-0.5">
+            {(["All", ...groups] as const).map(group => {
+              const active = groupFilter === group;
+              const count =
+                group === "All"
+                  ? options.length
+                  : options.filter(option => option.group === group).length;
+
+              return (
+                <button
+                  key={group}
+                  type="button"
+                  onClick={() => setGroupFilter(group)}
+                  aria-pressed={active}
+                  className={`inline-flex h-7 flex-none items-center gap-1.5 rounded-lg border px-2 text-[12px] font-semibold transition-colors ${
+                    active
+                      ? "border-[#2e0562]/25 bg-[#2e0562] text-white"
+                      : "border-border bg-background text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {group !== "All" && bindingGroupIcon(group)}
+                  {group}
+                  <span className={active ? "text-white/70" : "text-muted-foreground/70"}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
 
-      <div className="max-h-[360px] overflow-y-auto p-1.5">
-        {groups.map(group => {
-          const items = filtered.filter(option => option.group === group);
-          if (!items.length) return null;
+        <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
+          {groups.map(group => {
+            const items = filtered.filter(option => option.group === group);
+            if (!items.length) return null;
 
-          return (
-            <div key={group} className="mb-2 last:mb-0">
-              <div className="px-2 py-1 text-[7px] font-bold uppercase tracking-wider text-muted-foreground">
-                {group}
-              </div>
+            return (
+              <section key={group} className="mb-3 last:mb-0">
+                <div className="mb-1 flex items-center justify-between gap-2 px-1.5">
+                  <div className="inline-flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                    {bindingGroupIcon(group)}
+                    {group}
+                  </div>
+                  <span className="text-[12px] text-muted-foreground">
+                    {items.length}
+                  </span>
+                </div>
 
-              <div className="space-y-0.5">
-                {items.map(option => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => onChoose(option)}
-                    className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-[#2e0562]/5"
-                  >
-                    <span className="mt-[2px] flex h-5 w-5 flex-none items-center justify-center rounded-md bg-[#2e0562]/8 text-[#2e0562]">
-                      <UserRound size={9} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[8.5px] font-semibold text-foreground">
-                        {option.label}
+                <div className="overflow-hidden rounded-xl border border-border bg-card">
+                  {items.map((option, index) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => onChoose(option)}
+                      className={`flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[#2e0562]/5 ${
+                        index ? "border-t border-border" : ""
+                      }`}
+                    >
+                      <span className="mt-0.5 flex h-7 w-7 flex-none items-center justify-center rounded-lg bg-[#2e0562]/8 text-[#2e0562]">
+                        {bindingGroupIcon(group)}
                       </span>
-                      {option.detail && (
-                        <span className="mt-0.5 block truncate text-[7px] text-muted-foreground">
-                          {option.detail}
+
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-semibold text-foreground">
+                          {option.label}
                         </span>
-                      )}
-                    </span>
-                  </button>
-                ))}
+                        {option.detail && (
+                          <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
+                            {option.detail}
+                          </span>
+                        )}
+                      </span>
+
+                      <Plus
+                        size={11}
+                        className="mt-1 flex-none text-muted-foreground"
+                      />
+                    </button>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+
+          {!filtered.length && (
+            <div className="flex min-h-[220px] flex-col items-center justify-center px-6 text-center">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted/50 text-muted-foreground">
+                <Search size={14} />
+              </div>
+              <div className="mt-2 text-[13px] font-semibold text-foreground">
+                No matching resume content
+              </div>
+              <div className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
+                Try another search or choose a different content category.
               </div>
             </div>
-          );
-        })}
+          )}
+        </div>
 
-        {!filtered.length && (
-          <div className="px-3 py-8 text-center text-[8px] text-muted-foreground">
-            No shared resume content matches “{query}”.
-          </div>
-        )}
+        <div className="flex-none border-t border-border bg-muted/15 px-4 py-2.5 text-[12px] leading-relaxed text-muted-foreground">
+          Shared resume data stays linked. Layout, motion and styling remain
+          specific to this Interactive presentation.
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -1512,14 +1766,41 @@ function animationPropertyMeta(
   return { label: "Opacity", min: 0, max: 1, step: 0.05, unit: "" };
 }
 
+type MotionInspectorMode = "quick" | "animate" | "scroll" | "path" | "depth";
+
+function hasObjectMotionState(object: InteractiveSceneObject | null | undefined): boolean {
+  return !!(
+    object?.motion ||
+    object?.animationTracks?.length ||
+    object?.scrollTracks?.length ||
+    object?.motionPath ||
+    Math.abs(object?.parallaxDepth ?? 0) > 0.001
+  );
+}
+
+function hasSynchronizedGroupMotion(
+  object: InteractiveSceneObject | null | undefined,
+): boolean {
+  return !!(
+    object?.groupId &&
+    (object.groupMotion ||
+      object.groupAnimationTracks?.length ||
+      object.groupScrollTracks?.length ||
+      object.groupMotionPath ||
+      Math.abs(object.groupParallaxDepth ?? 0) > 0.001)
+  );
+}
+
 function AdvancedMotionEditor({
   tracks,
   onChange,
   onReplay,
+  embedded = false,
 }: {
   tracks: InteractiveAnimationTrack[] | undefined;
   onChange: (tracks: InteractiveAnimationTrack[] | undefined) => void;
   onReplay: () => void;
+  embedded?: boolean;
 }) {
   const current = tracks ?? [];
 
@@ -1569,14 +1850,18 @@ function AdvancedMotionEditor({
   };
 
   return (
-    <div className="mt-2.5 rounded-lg border border-[#2e0562]/15 bg-[#2e0562]/[0.025] p-2">
+    <div className={embedded ? "space-y-2" : "mt-2.5 rounded-lg border border-[#2e0562]/15 bg-[#2e0562]/[0.025] p-2"}>
       <div className="flex items-start justify-between gap-2">
         <div>
-          <div className="text-[7px] font-bold uppercase tracking-wider text-[#2e0562]">
-            Advanced motion
-          </div>
-          <div className="mt-0.5 text-[6.5px] leading-relaxed text-muted-foreground">
-            Animate individual properties with triggers.
+          {!embedded && (
+            <div className="text-[12px] font-bold uppercase tracking-wider text-[#2e0562]">
+              Triggered animation
+            </div>
+          )}
+          <div className={`${embedded ? "text-[12px] font-semibold text-foreground" : "mt-0.5 text-[12px] leading-relaxed text-muted-foreground"}`}>
+            {embedded
+              ? `${current.length} animation track${current.length === 1 ? "" : "s"}`
+              : "Animate individual properties on load, enter, hover, click or loop."}
           </div>
         </div>
 
@@ -1584,17 +1869,18 @@ function AdvancedMotionEditor({
           type="button"
           onClick={onReplay}
           title="Replay Load and Enter animations"
-          className="flex h-6 items-center gap-1 rounded-md border border-border bg-background px-1.5 text-[6.8px] font-semibold text-muted-foreground hover:text-foreground"
+          className="flex h-6 items-center gap-1 rounded-md border border-border bg-background px-1.5 text-[12px] font-semibold text-muted-foreground hover:text-foreground"
         >
           <RefreshCcw size={8} />
           Replay
         </button>
       </div>
 
-      <div className="mt-2 rounded-md bg-background/80 px-2 py-1.5 text-[6.5px] leading-relaxed text-muted-foreground">
-        Easy Motion and Advanced Motion can stack. X/Y tracks are visual
-        offsets only — they never change the object&apos;s saved canvas position.
-      </div>
+      {!embedded && (
+        <div className="mt-2 rounded-md bg-background/80 px-2 py-1.5 text-[12px] leading-relaxed text-muted-foreground">
+          Quick motion and triggered animation can stack. X/Y tracks are visual offsets only — they never change the saved canvas position.
+        </div>
+      )}
 
       <div className="mt-2 space-y-2">
         {current.map((track, index) => {
@@ -1606,7 +1892,7 @@ function AdvancedMotionEditor({
               className="rounded-lg border border-border bg-background p-2"
             >
               <div className="flex items-center justify-between gap-2">
-                <div className="text-[7px] font-bold text-foreground">
+                <div className="text-[12px] font-bold text-foreground">
                   Track {index + 1}
                 </div>
                 <div className="flex items-center gap-0.5">
@@ -1656,7 +1942,7 @@ function AdvancedMotionEditor({
 
               <div className="mt-1.5 grid grid-cols-2 gap-1.5">
                 <label>
-                  <span className="mb-1 block text-[6.5px] font-semibold text-muted-foreground">
+                  <span className="mb-1 block text-[12px] font-semibold text-muted-foreground">
                     Property
                   </span>
                   <select
@@ -1667,7 +1953,7 @@ function AdvancedMotionEditor({
                         event.target.value as InteractiveAnimationProperty,
                       )
                     }
-                    className="w-full rounded-md border border-border bg-background px-1.5 py-1.5 text-[7.5px] text-foreground outline-none"
+                    className="w-full rounded-md border border-border bg-background px-1.5 py-1.5 text-[12px] text-foreground outline-none"
                   >
                     <option value="x">Move X</option>
                     <option value="y">Move Y</option>
@@ -1679,7 +1965,7 @@ function AdvancedMotionEditor({
                 </label>
 
                 <label>
-                  <span className="mb-1 block text-[6.5px] font-semibold text-muted-foreground">
+                  <span className="mb-1 block text-[12px] font-semibold text-muted-foreground">
                     Trigger
                   </span>
                   <select
@@ -1690,7 +1976,7 @@ function AdvancedMotionEditor({
                         event.target.value as InteractiveAnimationTrigger,
                       )
                     }
-                    className="w-full rounded-md border border-border bg-background px-1.5 py-1.5 text-[7.5px] text-foreground outline-none"
+                    className="w-full rounded-md border border-border bg-background px-1.5 py-1.5 text-[12px] text-foreground outline-none"
                   >
                     <option value="load">On load</option>
                     <option value="enter">On enter</option>
@@ -1703,7 +1989,7 @@ function AdvancedMotionEditor({
 
               <div className="mt-1.5 grid grid-cols-2 gap-1.5">
                 <label>
-                  <span className="mb-1 block text-[6.5px] font-semibold text-muted-foreground">
+                  <span className="mb-1 block text-[12px] font-semibold text-muted-foreground">
                     From {meta.unit && `(${meta.unit})`}
                   </span>
                   <input
@@ -1718,12 +2004,12 @@ function AdvancedMotionEditor({
                         updateTrack(track.id, { from });
                       }
                     }}
-                    className="w-full rounded-md border border-border bg-background px-1.5 py-1.5 text-[7.5px] text-foreground outline-none"
+                    className="w-full rounded-md border border-border bg-background px-1.5 py-1.5 text-[12px] text-foreground outline-none"
                   />
                 </label>
 
                 <label>
-                  <span className="mb-1 block text-[6.5px] font-semibold text-muted-foreground">
+                  <span className="mb-1 block text-[12px] font-semibold text-muted-foreground">
                     To {meta.unit && `(${meta.unit})`}
                   </span>
                   <input
@@ -1738,14 +2024,14 @@ function AdvancedMotionEditor({
                         updateTrack(track.id, { to });
                       }
                     }}
-                    className="w-full rounded-md border border-border bg-background px-1.5 py-1.5 text-[7.5px] text-foreground outline-none"
+                    className="w-full rounded-md border border-border bg-background px-1.5 py-1.5 text-[12px] text-foreground outline-none"
                   />
                 </label>
               </div>
 
               <div className="mt-1.5 grid grid-cols-2 gap-1.5">
                 <label>
-                  <span className="mb-1 block text-[6.5px] font-semibold text-muted-foreground">
+                  <span className="mb-1 block text-[12px] font-semibold text-muted-foreground">
                     Duration (s)
                   </span>
                   <input
@@ -1760,12 +2046,12 @@ function AdvancedMotionEditor({
                         updateTrack(track.id, { duration });
                       }
                     }}
-                    className="w-full rounded-md border border-border bg-background px-1.5 py-1.5 text-[7.5px] text-foreground outline-none"
+                    className="w-full rounded-md border border-border bg-background px-1.5 py-1.5 text-[12px] text-foreground outline-none"
                   />
                 </label>
 
                 <label>
-                  <span className="mb-1 block text-[6.5px] font-semibold text-muted-foreground">
+                  <span className="mb-1 block text-[12px] font-semibold text-muted-foreground">
                     Delay (s)
                   </span>
                   <input
@@ -1780,13 +2066,13 @@ function AdvancedMotionEditor({
                         updateTrack(track.id, { delay });
                       }
                     }}
-                    className="w-full rounded-md border border-border bg-background px-1.5 py-1.5 text-[7.5px] text-foreground outline-none"
+                    className="w-full rounded-md border border-border bg-background px-1.5 py-1.5 text-[12px] text-foreground outline-none"
                   />
                 </label>
               </div>
 
               <label className="mt-1.5 block">
-                <span className="mb-1 block text-[6.5px] font-semibold text-muted-foreground">
+                <span className="mb-1 block text-[12px] font-semibold text-muted-foreground">
                   Easing
                 </span>
                 <select
@@ -1796,7 +2082,7 @@ function AdvancedMotionEditor({
                       easing: event.target.value as InteractiveAnimationEasing,
                     })
                   }
-                  className="w-full rounded-md border border-border bg-background px-1.5 py-1.5 text-[7.5px] text-foreground outline-none"
+                  className="w-full rounded-md border border-border bg-background px-1.5 py-1.5 text-[12px] text-foreground outline-none"
                 >
                   <option value="linear">Linear</option>
                   <option value="ease">Ease</option>
@@ -1806,7 +2092,7 @@ function AdvancedMotionEditor({
                 </select>
               </label>
 
-              <div className="mt-1.5 text-[6px] leading-relaxed text-muted-foreground">
+              <div className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
                 {track.trigger === "hover"
                   ? "Moves to To while hovered, then returns to From."
                   : track.trigger === "click"
@@ -1833,10 +2119,10 @@ function AdvancedMotionEditor({
           onChange(next);
           onReplay();
         }}
-        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#2e0562]/25 bg-background px-2 py-1.5 text-[7.5px] font-semibold text-[#2e0562] hover:bg-[#2e0562]/5 disabled:opacity-35"
+        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#2e0562]/25 bg-background px-2 py-1.5 text-[12px] font-semibold text-[#2e0562] hover:bg-[#2e0562]/5 disabled:opacity-35"
       >
         <Plus size={9} />
-        {current.length >= 8 ? "8 track limit" : "Add advanced track"}
+        {current.length >= 8 ? "8 track limit" : "Add animation track"}
       </button>
     </div>
   );
@@ -1846,21 +2132,26 @@ function InteractiveEditor({
   data,
   onDesignChange,
   interactive,
+  workspaceMode = false,
 }: {
   data: ResumeData;
   onDesignChange: (design: ResumeDesign) => void;
   interactive: InteractiveExperienceState;
+  workspaceMode?: boolean;
 }) {
   const scenes = getOrderedInteractiveScenes(interactive);
   const activeScene = getActiveInteractiveScene(interactive);
-  const projectCount = getResumeProjects(data).length;
   const fullName = `${data.firstName ?? ""} ${data.lastName ?? ""}`.trim();
 
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(
     null,
   );
+  const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>([]);
   const [liveGeometry, setLiveGeometry] =
     useState<LiveGeometry | null>(null);
+  const [liveGroupGeometries, setLiveGroupGeometries] = useState<
+    Record<string, InteractiveObjectGeometry>
+  >({});
   const [guides, setGuides] = useState<SnapGuides>({});
   const [zoom, setZoom] = useState(1);
   const [activeBreakpoint, setActiveBreakpoint] =
@@ -1874,17 +2165,34 @@ function InteractiveEditor({
     useState<InteractiveMotionPath | null>(null);
   const [transitionPlayKey, setTransitionPlayKey] = useState(0);
   const [templateGalleryOpen, setTemplateGalleryOpen] = useState(false);
+  const [publishingOpen, setPublishingOpen] = useState(false);
+  const [readinessOpen, setReadinessOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [renamingScene, setRenamingScene] = useState(false);
+  const [sceneNameDraft, setSceneNameDraft] = useState("");
   const [bindingPickerMode, setBindingPickerMode] = useState<
     "add" | "change" | null
   >(null);
   const [bindingSearch, setBindingSearch] = useState("");
+  const [motionInspectorMode, setMotionInspectorMode] =
+    useState<MotionInspectorMode>("quick");
+  const [ambientInspectorMode, setAmbientInspectorMode] =
+    useState<AmbientInspectorMode>("twinkle");
+  const [groupMotionOverridePromptOpen, setGroupMotionOverridePromptOpen] =
+    useState(false);
+  const [collapsedLayerGroupIds, setCollapsedLayerGroupIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [, setHistoryVersion] = useState(0);
 
   const bindingOptions = getInteractiveBindingOptions(data);
   const publishReport = analyzeInteractivePublish(data);
 
   const canvasRef = useRef<HTMLDivElement>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+  const pendingGroupMotionUpdaterRef = useRef<
+    ((object: InteractiveSceneObject) => InteractiveSceneObject) | null
+  >(null);
   const historyRef = useRef<{
     past: InteractiveSceneCollection[];
     future: InteractiveSceneCollection[];
@@ -1897,6 +2205,154 @@ function InteractiveEditor({
   const selectedObject = selectedObjectId
     ? activeScene.objects[selectedObjectId] ?? null
     : null;
+  const selectedObjects = (
+    selectedObjectIds.length
+      ? selectedObjectIds
+      : selectedObjectId
+        ? [selectedObjectId]
+        : []
+  )
+    .map(objectId => activeScene.objects[objectId])
+    .filter((object): object is InteractiveSceneObject => !!object);
+  const hasMultipleSelection = selectedObjects.length > 1;
+  const allSelectedLocked =
+    selectedObjects.length > 0 && selectedObjects.every(object => !!object.locked);
+  const anySelectedLocked = selectedObjects.some(object => !!object.locked);
+  const selectedGroupId =
+    selectedObjects.length > 1 &&
+    selectedObjects[0]?.groupId &&
+    selectedObjects.every(object => object.groupId === selectedObjects[0].groupId)
+      ? selectedObjects[0].groupId
+      : undefined;
+  const selectedGroupName = selectedGroupId
+    ? selectedObjects.find(object => object.groupName?.trim())?.groupName?.trim() || "Group"
+    : undefined;
+
+  const objectSelectionIds = useCallback(
+    (objectId: string): string[] => {
+      const object = activeScene.objects[objectId];
+      if (!object) return [];
+      if (!object.groupId) return [objectId];
+      return activeScene.objectOrder.filter(
+        id => activeScene.objects[id]?.groupId === object.groupId,
+      );
+    },
+    [activeScene.objectOrder, activeScene.objects],
+  );
+
+  const selectObject = useCallback(
+    (objectId: string, additive = false) => {
+      const selectionIds = objectSelectionIds(objectId);
+      if (!selectionIds.length) return;
+
+      if (!additive) {
+        setSelectedObjectIds(selectionIds);
+        setSelectedObjectId(objectId);
+        return;
+      }
+
+      const allAlreadySelected = selectionIds.every(id =>
+        selectedObjectIds.includes(id),
+      );
+      const next = allAlreadySelected
+        ? selectedObjectIds.filter(id => !selectionIds.includes(id))
+        : [
+            ...selectedObjectIds,
+            ...selectionIds.filter(id => !selectedObjectIds.includes(id)),
+          ];
+
+      setSelectedObjectIds(next);
+      setSelectedObjectId(
+        allAlreadySelected ? next[next.length - 1] ?? null : objectId,
+      );
+    },
+    [objectSelectionIds, selectedObjectIds],
+  );
+
+  useEffect(() => {
+    setSelectedObjectIds(current => {
+      const valid = current.filter(id => !!activeScene.objects[id]);
+      if (!selectedObjectId) return [];
+      if (valid.includes(selectedObjectId)) return valid;
+      return activeScene.objects[selectedObjectId] ? [selectedObjectId] : [];
+    });
+  }, [activeScene.id, activeScene.objects, selectedObjectId]);
+
+  useEffect(() => {
+    const object = selectedObjectId
+      ? activeScene.objects[selectedObjectId] ?? null
+      : null;
+    const motion = selectedGroupId ? object?.groupMotion : object?.motion;
+    const animationTracks = selectedGroupId
+      ? object?.groupAnimationTracks
+      : object?.animationTracks;
+    const scrollTracks = selectedGroupId
+      ? object?.groupScrollTracks
+      : object?.scrollTracks;
+    const motionPath = selectedGroupId
+      ? object?.groupMotionPath
+      : object?.motionPath;
+    const parallaxDepth = selectedGroupId
+      ? object?.groupParallaxDepth
+      : object?.parallaxDepth;
+
+    let initialMode: MotionInspectorMode = "quick";
+    if (!motion && animationTracks?.length) initialMode = "animate";
+    else if (!motion && scrollTracks?.length) initialMode = "scroll";
+    else if (!motion && motionPath) initialMode = "path";
+    else if (!motion && Math.abs(parallaxDepth ?? 0) > 0.001) initialMode = "depth";
+
+    setMotionInspectorMode(initialMode);
+  }, [activeScene.id, selectedGroupId, selectedObjectId]);
+
+  useEffect(() => {
+    pendingGroupMotionUpdaterRef.current = null;
+    setGroupMotionOverridePromptOpen(false);
+  }, [activeScene.id, selectedGroupId]);
+
+  useEffect(() => {
+    setRenamingScene(false);
+    setSceneNameDraft("");
+  }, [activeScene.id]);
+
+  useEffect(() => {
+    const firstEnabled: AmbientInspectorMode | undefined =
+      activeScene.ambient.twinkle.enabled
+        ? "twinkle"
+        : activeScene.ambient.particles.enabled
+          ? "particles"
+          : activeScene.ambient.floatingShapes.enabled
+            ? "shapes"
+            : activeScene.ambient.gradientDrift.enabled
+              ? "gradient"
+              : activeScene.ambient.parallax.enabled
+                ? "parallax"
+                : undefined;
+
+    setAmbientInspectorMode(firstEnabled ?? "twinkle");
+  }, [activeScene.id]);
+
+  useEffect(() => {
+    if (!addMenuOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target || addMenuRef.current?.contains(target)) return;
+      setAddMenuOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAddMenuOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [addMenuOpen]);
+
   const activeSceneLayout = getInteractiveSceneLayout(
     activeScene,
     activeBreakpoint,
@@ -1938,6 +2394,50 @@ function InteractiveEditor({
         activeScene,
       )
     : null;
+  const effectiveGeometryFor = (object: InteractiveSceneObject) =>
+    liveGroupGeometries[object.id] ??
+    (liveGeometry?.objectId === object.id
+      ? liveGeometry.geometry
+      : getInteractiveObjectGeometry(object, activeBreakpoint, activeScene));
+
+  const selectedSelectionGeometry = selectedObjects.length
+    ? selectedObjects.reduce<InteractiveObjectGeometry | null>((bounds, object) => {
+        const geometry = effectiveGeometryFor(object);
+        if (!bounds) return { ...geometry, rotation: 0 };
+        const left = Math.min(bounds.x, geometry.x);
+        const top = Math.min(bounds.y, geometry.y);
+        const right = Math.max(bounds.x + bounds.width, geometry.x + geometry.width);
+        const bottom = Math.max(bounds.y + bounds.height, geometry.y + geometry.height);
+        return {
+          ...bounds,
+          x: left,
+          y: top,
+          width: right - left,
+          height: bottom - top,
+          rotation: 0,
+        };
+      }, null)
+    : selectedGeometry;
+
+  const selectedSetForLayers = new Set(
+    selectedObjectIds.length
+      ? selectedObjectIds
+      : selectedObjectId
+        ? [selectedObjectId]
+        : [],
+  );
+  const canBringSelectedForward = activeScene.objectOrder.some(
+    (objectId, index) =>
+      selectedSetForLayers.has(objectId) &&
+      index < activeScene.objectOrder.length - 1 &&
+      !selectedSetForLayers.has(activeScene.objectOrder[index + 1]),
+  );
+  const canSendSelectedBackward = activeScene.objectOrder.some(
+    (objectId, index) =>
+      selectedSetForLayers.has(objectId) &&
+      index > 0 &&
+      !selectedSetForLayers.has(activeScene.objectOrder[index - 1]),
+  );
 
   const applyCollection = useCallback(
     (
@@ -1985,6 +2485,30 @@ function InteractiveEditor({
     },
     [applyCollection, currentCollection],
   );
+
+  const focusReadinessIssue = (
+    sceneId?: string,
+    objectId?: string,
+  ) => {
+    if (!sceneId || !interactive.scenes[sceneId]) return;
+
+    setTemplateGalleryOpen(false);
+    setPublishingOpen(false);
+    setReadinessOpen(false);
+    setLiveGeometry(null);
+    setGuides({});
+
+    mutateScenes(
+      collection => setActiveInteractiveScene(collection, sceneId),
+      { recordHistory: false },
+    );
+
+    setSelectedObjectId(
+      objectId && interactive.scenes[sceneId]?.objects[objectId]
+        ? objectId
+        : null,
+    );
+  };
 
   const applyTemplate = (
     templateId: InteractiveTemplateId,
@@ -2070,6 +2594,231 @@ function InteractiveEditor({
     );
   };
 
+  const patchSelectedObjects = (
+    updater: (object: InteractiveSceneObject) => InteractiveSceneObject,
+  ) => {
+    const ids = selectedObjectIds.length
+      ? selectedObjectIds
+      : selectedObjectId
+        ? [selectedObjectId]
+        : [];
+    if (!ids.length) return;
+
+    mutateScenes(collection =>
+      ids.reduce(
+        (next, objectId) =>
+          updateInteractiveObject(
+            next,
+            activeScene.id,
+            objectId,
+            updater,
+          ),
+        collection,
+      ),
+    );
+  };
+
+  const selectedGroupMotionObject: InteractiveSceneObject | null =
+    selectedGroupId && selectedObjects.length > 1
+      ? ({
+          ...selectedObjects[0],
+          motion: selectedObjects[0].groupMotion,
+          animationTracks: selectedObjects[0].groupAnimationTracks,
+          scrollTracks: selectedObjects[0].groupScrollTracks,
+          motionPath: selectedObjects[0].groupMotionPath,
+          parallaxDepth: selectedObjects[0].groupParallaxDepth,
+        } as InteractiveSceneObject)
+      : null;
+
+  const selectedGroupMotionActive = hasObjectMotionState(
+    selectedGroupMotionObject,
+  );
+  const selectedIndividualMotionCount = selectedObjects.filter(object =>
+    hasObjectMotionState(object),
+  ).length;
+
+  const commitSelectedGroupMotion = (
+    updater: (object: InteractiveSceneObject) => InteractiveSceneObject,
+    clearIndividualMotion: boolean,
+  ) => {
+    if (!selectedGroupId || !selectedGroupMotionObject) return;
+    const updated = updater(selectedGroupMotionObject);
+
+    patchSelectedObjects(current => ({
+      ...current,
+      ...(clearIndividualMotion
+        ? {
+            motion: undefined,
+            animationTracks: undefined,
+            scrollTracks: undefined,
+            motionPath: undefined,
+            parallaxDepth: undefined,
+          }
+        : {}),
+      groupMotion: updated.motion ? { ...updated.motion } : undefined,
+      groupAnimationTracks: updated.animationTracks?.map(track => ({ ...track })),
+      groupScrollTracks: updated.scrollTracks?.map(track => ({
+        ...track,
+        keyframes: track.keyframes.map(keyframe => ({ ...keyframe })),
+      })),
+      groupMotionPath: updated.motionPath
+        ? {
+            ...updated.motionPath,
+            points: updated.motionPath.points.map(point => ({ ...point })),
+          }
+        : undefined,
+      groupParallaxDepth: updated.parallaxDepth,
+    } as InteractiveSceneObject));
+  };
+
+  const patchSelectedGroupMotion = (
+    updater: (object: InteractiveSceneObject) => InteractiveSceneObject,
+  ) => {
+    if (!selectedGroupId || !selectedGroupMotionObject) return;
+
+    const preview = updater(selectedGroupMotionObject);
+    const willHaveGroupMotion = hasObjectMotionState(preview);
+    const startsGroupMotion = !selectedGroupMotionActive && willHaveGroupMotion;
+
+    if (startsGroupMotion && selectedIndividualMotionCount > 0) {
+      pendingGroupMotionUpdaterRef.current = updater;
+      setGroupMotionOverridePromptOpen(true);
+      return;
+    }
+
+    // Once group motion exists, individual motion is no longer a second layer.
+    // Clear it defensively on every group-motion edit, including legacy state
+    // created by the earlier additive implementation.
+    commitSelectedGroupMotion(
+      updater,
+      selectedGroupMotionActive || willHaveGroupMotion,
+    );
+  };
+
+  const confirmSelectedGroupMotionOverride = () => {
+    const updater = pendingGroupMotionUpdaterRef.current;
+    pendingGroupMotionUpdaterRef.current = null;
+    setGroupMotionOverridePromptOpen(false);
+    if (!updater) return;
+    commitSelectedGroupMotion(updater, true);
+  };
+
+  const cancelSelectedGroupMotionOverride = () => {
+    pendingGroupMotionUpdaterRef.current = null;
+    setGroupMotionOverridePromptOpen(false);
+  };
+
+  const toggleSelectedLock = () => {
+    const ids = selectedObjectIds.length
+      ? selectedObjectIds
+      : selectedObjectId
+        ? [selectedObjectId]
+        : [];
+    if (!ids.length) return;
+    const shouldLock = !ids.every(id => !!activeScene.objects[id]?.locked);
+    patchSelectedObjects(current => ({
+      ...current,
+      locked: shouldLock || undefined,
+    } as InteractiveSceneObject));
+  };
+
+  const toggleSelectedGroup = () => {
+    if (selectedObjectIds.length < 2) return;
+
+    if (selectedGroupId) {
+      // Ungrouping removes group-only motion. Individual motion, when there was
+      // no group override, was never touched by grouping in the first place.
+      patchSelectedObjects(current => ({
+        ...current,
+        groupId: undefined,
+        groupName: undefined,
+        groupMotion: undefined,
+        groupAnimationTracks: undefined,
+        groupScrollTracks: undefined,
+        groupMotionPath: undefined,
+        groupParallaxDepth: undefined,
+      } as InteractiveSceneObject));
+      return;
+    }
+
+    const groupId =
+      `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    const existingGroupIds = new Set(
+      activeScene.objectOrder
+        .map(objectId => activeScene.objects[objectId]?.groupId)
+        .filter((value): value is string => !!value),
+    );
+    const groupName = `Group ${existingGroupIds.size + 1}`;
+
+    // Grouping is organizational only. Preserve every object's own animation
+    // until the user explicitly applies motion to the group.
+    patchSelectedObjects(current => ({
+      ...current,
+      groupId,
+      groupName,
+      groupMotion: undefined,
+      groupAnimationTracks: undefined,
+      groupScrollTracks: undefined,
+      groupMotionPath: undefined,
+      groupParallaxDepth: undefined,
+    } as InteractiveSceneObject));
+  };
+
+  const renameSelectedGroup = (name: string) => {
+    if (!selectedGroupId) return;
+    const nextName = name.trim().slice(0, 80) || "Group";
+    patchSelectedObjects(current => ({
+      ...current,
+      groupName: nextName,
+    } as InteractiveSceneObject));
+  };
+
+  const arrangeSelectedObjects = (
+    action: "front" | "forward" | "backward",
+  ) => {
+    const ids = selectedObjectIds.length
+      ? selectedObjectIds
+      : selectedObjectId
+        ? [selectedObjectId]
+        : [];
+    if (!ids.length) return;
+    const selectedSet = new Set(ids);
+
+    mutateScenes(collection => {
+      let next = collection;
+      const scene = next.scenes[activeScene.id];
+      if (!scene) return next;
+      const selectedInOrder = scene.objectOrder.filter(id => selectedSet.has(id));
+
+      if (action === "front") {
+        selectedInOrder.forEach(objectId => {
+          let guard = scene.objectOrder.length + 1;
+          while (guard-- > 0) {
+            const currentScene = next.scenes[activeScene.id];
+            const index = currentScene?.objectOrder.indexOf(objectId) ?? -1;
+            if (!currentScene || index < 0 || index === currentScene.objectOrder.length - 1) break;
+            next = moveInteractiveObjectLayer(next, activeScene.id, objectId, 1);
+          }
+        });
+        return next;
+      }
+
+      const ordered =
+        action === "forward"
+          ? [...selectedInOrder].reverse()
+          : selectedInOrder;
+      ordered.forEach(objectId => {
+        next = moveInteractiveObjectLayer(
+          next,
+          activeScene.id,
+          objectId,
+          action === "forward" ? 1 : -1,
+        );
+      });
+      return next;
+    });
+  };
+
   const patchActiveSceneLayout = (
     patch: {
       width?: number;
@@ -2108,6 +2857,34 @@ function InteractiveEditor({
         objectId,
         activeBreakpoint,
         geometry,
+      ),
+    );
+  };
+
+  const commitObjectGeometries = (
+    geometries: Record<string, InteractiveObjectGeometry>,
+  ) => {
+    const entries = Object.entries(geometries).filter(([objectId, geometry]) => {
+      const object = activeScene.objects[objectId];
+      if (!object) return false;
+      return !sameGeometry(
+        getInteractiveObjectGeometry(object, activeBreakpoint, activeScene),
+        geometry,
+      );
+    });
+    if (!entries.length) return;
+
+    mutateScenes(collection =>
+      entries.reduce(
+        (next, [objectId, geometry]) =>
+          updateInteractiveObjectBreakpointGeometry(
+            next,
+            activeScene.id,
+            objectId,
+            activeBreakpoint,
+            geometry,
+          ),
+        collection,
       ),
     );
   };
@@ -2270,71 +3047,120 @@ function InteractiveEditor({
   };
 
   const removeSelectedObject = useCallback(() => {
-    if (!selectedObjectId) return;
+    const ids = selectedObjectIds.length
+      ? selectedObjectIds
+      : selectedObjectId
+        ? [selectedObjectId]
+        : [];
+    if (!ids.length) return;
+
     mutateScenes(collection =>
-      removeInteractiveObject(
+      ids.reduce(
+        (next, objectId) =>
+          removeInteractiveObject(next, activeScene.id, objectId),
         collection,
-        activeScene.id,
-        selectedObjectId,
       ),
     );
     setSelectedObjectId(null);
+    setSelectedObjectIds([]);
   }, [
     activeScene.id,
     mutateScenes,
     selectedObjectId,
+    selectedObjectIds,
   ]);
 
   const duplicateSelectedObject = useCallback(() => {
-    if (!selectedObjectId) return;
+    const ids = selectedObjectIds.length
+      ? activeScene.objectOrder.filter(id => selectedObjectIds.includes(id))
+      : selectedObjectId
+        ? [selectedObjectId]
+        : [];
+    if (!ids.length) return;
 
-    const result = duplicateInteractiveObject(
-      currentCollection,
-      activeScene.id,
-      selectedObjectId,
-    );
-    if (!result.objectId) return;
+    let next = currentCollection;
+    const duplicatedIds: string[] = [];
+    ids.forEach(objectId => {
+      const result = duplicateInteractiveObject(
+        next,
+        activeScene.id,
+        objectId,
+      );
+      next = result.collection;
+      if (result.objectId) duplicatedIds.push(result.objectId);
+    });
+    if (!duplicatedIds.length) return;
 
-    applyCollection(result.collection);
-    setSelectedObjectId(result.objectId);
+    if (selectedGroupId && duplicatedIds.length > 1) {
+      const duplicatedGroupId = `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      next = duplicatedIds.reduce(
+        (collection, objectId) =>
+          updateInteractiveObject(
+            collection,
+            activeScene.id,
+            objectId,
+            current => ({
+              ...current,
+              groupId: duplicatedGroupId,
+              groupName: `${selectedGroupName ?? "Group"} copy`,
+            } as InteractiveSceneObject),
+          ),
+        next,
+      );
+    }
+
+    applyCollection(next);
+    setSelectedObjectIds(duplicatedIds);
+    setSelectedObjectId(duplicatedIds[duplicatedIds.length - 1]);
   }, [
     activeScene.id,
+    activeScene.objectOrder,
     applyCollection,
     currentCollection,
+    selectedGroupId,
+    selectedGroupName,
     selectedObjectId,
+    selectedObjectIds,
   ]);
 
   const nudgeSelectedObject = useCallback(
     (dx: number, dy: number) => {
-      if (!selectedObjectId) return;
-      const object = activeScene.objects[selectedObjectId];
-      if (!object || object.locked) return;
+      const ids = selectedObjectIds.length
+        ? selectedObjectIds
+        : selectedObjectId
+          ? [selectedObjectId]
+          : [];
+      if (!ids.length) return;
 
-      const geometry = getInteractiveObjectGeometry(
-        object,
-        activeBreakpoint,
-        activeScene,
-      );
       mutateScenes(collection =>
-        updateInteractiveObjectBreakpointGeometry(
-          collection,
-          activeScene.id,
-          selectedObjectId,
-          activeBreakpoint,
-          {
-            ...geometry,
-            x: geometry.x + dx,
-            y: geometry.y + dy,
-          },
-        ),
+        ids.reduce((next, objectId) => {
+          const object = activeScene.objects[objectId];
+          if (!object || object.locked) return next;
+          const geometry = getInteractiveObjectGeometry(
+            object,
+            activeBreakpoint,
+            activeScene,
+          );
+          return updateInteractiveObjectBreakpointGeometry(
+            next,
+            activeScene.id,
+            objectId,
+            activeBreakpoint,
+            {
+              ...geometry,
+              x: geometry.x + dx,
+              y: geometry.y + dy,
+            },
+          );
+        }, collection),
       );
     },
     [
       activeBreakpoint,
-      activeScene.id,
-      activeScene.objects,
+      activeScene,
       mutateScenes,
       selectedObjectId,
+      selectedObjectIds,
     ],
   );
 
@@ -2344,6 +3170,7 @@ function InteractiveEditor({
     setParallaxPointer({ x: 0, y: 0 });
     setLiveMotionPath(null);
     setLiveGeometry(null);
+    setLiveGroupGeometries({});
     setGuides({});
   }, [activeBreakpoint, activeScene.id]);
 
@@ -2355,6 +3182,7 @@ function InteractiveEditor({
       setSelectedObjectId(null);
     }
     setLiveGeometry(null);
+    setLiveGroupGeometries({});
     setGuides({});
   }, [activeScene.id, activeScene.objects, selectedObjectId]);
 
@@ -2440,9 +3268,28 @@ function InteractiveEditor({
   ) => {
     if (event.button !== 0) return;
     event.stopPropagation();
-    setSelectedObjectId(object.id);
 
-    if (object.locked) return;
+    if (event.shiftKey) {
+      event.preventDefault();
+      selectObject(object.id, true);
+      return;
+    }
+
+    const clickedSelection = objectSelectionIds(object.id);
+    const movingIds = selectedObjectIds.includes(object.id)
+      ? selectedObjectIds
+      : clickedSelection;
+
+    if (!selectedObjectIds.includes(object.id)) {
+      selectObject(object.id, false);
+    } else {
+      setSelectedObjectId(object.id);
+    }
+
+    const movingObjects = movingIds
+      .map(objectId => activeScene.objects[objectId])
+      .filter((item): item is InteractiveSceneObject => !!item);
+    if (!movingObjects.length || movingObjects.some(item => item.locked)) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -2453,14 +3300,22 @@ function InteractiveEditor({
 
     const startX = event.clientX;
     const startY = event.clientY;
-    const startGeometry = {
-      ...getInteractiveObjectGeometry(
-        object,
-        activeBreakpoint,
-        activeScene,
-      ),
-    };
-    let finalGeometry = startGeometry;
+    const startGeometries = Object.fromEntries(
+      movingObjects.map(item => [
+        item.id,
+        {
+          ...getInteractiveObjectGeometry(
+            item,
+            activeBreakpoint,
+            activeScene,
+          ),
+        },
+      ]),
+    ) as Record<string, InteractiveObjectGeometry>;
+    const primaryStart = startGeometries[object.id];
+    if (!primaryStart) return;
+
+    let finalGeometries = startGeometries;
     let moved = false;
 
     const move = (pointer: PointerEvent) => {
@@ -2475,24 +3330,33 @@ function InteractiveEditor({
       if (!moved && Math.hypot(dx, dy) < 2) return;
       moved = true;
 
-      const candidate: InteractiveObjectGeometry = {
-        ...startGeometry,
-        x: startGeometry.x + dx,
-        y: startGeometry.y + dy,
+      const primaryCandidate: InteractiveObjectGeometry = {
+        ...primaryStart,
+        x: primaryStart.x + dx,
+        y: primaryStart.y + dy,
       };
 
       const snapped = snapMoveGeometry(
         editorScene,
         object.id,
-        candidate,
+        primaryCandidate,
         !pointer.altKey,
       );
+      const actualDx = snapped.geometry.x - primaryStart.x;
+      const actualDy = snapped.geometry.y - primaryStart.y;
 
-      finalGeometry = snapped.geometry;
-      setLiveGeometry({
-        objectId: object.id,
-        geometry: finalGeometry,
-      });
+      finalGeometries = Object.fromEntries(
+        Object.entries(startGeometries).map(([objectId, geometry]) => [
+          objectId,
+          {
+            ...geometry,
+            x: geometry.x + actualDx,
+            y: geometry.y + actualDy,
+          },
+        ]),
+      ) as Record<string, InteractiveObjectGeometry>;
+
+      setLiveGroupGeometries(finalGeometries);
       setGuides(snapped.guides);
     };
 
@@ -2500,10 +3364,10 @@ function InteractiveEditor({
       document.removeEventListener("pointermove", move);
       document.removeEventListener("pointerup", up);
       setGuides({});
-      setLiveGeometry(null);
+      setLiveGroupGeometries({});
 
       if (moved) {
-        commitObjectGeometry(object.id, finalGeometry);
+        commitObjectGeometries(finalGeometries);
       }
     };
 
@@ -2641,13 +3505,14 @@ function InteractiveEditor({
     if (!rect.width || !rect.height) return;
 
     const geometry =
-      liveGeometry?.objectId === object.id
+      liveGroupGeometries[object.id] ??
+      (liveGeometry?.objectId === object.id
         ? liveGeometry.geometry
         : getInteractiveObjectGeometry(
             object,
             activeBreakpoint,
             activeScene,
-          );
+          ));
 
     const centerX =
       rect.left +
@@ -2708,18 +3573,223 @@ function InteractiveEditor({
     document.addEventListener("pointerup", up);
   };
 
+  const beginSelectionResize = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    horizontal: "left" | "right",
+    vertical: "top" | "bottom",
+  ) => {
+    if (
+      event.button !== 0 ||
+      selectedObjects.length < 2 ||
+      anySelectedLocked
+    ) {
+      return;
+    }
+    event.stopPropagation();
+    event.preventDefault();
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    const startGeometries = Object.fromEntries(
+      selectedObjects.map(object => [
+        object.id,
+        { ...getInteractiveObjectGeometry(object, activeBreakpoint, activeScene) },
+      ]),
+    ) as Record<string, InteractiveObjectGeometry>;
+    const values = Object.values(startGeometries);
+    if (!values.length) return;
+
+    const left = Math.min(...values.map(geometry => geometry.x));
+    const top = Math.min(...values.map(geometry => geometry.y));
+    const right = Math.max(...values.map(geometry => geometry.x + geometry.width));
+    const bottom = Math.max(...values.map(geometry => geometry.y + geometry.height));
+    const startBounds = {
+      x: left,
+      y: top,
+      width: Math.max(1, right - left),
+      height: Math.max(1, bottom - top),
+    };
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let finalGeometries = startGeometries;
+
+    const move = (pointer: PointerEvent) => {
+      pointer.preventDefault();
+      const dx =
+        (pointer.clientX - startX) *
+        (activeSceneLayout.width / rect.width);
+      const dy =
+        (pointer.clientY - startY) *
+        (activeSceneLayout.height / rect.height);
+
+      let nextX = startBounds.x;
+      let nextY = startBounds.y;
+      let nextWidth = startBounds.width;
+      let nextHeight = startBounds.height;
+
+      if (horizontal === "right") {
+        nextWidth = Math.max(24, startBounds.width + dx);
+      } else {
+        const candidate = Math.min(
+          startBounds.x + startBounds.width - 24,
+          startBounds.x + dx,
+        );
+        nextX = candidate;
+        nextWidth = startBounds.x + startBounds.width - candidate;
+      }
+
+      if (vertical === "bottom") {
+        nextHeight = Math.max(24, startBounds.height + dy);
+      } else {
+        const candidate = Math.min(
+          startBounds.y + startBounds.height - 24,
+          startBounds.y + dy,
+        );
+        nextY = candidate;
+        nextHeight = startBounds.y + startBounds.height - candidate;
+      }
+
+      if (!pointer.altKey) {
+        nextWidth = Math.max(24, snapToGrid(nextWidth));
+        nextHeight = Math.max(24, snapToGrid(nextHeight));
+      }
+
+      const scaleX = nextWidth / startBounds.width;
+      const scaleY = nextHeight / startBounds.height;
+
+      finalGeometries = Object.fromEntries(
+        Object.entries(startGeometries).map(([objectId, geometry]) => [
+          objectId,
+          {
+            ...geometry,
+            x: nextX + (geometry.x - startBounds.x) * scaleX,
+            y: nextY + (geometry.y - startBounds.y) * scaleY,
+            width: Math.max(8, geometry.width * scaleX),
+            height: Math.max(8, geometry.height * scaleY),
+          },
+        ]),
+      ) as Record<string, InteractiveObjectGeometry>;
+      setLiveGroupGeometries(finalGeometries);
+    };
+
+    const up = () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+      setLiveGroupGeometries({});
+      commitObjectGeometries(finalGeometries);
+    };
+
+    document.addEventListener("pointermove", move, { passive: false });
+    document.addEventListener("pointerup", up);
+  };
+
+  const beginSelectionRotate = (
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    if (
+      event.button !== 0 ||
+      selectedObjects.length < 2 ||
+      anySelectedLocked
+    ) {
+      return;
+    }
+    event.stopPropagation();
+    event.preventDefault();
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    const startGeometries = Object.fromEntries(
+      selectedObjects.map(object => [
+        object.id,
+        { ...getInteractiveObjectGeometry(object, activeBreakpoint, activeScene) },
+      ]),
+    ) as Record<string, InteractiveObjectGeometry>;
+    const values = Object.values(startGeometries);
+    if (!values.length) return;
+
+    const left = Math.min(...values.map(geometry => geometry.x));
+    const top = Math.min(...values.map(geometry => geometry.y));
+    const right = Math.max(...values.map(geometry => geometry.x + geometry.width));
+    const bottom = Math.max(...values.map(geometry => geometry.y + geometry.height));
+    const center = {
+      x: (left + right) / 2,
+      y: (top + bottom) / 2,
+    };
+    const centerX =
+      rect.left + (center.x / activeSceneLayout.width) * rect.width;
+    const centerY =
+      rect.top + (center.y / activeSceneLayout.height) * rect.height;
+    const startPointerAngle =
+      (Math.atan2(event.clientY - centerY, event.clientX - centerX) * 180) /
+      Math.PI;
+    let finalGeometries = startGeometries;
+
+    const move = (pointer: PointerEvent) => {
+      pointer.preventDefault();
+      const pointerAngle =
+        (Math.atan2(pointer.clientY - centerY, pointer.clientX - centerX) * 180) /
+        Math.PI;
+      const rawDelta = pointerAngle - startPointerAngle;
+      const delta = pointer.altKey
+        ? rawDelta
+        : Math.round(rawDelta / 15) * 15;
+      const radians = (delta * Math.PI) / 180;
+      const cos = Math.cos(radians);
+      const sin = Math.sin(radians);
+
+      finalGeometries = Object.fromEntries(
+        Object.entries(startGeometries).map(([objectId, geometry]) => {
+          const objectCenter = {
+            x: geometry.x + geometry.width / 2,
+            y: geometry.y + geometry.height / 2,
+          };
+          const dx = objectCenter.x - center.x;
+          const dy = objectCenter.y - center.y;
+          const rotatedCenter = {
+            x: center.x + dx * cos - dy * sin,
+            y: center.y + dx * sin + dy * cos,
+          };
+          return [
+            objectId,
+            {
+              ...geometry,
+              x: rotatedCenter.x - geometry.width / 2,
+              y: rotatedCenter.y - geometry.height / 2,
+              rotation: normalizeRotation(geometry.rotation + delta),
+            },
+          ];
+        }),
+      ) as Record<string, InteractiveObjectGeometry>;
+      setLiveGroupGeometries(finalGeometries);
+    };
+
+    const up = () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+      setLiveGroupGeometries({});
+      commitObjectGeometries(finalGeometries);
+    };
+
+    document.addEventListener("pointermove", move, { passive: false });
+    document.addEventListener("pointerup", up);
+  };
+
   const renderObject = (objectId: string) => {
     const object = activeScene.objects[objectId];
     if (!object) return null;
 
-    const geometry =
-      liveGeometry?.objectId === object.id
-        ? liveGeometry.geometry
-        : getInteractiveObjectGeometry(
-            object,
-            activeBreakpoint,
-            activeScene,
-          );
+    // Use the same effective geometry source as the multi-selection bounds.
+    // During grouped/multi-object gestures, liveGroupGeometries contains the
+    // per-object preview geometry. Rendering from persisted geometry here made
+    // only the shared selection box move while the actual objects appeared
+    // frozen until pointer-up.
+    const geometry = effectiveGeometryFor(object);
     const displayObject =
       selectedObjectId === object.id && liveMotionPath
         ? ({
@@ -2734,13 +3804,13 @@ function InteractiveEditor({
         object={displayObject}
         scene={editorScene}
         data={data}
-        selected={selectedObjectId === object.id}
+        selected={selectedSetForLayers.has(object.id)}
+        showHandles={!hasMultipleSelection && selectedObjectId === object.id}
         geometry={geometry}
         motionReplayKey={motionReplayKey}
         scrollProgress={scrollProgress}
         parallaxPointer={parallaxPointer}
         onPointerDown={beginMove}
-        onSelect={setSelectedObjectId}
         onResizePointerDown={beginResize}
         onRotatePointerDown={beginRotate}
       />
@@ -2748,6 +3818,42 @@ function InteractiveEditor({
   };
 
   const layerIds = [...activeScene.objectOrder].reverse();
+  const layerPanelEntries: Array<
+    | { kind: "object"; objectId: string }
+    | {
+        kind: "group";
+        groupId: string;
+        groupName: string;
+        objectIds: string[];
+      }
+  > = [];
+  const seenLayerGroupIds = new Set<string>();
+
+  layerIds.forEach(objectId => {
+    const object = activeScene.objects[objectId];
+    if (!object) return;
+    if (!object.groupId) {
+      layerPanelEntries.push({ kind: "object", objectId });
+      return;
+    }
+    if (seenLayerGroupIds.has(object.groupId)) return;
+
+    seenLayerGroupIds.add(object.groupId);
+    const objectIds = layerIds.filter(
+      id => activeScene.objects[id]?.groupId === object.groupId,
+    );
+    const groupName =
+      objectIds
+        .map(id => activeScene.objects[id]?.groupName?.trim())
+        .find(Boolean) || "Group";
+    layerPanelEntries.push({
+      kind: "group",
+      groupId: object.groupId,
+      groupName,
+      objectIds,
+    });
+  });
+
   const selectedMotionPath =
     liveMotionPath ??
     (selectedObject?.motionPath
@@ -2783,19 +3889,39 @@ function InteractiveEditor({
   );
 
   return (
-    <div className="min-h-[720px] rounded-xl bg-background p-3 sm:p-4">
+    <div
+      className={
+        workspaceMode
+          ? "flex h-full min-h-0 flex-col bg-background"
+          : "min-h-[720px] rounded-xl bg-background p-3 sm:p-4"
+      }
+    >
       <style>{INTERACTIVE_MOTION_CSS}</style>
-      <div className="mx-auto max-w-[1180px]">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+      <div
+        className={
+          workspaceMode
+            ? "flex h-full min-h-0 min-w-0 flex-col"
+            : "mx-auto max-w-[1180px]"
+        }
+      >
+        <div
+          className={
+            workspaceMode
+              ? "flex flex-none flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-2.5"
+              : "flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3"
+          }
+        >
           <div>
-            <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#2e0562]">
-              Interactive Experience
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <span className="text-[13px] font-semibold text-foreground">
+            {!workspaceMode && (
+              <div className="text-[13px] font-bold uppercase tracking-[0.18em] text-[#2e0562]">
+                Interactive Experience
+              </div>
+            )}
+            <div className={workspaceMode ? "flex flex-wrap items-center gap-2" : "mt-1 flex flex-wrap items-center gap-2"}>
+              <span className={workspaceMode ? "text-[14px] font-semibold text-foreground" : "text-[16px] font-semibold text-foreground"}>
                 {fullName || "Your resume"}
               </span>
-              <span className="rounded-full border border-[#2e0562]/20 bg-[#2e0562]/5 px-2 py-0.5 text-[7.5px] font-bold uppercase tracking-wider text-[#2e0562]">
+              <span className="rounded-full border border-[#2e0562]/20 bg-[#2e0562]/5 px-2 py-0.5 text-[12px] font-bold uppercase tracking-wider text-[#2e0562]">
                 Freeform editor
               </span>
             </div>
@@ -2804,11 +3930,13 @@ function InteractiveEditor({
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() =>
-                setTemplateGalleryOpen(open => !open)
-              }
+              onClick={() => {
+                setPublishingOpen(false);
+                setReadinessOpen(false);
+                setTemplateGalleryOpen(open => !open);
+              }}
               aria-pressed={templateGalleryOpen}
-              className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[7.5px] font-semibold ${
+              className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-semibold ${
                 templateGalleryOpen
                   ? "border-[#2e0562]/30 bg-[#2e0562]/5 text-[#2e0562]"
                   : "border-border text-muted-foreground hover:text-foreground"
@@ -2816,6 +3944,56 @@ function InteractiveEditor({
             >
               <LayoutTemplate size={11} />
               Templates
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setTemplateGalleryOpen(false);
+                setReadinessOpen(false);
+                setPublishingOpen(true);
+              }}
+              aria-pressed={publishingOpen}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-semibold transition-colors ${
+                publishingOpen
+                  ? "border-[#2e0562]/35 bg-[#2e0562] text-white"
+                  : "border-[#2e0562]/25 bg-[#2e0562]/5 text-[#2e0562] hover:bg-[#2e0562]/10"
+              }`}
+            >
+              <CloudUpload size={11} />
+              Publish
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setTemplateGalleryOpen(false);
+                setPublishingOpen(false);
+                setReadinessOpen(true);
+              }}
+              aria-pressed={readinessOpen}
+              title="Review publish readiness"
+              className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-semibold transition-colors ${
+                readinessOpen
+                  ? "border-[#2e0562]/35 bg-[#2e0562] text-white"
+                  : publishReport.readiness === "ready"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100/65"
+                    : publishReport.readiness === "blocked"
+                      ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100/65"
+                      : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100/65"
+              }`}
+            >
+              <ListChecks size={11} />
+              {publishReport.readiness === "ready"
+                ? "Ready"
+                : publishReport.readiness === "blocked"
+                  ? "Blocked"
+                  : "Review"}
+              <span className={`rounded px-1 py-0.5 text-[12px] font-bold ${
+                readinessOpen ? "bg-white/15 text-white" : "bg-background/75"
+              }`}>
+                {publishReport.score}
+              </span>
             </button>
 
             <button
@@ -2839,76 +4017,109 @@ function InteractiveEditor({
           </div>
         </div>
 
-        {templateGalleryOpen && (
-          <div className="mt-3">
-            <InteractiveTemplateGallery
-              activeTemplateId={normalizeInteractiveTemplateId(
-                interactive.templateId,
-              )}
-              onApply={applyTemplate}
-              onClose={() => setTemplateGalleryOpen(false)}
-            />
-          </div>
-        )}
+        <InteractiveTemplateOverlay
+          open={templateGalleryOpen}
+          activeTemplateId={normalizeInteractiveTemplateId(
+            interactive.templateId,
+          )}
+          mode="editor"
+          onApply={applyTemplate}
+          onClose={() => setTemplateGalleryOpen(false)}
+        />
 
-        <div className="mt-3 grid gap-3 xl:grid-cols-[190px_minmax(0,1fr)_230px]">
+        <InteractivePublishingOverlay
+          open={publishingOpen}
+          data={data}
+          onDesignChange={onDesignChange}
+          onClose={() => setPublishingOpen(false)}
+          onReviewReadiness={() => {
+            setPublishingOpen(false);
+            setReadinessOpen(true);
+          }}
+        />
+
+        <InteractivePublishReadinessOverlay
+          open={readinessOpen}
+          data={data}
+          onClose={() => setReadinessOpen(false)}
+          onGoToIssue={focusReadinessIssue}
+        />
+
+        <div
+          className={
+            workspaceMode
+              ? "grid min-h-0 flex-1 gap-3 overflow-hidden p-3 xl:grid-cols-[220px_minmax(0,1fr)_280px] 2xl:grid-cols-[240px_minmax(0,1fr)_300px]"
+              : "mt-3 grid gap-3 xl:grid-cols-[190px_minmax(0,1fr)_230px]"
+          }
+        >
           {/* Scenes + layers */}
-          <aside className="space-y-3">
-            <div className="rounded-xl border border-border bg-card p-2.5">
-              <div className="flex items-center justify-between gap-2 px-1 pb-2">
-                <div>
-                  <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Scenes
+          <aside
+            className={
+              workspaceMode
+                ? "min-h-0 overflow-hidden rounded-xl border border-border bg-card"
+                : "overflow-hidden rounded-xl border border-border bg-card"
+            }
+          >
+            <div className="flex h-full min-h-0 flex-col">
+              <section className="flex-none border-b border-border">
+                <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Scenes
+                      </span>
+                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[12px] font-semibold text-muted-foreground">
+                        {scenes.length}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-[12px] text-muted-foreground">
+                      Visitor order
+                    </div>
                   </div>
-                  <div className="mt-0.5 text-[7.5px] text-muted-foreground">
-                    Visitor order
-                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      mutateScenes(collection =>
+                        addInteractiveScene(collection),
+                      )
+                    }
+                    title="Add scene"
+                    aria-label="Add scene"
+                    className="flex h-7 w-7 flex-none items-center justify-center rounded-lg border border-[#2e0562]/20 text-[#2e0562] transition-colors hover:bg-[#2e0562]/5"
+                  >
+                    <Plus size={13} />
+                  </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    mutateScenes(collection =>
-                      addInteractiveScene(collection),
-                    )
-                  }
-                  title="Add scene"
-                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#2e0562]/20 text-[#2e0562] hover:bg-[#2e0562]/5"
-                >
-                  <Plus size={13} />
-                </button>
-              </div>
-
-              <div className="space-y-1.5">
-                {scenes.map((scene, index) => {
-                  const active = scene.id === activeScene.id;
-                  return (
-                    <div
-                      key={scene.id}
-                      className={`rounded-lg border p-1.5 ${
-                        active
-                          ? "border-[#2e0562]/35 bg-[#2e0562]/5"
-                          : "border-border bg-background"
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedObjectId(null);
-                          mutateScenes(
-                            collection =>
-                              setActiveInteractiveScene(
-                                collection,
-                                scene.id,
-                              ),
-                            { recordHistory: false },
-                          );
-                        }}
-                        className="w-full text-left"
-                      >
-                        <div className="flex items-center gap-2">
+                <div className="max-h-[210px] overflow-y-auto px-1.5 pb-1.5">
+                  <div className="space-y-0.5">
+                    {scenes.map((scene, index) => {
+                      const active = scene.id === activeScene.id;
+                      return (
+                        <button
+                          key={scene.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedObjectId(null);
+                            mutateScenes(
+                              collection =>
+                                setActiveInteractiveScene(
+                                  collection,
+                                  scene.id,
+                                ),
+                              { recordHistory: false },
+                            );
+                          }}
+                          aria-current={active ? "true" : undefined}
+                          className={`group flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors ${
+                            active
+                              ? "bg-[#2e0562]/7 text-foreground"
+                              : "text-foreground hover:bg-muted/45"
+                          }`}
+                        >
                           <span
-                            className={`flex h-5 w-5 flex-none items-center justify-center rounded-md text-[7.5px] font-bold ${
+                            className={`flex h-6 w-6 flex-none items-center justify-center rounded-md text-[12px] font-bold ${
                               active
                                 ? "bg-[#2e0562] text-white"
                                 : "bg-muted text-muted-foreground"
@@ -2916,280 +4127,516 @@ function InteractiveEditor({
                           >
                             {index + 1}
                           </span>
-                          <span className="min-w-0 flex-1 truncate text-[9px] font-semibold text-foreground">
-                            {scene.name}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[12px] font-semibold">
+                              {scene.name}
+                            </span>
+                            <span className="block text-[12px] text-muted-foreground">
+                              {scene.objectOrder.length} layer{scene.objectOrder.length === 1 ? "" : "s"}
+                            </span>
                           </span>
-                        </div>
-                        <div className="ml-7 mt-1 text-[7px] text-muted-foreground">
-                          {scene.objectOrder.length} objects
-                        </div>
-                      </button>
-
-                      {active && (
-                        <div className="mt-1.5 flex items-center gap-1 border-t border-[#2e0562]/10 pt-1.5">
-                          <button
-                            type="button"
-                            disabled={index === 0}
-                            title="Move scene up"
-                            onClick={() =>
-                              mutateScenes(collection =>
-                                moveInteractiveScene(
-                                  collection,
-                                  scene.id,
-                                  -1,
-                                ),
-                              )
-                            }
-                            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-25"
-                          >
-                            <ArrowUp size={10} />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={index === scenes.length - 1}
-                            title="Move scene down"
-                            onClick={() =>
-                              mutateScenes(collection =>
-                                moveInteractiveScene(
-                                  collection,
-                                  scene.id,
-                                  1,
-                                ),
-                              )
-                            }
-                            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-25"
-                          >
-                            <ArrowDown size={10} />
-                          </button>
-                          <button
-                            type="button"
-                            title="Duplicate scene"
-                            onClick={() =>
-                              mutateScenes(collection =>
-                                duplicateInteractiveScene(
-                                  collection,
-                                  scene.id,
-                                ),
-                              )
-                            }
-                            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground"
-                          >
-                            <Copy size={10} />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={scenes.length <= 1}
-                            title="Delete scene"
-                            onClick={() => {
-                              setSelectedObjectId(null);
-                              mutateScenes(collection =>
-                                removeInteractiveScene(
-                                  collection,
-                                  scene.id,
-                                ),
-                              );
-                            }}
-                            className="ml-auto flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-red-50 hover:text-red-500 disabled:opacity-25"
-                          >
-                            <Trash2 size={10} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-border bg-card p-2.5">
-              <div className="flex items-center justify-between gap-2 px-1 pb-2">
-                <div>
-                  <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Layers
-                  </div>
-                  <div className="mt-0.5 text-[7px] text-muted-foreground">
-                    Front to back
-                  </div>
-                </div>
-                <Layers3 size={13} className="text-muted-foreground" />
-              </div>
-
-              {layerIds.length ? (
-                <div className="space-y-1">
-                  {layerIds.map(objectId => {
-                    const object = activeScene.objects[objectId];
-                    if (!object) return null;
-                    const selected = object.id === selectedObjectId;
-                    const layerGeometry = getInteractiveObjectGeometry(
-                      object,
-                      activeBreakpoint,
-                      activeScene,
-                    );
-                    const actualIndex =
-                      activeScene.objectOrder.indexOf(object.id);
-
-                    return (
-                      <div
-                        key={object.id}
-                        className={`rounded-lg border p-1.5 ${
-                          selected
-                            ? "border-[#2e0562]/35 bg-[#2e0562]/5"
-                            : "border-border bg-background"
-                        }`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setSelectedObjectId(object.id)
-                          }
-                          className="flex w-full items-center gap-1.5 text-left"
-                        >
-                          <span className="flex h-5 w-5 flex-none items-center justify-center rounded bg-muted text-muted-foreground">
-                            {object.type === "text" ? (
-                              <Type size={9} />
-                            ) : object.type === "image" ? (
-                              <ImageIcon size={9} />
-                            ) : object.type === "shape" ? (
-                              <Square size={9} />
-                            ) : (
-                              <UserRound size={9} />
-                            )}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate text-[8.5px] font-semibold text-foreground">
-                            {object.type === "resume-content"
-                              ? interactiveBindingDisplayName(
-                                  data,
-                                  object.binding,
-                                )
-                              : object.name}
-                          </span>
-                        </button>
-
-                        {selected && (
-                          <div className="mt-1.5 flex items-center gap-0.5 border-t border-[#2e0562]/10 pt-1">
-                            <button
-                              type="button"
-                              title={
-                                layerGeometry.hidden
-                                  ? "Show"
-                                  : "Hide"
-                              }
-                              onClick={() =>
-                                patchSelectedGeometry(geometry => ({
-                                  ...geometry,
-                                  hidden:
-                                    !geometry.hidden ||
-                                    undefined,
-                                }))
-                              }
-                              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground"
-                            >
-                              {layerGeometry.hidden ? (
-                                <EyeOff size={9} />
-                              ) : (
-                                <Eye size={9} />
-                              )}
-                            </button>
-                            <button
-                              type="button"
-                              title={object.locked ? "Unlock" : "Lock"}
-                              onClick={() =>
-                                patchSelectedObject(current => ({
-                                  ...current,
-                                  locked:
-                                    !current.locked || undefined,
-                                } as InteractiveSceneObject))
-                              }
-                              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground"
-                            >
-                              {object.locked ? (
-                                <Lock size={9} />
-                              ) : (
-                                <Unlock size={9} />
-                              )}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={
-                                actualIndex ===
-                                activeScene.objectOrder.length - 1
-                              }
-                              title="Bring forward"
-                              onClick={() =>
-                                mutateScenes(collection =>
-                                  moveInteractiveObjectLayer(
-                                    collection,
-                                    activeScene.id,
-                                    object.id,
-                                    1,
-                                  ),
-                                )
-                              }
-                              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-25"
-                            >
-                              <ArrowUp size={9} />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={actualIndex === 0}
-                              title="Send backward"
-                              onClick={() =>
-                                mutateScenes(collection =>
-                                  moveInteractiveObjectLayer(
-                                    collection,
-                                    activeScene.id,
-                                    object.id,
-                                    -1,
-                                  ),
-                                )
-                              }
-                              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-25"
-                            >
-                              <ArrowDown size={9} />
-                            </button>
-                            <button
-                              type="button"
-                              title="Duplicate"
-                              onClick={duplicateSelectedObject}
-                              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground"
-                            >
-                              <Copy size={8} />
-                            </button>
-                            <button
-                              type="button"
-                              title="Delete"
-                              onClick={removeSelectedObject}
-                              className="ml-auto flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-red-50 hover:text-red-500"
-                            >
-                              <Trash2 size={8} />
-                            </button>
-                          </div>
-                        )}
-
-                        {!selected &&
-                          (object.locked ||
-                            layerGeometry.hidden) && (
-                            <div className="ml-[26px] mt-0.5 flex gap-1 text-[6px] font-semibold text-muted-foreground">
-                              {object.locked && <span>Locked</span>}
-                              {layerGeometry.hidden && (
-                                <span>Hidden on {activeBreakpoint}</span>
-                              )}
-                            </div>
+                          {active && (
+                            <span className="h-1.5 w-1.5 flex-none rounded-full bg-[#2e0562]" />
                           )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1 border-t border-border/70 bg-muted/15 px-2 py-1.5">
+                  {renamingScene ? (
+                    <form
+                      className="mr-auto flex min-w-0 flex-1 items-center gap-1"
+                      onSubmit={event => {
+                        event.preventDefault();
+                        const nextName = sceneNameDraft.trim();
+                        if (nextName) patchScene({ name: nextName });
+                        setRenamingScene(false);
+                        setSceneNameDraft("");
+                      }}
+                    >
+                      <input
+                        autoFocus
+                        value={sceneNameDraft}
+                        onChange={event => setSceneNameDraft(event.target.value)}
+                        onKeyDown={event => {
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            setRenamingScene(false);
+                            setSceneNameDraft("");
+                          }
+                        }}
+                        className="min-w-0 flex-1 rounded-md border border-[#2e0562]/25 bg-background px-2 py-1 text-[12px] font-semibold text-foreground outline-none"
+                        aria-label="Scene name"
+                      />
+                      <button
+                        type="submit"
+                        className="flex h-7 w-7 flex-none items-center justify-center rounded-md text-[#2e0562] hover:bg-background"
+                        title="Save scene name"
+                        aria-label="Save scene name"
+                      >
+                        <Check size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRenamingScene(false);
+                          setSceneNameDraft("");
+                        }}
+                        className="flex h-7 w-7 flex-none items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground"
+                        title="Cancel rename"
+                        aria-label="Cancel rename"
+                      >
+                        <X size={12} />
+                      </button>
+                    </form>
+                  ) : (
+                    <>
+                      <span className="mr-auto min-w-0 truncate px-1 text-[12px] font-semibold text-muted-foreground">
+                        {activeScene.name}
+                      </span>
+                      <button
+                        type="button"
+                        title="Rename scene"
+                        aria-label="Rename scene"
+                        onClick={() => {
+                          setSceneNameDraft(activeScene.name);
+                          setRenamingScene(true);
+                        }}
+                        className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                      >
+                        <Pencil size={11} />
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    disabled={activeSceneIndex === 0}
+                    title="Move scene up"
+                    aria-label="Move scene up"
+                    onClick={() =>
+                      mutateScenes(collection =>
+                        moveInteractiveScene(
+                          collection,
+                          activeScene.id,
+                          -1,
+                        ),
+                      )
+                    }
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground disabled:opacity-25"
+                  >
+                    <ArrowUp size={11} />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={activeSceneIndex === scenes.length - 1}
+                    title="Move scene down"
+                    aria-label="Move scene down"
+                    onClick={() =>
+                      mutateScenes(collection =>
+                        moveInteractiveScene(
+                          collection,
+                          activeScene.id,
+                          1,
+                        ),
+                      )
+                    }
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground disabled:opacity-25"
+                  >
+                    <ArrowDown size={11} />
+                  </button>
+                  <button
+                    type="button"
+                    title="Duplicate scene"
+                    aria-label="Duplicate scene"
+                    onClick={() =>
+                      mutateScenes(collection =>
+                        duplicateInteractiveScene(
+                          collection,
+                          activeScene.id,
+                        ),
+                      )
+                    }
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                  >
+                    <Copy size={11} />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={scenes.length <= 1}
+                    title="Delete scene"
+                    aria-label="Delete scene"
+                    onClick={() => {
+                      setSelectedObjectId(null);
+                      mutateScenes(collection =>
+                        removeInteractiveScene(
+                          collection,
+                          activeScene.id,
+                        ),
+                      );
+                    }}
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-25"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              </section>
+
+              <section className="flex min-h-0 flex-1 flex-col">
+                <div className="flex flex-none items-center justify-between gap-2 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Layers
+                      </span>
+                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[12px] font-semibold text-muted-foreground">
+                        {layerIds.length}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-[12px] text-muted-foreground">
+                      Front layer first
+                    </div>
+                  </div>
+                  <Layers3 size={13} className="flex-none text-muted-foreground" />
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">
+                  {layerIds.length ? (
+                    <div className="space-y-0.5">
+                      {layerPanelEntries.map(entry => {
+                        if (entry.kind === "object") {
+                          const object = activeScene.objects[entry.objectId];
+                          if (!object) return null;
+                          const selected = selectedSetForLayers.has(object.id);
+                          const layerGeometry = getInteractiveObjectGeometry(
+                            object,
+                            activeBreakpoint,
+                            activeScene,
+                          );
+
+                          return (
+                            <button
+                              key={object.id}
+                              type="button"
+                              onClick={event => selectObject(object.id, event.shiftKey)}
+                              aria-pressed={selected}
+                              className={`group flex w-full items-center gap-1.5 rounded-lg px-2 py-2 text-left transition-colors ${
+                                selected
+                                  ? "bg-[#2e0562]/7"
+                                  : "hover:bg-muted/45"
+                              } ${layerGeometry.hidden ? "opacity-55" : ""}`}
+                            >
+                              <span
+                                className={`flex h-6 w-6 flex-none items-center justify-center rounded-md ${
+                                  selected
+                                    ? "bg-[#2e0562]/10 text-[#2e0562]"
+                                    : "bg-muted text-muted-foreground"
+                                }`}
+                              >
+                                {object.type === "text" ? (
+                                  <Type size={11} />
+                                ) : object.type === "image" ? (
+                                  <ImageIcon size={11} />
+                                ) : object.type === "shape" ? (
+                                  <Square size={11} />
+                                ) : (
+                                  <UserRound size={11} />
+                                )}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-foreground">
+                                {object.type === "resume-content"
+                                  ? interactiveBindingDisplayName(
+                                      data,
+                                      object.binding,
+                                    )
+                                  : object.name}
+                              </span>
+                              <span className="flex flex-none items-center gap-0.5 text-muted-foreground">
+                                {object.locked && <Lock size={11} />}
+                                {layerGeometry.hidden && <EyeOff size={11} />}
+                              </span>
+                            </button>
+                          );
+                        }
+
+                        const groupObjects = entry.objectIds
+                          .map(objectId => activeScene.objects[objectId])
+                          .filter(
+                            (object): object is InteractiveSceneObject => !!object,
+                          );
+                        if (!groupObjects.length) return null;
+
+                        const groupSelected = entry.objectIds.every(objectId =>
+                          selectedSetForLayers.has(objectId),
+                        );
+                        const groupLocked = groupObjects.every(object => !!object.locked);
+                        const groupHidden = groupObjects.every(object =>
+                          getInteractiveObjectGeometry(
+                            object,
+                            activeBreakpoint,
+                            activeScene,
+                          ).hidden,
+                        );
+                        const collapsed = collapsedLayerGroupIds.has(entry.groupId);
+
+                        return (
+                          <div
+                            key={entry.groupId}
+                            className={`rounded-lg ${
+                              groupSelected ? "bg-[#2e0562]/[0.045]" : ""
+                            }`}
+                          >
+                            <div
+                              className={`flex items-center gap-1 rounded-lg transition-colors ${
+                                groupSelected
+                                  ? "bg-[#2e0562]/7"
+                                  : "hover:bg-muted/45"
+                              } ${groupHidden ? "opacity-55" : ""}`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setCollapsedLayerGroupIds(current => {
+                                    const next = new Set(current);
+                                    if (next.has(entry.groupId)) next.delete(entry.groupId);
+                                    else next.add(entry.groupId);
+                                    return next;
+                                  })
+                                }
+                                className="ml-1 flex h-7 w-6 flex-none items-center justify-center rounded-md text-muted-foreground hover:bg-background/70 hover:text-foreground"
+                                aria-label={collapsed ? `Expand ${entry.groupName}` : `Collapse ${entry.groupName}`}
+                                aria-expanded={!collapsed}
+                              >
+                                <ChevronDown
+                                  size={12}
+                                  className={`transition-transform ${collapsed ? "-rotate-90" : ""}`}
+                                />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={event =>
+                                  selectObject(entry.objectIds[0], event.shiftKey)
+                                }
+                                aria-pressed={groupSelected}
+                                className="flex min-w-0 flex-1 items-center gap-1.5 py-2 pr-2 text-left"
+                              >
+                                <span
+                                  className={`flex h-6 w-6 flex-none items-center justify-center rounded-md ${
+                                    groupSelected
+                                      ? "bg-[#2e0562]/10 text-[#2e0562]"
+                                      : "bg-muted text-muted-foreground"
+                                  }`}
+                                >
+                                  <Layers3 size={12} />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-[12px] font-bold text-foreground">
+                                    {entry.groupName}
+                                  </span>
+                                  <span className="block text-[11px] text-muted-foreground">
+                                    {entry.objectIds.length} objects
+                                  </span>
+                                </span>
+                                <span className="flex flex-none items-center gap-0.5 text-muted-foreground">
+                                  {groupLocked && <Lock size={11} />}
+                                  {groupHidden && <EyeOff size={11} />}
+                                </span>
+                              </button>
+                            </div>
+
+                            {!collapsed && (
+                              <div className="ml-5 border-l border-border/70 pl-1.5">
+                                {entry.objectIds.map(objectId => {
+                                  const object = activeScene.objects[objectId];
+                                  if (!object) return null;
+                                  const selected = selectedSetForLayers.has(object.id);
+                                  const layerGeometry = getInteractiveObjectGeometry(
+                                    object,
+                                    activeBreakpoint,
+                                    activeScene,
+                                  );
+
+                                  return (
+                                    <button
+                                      key={object.id}
+                                      type="button"
+                                      onClick={event =>
+                                        selectObject(object.id, event.shiftKey)
+                                      }
+                                      aria-pressed={selected}
+                                      className={`group flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left transition-colors ${
+                                        selected
+                                          ? "text-[#2e0562]"
+                                          : "hover:bg-muted/35"
+                                      } ${layerGeometry.hidden ? "opacity-55" : ""}`}
+                                    >
+                                      <span
+                                        className={`flex h-5 w-5 flex-none items-center justify-center rounded-md ${
+                                          selected
+                                            ? "bg-[#2e0562]/10 text-[#2e0562]"
+                                            : "bg-muted/80 text-muted-foreground"
+                                        }`}
+                                      >
+                                        {object.type === "text" ? (
+                                          <Type size={10} />
+                                        ) : object.type === "image" ? (
+                                          <ImageIcon size={10} />
+                                        ) : object.type === "shape" ? (
+                                          <Square size={10} />
+                                        ) : (
+                                          <UserRound size={10} />
+                                        )}
+                                      </span>
+                                      <span className="min-w-0 flex-1 truncate text-[12px] font-semibold">
+                                        {object.type === "resume-content"
+                                          ? interactiveBindingDisplayName(
+                                              data,
+                                              object.binding,
+                                            )
+                                          : object.name}
+                                      </span>
+                                      <span className="flex flex-none items-center gap-0.5 text-muted-foreground">
+                                        {object.locked && <Lock size={10} />}
+                                        {layerGeometry.hidden && <EyeOff size={10} />}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="mx-0.5 rounded-lg border border-dashed border-border px-2 py-5 text-center">
+                      <Layers3 size={15} className="mx-auto text-muted-foreground/60" />
+                      <div className="mt-2 text-[12px] font-semibold text-muted-foreground">
+                        No layers yet
                       </div>
-                    );
-                  })}
+                      <div className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
+                        Use Add above the canvas to place your first object.
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="rounded-lg border border-dashed border-border px-2 py-3 text-center text-[7.5px] text-muted-foreground">
-                  Add an object to create the first layer.
-                </div>
-              )}
+
+                {selectedObject && selectedGeometry && !hasMultipleSelection && (
+                  <div className="flex flex-none items-center gap-1 border-t border-border/70 bg-muted/15 px-2 py-1.5">
+                    <span className="mr-auto min-w-0 truncate px-1 text-[12px] font-semibold text-muted-foreground">
+                      {selectedObject.type === "resume-content"
+                        ? interactiveBindingDisplayName(
+                            data,
+                            selectedObject.binding,
+                          )
+                        : selectedObject.name}
+                    </span>
+                    <button
+                      type="button"
+                      title={selectedGeometry.hidden ? "Show layer" : "Hide layer"}
+                      aria-label={selectedGeometry.hidden ? "Show layer" : "Hide layer"}
+                      onClick={() =>
+                        patchSelectedGeometry(geometry => ({
+                          ...geometry,
+                          hidden: !geometry.hidden || undefined,
+                        }))
+                      }
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                    >
+                      {selectedGeometry.hidden ? <EyeOff size={11} /> : <Eye size={11} />}
+                    </button>
+                    <button
+                      type="button"
+                      title={selectedObject.locked ? "Unlock layer" : "Lock layer"}
+                      aria-label={selectedObject.locked ? "Unlock layer" : "Lock layer"}
+                      onClick={() =>
+                        patchSelectedObject(current => ({
+                          ...current,
+                          locked: !current.locked || undefined,
+                        } as InteractiveSceneObject))
+                      }
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                    >
+                      {selectedObject.locked ? <Lock size={11} /> : <Unlock size={11} />}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={
+                        activeScene.objectOrder.indexOf(selectedObject.id) ===
+                        activeScene.objectOrder.length - 1
+                      }
+                      title="Bring forward"
+                      aria-label="Bring forward"
+                      onClick={() =>
+                        mutateScenes(collection =>
+                          moveInteractiveObjectLayer(
+                            collection,
+                            activeScene.id,
+                            selectedObject.id,
+                            1,
+                          ),
+                        )
+                      }
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground disabled:opacity-25"
+                    >
+                      <ArrowUp size={11} />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={activeScene.objectOrder.indexOf(selectedObject.id) === 0}
+                      title="Send backward"
+                      aria-label="Send backward"
+                      onClick={() =>
+                        mutateScenes(collection =>
+                          moveInteractiveObjectLayer(
+                            collection,
+                            activeScene.id,
+                            selectedObject.id,
+                            -1,
+                          ),
+                        )
+                      }
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground disabled:opacity-25"
+                    >
+                      <ArrowDown size={11} />
+                    </button>
+                    <button
+                      type="button"
+                      title="Duplicate layer"
+                      aria-label="Duplicate layer"
+                      onClick={duplicateSelectedObject}
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                    >
+                      <Copy size={11} />
+                    </button>
+                    <button
+                      type="button"
+                      title="Delete layer"
+                      aria-label="Delete layer"
+                      onClick={removeSelectedObject}
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-500"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                )}
+                {hasMultipleSelection && (
+                  <div className="flex flex-none items-center justify-between gap-2 border-t border-border/70 bg-muted/15 px-3 py-2">
+                    <span className="text-[12px] font-semibold text-foreground">
+                      {selectedObjects.length} objects selected
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      Shift-click to adjust
+                    </span>
+                  </div>
+                )}
+              </section>
             </div>
           </aside>
 
           {/* Canvas */}
-          <main className="min-w-0">
+          <main className={workspaceMode ? "min-h-0 min-w-0 overflow-y-auto pr-1" : "min-w-0"}>
             <div
               className="relative mb-2 flex flex-wrap items-center justify-between gap-2"
               style={{
@@ -3198,10 +4645,10 @@ function InteractiveEditor({
               }}
             >
               <div>
-                <div className="text-[10px] font-semibold text-foreground">
+                <div className="text-[13px] font-semibold text-foreground">
                   {activeScene.name}
                 </div>
-                <div className="text-[7.5px] text-muted-foreground">
+                <div className="text-[12px] text-muted-foreground">
                   {activeSceneLayout.width} × {activeSceneLayout.height}px ·{" "}
                   {activeSceneLayout.scrollLength}px visitor scroll
                 </div>
@@ -3209,6 +4656,7 @@ function InteractiveEditor({
 
               <div className="flex items-center gap-1">
                 <div
+                  ref={addMenuRef}
                   className="relative"
                   style={{
                     zIndex: 1100,
@@ -3221,84 +4669,110 @@ function InteractiveEditor({
                       setBindingPickerMode(null);
                       setBindingSearch("");
                     }}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#2e0562] px-2.5 text-[9px] font-semibold text-white"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#2e0562] px-3 text-[13px] font-semibold text-white"
                   >
-                    <Plus size={11} />
+                    <Plus size={13} />
                     Add
                   </button>
 
                   {addMenuOpen && (
                     <div
-                      className="absolute right-0 top-9 z-[500] rounded-xl border border-border bg-background p-1.5 shadow-lg"
+                      className="absolute right-0 top-10 z-[500] overflow-hidden rounded-2xl border border-border bg-background shadow-xl"
                       style={{
-                        width: 190,
-                        minWidth: 190,
-                        maxWidth: "none",
+                        width: 320,
+                        minWidth: 320,
+                        maxWidth: "min(320px, calc(100vw - 24px))",
                         zIndex: 1200,
                         isolation: "isolate",
                       }}
                     >
-                      {[
-                        [
-                          "resume-content",
-                          "Resume content",
-                          <UserRound size={11} key="resume" />,
-                        ],
-                        [
-                          "text",
-                          "Text",
-                          <Type size={11} key="text" />,
-                        ],
-                        [
-                          "image",
-                          "Image",
-                          <ImageIcon size={11} key="image" />,
-                        ],
-                        [
-                          "shape",
-                          "Shape",
-                          <Square size={11} key="shape" />,
-                        ],
-                      ].map(([type, label, icon]) => (
+                      <div className="border-b border-border px-3 py-2.5">
+                        <div className="text-[13px] font-semibold text-foreground">
+                          Add to {activeScene.name}
+                        </div>
+                        <div className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
+                          Add shared resume data or a freeform design object.
+                        </div>
+                      </div>
+
+                      <div className="p-1.5">
+                        <div className="px-2 pb-1 pt-0.5 text-[12px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                          Shared resume
+                        </div>
                         <button
-                          key={String(type)}
                           type="button"
                           onClick={() => {
-                            if (type === "resume-content") {
-                              setAddMenuOpen(false);
-                              setBindingPickerMode("add");
-                              setBindingSearch("");
-                              return;
-                            }
-
-                            addObject(
-                              type as Exclude<
-                                InteractiveSceneObject["type"],
-                                "resume-content"
-                              >,
-                            );
+                            setAddMenuOpen(false);
+                            setBindingPickerMode("add");
+                            setBindingSearch("");
                           }}
-                          className="flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-2.5 py-2 text-left text-[9px] font-semibold text-foreground hover:bg-muted/50"
-                          style={{
-                            minWidth: 0,
-                            whiteSpace: "nowrap",
-                          }}
+                          className="flex w-full items-start gap-2.5 rounded-xl bg-[#2e0562]/5 px-2.5 py-2.5 text-left transition-colors hover:bg-[#2e0562]/10"
                         >
-                          <span className="flex-none text-[#2e0562]">
-                            {icon as ReactNode}
+                          <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-[#2e0562] text-white">
+                            <UserRound size={14} />
                           </span>
-                          <span
-                            className="min-w-0 flex-1"
-                            style={{
-                              whiteSpace: "nowrap",
-                              wordBreak: "keep-all",
-                              overflowWrap: "normal",
-                            }}
-                          >
-                            {label as string}
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[13px] font-semibold text-foreground">
+                              Resume content
+                            </span>
+                            <span className="mt-0.5 block text-[12px] leading-relaxed text-muted-foreground">
+                              Name, experience, projects, education, skills or links
+                            </span>
                           </span>
+                          <ArrowRight size={10} className="mt-1 text-[#2e0562]" />
                         </button>
-                      ))}
+
+                        <div className="mt-1.5 px-2 pb-1 pt-1 text-[12px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                          Build
+                        </div>
+
+                        {[
+                          [
+                            "text",
+                            "Text",
+                            "Freeform heading or copy",
+                            <Type size={13} key="text" />,
+                          ],
+                          [
+                            "image",
+                            "Image",
+                            "Photo, logo or graphic",
+                            <ImageIcon size={13} key="image" />,
+                          ],
+                          [
+                            "shape",
+                            "Shape",
+                            "Decorative design element",
+                            <Square size={13} key="shape" />,
+                          ],
+                        ].map(([type, label, detail, icon]) => (
+                          <button
+                            key={String(type)}
+                            type="button"
+                            onClick={() =>
+                              addObject(
+                                type as Exclude<
+                                  InteractiveSceneObject["type"],
+                                  "resume-content"
+                                >,
+                              )
+                            }
+                            className="flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-muted/50"
+                          >
+                            <span className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-muted/50 text-[#2e0562]">
+                              {icon as ReactNode}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-[13px] font-semibold text-foreground">
+                                {label as string}
+                              </span>
+                              <span className="mt-0.5 block text-[12px] text-muted-foreground">
+                                {detail as string}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
 
@@ -3306,6 +4780,7 @@ function InteractiveEditor({
                     <BindingPicker
                       options={bindingOptions}
                       query={bindingSearch}
+                      mode={bindingPickerMode}
                       onQueryChange={setBindingSearch}
                       onChoose={option => {
                         if (
@@ -3346,7 +4821,7 @@ function InteractiveEditor({
                   type="button"
                   onClick={() => setZoom(1)}
                   title="Reset zoom"
-                  className="h-8 min-w-[42px] rounded-lg border border-border px-1.5 text-[8px] font-semibold text-muted-foreground hover:text-foreground"
+                  className="h-8 min-w-[42px] rounded-lg border border-border px-1.5 text-[12px] font-semibold text-muted-foreground hover:text-foreground"
                 >
                   {Math.round(zoom * 100)}%
                 </button>
@@ -3363,75 +4838,38 @@ function InteractiveEditor({
               </div>
             </div>
 
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-2.5 py-2">
-              <div className="flex items-center gap-1">
-                {([
-                  ["desktop", "Desktop", <Monitor size={10} key="desktop" />],
-                  ["tablet", "Tablet", <Tablet size={10} key="tablet" />],
-                  ["mobile", "Mobile", <Smartphone size={10} key="mobile" />],
-                ] as const).map(([breakpoint, label, icon]) => (
-                  <button
-                    key={breakpoint}
-                    type="button"
-                    onClick={() => {
-                      setActiveBreakpoint(breakpoint);
-                      setSelectedObjectId(null);
-                    }}
-                    aria-pressed={activeBreakpoint === breakpoint}
-                    className={`inline-flex h-7 items-center gap-1.5 rounded-lg border px-2 text-[7.5px] font-semibold ${
-                      activeBreakpoint === breakpoint
-                        ? "border-[#2e0562]/30 bg-[#2e0562] text-white"
-                        : "border-border bg-background text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {icon}
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-1">
-                <span className="mr-1 text-[6.8px] text-muted-foreground">
-                  Editing {activeBreakpoint}
-                </span>
-                {activeBreakpoint !== "desktop" && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        mutateScenes(collection =>
-                          seedInteractiveSceneBreakpointLayout(
-                            collection,
-                            activeScene.id,
-                            activeBreakpoint,
-                          ),
-                        )
-                      }
-                      className="rounded-md border border-[#2e0562]/20 bg-[#2e0562]/5 px-2 py-1 text-[6.8px] font-semibold text-[#2e0562]"
-                      title="Generate a useful starting layout from Desktop. You can keep editing it afterward."
-                    >
-                      Auto layout
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        mutateScenes(collection =>
-                          clearInteractiveSceneBreakpointLayout(
-                            collection,
-                            activeScene.id,
-                            activeBreakpoint,
-                          ),
-                        )
-                      }
-                      className="rounded-md border border-border bg-background px-2 py-1 text-[6.8px] font-semibold text-muted-foreground hover:text-foreground"
-                      title="Remove this scene's device overrides and inherit Desktop again."
-                    >
-                      Reset device
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
+            <InteractiveDeviceToolbar
+              breakpoint={activeBreakpoint}
+              scene={activeScene}
+              layout={activeSceneLayout}
+              onBreakpointChange={breakpoint => {
+                setActiveBreakpoint(breakpoint);
+                setGuides({});
+              }}
+              onSceneSizeChange={patch =>
+                patchActiveSceneLayout(patch)
+              }
+              onAutoLayout={() => {
+                if (activeBreakpoint === "desktop") return;
+                mutateScenes(collection =>
+                  seedInteractiveSceneBreakpointLayout(
+                    collection,
+                    activeScene.id,
+                    activeBreakpoint,
+                  ),
+                );
+              }}
+              onResetDevice={() => {
+                if (activeBreakpoint === "desktop") return;
+                mutateScenes(collection =>
+                  clearInteractiveSceneBreakpointLayout(
+                    collection,
+                    activeScene.id,
+                    activeBreakpoint,
+                  ),
+                );
+              }}
+            />
 
             <div
               className="relative rounded-xl border border-border bg-muted/30 p-2"
@@ -3441,8 +4879,26 @@ function InteractiveEditor({
               }}
             >
               <div
-                className="overflow-auto rounded-lg"
-                style={{ maxHeight: 620 }}
+                className={`${zoom <= 1 ? "overflow-hidden" : "overflow-auto"} rounded-lg`}
+                style={{
+                  maxHeight: workspaceMode ? "none" : 620,
+                  overscrollBehavior: "contain",
+                  scrollbarGutter: zoom > 1 ? "stable" : undefined,
+                }}
+                onWheelCapture={event => {
+                  if (!scrollWheelPreview) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+
+                  const delta =
+                    (event.deltaY /
+                      Math.max(320, activeSceneLayout.scrollLength)) *
+                    100;
+
+                  setScrollProgress(current =>
+                    Math.max(0, Math.min(100, current + delta)),
+                  );
+                }}
                 onPointerDown={event => {
                   if (
                     event.target === event.currentTarget
@@ -3504,27 +4960,12 @@ function InteractiveEditor({
                         "0px",
                       );
                     }}
-                    onWheel={event => {
-                      if (!scrollWheelPreview) return;
-                      event.preventDefault();
-
-                      const delta =
-                        (event.deltaY /
-                          Math.max(320, activeSceneLayout.scrollLength)) *
-                        100;
-
-                      setScrollProgress(current =>
-                        Math.max(
-                          0,
-                          Math.min(100, current + delta),
-                        ),
-                      );
-                    }}
                     style={{
                       aspectRatio: `${activeSceneLayout.width} / ${activeSceneLayout.height}`,
                       zIndex: 0,
                       isolation: "isolate",
                       background: "transparent",
+                      containerType: "inline-size",
                     }}
                   >
                     <SceneEnvironment scene={activeScene} />
@@ -3562,16 +5003,127 @@ function InteractiveEditor({
 
                     {activeScene.objectOrder.map(renderObject)}
 
+                    {hasMultipleSelection && selectedSelectionGeometry && (
+                      <div
+                        aria-label={selectedGroupId ? "Grouped object bounds" : "Multi-selection bounds"}
+                        className="pointer-events-none absolute"
+                        style={{
+                          left: `${(selectedSelectionGeometry.x / activeSceneLayout.width) * 100}%`,
+                          top: `${(selectedSelectionGeometry.y / activeSceneLayout.height) * 100}%`,
+                          width: `${(selectedSelectionGeometry.width / activeSceneLayout.width) * 100}%`,
+                          height: `${(selectedSelectionGeometry.height / activeSceneLayout.height) * 100}%`,
+                          border: anySelectedLocked
+                            ? "1.5px dashed #d97706"
+                            : `1.5px ${selectedGroupId ? "solid" : "dashed"} ${SELECTION}`,
+                          boxSizing: "border-box",
+                          zIndex: 630,
+                        }}
+                      >
+                        {!anySelectedLocked &&
+                          ([
+                            ["left", "top"],
+                            ["right", "top"],
+                            ["left", "bottom"],
+                            ["right", "bottom"],
+                          ] as const).map(([horizontal, vertical]) => (
+                            <div
+                              key={`${horizontal}-${vertical}`}
+                              role="button"
+                              aria-label={`Resize selection ${horizontal} ${vertical}`}
+                              onPointerDown={event =>
+                                beginSelectionResize(event, horizontal, vertical)
+                              }
+                              style={{
+                                position: "absolute",
+                                width: 10,
+                                height: 10,
+                                border: `1.5px solid ${SELECTION}`,
+                                borderRadius: 2,
+                                background: "#fff",
+                                boxSizing: "border-box",
+                                pointerEvents: "auto",
+                                left: horizontal === "left" ? -6 : undefined,
+                                right: horizontal === "right" ? -6 : undefined,
+                                top: vertical === "top" ? -6 : undefined,
+                                bottom: vertical === "bottom" ? -6 : undefined,
+                                cursor:
+                                  (horizontal === "left" && vertical === "top") ||
+                                  (horizontal === "right" && vertical === "bottom")
+                                    ? "nwse-resize"
+                                    : "nesw-resize",
+                              }}
+                            />
+                          ))}
+
+                        {!anySelectedLocked && (
+                          <div
+                            role="button"
+                            aria-label="Rotate selection"
+                            title="Drag to rotate selection"
+                            onPointerDown={beginSelectionRotate}
+                            style={{
+                              position: "absolute",
+                              top: -22,
+                              left: "50%",
+                              width: 14,
+                              height: 14,
+                              transform: "translateX(-50%)",
+                              borderRadius: "50%",
+                              background: SELECTION,
+                              border: "2px solid white",
+                              boxShadow: "0 1px 4px rgba(0,0,0,.24)",
+                              boxSizing: "border-box",
+                              cursor: "crosshair",
+                              pointerEvents: "auto",
+                            }}
+                          />
+                        )}
+                      </div>
+                    )}
+
                     {selectedObject &&
+                      selectedSelectionGeometry &&
+                      selectedObjects.some(
+                        object => !effectiveGeometryFor(object).hidden,
+                      ) && (
+                        <InteractiveObjectContextToolbar
+                          object={selectedObject}
+                          geometry={selectedSelectionGeometry}
+                          sceneWidth={activeSceneLayout.width}
+                          sceneHeight={activeSceneLayout.height}
+                          onUpdateObject={patchSelectedObject}
+                          onOpacityChange={opacity =>
+                            patchSelectedGeometry(geometry => ({
+                              ...geometry,
+                              opacity,
+                            }))
+                          }
+                          selectionCount={Math.max(1, selectedObjects.length)}
+                          isGrouped={!!selectedGroupId}
+                          groupName={selectedGroupName}
+                          allLocked={allSelectedLocked}
+                          canBringForward={canBringSelectedForward}
+                          canSendBackward={canSendSelectedBackward}
+                          onArrange={arrangeSelectedObjects}
+                          onToggleLock={toggleSelectedLock}
+                          onToggleGroup={
+                            selectedObjects.length > 1
+                              ? toggleSelectedGroup
+                              : undefined
+                          }
+                          onGroupNameChange={
+                            selectedGroupId ? renameSelectedGroup : undefined
+                          }
+                        />
+                      )}
+
+                    {selectedObject &&
+                      !hasMultipleSelection &&
                       selectedMotionPath &&
                       !selectedGeometry?.hidden && (
                         <InteractiveMotionPathOverlay
                           scene={editorScene}
-                          geometry={
-                            liveGeometry?.objectId === selectedObject.id
-                              ? liveGeometry.geometry
-                              : selectedGeometry
-                          }
+                          geometry={effectiveGeometryFor(selectedObject)}
                           path={selectedMotionPath}
                           progress={scrollProgress}
                           locked={!!selectedObject.locked}
@@ -3616,10 +5168,10 @@ function InteractiveEditor({
                           <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-[#2e0562]/15 bg-white/90 text-[#2e0562] shadow-sm">
                             <MousePointer2 size={18} />
                           </div>
-                          <div className="mt-3 text-[11px] font-semibold text-[#2e0562]">
+                          <div className="mt-3 text-[14px] font-semibold text-[#2e0562]">
                             Build anywhere on the scene
                           </div>
-                          <p className="mt-1 text-[8px] leading-relaxed text-slate-500">
+                          <p className="mt-1 text-[12px] leading-relaxed text-slate-500">
                             Use Add for resume content, text, images or
                             shapes. Then drag, resize and rotate them directly.
                           </p>
@@ -3631,242 +5183,73 @@ function InteractiveEditor({
               </div>
             </div>
 
-            <div className="mt-2 rounded-xl border border-[#2e0562]/15 bg-[#2e0562]/[0.025] p-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <div className="text-[8px] font-bold uppercase tracking-wider text-[#2e0562]">
-                    Scroll timeline
-                  </div>
-                  <div className="mt-0.5 text-[6.8px] text-muted-foreground">
-                    {activeScene.scrollBehavior === "pinned"
-                      ? "Pinned scene"
-                      : "Flow scene"}{" "}
-                    · {activeSceneLayout.scrollLength}px virtual scroll
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    aria-pressed={scrollWheelPreview}
-                    onClick={() =>
-                      setScrollWheelPreview(value => !value)
-                    }
-                    className={`rounded-md border px-2 py-1 text-[6.8px] font-semibold ${
-                      scrollWheelPreview
-                        ? "border-[#2e0562]/30 bg-[#2e0562] text-white"
-                        : "border-border bg-background text-muted-foreground"
-                    }`}
-                    title="When enabled, use the mouse wheel over the scene to scrub its virtual scroll timeline."
-                  >
-                    Wheel preview
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setScrollProgress(0)}
-                    className="rounded-md border border-border bg-background px-2 py-1 text-[6.8px] font-semibold text-muted-foreground hover:text-foreground"
-                  >
-                    Reset
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-2.5">
-                <div className="relative">
-                  {selectedScrollMarkers.map(marker => (
-                    <span
-                      key={`scroll-${marker}`}
-                      aria-hidden="true"
-                      title={`${marker}% scroll keyframe`}
-                      className="pointer-events-none absolute top-[-1px] z-30 h-[8px] w-[2px] -translate-x-1/2 rounded bg-[#7c3aed]"
-                      style={{
-                        left: `${marker}%`,
-                      }}
-                    />
-                  ))}
-
-                  {selectedPathMarkers.map(marker => (
-                    <span
-                      key={`path-${marker}`}
-                      aria-hidden="true"
-                      title={`${marker}% path point`}
-                      className="pointer-events-none absolute bottom-[-1px] z-30 h-[7px] w-[7px] -translate-x-1/2 rounded-full border border-white bg-[#0f766e]"
-                      style={{
-                        left: `${marker}%`,
-                      }}
-                    />
-                  ))}
-
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={0.5}
-                    value={scrollProgress}
-                    onChange={event =>
-                      setScrollProgress(
-                        Math.max(
-                          0,
-                          Math.min(100, Number(event.target.value)),
-                        ),
-                      )
-                    }
-                    className="relative z-20 w-full"
-                    aria-label="Interactive scene scroll progress"
-                  />
-                </div>
-
-                <div className="mt-1 flex items-center justify-between text-[6.5px] text-muted-foreground">
-                  <span>0%</span>
-                  <span className="rounded bg-background px-1.5 py-0.5 font-semibold text-[#2e0562]">
-                    {Math.round(scrollProgress * 10) / 10}% ·{" "}
-                    {virtualScrollPx}px
-                  </span>
-                  <span>100%</span>
-                </div>
-              </div>
-
-              <p className="mt-1.5 text-[6.5px] leading-relaxed text-muted-foreground">
-                Purple ticks are Scroll Motion keyframes; teal dots are
-                Motion Path points on the selected object. Drag this scrubber
-                anytime — preview progress is never persisted as the visitor&apos;s
-                starting position.
-              </p>
-            </div>
-
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[7px] text-muted-foreground">
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[12px] text-muted-foreground">
               <span>
                 Drag snaps to scene/object guides · hold Alt to bypass snapping
               </span>
               <span>
-                Arrows nudge 1px · Shift+Arrow 10px · ⌘/Ctrl+D duplicate
+                Shift-click selects multiple · Arrows nudge 1px · Shift+Arrow 10px · ⌘/Ctrl+D duplicate
               </span>
             </div>
+
+            <div className={workspaceMode ? "sticky bottom-0 z-30 mt-2 pb-1" : "mt-2"}>
+              <InteractiveTimeline
+                sceneName={activeScene.name}
+                selectedObjectLabel={selectedObject
+                  ? selectedObject.type === "resume-content"
+                    ? interactiveBindingDisplayName(data, selectedObject.binding)
+                    : selectedObject.name
+                  : null}
+                scrollBehavior={activeScene.scrollBehavior}
+                scrollLength={activeSceneLayout.scrollLength}
+                progress={scrollProgress}
+                virtualScrollPx={virtualScrollPx}
+                wheelPreview={scrollWheelPreview}
+                scrollMarkers={selectedScrollMarkers}
+                pathMarkers={selectedPathMarkers}
+                onProgressChange={value =>
+                  setScrollProgress(Math.max(0, Math.min(100, value)))
+                }
+                onToggleWheelPreview={() =>
+                  setScrollWheelPreview(value => !value)
+                }
+                onReset={() => setScrollProgress(0)}
+              />
+            </div>
+
           </main>
 
           {/* Inspector */}
-          <aside className="space-y-2.5">
-            <InteractivePublishingPanel
-              data={data}
-              onDesignChange={onDesignChange}
-            />
-
-            <div className="rounded-xl border border-border bg-card p-3">
-              <div className="flex items-start justify-between gap-2">
+          <aside className={workspaceMode ? "min-h-0 space-y-2.5 overflow-y-auto pl-1" : "space-y-2.5"}>
+            {workspaceMode && (
+              <div className="flex items-center justify-between gap-2 px-1 pb-0.5">
                 <div>
-                  <div className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Publish readiness
+                  <div className="text-[13px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                    Properties
                   </div>
-                  <div className="mt-0.5 text-[6.8px] text-muted-foreground">
-                    Live performance and payload guardrails
+                  <div className="mt-0.5 max-w-[210px] truncate text-[12px] text-muted-foreground">
+                    {hasMultipleSelection
+                      ? `${selectedObjects.length} objects selected`
+                      : selectedObject
+                        ? selectedObject.type === "resume-content"
+                          ? interactiveBindingDisplayName(data, selectedObject.binding)
+                          : selectedObject.name
+                        : activeScene.name}
                   </div>
                 </div>
-                <span
-                  className={`rounded-full px-2 py-1 text-[6.5px] font-bold uppercase tracking-wider ${
-                    publishReport.readiness === "ready"
-                      ? "bg-emerald-50 text-emerald-700"
-                      : publishReport.readiness === "blocked"
-                        ? "bg-red-50 text-red-600"
-                        : "bg-amber-50 text-amber-700"
-                  }`}
-                >
-                  {publishReport.readiness === "ready"
-                    ? "Ready"
-                    : publishReport.readiness === "blocked"
-                      ? "Blocked"
-                      : "Review"}
+                <span className="rounded-full border border-border bg-background px-2 py-1 text-[12px] font-semibold text-muted-foreground">
+                  {hasMultipleSelection ? "Selection" : selectedObject ? "Object" : "Scene"}
                 </span>
               </div>
-
-              <div className="mt-2 grid grid-cols-2 gap-1.5">
-                {[
-                  ["Score", `${publishReport.score}/100`],
-                  ["Scenes", String(publishReport.metrics.sceneCount)],
-                  ["Objects", String(publishReport.metrics.totalObjects)],
-                  [
-                    "Animated",
-                    String(publishReport.metrics.animatedObjects),
-                  ],
-                  [
-                    "Ambient",
-                    String(publishReport.metrics.ambientNodeCount),
-                  ],
-                  [
-                    "Embedded",
-                    formatBytes(
-                      publishReport.metrics.embeddedImageBytes,
-                    ),
-                  ],
-                ].map(([label, value]) => (
-                  <div
-                    key={label}
-                    className="rounded-lg border border-border bg-background px-2 py-1.5"
-                  >
-                    <div className="text-[5.8px] font-bold uppercase tracking-wider text-muted-foreground">
-                      {label}
-                    </div>
-                    <div className="mt-0.5 text-[8px] font-semibold text-foreground">
-                      {value}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {publishReport.issues.length ? (
-                <div className="mt-2 space-y-1.5">
-                  {publishReport.issues.slice(0, 4).map(issue => (
-                    <div
-                      key={issue.id}
-                      className={`rounded-lg border px-2 py-1.5 ${
-                        issue.severity === "error"
-                          ? "border-red-200 bg-red-50/70"
-                          : issue.severity === "warning"
-                            ? "border-amber-200 bg-amber-50/70"
-                            : "border-sky-200 bg-sky-50/70"
-                      }`}
-                    >
-                      <div
-                        className={`text-[6.8px] font-bold ${
-                          issue.severity === "error"
-                            ? "text-red-600"
-                            : issue.severity === "warning"
-                              ? "text-amber-700"
-                              : "text-sky-700"
-                        }`}
-                      >
-                        {issue.title}
-                      </div>
-                      <div className="mt-0.5 text-[6.2px] leading-relaxed text-muted-foreground">
-                        {issue.detail}
-                      </div>
-                    </div>
-                  ))}
-
-                  {publishReport.issues.length > 4 && (
-                    <div className="text-[6.2px] text-muted-foreground">
-                      +{publishReport.issues.length - 4} more publish note
-                      {publishReport.issues.length - 4 === 1 ? "" : "s"}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-2 py-1.5 text-[6.5px] leading-relaxed text-emerald-700">
-                  No current publish warnings. The visitor runtime will still
-                  adapt automatically for reduced-motion and lower-powered
-                  devices.
-                </div>
-              )}
-            </div>
-
-            {selectedObject ? (
+            )}
+            {selectedObject && !hasMultipleSelection ? (
               <div className="rounded-xl border border-[#2e0562]/20 bg-card p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <div className="text-[8px] font-bold uppercase tracking-wider text-[#2e0562]">
-                      Selected object
+                    <div className="text-[12px] font-bold uppercase tracking-wider text-[#2e0562]">
+                      Object
                     </div>
-                    <div className="mt-0.5 max-w-[145px] truncate text-[10px] font-semibold text-foreground">
+                    <div className="mt-0.5 max-w-[145px] truncate text-[13px] font-semibold text-foreground">
                       {selectedObject.type === "resume-content"
                         ? interactiveBindingDisplayName(
                             data,
@@ -3878,15 +5261,17 @@ function InteractiveEditor({
                   <button
                     type="button"
                     onClick={() => setSelectedObjectId(null)}
-                    className="text-[8px] font-semibold text-muted-foreground hover:text-foreground"
+                    aria-label="Clear selection"
+                    title="Clear selection"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-transparent text-muted-foreground hover:border-border hover:bg-muted/40 hover:text-foreground"
                   >
-                    Done
+                    <X size={14} />
                   </button>
                 </div>
 
                 {selectedObject.type !== "resume-content" && (
                   <label className="mt-2.5 block">
-                    <span className="mb-1 block text-[8px] font-semibold text-muted-foreground">
+                    <span className="mb-1 block text-[12px] font-semibold text-muted-foreground">
                       Layer name
                     </span>
                     <input
@@ -3897,12 +5282,414 @@ function InteractiveEditor({
                           name: event.target.value,
                         } as InteractiveSceneObject))
                       }
-                      className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-[9px] text-foreground outline-none"
+                      className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-[13px] text-foreground outline-none"
                     />
                   </label>
                 )}
 
-                <div className="mt-2 grid grid-cols-2 gap-2">
+                <InspectorSection
+                  title="Motion"
+                  description="Quick, triggered, scroll, path and depth"
+                  badge={
+                    selectedObject.motion ||
+                    selectedObject.animationTracks?.length ||
+                    selectedObject.scrollTracks?.length ||
+                    selectedObject.motionPath ||
+                    Math.abs(selectedObject.parallaxDepth ?? 0) > 0.001
+                      ? "Active"
+                      : undefined
+                  }
+                  defaultOpen={true}
+                >
+                  {(() => {
+                    const motionModes: Array<{
+                      id: MotionInspectorMode;
+                      label: string;
+                      active: boolean;
+                    }> = [
+                      {
+                        id: "quick",
+                        label: "Quick",
+                        active: !!selectedObject.motion,
+                      },
+                      {
+                        id: "animate",
+                        label: "Animate",
+                        active: !!selectedObject.animationTracks?.length,
+                      },
+                      {
+                        id: "scroll",
+                        label: "Scroll",
+                        active: !!selectedObject.scrollTracks?.length,
+                      },
+                      {
+                        id: "path",
+                        label: "Path",
+                        active: !!selectedObject.motionPath,
+                      },
+                      {
+                        id: "depth",
+                        label: "Depth",
+                        active:
+                          Math.abs(selectedObject.parallaxDepth ?? 0) > 0.001,
+                      },
+                    ];
+                    const activeMotionCount = motionModes.filter(
+                      mode => mode.active,
+                    ).length;
+                    const quickPresets: Array<{
+                      value: InteractiveObjectMotionPreset | "none";
+                      label: string;
+                    }> = [
+                      { value: "none", label: "None" },
+                      { value: "float", label: "Float" },
+                      { value: "bob", label: "Bob" },
+                      { value: "pulse", label: "Pulse" },
+                      { value: "spin", label: "Spin" },
+                      { value: "drift", label: "Drift" },
+                    ];
+
+                    return (
+                      <div className="space-y-2.5">
+                        <div className="rounded-xl border border-border bg-muted/15 p-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <div className="text-[12px] font-bold uppercase tracking-wider text-muted-foreground">
+                                Motion tools
+                              </div>
+                              <div className="mt-0.5 text-[12px] text-muted-foreground">
+                                {activeMotionCount
+                                  ? `${activeMotionCount} active mode${activeMotionCount === 1 ? "" : "s"}`
+                                  : "No motion applied"}
+                              </div>
+                            </div>
+
+                            {activeMotionCount > 0 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  patchSelectedObject(current => ({
+                                    ...current,
+                                    motion: undefined,
+                                    animationTracks: undefined,
+                                    scrollTracks: undefined,
+                                    motionPath: undefined,
+                                    parallaxDepth: undefined,
+                                  } as InteractiveSceneObject))
+                                }
+                                className="text-[12px] font-semibold text-muted-foreground hover:text-red-500"
+                              >
+                                Clear all
+                              </button>
+                            )}
+                          </div>
+
+                          <div
+                            role="tablist"
+                            aria-label="Motion editing mode"
+                            className="mt-2 grid grid-cols-3 gap-1"
+                          >
+                            {motionModes.map(mode => (
+                              <button
+                                key={mode.id}
+                                type="button"
+                                role="tab"
+                                aria-selected={motionInspectorMode === mode.id}
+                                onClick={() => setMotionInspectorMode(mode.id)}
+                                className={`relative rounded-lg border px-1.5 py-1.5 text-[12px] font-semibold transition-colors ${
+                                  motionInspectorMode === mode.id
+                                    ? "border-[#2e0562]/30 bg-[#2e0562] text-white"
+                                    : "border-border bg-background text-muted-foreground hover:border-[#2e0562]/20 hover:text-[#2e0562]"
+                                }`}
+                              >
+                                <span>{mode.label}</span>
+                                {mode.active && (
+                                  <span
+                                    aria-label={`${mode.label} motion active`}
+                                    className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${
+                                      motionInspectorMode === mode.id
+                                        ? "bg-white"
+                                        : "bg-[#2e0562]"
+                                    }`}
+                                  />
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {motionInspectorMode === "quick" && (
+                          <div className="rounded-xl border border-border bg-background p-2.5">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="text-[12px] font-semibold text-foreground">
+                                  Quick loop
+                                </div>
+                                <div className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
+                                  Pick a continuous preset, then tune its feel.
+                                </div>
+                              </div>
+                              {selectedObject.motion && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    patchSelectedObject(current => ({
+                                      ...current,
+                                      motion: undefined,
+                                    } as InteractiveSceneObject))
+                                  }
+                                  className="text-[12px] font-semibold text-muted-foreground hover:text-red-500"
+                                >
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="mt-2 grid grid-cols-3 gap-1">
+                              {quickPresets.map(preset => {
+                                const active =
+                                  (selectedObject.motion?.preset ?? "none") ===
+                                  preset.value;
+                                return (
+                                  <button
+                                    key={preset.value}
+                                    type="button"
+                                    aria-pressed={active}
+                                    onClick={() =>
+                                      patchSelectedObject(current => ({
+                                        ...current,
+                                        motion:
+                                          preset.value === "none"
+                                            ? undefined
+                                            : {
+                                                preset: preset.value,
+                                                speed: current.motion?.speed ?? 1,
+                                                intensity:
+                                                  current.motion?.intensity ?? 50,
+                                                delay: current.motion?.delay,
+                                              },
+                                      } as InteractiveSceneObject))
+                                    }
+                                    className={`rounded-lg border px-1.5 py-1.5 text-[12px] font-semibold ${
+                                      active
+                                        ? "border-[#2e0562]/30 bg-[#2e0562]/8 text-[#2e0562]"
+                                        : "border-border text-muted-foreground hover:border-[#2e0562]/20 hover:text-[#2e0562]"
+                                    }`}
+                                  >
+                                    {preset.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {selectedObject.motion && (
+                              <div className="mt-2.5 space-y-2">
+                                <label className="grid grid-cols-[44px_1fr_32px] items-center gap-1.5">
+                                  <span className="text-[12px] font-semibold text-muted-foreground">
+                                    Speed
+                                  </span>
+                                  <input
+                                    type="range"
+                                    min={0.25}
+                                    max={3}
+                                    step={0.25}
+                                    value={selectedObject.motion.speed}
+                                    onChange={event =>
+                                      patchSelectedObject(current => ({
+                                        ...current,
+                                        motion: current.motion
+                                          ? {
+                                              ...current.motion,
+                                              speed: Number(event.target.value),
+                                            }
+                                          : current.motion,
+                                      } as InteractiveSceneObject))
+                                    }
+                                    className="min-w-0"
+                                  />
+                                  <span className="text-right text-[12px] text-muted-foreground">
+                                    {selectedObject.motion.speed.toFixed(1)}×
+                                  </span>
+                                </label>
+
+                                <label className="grid grid-cols-[44px_1fr_32px] items-center gap-1.5">
+                                  <span className="text-[12px] font-semibold text-muted-foreground">
+                                    Strength
+                                  </span>
+                                  <input
+                                    type="range"
+                                    min={0}
+                                    max={100}
+                                    step={5}
+                                    value={selectedObject.motion.intensity}
+                                    onChange={event =>
+                                      patchSelectedObject(current => ({
+                                        ...current,
+                                        motion: current.motion
+                                          ? {
+                                              ...current.motion,
+                                              intensity: Number(event.target.value),
+                                            }
+                                          : current.motion,
+                                      } as InteractiveSceneObject))
+                                    }
+                                    className="min-w-0"
+                                  />
+                                  <span className="text-right text-[12px] text-muted-foreground">
+                                    {Math.round(selectedObject.motion.intensity)}
+                                  </span>
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {motionInspectorMode === "animate" && (
+                          <AdvancedMotionEditor
+                            embedded
+                            tracks={selectedObject.animationTracks}
+                            onChange={animationTracks =>
+                              patchSelectedObject(current => ({
+                                ...current,
+                                animationTracks,
+                              } as InteractiveSceneObject))
+                            }
+                            onReplay={() =>
+                              setMotionReplayKey(value => value + 1)
+                            }
+                          />
+                        )}
+
+                        {motionInspectorMode === "scroll" && (
+                          <InteractiveScrollMotionEditor
+                            embedded
+                            tracks={selectedObject.scrollTracks}
+                            progress={scrollProgress}
+                            onChange={scrollTracks =>
+                              patchSelectedObject(current => ({
+                                ...current,
+                                scrollTracks,
+                              } as InteractiveSceneObject))
+                            }
+                          />
+                        )}
+
+                        {motionInspectorMode === "path" && (
+                          <InteractiveMotionPathEditor
+                            embedded
+                            path={selectedObject.motionPath}
+                            progress={scrollProgress}
+                            onChange={motionPath => {
+                              setLiveMotionPath(null);
+                              patchSelectedObject(current => ({
+                                ...current,
+                                motionPath,
+                              } as InteractiveSceneObject));
+                            }}
+                          />
+                        )}
+
+                        {motionInspectorMode === "depth" && (
+                          <div className="rounded-xl border border-border bg-background p-2.5">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="text-[12px] font-semibold text-foreground">
+                                  Parallax depth
+                                </div>
+                                <div className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
+                                  Move at a different rate when scene Background Parallax is enabled.
+                                </div>
+                              </div>
+                              {Math.abs(selectedObject.parallaxDepth ?? 0) > 0.001 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    patchSelectedObject(current => ({
+                                      ...current,
+                                      parallaxDepth: undefined,
+                                    } as InteractiveSceneObject))
+                                  }
+                                  className="text-[12px] font-semibold text-muted-foreground hover:text-red-500"
+                                >
+                                  Reset
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="mt-2 grid grid-cols-3 gap-1">
+                              {[
+                                ["Back", -0.8],
+                                ["Fixed", 0],
+                                ["Front", 1],
+                              ].map(([label, value]) => {
+                                const numericValue = Number(value);
+                                const active = Math.abs(
+                                  (selectedObject.parallaxDepth ?? 0) - numericValue,
+                                ) < 0.01;
+                                return (
+                                  <button
+                                    key={String(label)}
+                                    type="button"
+                                    aria-pressed={active}
+                                    onClick={() =>
+                                      patchSelectedObject(current => ({
+                                        ...current,
+                                        parallaxDepth:
+                                          numericValue || undefined,
+                                      } as InteractiveSceneObject))
+                                    }
+                                    className={`rounded-lg border px-1.5 py-1.5 text-[12px] font-semibold ${
+                                      active
+                                        ? "border-[#2e0562]/30 bg-[#2e0562]/8 text-[#2e0562]"
+                                        : "border-border text-muted-foreground hover:border-[#2e0562]/20 hover:text-[#2e0562]"
+                                    }`}
+                                  >
+                                    {label as string}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            <div className="mt-2.5 grid grid-cols-[1fr_38px] items-center gap-2">
+                              <input
+                                type="range"
+                                min={-2}
+                                max={2}
+                                step={0.1}
+                                value={selectedObject.parallaxDepth ?? 0}
+                                onChange={event =>
+                                  patchSelectedObject(current => ({
+                                    ...current,
+                                    parallaxDepth:
+                                      Number(event.target.value) || undefined,
+                                  } as InteractiveSceneObject))
+                                }
+                                className="min-w-0"
+                              />
+                              <span className="text-right text-[12px] font-semibold text-muted-foreground">
+                                {(selectedObject.parallaxDepth ?? 0).toFixed(1)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </InspectorSection>
+
+                <InspectorSection
+                  title="Position & size"
+                  description={`${Math.round(selectedGeometry?.x ?? 0)}, ${Math.round(selectedGeometry?.y ?? 0)} · ${Math.round(selectedGeometry?.width ?? 24)} × ${Math.round(selectedGeometry?.height ?? 24)} · ${Math.round(selectedGeometry?.rotation ?? 0)}°`}
+                  badge={
+                    activeBreakpoint === "desktop"
+                      ? "Desktop"
+                      : selectedObject.responsive?.[activeBreakpoint]
+                        ? `${activeBreakpoint[0].toUpperCase() + activeBreakpoint.slice(1)} custom`
+                        : `Inherits desktop`
+                  }
+                  defaultOpen={false}
+                >
+                <div className="grid grid-cols-2 gap-2">
                   <NumberField
                     label="X"
                     value={selectedGeometry?.x ?? 0}
@@ -3968,32 +5755,14 @@ function InteractiveEditor({
                       }))
                     }
                   />
-                  <NumberField
-                    label="Opacity"
-                    value={Math.round(
-                      (selectedGeometry?.opacity ?? 1) * 100,
-                    )}
-                    min={0}
-                    max={100}
-                    suffix="%"
-                    onChange={opacity =>
-                      patchSelectedGeometry(geometry => ({
-                        ...geometry,
-                        opacity: Math.max(
-                          0,
-                          Math.min(1, opacity / 100),
-                        ),
-                      }))
-                    }
-                  />
                 </div>
 
                 {activeBreakpoint !== "desktop" && (
                   <div className="mt-2 flex items-center justify-between rounded-lg border border-[#2e0562]/10 bg-[#2e0562]/[0.025] px-2 py-1.5">
-                    <div className="text-[6.8px] text-muted-foreground">
+                    <div className="text-[12px] text-muted-foreground">
                       {selectedObject.responsive?.[activeBreakpoint]
-                        ? `${activeBreakpoint} override`
-                        : `Inheriting desktop geometry`}
+                        ? `${activeBreakpoint[0].toUpperCase() + activeBreakpoint.slice(1)} override active`
+                        : `Inherits Desktop · changing any field creates an override`}
                     </div>
                     {selectedObject.responsive?.[activeBreakpoint] && (
                       <button
@@ -4006,7 +5775,7 @@ function InteractiveEditor({
                             ),
                           )
                         }
-                        className="text-[6.8px] font-semibold text-[#2e0562]"
+                        className="text-[12px] font-semibold text-[#2e0562]"
                       >
                         Reset object
                       </button>
@@ -4014,28 +5783,9 @@ function InteractiveEditor({
                   </div>
                 )}
 
-                <div className="mt-2 grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      patchSelectedObject(current => ({
-                        ...current,
-                        locked: !current.locked || undefined,
-                      } as InteractiveSceneObject))
-                    }
-                    className={`flex items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-[8px] font-semibold ${
-                      selectedObject.locked
-                        ? "border-amber-300 bg-amber-50 text-amber-700"
-                        : "border-border text-muted-foreground"
-                    }`}
-                  >
-                    {selectedObject.locked ? (
-                      <Lock size={9} />
-                    ) : (
-                      <Unlock size={9} />
-                    )}
-                    {selectedObject.locked ? "Locked" : "Lock"}
-                  </button>
+                </InspectorSection>
+
+                <div className="mt-2">
                   <button
                     type="button"
                     onClick={() =>
@@ -4044,7 +5794,7 @@ function InteractiveEditor({
                         hidden: !geometry.hidden || undefined,
                       }))
                     }
-                    className={`flex items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-[8px] font-semibold ${
+                    className={`flex w-full items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-[12px] font-semibold ${
                       selectedGeometry?.hidden
                         ? "border-zinc-300 bg-zinc-100 text-zinc-600"
                         : "border-border text-muted-foreground"
@@ -4056,41 +5806,56 @@ function InteractiveEditor({
                       <Eye size={9} />
                     )}
                     {selectedGeometry?.hidden
-                      ? "Hidden"
-                      : "Visible"}
+                      ? activeBreakpoint === "desktop"
+                        ? "Hidden"
+                        : `Hidden on ${activeBreakpoint}`
+                      : activeBreakpoint === "desktop"
+                        ? "Visible"
+                        : `Visible on ${activeBreakpoint}`}
                   </button>
                 </div>
 
                 {(selectedObject.type === "text" ||
                   selectedObject.type === "resume-content") && (
-                  <div className="mt-2.5 rounded-lg border border-border bg-background p-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <div className="text-[7px] font-bold uppercase tracking-wider text-muted-foreground">
-                          Appearance
-                        </div>
-                        <div className="mt-0.5 text-[6.5px] text-muted-foreground">
-                          Template styling stays separate from shared content.
-                        </div>
-                      </div>
+                  <InspectorSection
+                    title="Surface"
+                    description="Card surface and accents"
+                    defaultOpen={false}
+                  >
+                    <div className="flex justify-end">
                       {selectedObject.appearance && (
                         <button
                           type="button"
                           onClick={() =>
-                            patchSelectedObject(current => ({
-                              ...current,
-                              appearance: undefined,
-                            } as InteractiveSceneObject))
+                            patchSelectedObject(current => {
+                              const appearance = current.appearance;
+                              return {
+                                ...current,
+                                appearance: appearance
+                                  ? {
+                                      variant: "card",
+                                      textColor: appearance.textColor,
+                                      fontFamily: appearance.fontFamily,
+                                      fontSize: appearance.fontSize,
+                                      fontWeight: appearance.fontWeight,
+                                      fontStyle: appearance.fontStyle,
+                                      textAlign: appearance.textAlign,
+                                      lineHeight: appearance.lineHeight,
+                                      letterSpacing: appearance.letterSpacing,
+                                    }
+                                  : undefined,
+                              } as InteractiveSceneObject;
+                            })
                           }
-                          className="text-[6.8px] font-semibold text-muted-foreground hover:text-foreground"
+                          className="text-[12px] font-semibold text-muted-foreground hover:text-foreground"
                         >
-                          Reset
+                          Reset surface
                         </button>
                       )}
                     </div>
 
                     <label className="mt-2 block">
-                      <span className="mb-0.5 block text-[6.5px] font-semibold text-muted-foreground">
+                      <span className="mb-0.5 block text-[12px] font-semibold text-muted-foreground">
                         Surface
                       </span>
                       <select
@@ -4107,7 +5872,7 @@ function InteractiveEditor({
                             },
                           } as InteractiveSceneObject))
                         }
-                        className="w-full rounded-md border border-border bg-background px-1.5 py-1 text-[7.5px] text-foreground outline-none"
+                        className="w-full rounded-md border border-border bg-background px-1.5 py-1 text-[12px] text-foreground outline-none"
                       >
                         <option value="card">Card</option>
                         <option value="plain">Plain</option>
@@ -4119,13 +5884,12 @@ function InteractiveEditor({
 
                     <div className="mt-2 grid grid-cols-2 gap-1.5">
                       {[
-                        ["Text", "textColor", "#2e0562"],
                         ["Surface", "surfaceColor", "#ffffff"],
                         ["Accent", "accentColor", "#7c3aed"],
                         ["Border", "borderColor", "#ddd6fe"],
                       ].map(([label, field, fallback]) => (
                         <label key={field}>
-                          <span className="mb-0.5 block text-[6.2px] font-semibold text-muted-foreground">
+                          <span className="mb-0.5 block text-[12px] font-semibold text-muted-foreground">
                             {label}
                           </span>
                           <input
@@ -4152,224 +5916,27 @@ function InteractiveEditor({
                         </label>
                       ))}
                     </div>
-                  </div>
+                  </InspectorSection>
                 )}
 
-                <div className="mt-2.5 rounded-lg border border-border bg-background p-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <div className="text-[7px] font-bold uppercase tracking-wider text-muted-foreground">
-                        Easy motion
-                      </div>
-                      <div className="mt-0.5 text-[6.5px] text-muted-foreground">
-                        One-click loop preset
-                      </div>
-                    </div>
-                    {selectedObject.motion && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          patchSelectedObject(current => ({
-                            ...current,
-                            motion: undefined,
-                          } as InteractiveSceneObject))
-                        }
-                        className="text-[7px] font-semibold text-muted-foreground hover:text-foreground"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-
-                  <select
-                    value={selectedObject.motion?.preset ?? "none"}
-                    onChange={event => {
-                      const preset = event.target
-                        .value as InteractiveObjectMotionPreset;
-
-                      patchSelectedObject(current => ({
-                        ...current,
-                        motion:
-                          preset === "none"
-                            ? undefined
-                            : {
-                                preset,
-                                speed: current.motion?.speed ?? 1,
-                                intensity:
-                                  current.motion?.intensity ?? 50,
-                                delay: current.motion?.delay,
-                              },
-                      } as InteractiveSceneObject));
-                    }}
-                    className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-[9px] text-foreground outline-none"
-                  >
-                    <option value="none">None</option>
-                    <option value="float">Float</option>
-                    <option value="bob">Bob</option>
-                    <option value="pulse">Pulse</option>
-                    <option value="spin">Spin</option>
-                    <option value="drift">Gentle drift</option>
-                  </select>
-
-                  {selectedObject.motion && (
-                    <div className="mt-2 space-y-1.5">
-                      <label className="grid grid-cols-[48px_1fr_30px] items-center gap-1.5">
-                        <span className="text-[6.8px] font-semibold text-muted-foreground">
-                          Speed
-                        </span>
-                        <input
-                          type="range"
-                          min={0.25}
-                          max={3}
-                          step={0.25}
-                          value={selectedObject.motion.speed}
-                          onChange={event =>
-                            patchSelectedObject(current => ({
-                              ...current,
-                              motion: current.motion
-                                ? {
-                                    ...current.motion,
-                                    speed: Number(
-                                      event.target.value,
-                                    ),
-                                  }
-                                : current.motion,
-                            } as InteractiveSceneObject))
-                          }
-                          className="min-w-0"
-                        />
-                        <span className="text-right text-[6.5px] text-muted-foreground">
-                          {selectedObject.motion.speed.toFixed(1)}×
-                        </span>
-                      </label>
-
-                      <label className="grid grid-cols-[48px_1fr_30px] items-center gap-1.5">
-                        <span className="text-[6.8px] font-semibold text-muted-foreground">
-                          Strength
-                        </span>
-                        <input
-                          type="range"
-                          min={0}
-                          max={100}
-                          step={5}
-                          value={selectedObject.motion.intensity}
-                          onChange={event =>
-                            patchSelectedObject(current => ({
-                              ...current,
-                              motion: current.motion
-                                ? {
-                                    ...current.motion,
-                                    intensity: Number(
-                                      event.target.value,
-                                    ),
-                                  }
-                                : current.motion,
-                            } as InteractiveSceneObject))
-                          }
-                          className="min-w-0"
-                        />
-                        <span className="text-right text-[6.5px] text-muted-foreground">
-                          {Math.round(
-                            selectedObject.motion.intensity,
-                          )}
-                        </span>
-                      </label>
-                    </div>
-                  )}
-                </div>
-
-                <AdvancedMotionEditor
-                  tracks={selectedObject.animationTracks}
-                  onChange={animationTracks =>
-                    patchSelectedObject(current => ({
-                      ...current,
-                      animationTracks,
-                    } as InteractiveSceneObject))
+                {selectedObject.type !== "shape" && (
+                <InspectorSection
+                  title={
+                    selectedObject.type === "text"
+                      ? "Text"
+                      : selectedObject.type === "image"
+                        ? "Image"
+                        : "Shared content"
                   }
-                  onReplay={() =>
-                    setMotionReplayKey(value => value + 1)
+                  description={
+                    selectedObject.type === "resume-content"
+                      ? "Connected to shared resume data"
+                      : "Object-specific content"
                   }
-                />
-
-                <InteractiveScrollMotionEditor
-                  tracks={selectedObject.scrollTracks}
-                  progress={scrollProgress}
-                  onChange={scrollTracks =>
-                    patchSelectedObject(current => ({
-                      ...current,
-                      scrollTracks,
-                    } as InteractiveSceneObject))
-                  }
-                />
-
-                <InteractiveMotionPathEditor
-                  path={selectedObject.motionPath}
-                  progress={scrollProgress}
-                  onChange={motionPath => {
-                    setLiveMotionPath(null);
-                    patchSelectedObject(current => ({
-                      ...current,
-                      motionPath,
-                    } as InteractiveSceneObject));
-                  }}
-                />
-
-                <div className="mt-2.5 rounded-lg border border-border bg-background p-2">
-                  <div className="text-[7px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Parallax depth
-                  </div>
-                  <div className="mt-0.5 text-[6.5px] leading-relaxed text-muted-foreground">
-                    Different depths move at different rates when scene
-                    Background Parallax is enabled.
-                  </div>
-
-                  <div className="mt-2 grid grid-cols-[1fr_36px] items-center gap-2">
-                    <input
-                      type="range"
-                      min={-2}
-                      max={2}
-                      step={0.1}
-                      value={selectedObject.parallaxDepth ?? 0}
-                      onChange={event =>
-                        patchSelectedObject(current => ({
-                          ...current,
-                          parallaxDepth: Number(event.target.value) || undefined,
-                        } as InteractiveSceneObject))
-                      }
-                      className="min-w-0"
-                    />
-                    <span className="text-right text-[7px] font-semibold text-muted-foreground">
-                      {(selectedObject.parallaxDepth ?? 0).toFixed(1)}
-                    </span>
-                  </div>
-
-                  <div className="mt-1.5 grid grid-cols-3 gap-1">
-                    {[
-                      ["Back", -0.8],
-                      ["Fixed", 0],
-                      ["Front", 1],
-                    ].map(([label, value]) => (
-                      <button
-                        key={String(label)}
-                        type="button"
-                        onClick={() =>
-                          patchSelectedObject(current => ({
-                            ...current,
-                            parallaxDepth:
-                              Number(value) || undefined,
-                          } as InteractiveSceneObject))
-                        }
-                        className="rounded-md border border-border px-1 py-1 text-[6.5px] font-semibold text-muted-foreground hover:border-[#2e0562]/20 hover:text-[#2e0562]"
-                      >
-                        {label as string}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
+                >
                 {selectedObject.type === "text" && (
-                  <label className="mt-2.5 block">
-                    <span className="mb-1 block text-[8px] font-semibold text-muted-foreground">
+                  <label className="block">
+                    <span className="mb-1 block text-[12px] font-semibold text-muted-foreground">
                       Text
                     </span>
                     <textarea
@@ -4385,15 +5952,15 @@ function InteractiveEditor({
                             : current,
                         )
                       }
-                      className="w-full resize-none rounded-lg border border-border bg-background px-2 py-1.5 text-[9px] text-foreground outline-none"
+                      className="w-full resize-none rounded-lg border border-border bg-background px-2 py-1.5 text-[13px] text-foreground outline-none"
                     />
                   </label>
                 )}
 
                 {selectedObject.type === "image" && (
                   <>
-                    <label className="mt-2.5 block">
-                      <span className="mb-1 block text-[8px] font-semibold text-muted-foreground">
+                    <label className="block">
+                      <span className="mb-1 block text-[12px] font-semibold text-muted-foreground">
                         Image URL
                       </span>
                       <input
@@ -4409,117 +5976,12 @@ function InteractiveEditor({
                               : current,
                           )
                         }
-                        className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-[9px] text-foreground outline-none"
+                        className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-[13px] text-foreground outline-none"
                       />
                     </label>
-                    <label className="mt-2 block">
-                      <span className="mb-1 block text-[8px] font-semibold text-muted-foreground">
-                        Fit
-                      </span>
-                      <select
-                        value={selectedObject.fit ?? "cover"}
-                        onChange={event =>
-                          patchSelectedObject(current =>
-                            current.type === "image"
-                              ? {
-                                  ...current,
-                                  fit: event.target.value as
-                                    | "cover"
-                                    | "contain"
-                                    | "stretch",
-                                }
-                              : current,
-                          )
-                        }
-                        className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-[9px] text-foreground outline-none"
-                      >
-                        <option value="cover">Cover</option>
-                        <option value="contain">Contain</option>
-                        <option value="stretch">Stretch</option>
-                      </select>
-                    </label>
                   </>
                 )}
 
-                {selectedObject.type === "shape" && (
-                  <>
-                    <label className="mt-2.5 block">
-                      <span className="mb-1 block text-[8px] font-semibold text-muted-foreground">
-                        Shape
-                      </span>
-                      <select
-                        value={selectedObject.shape}
-                        onChange={event =>
-                          patchSelectedObject(current =>
-                            current.type === "shape"
-                              ? {
-                                  ...current,
-                                  shape: event.target.value as
-                                    | "rectangle"
-                                    | "ellipse"
-                                    | "line",
-                                }
-                              : current,
-                          )
-                        }
-                        className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-[9px] text-foreground outline-none"
-                      >
-                        <option value="rectangle">Rectangle</option>
-                        <option value="ellipse">Ellipse</option>
-                        <option value="line">Line</option>
-                      </select>
-                    </label>
-
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      <label>
-                        <span className="mb-1 block text-[8px] font-semibold text-muted-foreground">
-                          Fill
-                        </span>
-                        <input
-                          type="color"
-                          value={safeColor(
-                            selectedObject.fill,
-                            "#ede9fe",
-                          )}
-                          onChange={event =>
-                            patchSelectedObject(current =>
-                              current.type === "shape"
-                                ? {
-                                    ...current,
-                                    fill: event.target.value,
-                                  }
-                                : current,
-                            )
-                          }
-                          className="h-8 w-full rounded border border-border bg-background p-1"
-                        />
-                      </label>
-                      <label>
-                        <span className="mb-1 block text-[8px] font-semibold text-muted-foreground">
-                          Stroke
-                        </span>
-                        <input
-                          type="color"
-                          value={safeColor(
-                            selectedObject.stroke,
-                            "#7c3aed",
-                          )}
-                          onChange={event =>
-                            patchSelectedObject(current =>
-                              current.type === "shape"
-                                ? {
-                                    ...current,
-                                    stroke: event.target.value,
-                                  }
-                                : current,
-                            )
-                          }
-                          className="h-8 w-full rounded border border-border bg-background p-1"
-                        />
-                      </label>
-                    </div>
-                  </>
-                )}
 
                 {selectedObject.type === "resume-content" && (() => {
                   const resolved = resolveInteractiveBinding(
@@ -4528,25 +5990,25 @@ function InteractiveEditor({
                   );
 
                   return (
-                    <div className="mt-2.5 space-y-2">
+                    <div className="space-y-2">
                       <div className="rounded-lg border border-[#2e0562]/15 bg-[#2e0562]/5 p-2">
-                        <div className="text-[7px] font-bold uppercase tracking-wider text-[#2e0562]">
+                        <div className="text-[12px] font-bold uppercase tracking-wider text-[#2e0562]">
                           Shared binding
                         </div>
 
                         {resolved ? (
                           <>
-                            <div className="mt-1 truncate text-[9px] font-semibold text-foreground">
+                            <div className="mt-1 truncate text-[13px] font-semibold text-foreground">
                               {resolved.primary || resolved.label}
                             </div>
-                            <div className="mt-0.5 truncate text-[7px] text-muted-foreground">
+                            <div className="mt-0.5 truncate text-[12px] text-muted-foreground">
                               {resolved.found
                                 ? `${resolved.label} · updates automatically`
                                 : resolved.secondary}
                             </div>
                           </>
                         ) : (
-                          <div className="mt-1 text-[7.5px] text-muted-foreground">
+                          <div className="mt-1 text-[12px] text-muted-foreground">
                             No resume content selected yet.
                           </div>
                         )}
@@ -4559,7 +6021,7 @@ function InteractiveEditor({
                           setBindingPickerMode("change");
                           setBindingSearch("");
                         }}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#2e0562]/20 bg-background px-2 py-1.5 text-[8px] font-semibold text-[#2e0562] hover:bg-[#2e0562]/5"
+                        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#2e0562]/20 bg-background px-2 py-1.5 text-[12px] font-semibold text-[#2e0562] hover:bg-[#2e0562]/5"
                       >
                         <UserRound size={9} />
                         {selectedObject.binding
@@ -4567,21 +6029,23 @@ function InteractiveEditor({
                           : "Choose shared content"}
                       </button>
 
-                      <p className="text-[7px] leading-relaxed text-muted-foreground">
-                        This object stores only a reference to the resume
-                        record. Editing that record in Work, Projects,
-                        Education, Skills, Bio or Links updates this scene
-                        automatically.
+                      <p className="text-[12px] leading-relaxed text-muted-foreground">
+                        Linked to shared resume data · updates automatically.
                       </p>
                     </div>
                   );
                 })()}
 
+                </InspectorSection>
+
+                )}
+
+
                 <div className="mt-2.5 flex gap-1.5">
                   <button
                     type="button"
                     onClick={duplicateSelectedObject}
-                    className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-border px-2 py-1.5 text-[8px] font-semibold text-muted-foreground hover:text-foreground"
+                    className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-border px-2 py-1.5 text-[12px] font-semibold text-muted-foreground hover:text-foreground"
                   >
                     <Copy size={9} />
                     Duplicate
@@ -4589,86 +6053,488 @@ function InteractiveEditor({
                   <button
                     type="button"
                     onClick={removeSelectedObject}
-                    className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-red-200 px-2 py-1.5 text-[8px] font-semibold text-red-500 hover:bg-red-50"
+                    className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-red-200 px-2 py-1.5 text-[12px] font-semibold text-red-500 hover:bg-red-50"
                   >
                     <Trash2 size={9} />
                     Delete
                   </button>
                 </div>
               </div>
-            ) : (
-              <div className="rounded-xl border border-border bg-card p-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#2e0562]/8 text-[#2e0562]">
-                  <MousePointer2 size={14} />
+            ) : null}
+
+            {hasMultipleSelection && (
+              <div className="rounded-xl border border-[#2e0562]/20 bg-card p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[12px] font-bold uppercase tracking-wider text-[#2e0562]">
+                      Selection
+                    </div>
+                    <div className="mt-1 text-[14px] font-semibold text-foreground">
+                      {selectedObjects.length} objects selected
+                    </div>
+                    <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
+                      Use the canvas toolbar to group, arrange or lock this selection. Shift-click objects or Layers to add or remove items.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedObjectId(null)}
+                    aria-label="Clear selection"
+                    title="Clear selection"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-transparent text-muted-foreground hover:border-border hover:bg-muted/40 hover:text-foreground"
+                  >
+                    <X size={14} />
+                  </button>
                 </div>
-                <div className="mt-2 text-[9px] font-semibold text-foreground">
-                  Select an object
-                </div>
-                <p className="mt-1 text-[7.5px] leading-relaxed text-muted-foreground">
-                  Click anything on the scene or in Layers to edit its
-                  geometry, content, visibility and lock state.
-                </p>
+                {selectedGroupId && (
+                  <div className="mt-3 rounded-lg border border-[#2e0562]/15 bg-[#2e0562]/5 px-2.5 py-2 text-[12px] font-semibold text-[#2e0562]">
+                    {selectedGroupName ?? "Group"} · {selectedObjects.length} objects · drag any member to move the group together.
+                  </div>
+                )}
+
+                {selectedGroupId && selectedGroupMotionObject && (
+                  <div className="mt-3">
+                <InspectorSection
+                  title="Motion"
+                  description={`${selectedGroupName ?? "Group"} · animate ${selectedObjects.length} objects together`}
+                  badge={`${selectedObjects.length} objects`}
+                  defaultOpen={true}
+                >
+                  {groupMotionOverridePromptOpen && (
+                    <div className="mb-2.5 rounded-xl border border-amber-300 bg-amber-50 p-2.5">
+                      <div className="text-[12px] font-semibold text-amber-900">
+                        Animate these {selectedObjects.length} objects together?
+                      </div>
+                      <p className="mt-1 text-[12px] leading-relaxed text-amber-800">
+                        {selectedIndividualMotionCount === 1
+                          ? "1 object has individual motion."
+                          : `${selectedIndividualMotionCount} objects have individual motion.`}{" "}
+                        Applying group motion will clear those individual animations and make the group move as one.
+                      </p>
+                      <div className="mt-2 flex justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={cancelSelectedGroupMotionOverride}
+                          className="rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-[12px] font-semibold text-amber-900 hover:bg-amber-100"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={confirmSelectedGroupMotionOverride}
+                          className="rounded-lg bg-[#2e0562] px-2.5 py-1.5 text-[12px] font-semibold text-white hover:bg-[#24044f]"
+                        >
+                          Animate group
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {!selectedGroupMotionActive && selectedIndividualMotionCount > 0 && !groupMotionOverridePromptOpen && (
+                    <div className="mb-2.5 rounded-lg border border-[#2e0562]/15 bg-[#2e0562]/5 px-2.5 py-2 text-[12px] leading-relaxed text-[#2e0562]">
+                      Grouping has preserved the existing individual motion. Choose any motion below when you want all {selectedObjects.length} objects to animate together instead.
+                    </div>
+                  )}
+
+                  {selectedGroupMotionActive && (
+                    <div className="mb-2.5 rounded-lg border border-[#2e0562]/15 bg-[#2e0562]/5 px-2.5 py-2 text-[12px] font-semibold text-[#2e0562]">
+                      Group motion is active. These {selectedObjects.length} objects now animate together; individual motion has been cleared.
+                    </div>
+                  )}
+
+                  {(() => {
+                    const motionModes: Array<{
+                      id: MotionInspectorMode;
+                      label: string;
+                      active: boolean;
+                    }> = [
+                      {
+                        id: "quick",
+                        label: "Quick",
+                        active: !!selectedGroupMotionObject!.motion,
+                      },
+                      {
+                        id: "animate",
+                        label: "Animate",
+                        active: !!selectedGroupMotionObject!.animationTracks?.length,
+                      },
+                      {
+                        id: "scroll",
+                        label: "Scroll",
+                        active: !!selectedGroupMotionObject!.scrollTracks?.length,
+                      },
+                      {
+                        id: "path",
+                        label: "Path",
+                        active: !!selectedGroupMotionObject!.motionPath,
+                      },
+                      {
+                        id: "depth",
+                        label: "Depth",
+                        active:
+                          Math.abs(selectedGroupMotionObject!.parallaxDepth ?? 0) > 0.001,
+                      },
+                    ];
+                    const activeMotionCount = motionModes.filter(
+                      mode => mode.active,
+                    ).length;
+                    const quickPresets: Array<{
+                      value: InteractiveObjectMotionPreset | "none";
+                      label: string;
+                    }> = [
+                      { value: "none", label: "None" },
+                      { value: "float", label: "Float" },
+                      { value: "bob", label: "Bob" },
+                      { value: "pulse", label: "Pulse" },
+                      { value: "spin", label: "Spin" },
+                      { value: "drift", label: "Drift" },
+                    ];
+
+                    return (
+                      <div className="space-y-2.5">
+                        <div className="rounded-xl border border-border bg-muted/15 p-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <div className="text-[12px] font-bold uppercase tracking-wider text-muted-foreground">
+                                Motion tools
+                              </div>
+                              <div className="mt-0.5 text-[12px] text-muted-foreground">
+                                {activeMotionCount
+                                  ? `${activeMotionCount} active mode${activeMotionCount === 1 ? "" : "s"}`
+                                  : "No motion applied"}
+                              </div>
+                            </div>
+
+                            {activeMotionCount > 0 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  patchSelectedGroupMotion(current => ({
+                                    ...current,
+                                    motion: undefined,
+                                    animationTracks: undefined,
+                                    scrollTracks: undefined,
+                                    motionPath: undefined,
+                                    parallaxDepth: undefined,
+                                  } as InteractiveSceneObject))
+                                }
+                                className="text-[12px] font-semibold text-muted-foreground hover:text-red-500"
+                              >
+                                Clear all
+                              </button>
+                            )}
+                          </div>
+
+                          <div
+                            role="tablist"
+                            aria-label="Motion editing mode"
+                            className="mt-2 grid grid-cols-3 gap-1"
+                          >
+                            {motionModes.map(mode => (
+                              <button
+                                key={mode.id}
+                                type="button"
+                                role="tab"
+                                aria-selected={motionInspectorMode === mode.id}
+                                onClick={() => setMotionInspectorMode(mode.id)}
+                                className={`relative rounded-lg border px-1.5 py-1.5 text-[12px] font-semibold transition-colors ${
+                                  motionInspectorMode === mode.id
+                                    ? "border-[#2e0562]/30 bg-[#2e0562] text-white"
+                                    : "border-border bg-background text-muted-foreground hover:border-[#2e0562]/20 hover:text-[#2e0562]"
+                                }`}
+                              >
+                                <span>{mode.label}</span>
+                                {mode.active && (
+                                  <span
+                                    aria-label={`${mode.label} motion active`}
+                                    className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${
+                                      motionInspectorMode === mode.id
+                                        ? "bg-white"
+                                        : "bg-[#2e0562]"
+                                    }`}
+                                  />
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {motionInspectorMode === "quick" && (
+                          <div className="rounded-xl border border-border bg-background p-2.5">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="text-[12px] font-semibold text-foreground">
+                                  Quick loop
+                                </div>
+                                <div className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
+                                  Pick a continuous preset, then tune its feel.
+                                </div>
+                              </div>
+                              {selectedGroupMotionObject!.motion && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    patchSelectedGroupMotion(current => ({
+                                      ...current,
+                                      motion: undefined,
+                                    } as InteractiveSceneObject))
+                                  }
+                                  className="text-[12px] font-semibold text-muted-foreground hover:text-red-500"
+                                >
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="mt-2 grid grid-cols-3 gap-1">
+                              {quickPresets.map(preset => {
+                                const active =
+                                  (selectedGroupMotionObject!.motion?.preset ?? "none") ===
+                                  preset.value;
+                                return (
+                                  <button
+                                    key={preset.value}
+                                    type="button"
+                                    aria-pressed={active}
+                                    onClick={() =>
+                                      patchSelectedGroupMotion(current => ({
+                                        ...current,
+                                        motion:
+                                          preset.value === "none"
+                                            ? undefined
+                                            : {
+                                                preset: preset.value,
+                                                speed: current.motion?.speed ?? 1,
+                                                intensity:
+                                                  current.motion?.intensity ?? 50,
+                                                delay: current.motion?.delay,
+                                              },
+                                      } as InteractiveSceneObject))
+                                    }
+                                    className={`rounded-lg border px-1.5 py-1.5 text-[12px] font-semibold ${
+                                      active
+                                        ? "border-[#2e0562]/30 bg-[#2e0562]/8 text-[#2e0562]"
+                                        : "border-border text-muted-foreground hover:border-[#2e0562]/20 hover:text-[#2e0562]"
+                                    }`}
+                                  >
+                                    {preset.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {selectedGroupMotionObject!.motion && (
+                              <div className="mt-2.5 space-y-2">
+                                <label className="grid grid-cols-[44px_1fr_32px] items-center gap-1.5">
+                                  <span className="text-[12px] font-semibold text-muted-foreground">
+                                    Speed
+                                  </span>
+                                  <input
+                                    type="range"
+                                    min={0.25}
+                                    max={3}
+                                    step={0.25}
+                                    value={selectedGroupMotionObject!.motion.speed}
+                                    onChange={event =>
+                                      patchSelectedGroupMotion(current => ({
+                                        ...current,
+                                        motion: current.motion
+                                          ? {
+                                              ...current.motion,
+                                              speed: Number(event.target.value),
+                                            }
+                                          : current.motion,
+                                      } as InteractiveSceneObject))
+                                    }
+                                    className="min-w-0"
+                                  />
+                                  <span className="text-right text-[12px] text-muted-foreground">
+                                    {selectedGroupMotionObject!.motion.speed.toFixed(1)}×
+                                  </span>
+                                </label>
+
+                                <label className="grid grid-cols-[44px_1fr_32px] items-center gap-1.5">
+                                  <span className="text-[12px] font-semibold text-muted-foreground">
+                                    Strength
+                                  </span>
+                                  <input
+                                    type="range"
+                                    min={0}
+                                    max={100}
+                                    step={5}
+                                    value={selectedGroupMotionObject!.motion.intensity}
+                                    onChange={event =>
+                                      patchSelectedGroupMotion(current => ({
+                                        ...current,
+                                        motion: current.motion
+                                          ? {
+                                              ...current.motion,
+                                              intensity: Number(event.target.value),
+                                            }
+                                          : current.motion,
+                                      } as InteractiveSceneObject))
+                                    }
+                                    className="min-w-0"
+                                  />
+                                  <span className="text-right text-[12px] text-muted-foreground">
+                                    {Math.round(selectedGroupMotionObject!.motion.intensity)}
+                                  </span>
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {motionInspectorMode === "animate" && (
+                          <AdvancedMotionEditor
+                            embedded
+                            tracks={selectedGroupMotionObject!.animationTracks}
+                            onChange={animationTracks =>
+                              patchSelectedGroupMotion(current => ({
+                                ...current,
+                                animationTracks,
+                              } as InteractiveSceneObject))
+                            }
+                            onReplay={() =>
+                              setMotionReplayKey(value => value + 1)
+                            }
+                          />
+                        )}
+
+                        {motionInspectorMode === "scroll" && (
+                          <InteractiveScrollMotionEditor
+                            embedded
+                            tracks={selectedGroupMotionObject!.scrollTracks}
+                            progress={scrollProgress}
+                            onChange={scrollTracks =>
+                              patchSelectedGroupMotion(current => ({
+                                ...current,
+                                scrollTracks,
+                              } as InteractiveSceneObject))
+                            }
+                          />
+                        )}
+
+                        {motionInspectorMode === "path" && (
+                          <InteractiveMotionPathEditor
+                            embedded
+                            path={selectedGroupMotionObject!.motionPath}
+                            progress={scrollProgress}
+                            onChange={motionPath => {
+                              patchSelectedGroupMotion(current => ({
+                                ...current,
+                                motionPath,
+                              } as InteractiveSceneObject));
+                            }}
+                          />
+                        )}
+
+                        {motionInspectorMode === "depth" && (
+                          <div className="rounded-xl border border-border bg-background p-2.5">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="text-[12px] font-semibold text-foreground">
+                                  Parallax depth
+                                </div>
+                                <div className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
+                                  Move at a different rate when scene Background Parallax is enabled.
+                                </div>
+                              </div>
+                              {Math.abs(selectedGroupMotionObject!.parallaxDepth ?? 0) > 0.001 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    patchSelectedGroupMotion(current => ({
+                                      ...current,
+                                      parallaxDepth: undefined,
+                                    } as InteractiveSceneObject))
+                                  }
+                                  className="text-[12px] font-semibold text-muted-foreground hover:text-red-500"
+                                >
+                                  Reset
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="mt-2 grid grid-cols-3 gap-1">
+                              {[
+                                ["Back", -0.8],
+                                ["Fixed", 0],
+                                ["Front", 1],
+                              ].map(([label, value]) => {
+                                const numericValue = Number(value);
+                                const active = Math.abs(
+                                  (selectedGroupMotionObject!.parallaxDepth ?? 0) - numericValue,
+                                ) < 0.01;
+                                return (
+                                  <button
+                                    key={String(label)}
+                                    type="button"
+                                    aria-pressed={active}
+                                    onClick={() =>
+                                      patchSelectedGroupMotion(current => ({
+                                        ...current,
+                                        parallaxDepth:
+                                          numericValue || undefined,
+                                      } as InteractiveSceneObject))
+                                    }
+                                    className={`rounded-lg border px-1.5 py-1.5 text-[12px] font-semibold ${
+                                      active
+                                        ? "border-[#2e0562]/30 bg-[#2e0562]/8 text-[#2e0562]"
+                                        : "border-border text-muted-foreground hover:border-[#2e0562]/20 hover:text-[#2e0562]"
+                                    }`}
+                                  >
+                                    {label as string}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            <div className="mt-2.5 grid grid-cols-[1fr_38px] items-center gap-2">
+                              <input
+                                type="range"
+                                min={-2}
+                                max={2}
+                                step={0.1}
+                                value={selectedGroupMotionObject!.parallaxDepth ?? 0}
+                                onChange={event =>
+                                  patchSelectedGroupMotion(current => ({
+                                    ...current,
+                                    parallaxDepth:
+                                      Number(event.target.value) || undefined,
+                                  } as InteractiveSceneObject))
+                                }
+                                className="min-w-0"
+                              />
+                              <span className="text-right text-[12px] font-semibold text-muted-foreground">
+                                {(selectedGroupMotionObject!.parallaxDepth ?? 0).toFixed(1)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </InspectorSection>
+
+                  </div>
+                )}
+                {!selectedGroupId && (
+                  <div className="mt-3 rounded-lg border border-border bg-muted/20 px-2.5 py-2 text-[12px] text-muted-foreground">
+                    Group these objects to animate them together. Grouping itself preserves each object's existing motion.
+                  </div>
+                )}
               </div>
             )}
 
-            <div className="rounded-xl border border-border bg-card p-3">
-              <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                Scene
-              </div>
-
-              <label className="mt-2 block">
-                <span className="mb-1 block text-[8px] font-semibold text-muted-foreground">
-                  Name
-                </span>
-                <input
-                  value={activeScene.name}
-                  onChange={event =>
-                    patchScene({ name: event.target.value })
-                  }
-                  className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-[9px] text-foreground outline-none"
-                />
-              </label>
-
-              <div className="mt-2 rounded-lg border border-[#2e0562]/10 bg-[#2e0562]/[0.025] px-2 py-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-[7px] font-semibold text-foreground">
-                    {activeBreakpoint[0].toUpperCase() +
-                      activeBreakpoint.slice(1)} layout
-                  </div>
-                  <div className="text-[6.5px] text-muted-foreground">
-                    {activeBreakpoint === "desktop"
-                      ? "Base"
-                      : activeScene.responsive?.[activeBreakpoint]
-                        ? "Custom override"
-                        : "Recommended viewport + desktop fallback"}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <NumberField
-                  label="Width"
-                  value={activeSceneLayout.width}
-                  min={320}
-                  max={3840}
-                  suffix="px"
-                  onChange={width =>
-                    patchActiveSceneLayout({ width })
-                  }
-                />
-                <NumberField
-                  label="Height"
-                  value={activeSceneLayout.height}
-                  min={320}
-                  max={3000}
-                  suffix="px"
-                  onChange={height =>
-                    patchActiveSceneLayout({ height })
-                  }
-                />
-              </div>
-
-              <div className="mt-2">
+            {!selectedObject && (
+              <>
+            <InspectorSection
+              title="Scene settings"
+              description="Scrolling and transition"
+              defaultOpen
+            >
+              <div>
                 <NumberField
                   label="Visitor scroll"
                   value={activeSceneLayout.scrollLength}
@@ -4683,7 +6549,7 @@ function InteractiveEditor({
               </div>
 
               <label className="mt-2 block">
-                <span className="mb-1 block text-[8px] font-semibold text-muted-foreground">
+                <span className="mb-1 block text-[12px] font-semibold text-muted-foreground">
                   Scroll behavior
                 </span>
                 <select
@@ -4694,7 +6560,7 @@ function InteractiveEditor({
                         .value as InteractiveScrollBehavior,
                     })
                   }
-                  className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-[8.5px] text-foreground outline-none"
+                  className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-[12px] text-foreground outline-none"
                 >
                   <option value="pinned">
                     Pinned storytelling
@@ -4703,28 +6569,28 @@ function InteractiveEditor({
                     Normal page flow
                   </option>
                 </select>
-                <p className="mt-1 text-[6.8px] leading-relaxed text-muted-foreground">
+                <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
                   Pinned keeps the scene stationary while its virtual
                   {` `}
                   {activeSceneLayout.scrollLength}px scroll timeline progresses.
-                  Layout size is saved independently for the active device.
+                  Use Scene size above the canvas to edit width and height.
                 </p>
               </label>
 
               <div className="mt-2.5 border-t border-border pt-2.5">
-                <div className="text-[8px] font-bold uppercase tracking-wider text-muted-foreground">
+                <div className="text-[12px] font-bold uppercase tracking-wider text-muted-foreground">
                   Transition to next scene
                 </div>
 
                 {nextScene ? (
                   <>
-                    <div className="mt-1 text-[6.8px] text-muted-foreground">
+                    <div className="mt-1 text-[12px] text-muted-foreground">
                       {activeScene.name} → {nextScene.name}
                     </div>
 
                     <div className="mt-2 grid grid-cols-2 gap-1.5">
                       <label>
-                        <span className="mb-0.5 block text-[6.5px] font-semibold text-muted-foreground">
+                        <span className="mb-0.5 block text-[12px] font-semibold text-muted-foreground">
                           Effect
                         </span>
                         <select
@@ -4738,7 +6604,7 @@ function InteractiveEditor({
                               },
                             })
                           }
-                          className="w-full rounded-md border border-border bg-background px-1.5 py-1 text-[7.5px] text-foreground outline-none"
+                          className="w-full rounded-md border border-border bg-background px-1.5 py-1 text-[12px] text-foreground outline-none"
                         >
                           <option value="none">None</option>
                           <option value="fade">Fade</option>
@@ -4749,7 +6615,7 @@ function InteractiveEditor({
                       </label>
 
                       <label>
-                        <span className="mb-0.5 block text-[6.5px] font-semibold text-muted-foreground">
+                        <span className="mb-0.5 block text-[12px] font-semibold text-muted-foreground">
                           Duration
                         </span>
                         <select
@@ -4762,7 +6628,7 @@ function InteractiveEditor({
                               },
                             })
                           }
-                          className="w-full rounded-md border border-border bg-background px-1.5 py-1 text-[7.5px] text-foreground outline-none"
+                          className="w-full rounded-md border border-border bg-background px-1.5 py-1 text-[12px] text-foreground outline-none"
                         >
                           <option value={0.4}>0.4s</option>
                           <option value={0.6}>0.6s</option>
@@ -4774,7 +6640,7 @@ function InteractiveEditor({
                     </div>
 
                     <label className="mt-1.5 block">
-                      <span className="mb-0.5 block text-[6.5px] font-semibold text-muted-foreground">
+                      <span className="mb-0.5 block text-[12px] font-semibold text-muted-foreground">
                         Easing
                       </span>
                       <select
@@ -4788,7 +6654,7 @@ function InteractiveEditor({
                             },
                           })
                         }
-                        className="w-full rounded-md border border-border bg-background px-1.5 py-1 text-[7.5px] text-foreground outline-none"
+                        className="w-full rounded-md border border-border bg-background px-1.5 py-1 text-[12px] text-foreground outline-none"
                       >
                         <option value="linear">Linear</option>
                         <option value="ease">Ease</option>
@@ -4804,24 +6670,25 @@ function InteractiveEditor({
                       onClick={() =>
                         setTransitionPlayKey(value => value + 1)
                       }
-                      className="mt-2 flex w-full items-center justify-center gap-1 rounded-md border border-[#2e0562]/20 bg-background py-1.5 text-[6.8px] font-semibold text-[#2e0562] disabled:opacity-30"
+                      className="mt-2 flex w-full items-center justify-center gap-1 rounded-md border border-[#2e0562]/20 bg-background py-1.5 text-[12px] font-semibold text-[#2e0562] disabled:opacity-30"
                     >
                       <RefreshCcw size={8} />
                       Preview transition
                     </button>
                   </>
                 ) : (
-                  <div className="mt-1.5 rounded-md border border-dashed border-border px-2 py-2 text-[6.5px] leading-relaxed text-muted-foreground">
+                  <div className="mt-1.5 rounded-md border border-dashed border-border px-2 py-2 text-[12px] leading-relaxed text-muted-foreground">
                     This is the last scene, so it has no outgoing transition.
                   </div>
                 )}
               </div>
-            </div>
+            </InspectorSection>
 
-            <div className="rounded-xl border border-border bg-card p-3">
-              <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                Background
-              </div>
+            <InspectorSection
+              title="Background"
+              description={activeScene.background.type === "transparent" ? "Transparent" : activeScene.background.type}
+              defaultOpen={false}
+            >
 
               <select
                 value={activeScene.background.type}
@@ -4834,7 +6701,7 @@ function InteractiveEditor({
                     },
                   })
                 }
-                className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-[9px] text-foreground outline-none"
+                className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-[13px] text-foreground outline-none"
               >
                 <option value="solid">Solid</option>
                 <option value="gradient">Gradient</option>
@@ -4860,7 +6727,7 @@ function InteractiveEditor({
                     }
                     className="h-7 w-8 rounded border border-border bg-background p-0.5"
                   />
-                  <span className="text-[8px] text-muted-foreground">
+                  <span className="text-[12px] text-muted-foreground">
                     Base color
                   </span>
                 </label>
@@ -4884,7 +6751,7 @@ function InteractiveEditor({
                     }
                     className="h-7 w-8 rounded border border-border bg-background p-0.5"
                   />
-                  <span className="text-[8px] text-muted-foreground">
+                  <span className="text-[12px] text-muted-foreground">
                     Second color
                   </span>
                 </label>
@@ -4902,128 +6769,169 @@ function InteractiveEditor({
                       },
                     })
                   }
-                  className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-[8px] text-foreground outline-none"
+                  className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-[12px] text-foreground outline-none"
                 />
               )}
-            </div>
+            </InspectorSection>
 
-            <div className="rounded-xl border border-border bg-card p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Ambient motion
+            {(() => {
+              const ambient = activeScene.ambient;
+              const activeAmbientCount = [
+                ambient.twinkle,
+                ambient.particles,
+                ambient.floatingShapes,
+                ambient.gradientDrift,
+                ambient.parallax,
+              ].filter(effect => effect.enabled).length;
+
+              const ambientEffect =
+                ambientInspectorMode === "twinkle"
+                  ? ambient.twinkle
+                  : ambientInspectorMode === "particles"
+                    ? ambient.particles
+                    : ambientInspectorMode === "shapes"
+                      ? ambient.floatingShapes
+                      : ambientInspectorMode === "gradient"
+                        ? ambient.gradientDrift
+                        : ambient.parallax;
+
+              const ambientMeta =
+                AMBIENT_MODE_META.find(item => item.id === ambientInspectorMode) ??
+                AMBIENT_MODE_META[0];
+
+              const updateAmbientEffect = (next: InteractiveAmbientEffect) => {
+                if (ambientInspectorMode === "twinkle") {
+                  patchScene({ ambient: { ...ambient, twinkle: next } });
+                } else if (ambientInspectorMode === "particles") {
+                  patchScene({ ambient: { ...ambient, particles: next } });
+                } else if (ambientInspectorMode === "shapes") {
+                  patchScene({ ambient: { ...ambient, floatingShapes: next } });
+                } else if (ambientInspectorMode === "gradient") {
+                  patchScene({ ambient: { ...ambient, gradientDrift: next } });
+                } else {
+                  patchScene({ ambient: { ...ambient, parallax: next } });
+                }
+              };
+
+              return (
+                <InspectorSection
+                  title="Ambient effects"
+                  description="Scene-level motion behind your content"
+                  badge={activeAmbientCount ? `${activeAmbientCount} active` : "Off"}
+                  defaultOpen={false}
+                >
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {AMBIENT_MODE_META.map(item => {
+                      const effect =
+                        item.id === "twinkle"
+                          ? ambient.twinkle
+                          : item.id === "particles"
+                            ? ambient.particles
+                            : item.id === "shapes"
+                              ? ambient.floatingShapes
+                              : item.id === "gradient"
+                                ? ambient.gradientDrift
+                                : ambient.parallax;
+                      const selected = ambientInspectorMode === item.id;
+
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => setAmbientInspectorMode(item.id)}
+                          className={`flex min-w-0 items-center justify-between gap-1.5 rounded-lg border px-2 py-1.5 text-left transition-colors ${
+                            selected
+                              ? "border-[#2e0562]/30 bg-[#2e0562]/7 text-[#2e0562]"
+                              : "border-border bg-background text-muted-foreground hover:bg-muted/25 hover:text-foreground"
+                          }`}
+                        >
+                          <span className="truncate text-[12px] font-semibold">
+                            {item.shortLabel}
+                          </span>
+                          <span
+                            className={`h-1.5 w-1.5 flex-none rounded-full ${
+                              effect.enabled ? "bg-[#2e0562]" : "bg-muted-foreground/20"
+                            }`}
+                            aria-label={effect.enabled ? "Active" : "Off"}
+                          />
+                        </button>
+                      );
+                    })}
                   </div>
-                  <div className="mt-0.5 text-[7px] leading-relaxed text-muted-foreground">
-                    Easy scene-level effects. No timeline required.
+
+                  <div className="mt-2.5">
+                    <AmbientEffectEditor
+                      label={ambientMeta.label}
+                      description={ambientMeta.description}
+                      effect={ambientEffect}
+                      showDensity={
+                        ambientInspectorMode !== "gradient" &&
+                        ambientInspectorMode !== "parallax"
+                      }
+                      onChange={updateAmbientEffect}
+                    />
                   </div>
-                </div>
-                <Sparkles size={13} className="mt-0.5 text-[#2e0562]" />
-              </div>
 
-              <div className="mt-2.5 space-y-1.5">
-                <AmbientEffectEditor
-                  label="Twinkle"
-                  description="Small procedural stars that softly blink."
-                  effect={activeScene.ambient.twinkle}
-                  onChange={twinkle =>
-                    patchScene({
-                      ambient: {
-                        ...activeScene.ambient,
-                        twinkle,
-                      },
-                    })
-                  }
-                />
+                  {ambientInspectorMode === "gradient" &&
+                    activeScene.background.type !== "gradient" && (
+                      <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[12px] text-amber-800">
+                        <span>Gradient drift needs a gradient scene background.</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            patchScene({
+                              background: {
+                                ...activeScene.background,
+                                type: "gradient",
+                                secondaryColor:
+                                  activeScene.background.secondaryColor ?? "#f4f1fa",
+                              },
+                            })
+                          }
+                          className="flex-none rounded-md border border-amber-200 bg-white px-2 py-1 font-semibold text-amber-900 hover:bg-amber-100/50"
+                        >
+                          Use gradient
+                        </button>
+                      </div>
+                    )}
 
-                <AmbientEffectEditor
-                  label="Floating particles"
-                  description="Tiny dots drift gently through the scene."
-                  effect={activeScene.ambient.particles}
-                  onChange={particles =>
-                    patchScene({
-                      ambient: {
-                        ...activeScene.ambient,
-                        particles,
-                      },
-                    })
-                  }
-                />
-
-                <AmbientEffectEditor
-                  label="Floating shapes"
-                  description="Soft circles, squares and diamonds move in the background."
-                  effect={activeScene.ambient.floatingShapes}
-                  onChange={floatingShapes =>
-                    patchScene({
-                      ambient: {
-                        ...activeScene.ambient,
-                        floatingShapes,
-                      },
-                    })
-                  }
-                />
-
-                <AmbientEffectEditor
-                  label="Gradient drift"
-                  description={
-                    activeScene.background.type === "gradient"
-                      ? "Slowly moves the scene gradient."
-                      : "Switch the background to Gradient to see this effect."
-                  }
-                  effect={activeScene.ambient.gradientDrift}
-                  showDensity={false}
-                  onChange={gradientDrift =>
-                    patchScene({
-                      ambient: {
-                        ...activeScene.ambient,
-                        gradientDrift,
-                      },
-                    })
-                  }
-                />
-
-                <AmbientEffectEditor
-                  label="Background parallax"
-                  description="Background responds subtly to pointer depth."
-                  effect={activeScene.ambient.parallax}
-                  showDensity={false}
-                  onChange={parallax =>
-                    patchScene({
-                      ambient: {
-                        ...activeScene.ambient,
-                        parallax,
-                      },
-                    })
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-border bg-card p-3">
-              <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                Shared resume
-              </div>
-              <div className="mt-2 grid grid-cols-2 gap-1.5">
-                {[
-                  [data.workEntries?.length ?? 0, "roles"],
-                  [projectCount, "projects"],
-                  [data.education?.length ?? 0, "education"],
-                  [data.skills?.length ?? 0, "skills"],
-                ].map(([value, label]) => (
-                  <div
-                    key={label}
-                    className="rounded-lg bg-muted/30 p-2"
-                  >
-                    <div className="text-[11px] font-semibold text-foreground">
-                      {value}
+                  {activeAmbientCount > 0 && (
+                    <div className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2">
+                      <span className="text-[12px] text-muted-foreground">
+                        {activeAmbientCount} scene effect{activeAmbientCount === 1 ? "" : "s"} enabled
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          patchScene({
+                            ambient: {
+                              twinkle: { ...ambient.twinkle, enabled: false },
+                              particles: { ...ambient.particles, enabled: false },
+                              floatingShapes: {
+                                ...ambient.floatingShapes,
+                                enabled: false,
+                              },
+                              gradientDrift: {
+                                ...ambient.gradientDrift,
+                                enabled: false,
+                              },
+                              parallax: { ...ambient.parallax, enabled: false },
+                            },
+                          })
+                        }
+                        className="text-[12px] font-semibold text-muted-foreground hover:text-red-500"
+                      >
+                        Clear all
+                      </button>
                     </div>
-                    <div className="text-[6.5px] text-muted-foreground">
-                      {label}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+                  )}
+                </InspectorSection>
+              );
+            })()}
+              </>
+            )}
+
           </aside>
         </div>
       </div>
@@ -5034,9 +6942,11 @@ function InteractiveEditor({
 export default function ResumeInteractivePreview({
   data,
   onDesignChange,
+  workspaceMode = false,
 }: {
   data: ResumeData;
   onDesignChange: (design: ResumeDesign) => void;
+  workspaceMode?: boolean;
 }) {
   const state = getResumeWebExperienceState(data.design);
   const interactive = state.interactive;
@@ -5061,7 +6971,7 @@ export default function ResumeInteractivePreview({
 
   if (!interactive) {
     return (
-      <div className="min-h-[680px] rounded-xl bg-background p-5 sm:p-7">
+      <div className={workspaceMode ? "h-full min-h-0 overflow-y-auto bg-background p-5 sm:p-7" : "min-h-[680px] rounded-xl bg-background p-5 sm:p-7"}>
         <div className="mx-auto max-w-[820px] pt-5 sm:pt-10">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2e0562]/10 text-[#2e0562]">
             <Sparkles size={20} />
@@ -5070,7 +6980,7 @@ export default function ResumeInteractivePreview({
           <h2 className="mt-4 text-lg font-semibold text-foreground">
             Create your Interactive Experience
           </h2>
-          <p className="mt-2 max-w-2xl text-[11px] leading-relaxed text-muted-foreground">
+          <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-muted-foreground">
             This is a second Web presentation of the same resume content.
             Your Responsive Site stays exactly where you left it, and you can
             switch between the two at any time.
@@ -5116,19 +7026,17 @@ export default function ResumeInteractivePreview({
             />
           </div>
 
-          {initialTemplateGalleryOpen && (
-            <div className="mt-4">
-              <InteractiveTemplateGallery
-                mode="initial"
-                onApply={initializeFromTemplate}
-                onClose={() =>
-                  setInitialTemplateGalleryOpen(false)
-                }
-              />
-            </div>
-          )}
+          <InteractiveTemplateOverlay
+            open={initialTemplateGalleryOpen}
+            mode="initial"
+            onApply={templateId => {
+              setInitialTemplateGalleryOpen(false);
+              initializeFromTemplate(templateId);
+            }}
+            onClose={() => setInitialTemplateGalleryOpen(false)}
+          />
 
-          <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 border-t border-border pt-4 text-[9px] text-muted-foreground">
+          <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 border-t border-border pt-4 text-[13px] text-muted-foreground">
             {[
               "Responsive layout preserved",
               "Resume content remains shared",
@@ -5150,6 +7058,7 @@ export default function ResumeInteractivePreview({
       data={data}
       onDesignChange={onDesignChange}
       interactive={interactive}
+      workspaceMode={workspaceMode}
     />
   );
 }

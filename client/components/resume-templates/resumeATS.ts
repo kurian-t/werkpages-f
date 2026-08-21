@@ -12,6 +12,23 @@ export interface ATSCheck {
   detail: string;
 }
 
+export interface ATSProjectedLink {
+  label: string;
+  url: string;
+}
+
+export interface ATSResumeProjection {
+  fullName: string;
+  contact: string[];
+  summary: string;
+  work: ResumeData["workEntries"];
+  projects: ReturnType<typeof getResumeProjects>;
+  education: ResumeData["education"];
+  skills: string[];
+  links: ATSProjectedLink[];
+  hasContent: boolean;
+}
+
 const NAMED_ENTITIES: Record<string, string> = {
   amp: "&",
   lt: "<",
@@ -83,29 +100,116 @@ export function atsPlainTextFromHtml(html: string | null | undefined): string {
   return atsBlocksFromHtml(html).map(block => block.text).join("\n");
 }
 
+function clean(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
+}
+
+function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+
+  for (const value of values) {
+    const trimmed = clean(value);
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+
+  return result;
+}
+
+function workEntryHasContent(entry: ResumeData["workEntries"][number]): boolean {
+  return Boolean(
+    clean(entry.title) ||
+    clean(entry.company) ||
+    clean(entry.startDate) ||
+    clean(entry.endDate) ||
+    atsPlainTextFromHtml(entry.body)
+  );
+}
+
+function educationEntryHasContent(entry: ResumeData["education"][number]): boolean {
+  return Boolean(
+    clean(entry.school) ||
+    clean(entry.degree) ||
+    clean(entry.field) ||
+    clean(entry.startYear) ||
+    clean(entry.endYear)
+  );
+}
+
+/**
+ * One semantic projection powers both the on-screen ATS twin and exported ATS PDF.
+ * Empty placeholder rows are excluded so preview/export never invent resume content.
+ */
+export function projectResumeToATS(data: ResumeData): ATSResumeProjection {
+  const fullName = `${data.firstName ?? ""} ${data.lastName ?? ""}`.trim();
+  const contact = uniqueNonEmpty([
+    data.email,
+    data.phone,
+    data.location,
+    data.website,
+  ]);
+  const summary = clean(data.summary);
+
+  const work = (data.workEntries ?? []).filter(workEntryHasContent);
+  const projects = getResumeProjects(data).filter(projectHasContent);
+  const education = (data.education ?? []).filter(educationEntryHasContent);
+  const skills = uniqueNonEmpty(data.skills ?? []);
+  const links = (data.extraLinks ?? [])
+    .map(link => ({
+      label: clean(link?.label),
+      url: clean(link?.url),
+    }))
+    .filter(link => Boolean(link.label || link.url));
+
+  const hasContent = Boolean(
+    fullName ||
+    contact.length ||
+    summary ||
+    work.length ||
+    projects.length ||
+    education.length ||
+    skills.length ||
+    links.length
+  );
+
+  return {
+    fullName,
+    contact,
+    summary,
+    work,
+    projects,
+    education,
+    skills,
+    links,
+    hasContent,
+  };
+}
+
 /**
  * These are structural/content-presence checks, not a proprietary "ATS score".
  * Actual parsing/ranking differs between applicant-tracking systems.
  */
 export function buildATSChecks(data: ResumeData): ATSCheck[] {
-  const fullName = `${data.firstName ?? ""} ${data.lastName ?? ""}`.trim();
+  const projection = projectResumeToATS(data);
   const hasContact = Boolean(
     data.email?.trim() ||
     data.phone?.trim() ||
     data.website?.trim()
   );
 
-  const workEntries = data.workEntries ?? [];
-  const namedWorkEntries = workEntries.filter(entry =>
+  const namedWorkEntries = projection.work.filter(entry =>
     Boolean(entry.title?.trim() || entry.company?.trim())
   );
-  const workWithText = workEntries.filter(entry =>
+  const workWithText = projection.work.filter(entry =>
     atsPlainTextFromHtml(entry.body).length > 0
   );
 
-  const projects = getResumeProjects(data).filter(projectHasContent);
-  const namedProjects = projects.filter(project => project.title.trim().length > 0);
-  const describedProjects = projects.filter(project =>
+  const namedProjects = projection.projects.filter(project => project.title.trim().length > 0);
+  const describedProjects = projection.projects.filter(project =>
     Boolean(project.description.trim() || project.techStack.trim())
   );
 
@@ -113,8 +217,8 @@ export function buildATSChecks(data: ResumeData): ATSCheck[] {
     {
       id: "identity",
       label: "Name is plain text",
-      ok: fullName.length > 0,
-      detail: fullName
+      ok: projection.fullName.length > 0,
+      detail: projection.fullName
         ? "Your name is exposed as normal selectable text."
         : "Add your first or last name.",
     },
@@ -129,18 +233,18 @@ export function buildATSChecks(data: ResumeData): ATSCheck[] {
     {
       id: "experience",
       label: "Experience uses standard fields",
-      ok: workEntries.length === 0 || namedWorkEntries.length === workEntries.length,
-      detail: workEntries.length === 0
+      ok: projection.work.length === 0 || namedWorkEntries.length === projection.work.length,
+      detail: projection.work.length === 0
         ? "No experience entries are present yet."
-        : namedWorkEntries.length === workEntries.length
+        : namedWorkEntries.length === projection.work.length
           ? "Every experience entry has a title and/or company."
           : "One or more experience entries are missing both title and company.",
     },
     {
       id: "descriptions",
       label: "Experience text is extractable",
-      ok: workEntries.length === 0 || workWithText.length > 0,
-      detail: workEntries.length === 0
+      ok: projection.work.length === 0 || workWithText.length > 0,
+      detail: projection.work.length === 0
         ? "No experience entries are present yet."
         : workWithText.length > 0
           ? "Rich descriptions are projected into plain paragraphs and bullets."
@@ -149,18 +253,18 @@ export function buildATSChecks(data: ResumeData): ATSCheck[] {
     {
       id: "projects",
       label: "Projects use semantic text",
-      ok: projects.length === 0 || namedProjects.length === projects.length,
-      detail: projects.length === 0
+      ok: projection.projects.length === 0 || namedProjects.length === projection.projects.length,
+      detail: projection.projects.length === 0
         ? "No project entries are present yet."
-        : namedProjects.length === projects.length
+        : namedProjects.length === projection.projects.length
           ? "Every project has a plain-text title; project URLs remain extractable."
           : "Add a title to every project so ATS parsers can identify the entries.",
     },
     {
       id: "project-detail",
       label: "Project detail is extractable",
-      ok: projects.length === 0 || describedProjects.length > 0,
-      detail: projects.length === 0
+      ok: projection.projects.length === 0 || describedProjects.length > 0,
+      detail: projection.projects.length === 0
         ? "No project entries are present yet."
         : describedProjects.length > 0
           ? "Project descriptions and technology stacks are projected as plain text."

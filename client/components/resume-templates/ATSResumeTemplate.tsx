@@ -8,8 +8,10 @@ import {
 } from "@react-pdf/renderer";
 import type { ResumeData } from "./types";
 import { formatDateRange, formatEduYears } from "./types";
-import { atsBlocksFromHtml } from "./resumeATS";
-import { getResumeProjects, projectHasContent } from "./resumeProjects";
+import {
+  atsBlocksFromHtml,
+  projectResumeToATS,
+} from "./resumeATS";
 
 const styles = StyleSheet.create({
   page: {
@@ -124,50 +126,62 @@ function normalizedHref(value: string): string {
 }
 
 export default function ATSResumeTemplate({ data }: { data: ResumeData }) {
-  const contact = [
-    data.email?.trim(),
-    data.phone?.trim(),
-    data.location?.trim(),
-    data.website?.trim(),
-  ].filter(Boolean) as string[];
-
-  const projects = getResumeProjects(data).filter(projectHasContent);
+  const projected = projectResumeToATS(data);
   const size = data.design?.pageSize === "A4" ? "A4" : "LETTER";
 
   return (
     <Document
-      title={`${data.firstName ?? ""} ${data.lastName ?? ""} Resume`.trim()}
-      author={`${data.firstName ?? ""} ${data.lastName ?? ""}`.trim()}
+      title={projected.fullName ? `${projected.fullName} Resume` : "Resume"}
+      author={projected.fullName}
       subject="ATS-friendly resume"
     >
       <Page size={size} style={styles.page}>
-        <View>
-          <Text style={styles.name}>
-            {`${data.firstName ?? ""} ${data.lastName ?? ""}`.trim() || "Your Name"}
-          </Text>
-          {contact.length > 0 && (
-            <Text style={styles.contact}>{contact.join(" · ")}</Text>
-          )}
-        </View>
-
-        {data.summary?.trim() && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Professional Summary</Text>
-            <Text style={styles.summary}>{data.summary.trim()}</Text>
+        {(projected.fullName || projected.contact.length > 0) && (
+          <View>
+            {!!projected.fullName && (
+              <Text style={styles.name}>{projected.fullName}</Text>
+            )}
+            {projected.contact.length > 0 && (
+              <Text
+                style={{
+                  ...styles.contact,
+                  marginTop: projected.fullName ? styles.contact.marginTop : 0,
+                }}
+              >
+                {projected.contact.join(" · ")}
+              </Text>
+            )}
           </View>
         )}
 
-        {(data.workEntries ?? []).length > 0 && (
+        {!!projected.summary && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Professional Summary</Text>
+            <Text style={styles.summary}>{projected.summary}</Text>
+          </View>
+        )}
+
+        {projected.work.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Professional Experience</Text>
-            {(data.workEntries ?? []).map((entry, index) => {
+            {projected.work.map((entry, index) => {
               const dates = formatDateRange(entry.startDate, entry.endDate, entry.current);
+              const meta = [entry.company?.trim(), dates].filter(Boolean).join(" · ");
               return (
                 <View key={entry.id ?? index} style={styles.entry}>
-                  <Text style={styles.entryTitle}>{entry.title || "Role"}</Text>
-                  <Text style={styles.meta}>
-                    {[entry.company, dates].filter(Boolean).join(" · ")}
-                  </Text>
+                  {!!entry.title?.trim() && (
+                    <Text style={styles.entryTitle}>{entry.title.trim()}</Text>
+                  )}
+                  {!!meta && (
+                    <Text
+                      style={{
+                        ...styles.meta,
+                        marginTop: entry.title?.trim() ? styles.meta.marginTop : 0,
+                      }}
+                    >
+                      {meta}
+                    </Text>
+                  )}
                   <ATSBodyPDF html={entry.body} />
                 </View>
               );
@@ -175,18 +189,27 @@ export default function ATSResumeTemplate({ data }: { data: ResumeData }) {
           </View>
         )}
 
-        {projects.length > 0 && (
+        {projected.projects.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Projects</Text>
-            {projects.map(project => {
+            {projected.projects.map(project => {
               const urls = [project.githubUrl, project.liveUrl]
                 .map(value => value.trim())
                 .filter(Boolean);
               return (
                 <View key={project.id} style={styles.entry}>
-                  <Text style={styles.entryTitle}>{project.title || "Project"}</Text>
+                  {!!project.title.trim() && (
+                    <Text style={styles.entryTitle}>{project.title.trim()}</Text>
+                  )}
                   {!!project.techStack.trim() && (
-                    <Text style={styles.meta}>{project.techStack.trim()}</Text>
+                    <Text
+                      style={{
+                        ...styles.meta,
+                        marginTop: project.title.trim() ? styles.meta.marginTop : 0,
+                      }}
+                    >
+                      {project.techStack.trim()}
+                    </Text>
                   )}
                   {!!project.description.trim() && (
                     <Text style={styles.paragraph}>{project.description.trim()}</Text>
@@ -206,18 +229,26 @@ export default function ATSResumeTemplate({ data }: { data: ResumeData }) {
           </View>
         )}
 
-        {(data.education ?? []).length > 0 && (
+        {projected.education.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Education</Text>
-            {(data.education ?? []).map((entry, index) => {
+            {projected.education.map((entry, index) => {
               const years = formatEduYears(entry.startYear, entry.endYear, entry.current);
-              const credential = [entry.degree, entry.field].filter(Boolean).join(" — ");
+              const credential = [entry.degree?.trim(), entry.field?.trim()].filter(Boolean).join(" — ");
+              const meta = [credential, years].filter(Boolean).join(" · ");
               return (
                 <View key={entry.id ?? index} style={styles.entry}>
-                  <Text style={styles.entryTitle}>{entry.school || "School"}</Text>
-                  {(credential || years) && (
-                    <Text style={styles.meta}>
-                      {[credential, years].filter(Boolean).join(" · ")}
+                  {!!entry.school?.trim() && (
+                    <Text style={styles.entryTitle}>{entry.school.trim()}</Text>
+                  )}
+                  {!!meta && (
+                    <Text
+                      style={{
+                        ...styles.meta,
+                        marginTop: entry.school?.trim() ? styles.meta.marginTop : 0,
+                      }}
+                    >
+                      {meta}
                     </Text>
                   )}
                 </View>
@@ -226,24 +257,21 @@ export default function ATSResumeTemplate({ data }: { data: ResumeData }) {
           </View>
         )}
 
-        {(data.skills ?? []).length > 0 && (
+        {projected.skills.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Skills</Text>
-            <Text style={styles.skills}>{(data.skills ?? []).join(", ")}</Text>
+            <Text style={styles.skills}>{projected.skills.join(", ")}</Text>
           </View>
         )}
 
-        {(data.extraLinks ?? []).some(link => link?.label?.trim() || link?.url?.trim()) && (
+        {projected.links.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Links</Text>
-            {(data.extraLinks ?? []).map((link, index) => {
-              if (!link?.label?.trim() && !link?.url?.trim()) return null;
-              return (
-                <Text key={index} style={styles.link}>
-                  {[link.label?.trim(), link.url?.trim()].filter(Boolean).join(": ")}
-                </Text>
-              );
-            })}
+            {projected.links.map((link, index) => (
+              <Text key={`${link.label}-${link.url}-${index}`} style={styles.link}>
+                {[link.label, link.url].filter(Boolean).join(": ")}
+              </Text>
+            ))}
           </View>
         )}
       </Page>
