@@ -1,5 +1,10 @@
 /**
- * ResumeCanvas — interactive DOM-rendered resume.
+ * ResumeCanvas — interactive DOM-rendered resume.\n * Phase 13D: Web animation editing is contextual inside the Web preview; PDF canvas geometry is unchanged.\n * Phase 13C: Web Animation Studio remains separate from PDF geometry.
+ * Phase 13B: web-only video/projects/GitHub/animations remain outside PDF geometry.
+ * Phase 13: web superpowers remain a separate responsive projection; PDF canvas interaction model preserved.
+ * Phase 12: responsive web resume is a separate projection; canvas geometry stays PDF-focused.
+ * Phase 11: design intelligence remains external to canvas geometry; latest interaction fixes preserved.
+ * Phase 9: Templates 2.0 uses this same editable canvas; templates only seed design state.
  * Single-click → floating style popover.
  * Double-click → contenteditable in-place text editing.
  *
@@ -13,8 +18,52 @@ import { createPortal } from "react-dom";
 import { DEFAULT_DESIGN } from "./defaults";
 import type { ResumeData, ResumeDesign, TextStyle, FontFamily, WorkEntry, EducationEntry, BulletPoint, LayoutOverride } from "./types";
 import { formatDateRange, formatEduYears, genId } from "./types";
-import { Link2, Unlink2, List, ListOrdered } from "lucide-react";
+import {
+  getResumeProjects,
+  projectHasContent,
+  splitTechStack,
+  withResumeProjects,
+  type ResumeProjectEntry,
+} from "./resumeProjects";
+import { Link2, Unlink2, List, ListOrdered, Plus, ChevronDown, Square, Circle, Minus, ArrowUp, ArrowDown, Trash2, Image as ImageIcon, User, Upload, Layers3, Eye, EyeOff, Lock, Unlock, GripVertical, X, FileText, Check, MoveHorizontal, MoveVertical } from "lucide-react";
 import { companyLogoDomain } from "@/lib/utils";
+import {
+  applyLinkedDesignObjectChange,
+  canLinkDesignObjects,
+  copyLinkedDesignAppearance,
+  designObjectsForPage,
+  getDesignObjects,
+  linkedDesignObjectPeers,
+  normalizeDesignObjectLinks,
+  removeDesignObject,
+  upsertDesignObject,
+  withDesignObjects,
+  type DesignObjectAttachment,
+  type DesignObjectLayer,
+  type DesignSectionTarget,
+  type ImageDesignKind,
+  type ImageDesignObject,
+  type ImageMask,
+  type ImageShadow,
+  type ResumeDesignObject,
+  type ShapeDesignObject,
+  type SmartDesignKind,
+  type SmartDesignObject,
+} from "./resumeDesignObjects";
+import {
+  prepareResumeImageFile,
+  resumeImageTargetChars,
+} from "./resumeImageCompression";
+import {
+  applyPdfEditorTextStylePatch,
+  isCompanyLogoCrossFormatLinked,
+  isWebTextLinked,
+  setCompanyLogoCrossFormatLinked,
+  setWebTextLinked,
+  syncCompanyLogoSizeFromPdf,
+  syncCompanyLogoSizeFromPdfNow,
+  visualRoleForDesignKey,
+} from "./resumePresentation";
 
 // ── Font mapping: PDF built-ins → CSS ────────────────────────────────────────
 
@@ -130,13 +179,26 @@ function linkedOverride(ov: LayoutOverride | undefined): LinkableLayoutOverride 
   return ov as LinkableLayoutOverride | undefined;
 }
 
-function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, linkKeys, linkLabel, constrainToBounds = false, children }: {
+function SubDrag({
+  overrideKey,
+  defaultWidth,
+  design,
+  inheritFrom,
+  linkKeys,
+  linkLabel,
+  crossFormatCompanyLogo = false,
+  allWorkEntryIds,
+  constrainToBounds = false,
+  children,
+}: {
   overrideKey: string;
   defaultWidth?: number;
   design?: ResumeDesign;
   inheritFrom?: string;
   linkKeys?: string[];
   linkLabel?: string;
+  crossFormatCompanyLogo?: boolean;
+  allWorkEntryIds?: string[];
   constrainToBounds?: boolean;
   children: ReactNode;
 }) {
@@ -348,7 +410,52 @@ function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, linkKeys, lin
       if (Object.keys(next).length) layoutOverrides[key] = next;
       else delete layoutOverrides[key];
     }
-    current.onDesignChange({ ...d, layoutOverrides });
+    let nextDesign: ResumeDesign = { ...d, layoutOverrides };
+
+    if (
+      crossFormatCompanyLogo &&
+      typeof updates.width === "number" &&
+      allWorkEntryIds?.length
+    ) {
+      nextDesign = syncCompanyLogoSizeFromPdf(
+        nextDesign,
+        overrideKey,
+        updates.width,
+        allWorkEntryIds,
+      );
+    }
+
+    current.onDesignChange(nextDesign);
+  }
+
+  function toggleCrossFormatLogoSync(ev: React.MouseEvent) {
+    ev.stopPropagation();
+    ev.preventDefault();
+    if (!crossFormatCompanyLogo || !allWorkEntryIds?.length) return;
+
+    const current = ctxRef.current!;
+    const linked = isCompanyLogoCrossFormatLinked(current.design);
+
+    if (linked) {
+      current.onDesignChange(
+        setCompanyLogoCrossFormatLinked(
+          current.design,
+          false,
+        ),
+      );
+      return;
+    }
+
+    let next = setCompanyLogoCrossFormatLinked(
+      current.design,
+      true,
+    );
+    next = syncCompanyLogoSizeFromPdfNow(
+      next,
+      overrideKey,
+      allWorkEntryIds,
+    );
+    current.onDesignChange(next);
   }
 
   function toggleLinked(ev: React.MouseEvent) {
@@ -680,9 +787,15 @@ function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, linkKeys, lin
             <button
               type="button"
               aria-label={isLinked ? `Unlink ${linkLabel ?? "element"}` : `Link ${linkLabel ?? "element"}`}
-              title={isLinked
-                ? `${linkLabel ?? "Element"} is linked across roles`
-                : `${linkLabel ?? "Element"} is independent`}
+              title={
+                linkLabel === "Company logo"
+                  ? isLinked
+                    ? "All company logos share geometry in the Designed PDF."
+                    : "This company logo has independent PDF geometry."
+                  : isLinked
+                    ? `${linkLabel ?? "Element"} is linked across matching fields`
+                    : `${linkLabel ?? "Element"} is independent`
+              }
               onMouseDown={e => { e.stopPropagation(); e.preventDefault(); }}
               onClick={toggleLinked}
               style={{
@@ -702,10 +815,52 @@ function SubDrag({ overrideKey, defaultWidth, design, inheritFrom, linkKeys, lin
                 whiteSpace: "nowrap",
               }}
             >
-              {isLinked
-                ? <><Link2 size={13} strokeWidth={2.1} /><span>Linked · {linkedPeerKeys(ctx.design).length}</span></>
-                : <><Unlink2 size={13} strokeWidth={2} /><span>Unlinked</span></>}
+              {linkLabel === "Company logo"
+                ? isLinked
+                  ? <><Link2 size={13} strokeWidth={2.1} /><span>All logos · {linkedPeerKeys(ctx.design).length}</span></>
+                  : <><Unlink2 size={13} strokeWidth={2} /><span>Individual logo</span></>
+                : isLinked
+                  ? <><Link2 size={13} strokeWidth={2.1} /><span>Linked · {linkedPeerKeys(ctx.design).length}</span></>
+                  : <><Unlink2 size={13} strokeWidth={2} /><span>Unlinked</span></>}
             </button>
+
+            {crossFormatCompanyLogo && (
+              <button
+                type="button"
+                onMouseDown={e => { e.stopPropagation(); e.preventDefault(); }}
+                onClick={toggleCrossFormatLogoSync}
+                title={
+                  isCompanyLogoCrossFormatLinked(ctx.design)
+                    ? "Logo size is synchronized between Designed PDF and Web. Position remains layout-specific."
+                    : "PDF and Web logo sizes are independent."
+                }
+                style={{
+                  height: 24,
+                  padding: "0 8px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 6,
+                  border: isCompanyLogoCrossFormatLinked(ctx.design)
+                    ? "1px solid #ddd6fe"
+                    : "1px solid #d1d5db",
+                  background: isCompanyLogoCrossFormatLinked(ctx.design)
+                    ? "#f5f3ff"
+                    : "#fff",
+                  color: isCompanyLogoCrossFormatLinked(ctx.design)
+                    ? "#6d28d9"
+                    : "#64748b",
+                  fontSize: 10,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {isCompanyLogoCrossFormatLinked(ctx.design)
+                  ? "⇄ PDF + Web"
+                  : "PDF only"}
+              </button>
+            )}
           </div>
         );
       })(), document.body)}
@@ -871,10 +1026,15 @@ function Sel({ k, ctx, style, block, children, editInfo }: {
 
 // ── Section helpers ───────────────────────────────────────────────────────────
 
-type SectionId = "work" | "education" | "skills" | "bio" | "links";
-const ALL_SECTIONS: SectionId[] = ["work", "education", "skills", "bio", "links"];
+type SectionId = "work" | "projects" | "education" | "skills" | "bio" | "links";
+const ALL_SECTIONS: SectionId[] = ["work", "projects", "education", "skills", "bio", "links"];
 const SECTION_LABELS: Record<SectionId, string> = {
-  work: "Experience", education: "Education", skills: "Skills", bio: "Summary", links: "Links",
+  work: "Experience",
+  projects: "Projects",
+  education: "Education",
+  skills: "Skills",
+  bio: "Summary",
+  links: "Links",
 };
 
 function getOrderedSections(d: ResumeDesign): SectionId[] {
@@ -893,6 +1053,7 @@ function getOrderedSections(d: ResumeDesign): SectionId[] {
 function sectionHasContent(id: SectionId, data: ResumeData): boolean {
   switch (id) {
     case "work":      return data.workEntries.length > 0;
+    case "projects":  return getResumeProjects(data).some(projectHasContent);
     case "education": return data.education.length > 0;
     case "skills":    return data.skills.length > 0;
     case "bio":       return data.summary.trim().length > 0;
@@ -912,6 +1073,8 @@ function sectionHasContent(id: SectionId, data: ResumeData): boolean {
 //   "contact"          — contact line
 //   "work.heading"     — Experience section heading
 //   "work.<entryId>"   — individual work entry (stable entry.id, NOT array index)
+//   "projects.heading" — Projects section heading
+//   "projects.<entryId>" — individual shared project entry
 //   "edu.heading"      — Education section heading
 //   "edu.<entryId>"    — individual education entry
 //   "bio.heading"      — Summary heading
@@ -938,6 +1101,11 @@ function buildSectionBlockIds(sectionId: SectionId, data: ResumeData): string[] 
   switch (sectionId) {
     case "work":
       data.workEntries.forEach(e => ids.push(`work.${e.id}`));
+      break;
+    case "projects":
+      getResumeProjects(data)
+        .filter(projectHasContent)
+        .forEach(project => ids.push(`projects.${project.id}`));
       break;
     case "education":
       data.education.forEach(e => ids.push(`edu.${e.id}`));
@@ -1043,7 +1211,11 @@ function computeBlockPositions(
       // the role itself (treated like visualDy). This prevents one role's drag from
       // shifting all roles below it. Old data with flowDisplacementY on roles is
       // automatically handled: it moves the role but doesn't cascade.
-      const isRoleBlock = (bid.startsWith("work.") || bid.startsWith("edu.")) && !bid.endsWith(".heading");
+      const isRoleBlock = (
+        bid.startsWith("work.") ||
+        bid.startsWith("projects.") ||
+        bid.startsWith("edu.")
+      ) && !bid.endsWith(".heading");
       const fdy = ov.flowDisplacementY ?? 0;
       if (!isRoleBlock) {
         // Accumulate BEFORE the nat-missing check so a displaced non-role block
@@ -1413,6 +1585,345 @@ function WorkC({ data, d, ctx, setData }: SectionProps) {
   );
 }
 
+
+function projectHref(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return /^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+function ProjectTechTags({
+  project,
+  d,
+  ctx,
+  onChange,
+}: {
+  project: ResumeProjectEntry;
+  d: ResumeDesign;
+  ctx: SelectCtx;
+  onChange: (value: string) => void;
+}) {
+  const tags = splitTechStack(project.techStack);
+  const orgCss = toCss(d.entryOrg);
+
+  return (
+    <Sel
+      k="entryOrg"
+      ctx={ctx}
+      block
+      editInfo={{
+        value: project.techStack,
+        onChange,
+      }}
+      style={{
+        ...orgCss,
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 4,
+        marginTop: 3,
+        marginBottom: 3,
+        minHeight: 18,
+      }}
+    >
+      {tags.length ? (
+        tags.map((tag, index) => (
+          <span
+            key={`${project.id}-tech-${index}-${tag}`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              minHeight: 16,
+              padding: "1px 5px",
+              border: "1px solid rgba(71,85,105,.28)",
+              borderRadius: 3,
+              background: "rgba(15,23,42,.045)",
+              color: d.entryOrg.color,
+              fontFamily: orgCss.fontFamily,
+              fontSize: Math.max(7, (d.entryOrg.fontSize ?? 9) - 1),
+              fontWeight: 600,
+              lineHeight: 1.2,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {tag}
+          </span>
+        ))
+      ) : (
+        <em style={{ opacity: 0.3 }}>Tech stack</em>
+      )}
+    </Sel>
+  );
+}
+
+function ProjectsC({ data, d, ctx, setData }: SectionProps) {
+  const projects = getResumeProjects(data).filter(projectHasContent);
+
+  function updateProject(id: string, patch: Partial<ResumeProjectEntry>) {
+    const next = getResumeProjects(data).map(project =>
+      project.id === id ? { ...project, ...patch } : project
+    );
+    setData(withResumeProjects(data, next));
+  }
+
+  return (
+    <>
+      {projects.map(project => (
+        <div key={project.id} style={{ marginBottom: d.entrySpacing }}>
+          <Sel
+            k="entryTitle"
+            ctx={ctx}
+            block
+            style={toCss(d.entryTitle)}
+            editInfo={{
+              value: project.title,
+              onChange: value => updateProject(project.id, { title: value }),
+            }}
+          >
+            {project.title || <em style={{ opacity: 0.3 }}>Project name</em>}
+          </Sel>
+
+          {!!project.techStack.trim() && (
+            <ProjectTechTags
+              project={project}
+              d={d}
+              ctx={ctx}
+              onChange={value =>
+                updateProject(project.id, { techStack: value })
+              }
+            />
+          )}
+
+          <Sel
+            k="entryBullet"
+            ctx={ctx}
+            block
+            style={toCss(d.entryBullet)}
+            editInfo={{
+              value: project.description,
+              onChange: value => updateProject(project.id, { description: value }),
+              multiline: true,
+            }}
+          >
+            {project.description || (
+              <em style={{ opacity: 0.3 }}>Describe this project…</em>
+            )}
+          </Sel>
+
+          {!!project.githubUrl.trim() && (
+            <Sel
+              k="linkItem"
+              ctx={ctx}
+              block
+              style={toCss(d.linkItem)}
+              editInfo={{
+                value: project.githubUrl,
+                onChange: value => updateProject(project.id, { githubUrl: value }),
+              }}
+            >
+              <a
+                href={projectHref(project.githubUrl)}
+                target="_blank"
+                rel="noreferrer"
+                onClick={event => event.stopPropagation()}
+                style={{ color: "inherit", textDecoration: "underline" }}
+              >
+                {project.githubUrl}
+              </a>
+            </Sel>
+          )}
+
+          {!!project.liveUrl.trim() && (
+            <Sel
+              k="linkItem"
+              ctx={ctx}
+              block
+              style={toCss(d.linkItem)}
+              editInfo={{
+                value: project.liveUrl,
+                onChange: value => updateProject(project.id, { liveUrl: value }),
+              }}
+            >
+              <a
+                href={projectHref(project.liveUrl)}
+                target="_blank"
+                rel="noreferrer"
+                onClick={event => event.stopPropagation()}
+                style={{ color: "inherit", textDecoration: "underline" }}
+              >
+                {project.liveUrl}
+              </a>
+            </Sel>
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
+function SingleProjectEntryC({
+  entry: project,
+  data,
+  d,
+  ctx,
+  setData,
+}: SectionProps & { entry: ResumeProjectEntry }) {
+  const projects = getResumeProjects(data);
+  const pfx = `projects.${project.id}`;
+
+  function update(patch: Partial<ResumeProjectEntry>) {
+    setData(withResumeProjects(
+      data,
+      projects.map(item =>
+        item.id === project.id ? { ...item, ...patch } : item
+      ),
+    ));
+  }
+
+  const projectLinkKeys = (
+    part: "title" | "tech" | "body" | "github" | "live",
+  ) => projects.map(item => `projects.${item.id}.${part}`);
+
+  const peerId = projects.find(item => item.id !== project.id)?.id;
+  const peerPfx = peerId ? `projects.${peerId}` : undefined;
+
+  return (
+    <div>
+      <SubDrag
+        overrideKey={`${pfx}.title`}
+        inheritFrom={peerPfx ? `${peerPfx}.title` : undefined}
+        linkKeys={projectLinkKeys("title")}
+        linkLabel="Project title"
+      >
+        <Sel
+          k="entryTitle"
+          ctx={ctx}
+          block
+          style={toCss(d.entryTitle)}
+          editInfo={{
+            value: project.title,
+            onChange: value => update({ title: value }),
+          }}
+        >
+          {project.title || <em style={{ opacity: 0.3 }}>Project name</em>}
+        </Sel>
+      </SubDrag>
+
+      <SubDrag
+        overrideKey={`${pfx}.tech`}
+        inheritFrom={peerPfx ? `${peerPfx}.tech` : undefined}
+        linkKeys={projectLinkKeys("tech")}
+        linkLabel="Project tech"
+      >
+        <ProjectTechTags
+          project={project}
+          d={d}
+          ctx={ctx}
+          onChange={value => update({ techStack: value })}
+        />
+      </SubDrag>
+
+      <SubDrag
+        overrideKey={`${pfx}.body`}
+        inheritFrom={peerPfx ? `${peerPfx}.body` : undefined}
+        linkKeys={projectLinkKeys("body")}
+        linkLabel="Project description"
+        constrainToBounds
+      >
+        <Sel
+          k="entryBullet"
+          ctx={ctx}
+          block
+          style={{
+            ...toCss(d.entryBullet),
+            maxWidth: "100%",
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
+          }}
+          editInfo={{
+            value: project.description,
+            onChange: value => update({ description: value }),
+            multiline: true,
+          }}
+        >
+          {project.description || (
+            <em style={{ opacity: 0.3 }}>Describe this project…</em>
+          )}
+        </Sel>
+      </SubDrag>
+
+      {!!project.githubUrl.trim() && (
+        <SubDrag
+          overrideKey={`${pfx}.github`}
+          inheritFrom={peerPfx ? `${peerPfx}.github` : undefined}
+          linkKeys={projectLinkKeys("github")}
+          linkLabel="GitHub link"
+          constrainToBounds
+        >
+          <Sel
+            k="linkItem"
+            ctx={ctx}
+            block
+            style={{
+              ...toCss(d.linkItem),
+              maxWidth: "100%",
+              overflowWrap: "anywhere",
+            }}
+            editInfo={{
+              value: project.githubUrl,
+              onChange: value => update({ githubUrl: value }),
+            }}
+          >
+            <a
+              href={projectHref(project.githubUrl)}
+              target="_blank"
+              rel="noreferrer"
+              onClick={event => event.stopPropagation()}
+              style={{ color: "inherit", textDecoration: "underline" }}
+            >
+              {project.githubUrl}
+            </a>
+          </Sel>
+        </SubDrag>
+      )}
+
+      {!!project.liveUrl.trim() && (
+        <SubDrag
+          overrideKey={`${pfx}.live`}
+          inheritFrom={peerPfx ? `${peerPfx}.live` : undefined}
+          linkKeys={projectLinkKeys("live")}
+          linkLabel="Live project link"
+          constrainToBounds
+        >
+          <Sel
+            k="linkItem"
+            ctx={ctx}
+            block
+            style={{
+              ...toCss(d.linkItem),
+              maxWidth: "100%",
+              overflowWrap: "anywhere",
+            }}
+            editInfo={{
+              value: project.liveUrl,
+              onChange: value => update({ liveUrl: value }),
+            }}
+          >
+            <a
+              href={projectHref(project.liveUrl)}
+              target="_blank"
+              rel="noreferrer"
+              onClick={event => event.stopPropagation()}
+              style={{ color: "inherit", textDecoration: "underline" }}
+            >
+              {project.liveUrl}
+            </a>
+          </Sel>
+        </SubDrag>
+      )}
+    </div>
+  );
+}
+
 function EduC({ data, d, ctx, setData }: SectionProps) {
   const dragFromRef = useRef<number | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
@@ -1582,8 +2093,9 @@ function LinksC({ data, d, ctx, setData }: SectionProps) {
 
 function SectionContent({ id, data, d, ctx, setData }: SectionProps & { id: SectionId }) {
   switch (id) {
-    case "work":      return <WorkC   data={data} d={d} ctx={ctx} setData={setData} />;
-    case "education": return <EduC    data={data} d={d} ctx={ctx} setData={setData} />;
+    case "work":      return <WorkC     data={data} d={d} ctx={ctx} setData={setData} />;
+    case "projects":  return <ProjectsC data={data} d={d} ctx={ctx} setData={setData} />;
+    case "education": return <EduC      data={data} d={d} ctx={ctx} setData={setData} />;
     case "skills":    return <SkillsC data={data} d={d} ctx={ctx} setData={setData} />;
     case "bio":       return <BioC    data={data} d={d} ctx={ctx} setData={setData} />;
     case "links":     return <LinksC  data={data} d={d} ctx={ctx} setData={setData} />;
@@ -1830,8 +2342,15 @@ function SingleWorkEntryC({ entry: e, i, data, d, ctx, setData }: SectionProps &
   return (
     <div>
       {d.showCompanyLogos && e.company && (
-        <SubDrag overrideKey={`${pfx}.logo`} defaultWidth={20} design={d}
-          linkKeys={workLinkKeys("logo")} linkLabel="Company logo">
+        <SubDrag
+          overrideKey={`${pfx}.logo`}
+          defaultWidth={20}
+          design={d}
+          linkKeys={workLinkKeys("logo")}
+          linkLabel="Company logo"
+          crossFormatCompanyLogo
+          allWorkEntryIds={data.workEntries.map(entry => entry.id)}
+        >
           <CanvasLogo company={e.company} logoUrl={e.logoUrl} />
         </SubDrag>
       )}
@@ -2047,9 +2566,18 @@ function SingleEduEntryC({ entry: e, i, data, d, ctx, setData }: SectionProps & 
   }
   const degreeField = [e.degree, e.field].filter(Boolean).join(", ");
   const pfx = `edu.${e.id}`;
+
+  // Phase 7: repeated education fields use the same linked-by-default geometry
+  // model as work roles. Content stays unique; layout edits stay consistent.
+  const eduLinkKeys = (part: "title" | "org" | "date") =>
+    data.education.map(edu => `edu.${edu.id}.${part}`);
+  const firstPeerId = data.education.find(edu => edu.id !== e.id)?.id;
+  const peerPfx = firstPeerId ? `edu.${firstPeerId}` : undefined;
+
   return (
     <div>
-      <SubDrag overrideKey={`${pfx}.title`}>
+      <SubDrag overrideKey={`${pfx}.title`} inheritFrom={peerPfx ? `${peerPfx}.title` : undefined}
+        linkKeys={eduLinkKeys("title")} linkLabel="School">
         {d.entryDate.position === "right" ? (
           <div style={{ display: "flex", alignItems: "flex-start" }}>
             <Sel k="entryTitle" ctx={ctx} style={{ ...toCss(d.entryTitle), flex: 1, marginRight: 8 }}
@@ -2068,7 +2596,8 @@ function SingleEduEntryC({ entry: e, i, data, d, ctx, setData }: SectionProps & 
         )}
       </SubDrag>
       {degreeField && (
-        <SubDrag overrideKey={`${pfx}.org`}>
+        <SubDrag overrideKey={`${pfx}.org`} inheritFrom={peerPfx ? `${peerPfx}.org` : undefined}
+          linkKeys={eduLinkKeys("org")} linkLabel="Degree">
           <Sel k="entryOrg" ctx={ctx} block style={toCss(d.entryOrg)}
             editInfo={{ value: degreeField, onChange: v => {
               const [deg, ...rest] = v.split(",");
@@ -2079,7 +2608,8 @@ function SingleEduEntryC({ entry: e, i, data, d, ctx, setData }: SectionProps & 
         </SubDrag>
       )}
       {d.entryDate.position === "below" && formatEduYears(e.startYear, e.endYear, e.current) && (
-        <SubDrag overrideKey={`${pfx}.date`}>
+        <SubDrag overrideKey={`${pfx}.date`} inheritFrom={peerPfx ? `${peerPfx}.date` : undefined}
+          linkKeys={eduLinkKeys("date")} linkLabel="Education date">
           <Sel k="entryDate" ctx={ctx} block style={toCss(d.entryDate)}>
             {formatEduYears(e.startYear, e.endYear, e.current)}
           </Sel>
@@ -2236,7 +2766,11 @@ function DraggableBlock({ id, computedPos, override, scale, design, onDesignChan
     if ((ev.target as HTMLElement).closest("[data-handle]")) return;
     const startCX = ev.clientX, startCY = ev.clientY;
     const startPX = posRef.current.x, startPY = posRef.current.y;
-    const isRoleBlock = (id.startsWith("work.") || id.startsWith("edu.")) && !id.endsWith(".heading");
+    const isRoleBlock = (
+      id.startsWith("work.") ||
+      id.startsWith("projects.") ||
+      id.startsWith("edu.")
+    ) && !id.endsWith(".heading");
     const startVisualDx          = override?.visualDx          ?? 0;
     const startVisualDy          = override?.visualDy          ?? 0;
     const startFlowDisplacementY = override?.flowDisplacementY ?? 0;
@@ -2408,7 +2942,10 @@ function DraggableBlock({ id, computedPos, override, scale, design, onDesignChan
     onChangeRef.current({ ...d, layoutOverrides });
   }
 
-  const isEntryBlock = id.startsWith("work.") || id.startsWith("edu.");
+  const isEntryBlock =
+    id.startsWith("work.") ||
+    id.startsWith("projects.") ||
+    id.startsWith("edu.");
   const hasChildOverrides = isEntryBlock &&
     Object.keys(design.layoutOverrides ?? {}).some(k => k.startsWith(id + "."));
 
@@ -2499,6 +3036,1207 @@ function DraggableBlock({ id, computedPos, override, scale, design, onDesignChan
   );
 }
 
+
+// ── Design object layer ───────────────────────────────────────────────────────
+//
+// Phases 3-8 add smart resume-aware decorative components.
+//
+// Free design objects still use their own x/y/width/height and never participate in
+// resume flow. Attached backgrounds are different only at render time: their geometry
+// is derived from page/header/section bounds, so they automatically grow and move with
+// the resume content they decorate.
+//
+// Persisted structured resume content remains completely untouched.
+
+interface ResolvedDesignObject {
+  source: ResumeDesignObject;
+  rendered: ResumeDesignObject;
+}
+
+function designObjectIsResumeDriven(object: ResumeDesignObject): boolean {
+  return (object.type === "shape" && !!object.attachment) || object.type === "smart";
+}
+
+function designObjectDefaultLayer(object: ResumeDesignObject): DesignObjectLayer {
+  if (object.layer) return object.layer;
+  if (object.type === "image") return "foreground";
+  if (object.type === "smart" && (object.smartKind === "timeline" || object.smartKind === "section-divider")) {
+    return "foreground";
+  }
+  return "background";
+}
+
+interface DesignSnapGuideState {
+  page: number;
+  vertical: number[];
+  horizontal: number[];
+  spacing: Array<
+    | { orientation: "horizontal"; startA: number; endA: number; startB: number; endB: number; cross: number; gap: number }
+    | { orientation: "vertical"; startA: number; endA: number; startB: number; endB: number; cross: number; gap: number }
+  >;
+}
+
+interface DesignRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+function designRectForObject(object: ResumeDesignObject): DesignRect {
+  return { x: object.x, y: object.y, w: object.width, h: object.height };
+}
+
+function unionDesignRects(rects: DesignRect[]): DesignRect | null {
+  if (rects.length === 0) return null;
+  const x = Math.min(...rects.map(r => r.x));
+  const y = Math.min(...rects.map(r => r.y));
+  const right = Math.max(...rects.map(r => r.x + r.w));
+  const bottom = Math.max(...rects.map(r => r.y + r.h));
+  return { x, y, w: right - x, h: bottom - y };
+}
+
+function selectionBoundingClientRect(ids: string[], preferredPage?: number): DOMRect | null {
+  const rects: DOMRect[] = [];
+
+  for (const id of ids) {
+    const candidates = renderedDesignObjectElements(id);
+    const preferred = preferredPage == null
+      ? candidates[0]
+      : candidates.find(el => el.dataset.designObjectPage === String(preferredPage)) ?? candidates[0];
+    if (preferred) rects.push(preferred.getBoundingClientRect());
+  }
+
+  if (rects.length === 0) return null;
+  const left = Math.min(...rects.map(r => r.left));
+  const top = Math.min(...rects.map(r => r.top));
+  const right = Math.max(...rects.map(r => r.right));
+  const bottom = Math.max(...rects.map(r => r.bottom));
+
+  return new DOMRect(left, top, right - left, bottom - top);
+}
+
+function snapDesignRect(
+  rect: DesignRect,
+  targets: DesignRect[],
+  pageW: number,
+  pageH: number,
+  page: number,
+  threshold = 5,
+): { x: number; y: number; guides: DesignSnapGuideState } {
+  const xAnchors = [
+    { value: rect.x, kind: "left" as const },
+    { value: rect.x + rect.w / 2, kind: "center" as const },
+    { value: rect.x + rect.w, kind: "right" as const },
+  ];
+  const yAnchors = [
+    { value: rect.y, kind: "top" as const },
+    { value: rect.y + rect.h / 2, kind: "middle" as const },
+    { value: rect.y + rect.h, kind: "bottom" as const },
+  ];
+
+  const xTargets = [0, pageW / 2, pageW];
+  const yTargets = [0, pageH / 2, pageH];
+
+  targets.forEach(target => {
+    xTargets.push(target.x, target.x + target.w / 2, target.x + target.w);
+    yTargets.push(target.y, target.y + target.h / 2, target.y + target.h);
+  });
+
+  let bestDx: number | null = null;
+  let bestXGuide: number | null = null;
+  for (const anchor of xAnchors) {
+    for (const target of xTargets) {
+      const delta = target - anchor.value;
+      if (Math.abs(delta) <= threshold && (bestDx == null || Math.abs(delta) < Math.abs(bestDx))) {
+        bestDx = delta;
+        bestXGuide = target;
+      }
+    }
+  }
+
+  let bestDy: number | null = null;
+  let bestYGuide: number | null = null;
+  for (const anchor of yAnchors) {
+    for (const target of yTargets) {
+      const delta = target - anchor.value;
+      if (Math.abs(delta) <= threshold && (bestDy == null || Math.abs(delta) < Math.abs(bestDy))) {
+        bestDy = delta;
+        bestYGuide = target;
+      }
+    }
+  }
+
+  const spacing: DesignSnapGuideState["spacing"] = [];
+
+  // Equal horizontal spacing: if the moving rectangle sits between two nearby
+  // objects, snap it so the left/right gaps are identical.
+  const leftCandidates = targets
+    .filter(target => target.x + target.w <= rect.x + threshold)
+    .sort((a, b) => (b.x + b.w) - (a.x + a.w));
+  const rightCandidates = targets
+    .filter(target => target.x >= rect.x + rect.w - threshold)
+    .sort((a, b) => a.x - b.x);
+
+  const left = leftCandidates[0];
+  const right = rightCandidates[0];
+  if (left && right && left.x + left.w <= right.x) {
+    const idealX = (left.x + left.w + right.x - rect.w) / 2;
+    const delta = idealX - rect.x;
+    if (
+      Math.abs(delta) <= threshold &&
+      (bestDx == null || Math.abs(delta) < Math.abs(bestDx))
+    ) {
+      bestDx = delta;
+      bestXGuide = null;
+      const snappedX = rect.x + delta;
+      const gap = Math.max(0, snappedX - (left.x + left.w));
+      spacing.push({
+        orientation: "horizontal",
+        startA: left.x + left.w,
+        endA: snappedX,
+        startB: snappedX + rect.w,
+        endB: right.x,
+        cross: snappedX < pageW / 2 ? rect.y + rect.h / 2 : rect.y + rect.h / 2,
+        gap,
+      });
+    }
+  }
+
+  // Equal vertical spacing.
+  const topCandidates = targets
+    .filter(target => target.y + target.h <= rect.y + threshold)
+    .sort((a, b) => (b.y + b.h) - (a.y + a.h));
+  const bottomCandidates = targets
+    .filter(target => target.y >= rect.y + rect.h - threshold)
+    .sort((a, b) => a.y - b.y);
+
+  const topTarget = topCandidates[0];
+  const bottomTarget = bottomCandidates[0];
+  if (topTarget && bottomTarget && topTarget.y + topTarget.h <= bottomTarget.y) {
+    const idealY = (topTarget.y + topTarget.h + bottomTarget.y - rect.h) / 2;
+    const delta = idealY - rect.y;
+    if (
+      Math.abs(delta) <= threshold &&
+      (bestDy == null || Math.abs(delta) < Math.abs(bestDy))
+    ) {
+      bestDy = delta;
+      bestYGuide = null;
+      const snappedY = rect.y + delta;
+      const gap = Math.max(0, snappedY - (topTarget.y + topTarget.h));
+      spacing.push({
+        orientation: "vertical",
+        startA: topTarget.y + topTarget.h,
+        endA: snappedY,
+        startB: snappedY + rect.h,
+        endB: bottomTarget.y,
+        cross: rect.x + rect.w / 2,
+        gap,
+      });
+    }
+  }
+
+  const x = clampDesignObject(rect.x + (bestDx ?? 0), 0, Math.max(0, pageW - rect.w));
+  const y = clampDesignObject(rect.y + (bestDy ?? 0), 0, Math.max(0, pageH - rect.h));
+
+  return {
+    x,
+    y,
+    guides: {
+      page,
+      vertical: bestXGuide == null ? [] : [bestXGuide],
+      horizontal: bestYGuide == null ? [] : [bestYGuide],
+      spacing,
+    },
+  };
+}
+
+function DesignSnapGuides({
+  guides,
+  pageW,
+  pageH,
+}: {
+  guides: DesignSnapGuideState | null;
+  pageW: number;
+  pageH: number;
+}) {
+  if (!guides) return null;
+
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 95,
+        pointerEvents: "none",
+        overflow: "hidden",
+      }}
+    >
+      {guides.vertical.map((x, i) => (
+        <div
+          key={`v-${i}-${x}`}
+          style={{
+            position: "absolute",
+            left: x,
+            top: 0,
+            width: 1,
+            height: pageH,
+            background: "#a855f7",
+            boxShadow: "0 0 0 0.5px rgba(168,85,247,0.15)",
+          }}
+        />
+      ))}
+
+      {guides.horizontal.map((y, i) => (
+        <div
+          key={`h-${i}-${y}`}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: y,
+            width: pageW,
+            height: 1,
+            background: "#a855f7",
+            boxShadow: "0 0 0 0.5px rgba(168,85,247,0.15)",
+          }}
+        />
+      ))}
+
+      {guides.spacing.map((guide, i) => {
+        if (guide.orientation === "horizontal") {
+          return (
+            <div key={`space-h-${i}`}>
+              {[{ a: guide.startA, b: guide.endA }, { a: guide.startB, b: guide.endB }].map((seg, si) => (
+                <div
+                  key={si}
+                  style={{
+                    position: "absolute",
+                    left: Math.min(seg.a, seg.b),
+                    top: guide.cross,
+                    width: Math.abs(seg.b - seg.a),
+                    height: 1,
+                    borderTop: "1px dashed #a855f7",
+                  }}
+                />
+              ))}
+              <span
+                style={{
+                  position: "absolute",
+                  left: (guide.startA + guide.endA) / 2,
+                  top: guide.cross - 13,
+                  transform: "translateX(-50%)",
+                  padding: "1px 3px",
+                  borderRadius: 3,
+                  background: "#faf5ff",
+                  color: "#7e22ce",
+                  font: "600 8px system-ui, sans-serif",
+                }}
+              >
+                {Math.round(guide.gap)}
+              </span>
+            </div>
+          );
+        }
+
+        return (
+          <div key={`space-v-${i}`}>
+            {[{ a: guide.startA, b: guide.endA }, { a: guide.startB, b: guide.endB }].map((seg, si) => (
+              <div
+                key={si}
+                style={{
+                  position: "absolute",
+                  left: guide.cross,
+                  top: Math.min(seg.a, seg.b),
+                  width: 1,
+                  height: Math.abs(seg.b - seg.a),
+                  borderLeft: "1px dashed #a855f7",
+                }}
+              />
+            ))}
+            <span
+              style={{
+                position: "absolute",
+                left: guide.cross + 4,
+                top: (guide.startA + guide.endA) / 2 - 5,
+                padding: "1px 3px",
+                borderRadius: 3,
+                background: "#faf5ff",
+                color: "#7e22ce",
+                font: "600 8px system-ui, sans-serif",
+              }}
+            >
+              {Math.round(guide.gap)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function clampDesignObject(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
+function renderedDesignObjectElements(id: string): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>("[data-design-object-id]"))
+    .filter(el => el.dataset.designObjectId === id);
+}
+
+function renderedDesignSelectionElements(id: string): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>("[data-design-object-selection-id]"))
+    .filter(el => el.dataset.designObjectSelectionId === id);
+}
+
+function updateLiveDesignObjectStyle(
+  id: string,
+  style: Partial<Pick<CSSStyleDeclaration, "left" | "top" | "width" | "height" | "transform">>,
+) {
+  [...renderedDesignObjectElements(id), ...renderedDesignSelectionElements(id)].forEach(el => {
+    if (style.left      !== undefined) el.style.left      = style.left;
+    if (style.top       !== undefined) el.style.top       = style.top;
+    if (style.width     !== undefined) el.style.width     = style.width;
+    if (style.height    !== undefined) el.style.height    = style.height;
+    if (style.transform !== undefined) el.style.transform = style.transform;
+  });
+}
+
+function CanvasDesignObject({
+  sourceObject,
+  object,
+  page,
+  scale,
+  pageW,
+  pageH,
+  selectedIds,
+  allResolvedObjects,
+  onSelect,
+  onChange,
+  onChangeMany,
+  onGuidesChange,
+}: {
+  sourceObject: ResumeDesignObject;
+  object: ResumeDesignObject;
+  page: number;
+  scale: number;
+  pageW: number;
+  pageH: number;
+  selectedIds: string[];
+  allResolvedObjects: ResolvedDesignObject[];
+  onSelect: (
+    source: ResumeDesignObject,
+    rendered: ResumeDesignObject,
+    rect: DOMRect | null,
+    additive: boolean,
+  ) => void;
+  onChange: (object: ResumeDesignObject) => void;
+  onChangeMany: (objects: ResumeDesignObject[]) => void;
+  onGuidesChange: (guides: DesignSnapGuideState | null) => void;
+}) {
+  const ref = useRef<HTMLElement | null>(null);
+  const attached = designObjectIsResumeDriven(sourceObject);
+
+  function beginMove(ev: React.MouseEvent) {
+    const additive = ev.shiftKey || ev.metaKey || ev.ctrlKey;
+
+    if (attached || sourceObject.locked) {
+      ev.stopPropagation();
+      onSelect(sourceObject, object, ref.current?.getBoundingClientRect() ?? null, additive);
+      return;
+    }
+
+    if (ev.button !== 0) return;
+    ev.stopPropagation();
+
+    onSelect(sourceObject, object, ref.current?.getBoundingClientRect() ?? null, additive);
+
+    // Modifier-click is selection-only. This avoids accidentally nudging an object
+    // while the user is building a multi-selection.
+    if (additive) return;
+
+    ev.preventDefault();
+
+    const groupedIds = sourceObject.groupId
+      ? allResolvedObjects
+          .filter(item => item.source.groupId === sourceObject.groupId)
+          .map(item => item.source.id)
+      : [];
+
+    const currentSelectionCanMoveAsOne =
+      selectedIds.includes(sourceObject.id) && selectedIds.length > 1;
+
+    const moveIds = new Set(
+      currentSelectionCanMoveAsOne
+        ? selectedIds
+        : groupedIds.length > 1
+        ? groupedIds
+        : [sourceObject.id]
+    );
+
+    const moving = allResolvedObjects.filter(item =>
+      moveIds.has(item.source.id) &&
+      !item.source.locked &&
+      !(item.source.type === "shape" && !!item.source.attachment)
+    );
+
+    if (moving.length === 0) return;
+
+    const movingRects = moving.map(item => designRectForObject(item.rendered));
+    const groupRect = unionDesignRects(movingRects);
+    if (!groupRect) return;
+
+    const targetRects = allResolvedObjects
+      .filter(item => !moveIds.has(item.source.id))
+      .map(item => designRectForObject(item.rendered));
+
+    const startClientX = ev.clientX;
+    const startClientY = ev.clientY;
+    const starts = moving.map(item => ({
+      source: item.source,
+      rendered: item.rendered,
+      x: item.source.x,
+      y: item.source.y,
+    }));
+
+    let finalDx = 0;
+    let finalDy = 0;
+
+    function move(e: MouseEvent) {
+      const rawDx = (e.clientX - startClientX) / scale;
+      const rawDy = (e.clientY - startClientY) / scale;
+
+      const rawGroup = {
+        ...groupRect,
+        x: clampDesignObject(groupRect.x + rawDx, 0, Math.max(0, pageW - groupRect.w)),
+        y: clampDesignObject(groupRect.y + rawDy, 0, Math.max(0, pageH - groupRect.h)),
+      };
+
+      const snapped = snapDesignRect(rawGroup, targetRects, pageW, pageH, page);
+      finalDx = snapped.x - groupRect.x;
+      finalDy = snapped.y - groupRect.y;
+      onGuidesChange(snapped.guides);
+
+      for (const start of starts) {
+        updateLiveDesignObjectStyle(start.source.id, {
+          left: `${start.rendered.x + finalDx}px`,
+          top: `${start.rendered.y + finalDy}px`,
+        });
+      }
+    }
+
+    function up() {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      onGuidesChange(null);
+
+      const next = starts.map(start => ({
+        ...start.source,
+        x: start.x + finalDx,
+        y: start.y + finalDy,
+      } as ResumeDesignObject));
+
+      onChangeMany(next);
+    }
+
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  }
+
+  const selectedLinkedPeer = !!sourceObject.linkId && allResolvedObjects.some(item =>
+    selectedIds.includes(item.source.id) && item.source.linkId === sourceObject.linkId
+  );
+
+  const common: CSSProperties = {
+    position: "absolute",
+    left: object.x,
+    top: object.y,
+    width: Math.max(0, object.width),
+    height: Math.max(0, object.height),
+    transform: object.rotation ? `rotate(${object.rotation}deg)` : undefined,
+    transformOrigin: "center center",
+    opacity: object.opacity ?? 1,
+    zIndex: object.zIndex ?? 0,
+    boxSizing: "border-box",
+    pointerEvents: "auto",
+    userSelect: "none",
+    cursor: attached ? "default" : sourceObject.locked ? "not-allowed" : "move",
+    boxShadow: selectedLinkedPeer
+      ? selectedIds.includes(sourceObject.id)
+        ? "0 0 0 1px rgba(245,158,11,0.42), 0 0 12px 3px rgba(245,158,11,0.14)"
+        : "0 0 0 1px rgba(245,158,11,0.28), 0 0 8px 2px rgba(245,158,11,0.10)"
+      : undefined,
+  };
+
+  switch (object.type) {
+    case "shape": {
+      if (object.shape === "line") {
+        return (
+          <div
+            ref={el => { ref.current = el; }}
+            data-design-object-id={object.id}
+            data-design-object-page={page}
+            data-design-object-type={object.type}
+            onMouseDown={beginMove}
+            onClick={e => e.stopPropagation()}
+            style={{
+              ...common,
+              height: Math.max(object.strokeWidth ?? object.height ?? 1, 1),
+              background: object.stroke ?? object.fill ?? "#111827",
+              borderRadius: 999,
+            }}
+          />
+        );
+      }
+
+      return (
+        <div
+          ref={el => { ref.current = el; }}
+          data-design-object-id={object.id}
+          data-design-object-page={page}
+          data-design-object-type={object.type}
+          onMouseDown={beginMove}
+          onClick={e => e.stopPropagation()}
+          style={{
+            ...common,
+            background: object.fill ?? "transparent",
+            border: object.stroke && (object.strokeWidth ?? 0) > 0
+              ? `${object.strokeWidth ?? 1}px solid ${object.stroke}`
+              : undefined,
+            borderRadius: object.shape === "ellipse"
+              ? "50%"
+              : object.borderRadius ?? 0,
+          }}
+        />
+      );
+    }
+
+    case "image": {
+      const mask = object.mask ?? (object.imageKind === "photo" ? "circle" : "square");
+      const radius =
+        mask === "circle" ? "50%" :
+        mask === "rounded" ? object.borderRadius ?? 12 :
+        0;
+
+      const shadow =
+        object.shadow === "soft"   ? "0 2px 8px rgba(15,23,42,0.16)" :
+        object.shadow === "medium" ? "0 5px 16px rgba(15,23,42,0.20)" :
+        object.shadow === "strong" ? "0 9px 28px rgba(15,23,42,0.27)" :
+        undefined;
+
+      return (
+        <div
+          ref={el => { ref.current = el; }}
+          data-design-object-id={object.id}
+          data-design-object-page={page}
+          data-design-object-type={object.type}
+          onMouseDown={beginMove}
+          onClick={e => e.stopPropagation()}
+          style={{
+            ...common,
+            overflow: "hidden",
+            borderRadius: radius,
+            border: (object.borderWidth ?? 0) > 0
+              ? `${object.borderWidth}px solid ${object.borderColor ?? "#ffffff"}`
+              : undefined,
+            boxShadow: shadow,
+            background: object.backgroundColor ?? "transparent",
+          }}
+        >
+          <img
+            src={object.src}
+            alt={object.alt ?? ""}
+            draggable={false}
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "block",
+              objectFit: object.objectFit ?? "cover",
+              objectPosition: `${clampDesignObject(object.cropX ?? 50, 0, 100)}% ${clampDesignObject(object.cropY ?? 50, 0, 100)}%`,
+              pointerEvents: "none",
+              userSelect: "none",
+            }}
+          />
+        </div>
+      );
+    }
+
+    case "text":
+      return (
+        <div
+          ref={el => { ref.current = el; }}
+          data-design-object-id={object.id}
+          data-design-object-page={page}
+          data-design-object-type={object.type}
+          onMouseDown={beginMove}
+          onClick={e => e.stopPropagation()}
+          style={{
+            ...common,
+            color: object.color ?? "#111827",
+            fontFamily: object.fontFamily,
+            fontSize: object.fontSize,
+            fontWeight: object.fontWeight,
+            fontStyle: object.fontStyle,
+            textAlign: object.textAlign,
+            whiteSpace: "pre-wrap",
+            overflow: "hidden",
+          }}
+        >
+          {object.text}
+        </div>
+      );
+
+    case "smart": {
+      const strokeWidth = Math.max(1, object.strokeWidth ?? 2);
+      const fill = object.fill ?? "#7c3aed";
+      const stroke = object.stroke ?? fill;
+      const radius = object.borderRadius ?? 0;
+
+      if (object.smartKind === "timeline") {
+        const points = object.resolvedPoints ?? [];
+        const dotSize = Math.max(4, object.dotSize ?? 8);
+        const centerX = Math.max(dotSize, object.width) / 2;
+        const first = points[0] ?? dotSize / 2;
+        const last = points[points.length - 1] ?? first;
+
+        return (
+          <div
+            ref={el => { ref.current = el; }}
+            data-design-object-id={object.id}
+            data-design-object-page={page}
+            data-design-object-type={object.type}
+            onMouseDown={beginMove}
+            onClick={e => e.stopPropagation()}
+            style={{ ...common, background: "transparent" }}
+          >
+            {points.length > 1 && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: centerX - strokeWidth / 2,
+                  top: first,
+                  width: strokeWidth,
+                  height: Math.max(0, last - first),
+                  borderRadius: 999,
+                  background: stroke,
+                  pointerEvents: "none",
+                }}
+              />
+            )}
+            {points.map((point, index) => (
+              <div
+                key={index}
+                style={{
+                  position: "absolute",
+                  left: centerX - dotSize / 2,
+                  top: point - dotSize / 2,
+                  width: dotSize,
+                  height: dotSize,
+                  borderRadius: "50%",
+                  background: fill,
+                  border: `${Math.max(1, Math.min(2, strokeWidth))}px solid ${stroke}`,
+                  boxSizing: "border-box",
+                  pointerEvents: "none",
+                }}
+              />
+            ))}
+          </div>
+        );
+      }
+
+      return (
+        <div
+          ref={el => { ref.current = el; }}
+          data-design-object-id={object.id}
+          data-design-object-page={page}
+          data-design-object-type={object.type}
+          onMouseDown={beginMove}
+          onClick={e => e.stopPropagation()}
+          style={{
+            ...common,
+            background: object.smartKind === "section-divider" ? stroke : fill,
+            borderRadius: radius,
+          }}
+        />
+      );
+    }
+
+    case "icon":
+      return null;
+  }
+}
+
+function CanvasDesignObjectLayer({
+  objects,
+  allResolvedObjects,
+  page,
+  scale,
+  pageW,
+  pageH,
+  selectedIds,
+  onSelect,
+  onChange,
+  onChangeMany,
+  onGuidesChange,
+}: {
+  objects: ResolvedDesignObject[];
+  allResolvedObjects: ResolvedDesignObject[];
+  page: number;
+  scale: number;
+  pageW: number;
+  pageH: number;
+  selectedIds: string[];
+  onSelect: (
+    source: ResumeDesignObject,
+    rendered: ResumeDesignObject,
+    rect: DOMRect | null,
+    additive: boolean,
+  ) => void;
+  onChange: (object: ResumeDesignObject) => void;
+  onChangeMany: (objects: ResumeDesignObject[]) => void;
+  onGuidesChange: (guides: DesignSnapGuideState | null) => void;
+}) {
+  if (objects.length === 0) return null;
+
+  return (
+    <div
+      data-design-object-page-layer={page}
+      style={{
+        position: "absolute",
+        inset: 0,
+        overflow: "hidden",
+        pointerEvents: "none",
+        zIndex: 0,
+      }}
+    >
+      {objects.map(({ source, rendered }) => (
+        <CanvasDesignObject
+          key={`${source.id}:${page}`}
+          sourceObject={source}
+          object={rendered}
+          page={page}
+          scale={scale}
+          pageW={pageW}
+          pageH={pageH}
+          selectedIds={selectedIds}
+          allResolvedObjects={allResolvedObjects}
+          onSelect={onSelect}
+          onChange={onChange}
+          onChangeMany={onChangeMany}
+          onGuidesChange={onGuidesChange}
+        />
+      ))}
+    </div>
+  );
+}
+
+const DESIGN_HANDLE = 8;
+
+function CanvasDesignObjectSelectionOverlay({
+  sourceObject,
+  object,
+  scale,
+  pageW,
+  pageH,
+  snapTargets,
+  page,
+  onChange,
+  onRectChange,
+  onGuidesChange,
+}: {
+  sourceObject: ResumeDesignObject;
+  object: ResumeDesignObject;
+  scale: number;
+  pageW: number;
+  pageH: number;
+  snapTargets: ResumeDesignObject[];
+  page: number;
+  onChange: (object: ResumeDesignObject) => void;
+  onRectChange: (rect: DOMRect | null) => void;
+  onGuidesChange: (guides: DesignSnapGuideState | null) => void;
+}) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const line = object.type === "shape" && object.shape === "line";
+  const attached = designObjectIsResumeDriven(sourceObject);
+  const locked = !!sourceObject.locked || attached;
+  const visualH = line ? Math.max(12, object.height) : Math.max(12, object.height);
+  const visualTop = line ? object.y - (visualH - object.height) / 2 : object.y;
+
+  function commitWithRect(next: ResumeDesignObject) {
+    onChange(next);
+    requestAnimationFrame(() => {
+      onRectChange(overlayRef.current?.getBoundingClientRect() ?? null);
+    });
+  }
+
+  function beginMove(ev: React.MouseEvent) {
+    if (locked || ev.button !== 0) return;
+    if ((ev.target as HTMLElement).closest("[data-design-object-handle]")) return;
+    ev.stopPropagation();
+    ev.preventDefault();
+
+    const sx = ev.clientX, sy = ev.clientY;
+    const ox = object.x, oy = object.y;
+    let nx = ox, ny = oy;
+
+    const targetRects = snapTargets
+      .filter(target => target.id !== object.id)
+      .map(designRectForObject);
+
+    function move(e: MouseEvent) {
+      const raw = {
+        x: clampDesignObject(ox + (e.clientX - sx) / scale, 0, Math.max(0, pageW - object.width)),
+        y: clampDesignObject(oy + (e.clientY - sy) / scale, 0, Math.max(0, pageH - object.height)),
+        w: object.width,
+        h: object.height,
+      };
+
+      const snapped = snapDesignRect(raw, targetRects, pageW, pageH, page);
+      nx = snapped.x;
+      ny = snapped.y;
+      onGuidesChange(snapped.guides);
+
+      const overlayY = line ? ny - (visualH - object.height) / 2 : ny;
+      updateLiveDesignObjectStyle(object.id, { left: `${nx}px`, top: `${overlayY}px` });
+      renderedDesignObjectElements(object.id).forEach(el => { el.style.top = `${ny}px`; });
+    }
+
+    function up() {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      onGuidesChange(null);
+      commitWithRect({ ...sourceObject, x: nx, y: ny } as ResumeDesignObject);
+    }
+
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  }
+
+  function beginResize(ev: React.MouseEvent, horizontal?: "left" | "right", vertical?: "top" | "bottom") {
+    if (locked) return;
+    ev.stopPropagation();
+    ev.preventDefault();
+
+    const sx = ev.clientX, sy = ev.clientY;
+    const ox = object.x, oy = object.y;
+    const ow = object.width, oh = object.height;
+    let nx = ox, ny = oy, nw = ow, nh = oh;
+
+    function move(e: MouseEvent) {
+      const dx = (e.clientX - sx) / scale;
+      const dy = (e.clientY - sy) / scale;
+
+      if (horizontal === "right") {
+        nw = clampDesignObject(ow + dx, 12, pageW - ox);
+      } else if (horizontal === "left") {
+        const candidateW = clampDesignObject(ow - dx, 12, ow + ox);
+        nx = ox + (ow - candidateW);
+        nw = candidateW;
+      }
+
+      if (!line && vertical) {
+        if (vertical === "bottom") {
+          nh = clampDesignObject(oh + dy, 12, pageH - oy);
+        } else {
+          const candidateH = clampDesignObject(oh - dy, 12, oh + oy);
+          ny = oy + (oh - candidateH);
+          nh = candidateH;
+        }
+      }
+
+      updateLiveDesignObjectStyle(object.id, {
+        left: `${nx}px`,
+        top: `${ny}px`,
+        width: `${nw}px`,
+        height: line ? undefined : `${nh}px`,
+      });
+
+      if (line) {
+        renderedDesignSelectionElements(object.id).forEach(el => {
+          el.style.top = `${ny - (visualH - object.height) / 2}px`;
+          el.style.height = `${visualH}px`;
+        });
+      }
+    }
+
+    function up() {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      onGuidesChange(null);
+      commitWithRect({
+        ...sourceObject,
+        x: nx,
+        y: ny,
+        width: nw,
+        height: line ? sourceObject.height : nh,
+      } as ResumeDesignObject);
+    }
+
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  }
+
+  function beginRotate(ev: React.MouseEvent) {
+    if (locked) return;
+    ev.stopPropagation();
+    ev.preventDefault();
+
+    const rect = overlayRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    let rotation = object.rotation ?? 0;
+
+    function move(e: MouseEvent) {
+      rotation = snapRotation(
+        Math.round((Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI + 90) * 10) / 10
+      );
+      updateLiveDesignObjectStyle(object.id, {
+        transform: rotation ? `rotate(${rotation}deg)` : "",
+      });
+    }
+
+    function up() {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      onGuidesChange(null);
+      commitWithRect({ ...sourceObject, rotation: rotation || undefined } as ResumeDesignObject);
+    }
+
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  }
+
+  const corner = (cursor: string, position: CSSProperties): CSSProperties => ({
+    position: "absolute",
+    width: DESIGN_HANDLE,
+    height: DESIGN_HANDLE,
+    borderRadius: 2,
+    background: "white",
+    border: "1.5px solid #7c3aed",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.18)",
+    cursor,
+    pointerEvents: "auto",
+    ...position,
+  });
+
+  return (
+    <div
+      ref={overlayRef}
+      data-design-object-selection-id={object.id}
+      onMouseDown={beginMove}
+      onClick={e => e.stopPropagation()}
+      style={{
+        position: "absolute",
+        left: object.x,
+        top: visualTop,
+        width: Math.max(12, object.width),
+        height: visualH,
+        transform: object.rotation ? `rotate(${object.rotation}deg)` : undefined,
+        transformOrigin: "center center",
+        outline: attached ? "1.5px dashed #7c3aed" : "1.5px solid #7c3aed",
+        outlineOffset: 1,
+        boxSizing: "border-box",
+        pointerEvents: locked ? "none" : "auto",
+        cursor: locked ? "default" : "move",
+        zIndex: 80,
+      }}
+    >
+      {!locked && (
+        <>
+          <div
+            data-design-object-handle="rotate"
+            onMouseDown={beginRotate}
+            style={{
+              position: "absolute",
+              top: -18,
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: 10,
+              height: 10,
+              borderRadius: "50%",
+              background: "#7c3aed",
+              border: "1.5px solid white",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.22)",
+              cursor: "crosshair",
+              pointerEvents: "auto",
+            }}
+          />
+
+          {line ? (
+            <>
+              <div
+                data-design-object-handle="left"
+                onMouseDown={ev => beginResize(ev, "left")}
+                style={corner("ew-resize", { left: -5, top: "50%", transform: "translateY(-50%)" })}
+              />
+              <div
+                data-design-object-handle="right"
+                onMouseDown={ev => beginResize(ev, "right")}
+                style={corner("ew-resize", { right: -5, top: "50%", transform: "translateY(-50%)" })}
+              />
+            </>
+          ) : (
+            <>
+              <div data-design-object-handle="tl" onMouseDown={ev => beginResize(ev, "left", "top")}    style={corner("nwse-resize", { left: -5, top: -5 })} />
+              <div data-design-object-handle="tr" onMouseDown={ev => beginResize(ev, "right", "top")}   style={corner("nesw-resize", { right: -5, top: -5 })} />
+              <div data-design-object-handle="bl" onMouseDown={ev => beginResize(ev, "left", "bottom")} style={corner("nesw-resize", { left: -5, bottom: -5 })} />
+              <div data-design-object-handle="br" onMouseDown={ev => beginResize(ev, "right", "bottom")}style={corner("nwse-resize", { right: -5, bottom: -5 })} />
+
+              <div data-design-object-handle="l" onMouseDown={ev => beginResize(ev, "left")}  style={corner("ew-resize", { left: -5, top: "50%", transform: "translateY(-50%)" })} />
+              <div data-design-object-handle="r" onMouseDown={ev => beginResize(ev, "right")} style={corner("ew-resize", { right: -5, top: "50%", transform: "translateY(-50%)" })} />
+              <div data-design-object-handle="t" onMouseDown={ev => beginResize(ev, undefined, "top")} style={corner("ns-resize", { top: -5, left: "50%", transform: "translateX(-50%)" })} />
+              <div data-design-object-handle="b" onMouseDown={ev => beginResize(ev, undefined, "bottom")} style={corner("ns-resize", { bottom: -5, left: "50%", transform: "translateX(-50%)" })} />
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function CanvasMultiSelectionOverlay({
+  objects,
+  allResolvedObjects,
+  page,
+  scale,
+  pageW,
+  pageH,
+  onChangeMany,
+  onRectChange,
+  onGuidesChange,
+}: {
+  objects: ResolvedDesignObject[];
+  allResolvedObjects: ResolvedDesignObject[];
+  page: number;
+  scale: number;
+  pageW: number;
+  pageH: number;
+  onChangeMany: (objects: ResumeDesignObject[]) => void;
+  onRectChange: (rect: DOMRect | null) => void;
+  onGuidesChange: (guides: DesignSnapGuideState | null) => void;
+}) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const bounds = unionDesignRects(objects.map(item => designRectForObject(item.rendered)));
+  if (!bounds) return null;
+
+  const immovable = objects.some(item =>
+    item.source.locked || designObjectIsResumeDriven(item.source)
+  );
+
+  function beginMove(ev: React.MouseEvent) {
+    if (immovable || ev.button !== 0) return;
+    ev.stopPropagation();
+    ev.preventDefault();
+
+    const ids = new Set(objects.map(item => item.source.id));
+    const targetRects = allResolvedObjects
+      .filter(item => !ids.has(item.source.id))
+      .map(item => designRectForObject(item.rendered));
+
+    const sx = ev.clientX;
+    const sy = ev.clientY;
+    const starts = objects.map(item => ({
+      source: item.source,
+      rendered: item.rendered,
+      x: item.source.x,
+      y: item.source.y,
+    }));
+
+    let finalDx = 0;
+    let finalDy = 0;
+
+    function move(e: MouseEvent) {
+      const rawDx = (e.clientX - sx) / scale;
+      const rawDy = (e.clientY - sy) / scale;
+
+      const raw = {
+        ...bounds,
+        x: clampDesignObject(bounds.x + rawDx, 0, Math.max(0, pageW - bounds.w)),
+        y: clampDesignObject(bounds.y + rawDy, 0, Math.max(0, pageH - bounds.h)),
+      };
+
+      const snapped = snapDesignRect(raw, targetRects, pageW, pageH, page);
+      finalDx = snapped.x - bounds.x;
+      finalDy = snapped.y - bounds.y;
+      onGuidesChange(snapped.guides);
+
+      starts.forEach(start => {
+        updateLiveDesignObjectStyle(start.source.id, {
+          left: `${start.rendered.x + finalDx}px`,
+          top: `${start.rendered.y + finalDy}px`,
+        });
+      });
+
+      if (overlayRef.current) {
+        overlayRef.current.style.left = `${bounds.x + finalDx}px`;
+        overlayRef.current.style.top = `${bounds.y + finalDy}px`;
+      }
+    }
+
+    function up() {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      onGuidesChange(null);
+
+      onChangeMany(starts.map(start => ({
+        ...start.source,
+        x: start.x + finalDx,
+        y: start.y + finalDy,
+      } as ResumeDesignObject)));
+
+      requestAnimationFrame(() => {
+        onRectChange(overlayRef.current?.getBoundingClientRect() ?? null);
+      });
+    }
+
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  }
+
+  return (
+    <div
+      ref={overlayRef}
+      data-design-multi-selection
+      onMouseDown={beginMove}
+      onClick={e => e.stopPropagation()}
+      style={{
+        position: "absolute",
+        left: bounds.x,
+        top: bounds.y,
+        width: bounds.w,
+        height: bounds.h,
+        outline: "1.5px dashed #7c3aed",
+        outlineOffset: 3,
+        background: "rgba(124,58,237,0.025)",
+        cursor: immovable ? "default" : "move",
+        pointerEvents: immovable ? "none" : "auto",
+        zIndex: 82,
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          top: -19,
+          left: 0,
+          height: 15,
+          padding: "0 5px",
+          borderRadius: 4,
+          display: "flex",
+          alignItems: "center",
+          background: "#7c3aed",
+          color: "white",
+          font: "600 8px system-ui, sans-serif",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {objects.length} selected
+      </div>
+    </div>
+  );
+}
+
+
 // ── Free-form layout (two-pass, per-entry blocks) ─────────────────────────────
 // Pass 1: render all blocks invisibly in their correct flow-region positions to
 //         measure intrinsic heights at each block's render width.
@@ -2516,9 +4254,26 @@ interface FreeFormProps extends SectionProps {
   onDesignChange: (d: ResumeDesign) => void;
   onHoverBlock: (id: string | null) => void;
   onBlockClick?: (id: string, rect: DOMRect | null) => void;
+  selectedDesignObjectId?: string | null;
+  selectedDesignObjectIds?: string[];
+  selectedDesignObjectPage?: number;
+  onSelectDesignObject?: (
+    source: ResumeDesignObject,
+    rendered: ResumeDesignObject,
+    rect: DOMRect | null,
+    page: number,
+    additive: boolean,
+  ) => void;
+  onDesignObjectRectChange?: (rect: DOMRect | null) => void;
+  onActivePageChange?: (page: number) => void;
 }
 
-function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureKey, onDesignChange, onHoverBlock, onBlockClick }: FreeFormProps) {
+function FreeFormLayout({
+  data, d, ctx, setData, scale, pageW, pageH, remeasureKey,
+  onDesignChange, onHoverBlock, onBlockClick,
+  selectedDesignObjectId, selectedDesignObjectIds = [], selectedDesignObjectPage = 0,
+  onSelectDesignObject, onDesignObjectRectChange, onActivePageChange,
+}: FreeFormProps) {
   const sp: SectionProps = { data, d, ctx, setData };
 
   // ── Bullet editing state — lifted here so it survives pass-1 ↔ pass-2 remounts ──
@@ -2539,6 +4294,9 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
   // as visualDx/visualDy so pagination itself stays stable.
   const [continuationDrag, setContinuationDrag] = useState<{ section: string; page: number; dx: number; dy: number } | null>(null);
 
+  // Phase 6 smart guides are editor-only and disappear as soon as a drag ends.
+  const [designSnapGuides, setDesignSnapGuides] = useState<DesignSnapGuideState | null>(null);
+
   // ── Stable memoized flow regions ────────────────────────────────────────
   // Re-built when content count, layout type, or sidebar config changes.
   const regions = useMemo(
@@ -2546,6 +4304,11 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       data.workEntries.map(e => e.id).join(","),
+      getResumeProjects(data)
+        .map(project =>
+          `${project.id}:${projectHasContent(project) ? "visible" : "empty"}`
+        )
+        .join(","),
       data.education.map(e => e.id).join(","),
       data.summary ? "1" : "0",
       data.skills.length,
@@ -2574,6 +4337,12 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
       const i = data.workEntries.findIndex(e => e.id === entryId);
       if (i < 0) return null;
       return <SingleWorkEntryC entry={data.workEntries[i]} i={i} {...sp} />;
+    }
+    if (id.startsWith("projects.")) {
+      const entryId = id.slice("projects.".length);
+      const project = getResumeProjects(data).find(item => item.id === entryId);
+      if (!project) return null;
+      return <SingleProjectEntryC entry={project} {...sp} />;
     }
     if (id.startsWith("edu.")) {
       const entryId = id.slice("edu.".length);
@@ -2623,6 +4392,11 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
     // font-size:12pt -> font-size:13pt can keep the exact same string length while
     // changing line wrapping and role height. The full HTML guarantees remeasurement.
     data.workEntries.map(e => `${e.id}:${e.body ?? ""}`).join("|"),
+    getResumeProjects(data)
+      .map(project =>
+        `${project.id}:${project.title}:${project.techStack}:${project.description}:${project.githubUrl}:${project.liveUrl}`
+      )
+      .join("|"),
     data.education.map(e => e.id).join("|"),
     data.summary.length,
     d.sectionHeading.fontSize, d.entryTitle.fontSize,
@@ -2765,7 +4539,11 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
       let cumulativeY = 0;
       for (const bid of region.blockIds) {
         const ov = overrides[bid] ?? {};
-        const isRoleBlock = (bid.startsWith("work.") || bid.startsWith("edu.")) && !bid.endsWith(".heading");
+        const isRoleBlock = (
+        bid.startsWith("work.") ||
+        bid.startsWith("projects.") ||
+        bid.startsWith("edu.")
+      ) && !bid.endsWith(".heading");
         if (!isRoleBlock) cumulativeY += ov.flowDisplacementY ?? 0;
         const nat = naturalPositions[bid];
         if (nat) flowTop[bid] = nat.y + cumulativeY;
@@ -2782,7 +4560,11 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
         if (!nat) continue;
 
         const ov = overrides[bid] ?? {};
-        const isRoleBlock = (bid.startsWith("work.") || bid.startsWith("edu.")) && !bid.endsWith(".heading");
+        const isRoleBlock = (
+        bid.startsWith("work.") ||
+        bid.startsWith("projects.") ||
+        bid.startsWith("edu.")
+      ) && !bid.endsWith(".heading");
         const roleVisualY = (ov.visualDy ?? 0) + (isRoleBlock ? (ov.flowDisplacementY ?? 0) : 0);
         const fy = flowTop[bid] ?? nat.y;
 
@@ -2916,6 +4698,250 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
     return Math.max(fragment.h, Math.min(savedH, maxH));
   }
 
+  function headerFragmentBounds(page: number): ComputedPos | undefined {
+    const cps = ["name", "contact"]
+      .map(id => computedPositions[id])
+      .filter((cp): cp is PageComputedPos => !!cp && cp.page === page);
+    if (cps.length === 0) return undefined;
+
+    const x = Math.min(...cps.map(cp => cp.x));
+    const y = Math.min(...cps.map(cp => cp.y));
+    const right = Math.max(...cps.map(cp => cp.x + cp.w));
+    const bottom = Math.max(...cps.map(cp => cp.y + cp.h));
+    return { x, y, w: Math.max(0, right - x), h: Math.max(0, bottom - y) };
+  }
+
+  function paddedRect(bounds: ComputedPos, padding: number): ComputedPos {
+    const x = Math.max(0, bounds.x - padding);
+    const y = Math.max(0, bounds.y - padding);
+    const right = Math.min(pageW, bounds.x + bounds.w + padding);
+    const bottom = Math.min(pageH, bounds.y + bounds.h + padding);
+    return {
+      x,
+      y,
+      w: Math.max(0, right - x),
+      h: Math.max(0, bottom - y),
+    };
+  }
+
+  function resolveDesignObjectForPage(
+    source: ResumeDesignObject,
+    page: number,
+  ): ResumeDesignObject | null {
+    if (source.hidden) return null;
+
+    if (source.type === "smart") {
+      const smart = source as SmartDesignObject;
+
+      if (smart.smartKind === "sidebar") {
+        // A sidebar is a page-spanning resume component, not a page-local shape.
+        // The same persisted object is resolved to a full-height instance on
+        // every physical page that ResumeCanvas renders.
+        const width = clampDesignObject(smart.width || 72, 20, Math.max(20, pageW * 0.6));
+        return {
+          ...smart,
+          x: smart.side === "right" ? pageW - width : 0,
+          y: 0,
+          width,
+          height: pageH,
+          rotation: 0,
+        } as SmartDesignObject;
+      }
+
+      if (smart.smartKind === "header-accent") {
+        if (page !== 0) return null;
+        const header = headerFragmentBounds(0);
+        if (!header) return null;
+        const thickness = clampDesignObject(smart.height || 4, 1, 40);
+        const gap = clampDesignObject(smart.offset ?? 8, -20, 80);
+        return {
+          ...smart,
+          x: header.x,
+          y: clampDesignObject(header.y + header.h + gap, 0, pageH - thickness),
+          width: header.w,
+          height: thickness,
+          rotation: 0,
+        } as SmartDesignObject;
+      }
+
+      if (smart.smartKind === "section-divider") {
+        const section = smart.sectionId;
+        if (!section) return null;
+        const headingId = headingIdForSection(section);
+        const heading = computedPositions[headingId];
+        if (!heading || heading.page !== page) return null;
+
+        let liveDx = 0;
+        let liveDy = 0;
+        if (groupDrag?.prefix === section + ".") {
+          liveDx += groupDrag.dx;
+          liveDy += groupDrag.dy;
+        }
+
+        const thickness = clampDesignObject(smart.strokeWidth ?? smart.height ?? 2, 1, 16);
+        const gap = clampDesignObject(smart.offset ?? 5, -10, 50);
+        const rotation = groupRotation?.prefix === section + "."
+          ? groupRotation.rot
+          : overrides[headingId]?.rotation ?? 0;
+
+        return {
+          ...smart,
+          x: heading.x + liveDx,
+          y: clampDesignObject(heading.y + liveDy + heading.h + gap, 0, pageH - thickness),
+          width: heading.w,
+          height: thickness,
+          rotation: rotation || 0,
+        } as SmartDesignObject;
+      }
+
+      if (smart.smartKind === "timeline") {
+        const section = smart.sectionId;
+        if (section !== "work" && section !== "education") return null;
+
+        const ids = sectionEntryIdsOnPage(section, page);
+        if (ids.length === 0) return null;
+
+        let liveDx = 0;
+        let liveDy = 0;
+        if (groupDrag?.prefix === section + ".") {
+          liveDx += groupDrag.dx;
+          liveDy += groupDrag.dy;
+        }
+        if (continuationDrag?.section === section && continuationDrag.page === page) {
+          liveDx += continuationDrag.dx;
+          liveDy += continuationDrag.dy;
+        }
+
+        const entries = ids
+          .map(id => computedPositions[id])
+          .filter((cp): cp is PageComputedPos => !!cp);
+        if (entries.length === 0) return null;
+
+        const dotSize = clampDesignObject(smart.dotSize ?? 8, 4, 30);
+        const strokeWidth = clampDesignObject(smart.strokeWidth ?? 2, 1, 12);
+        const offset = clampDesignObject(smart.offset ?? 14, 4, 80);
+        const contentLeft = Math.min(...entries.map(cp => cp.x)) + liveDx;
+        const lineX = clampDesignObject(contentLeft - offset, 4, pageW - 4);
+        const pointsAbs = entries.map(cp =>
+          cp.y + liveDy + Math.min(14, Math.max(7, cp.h * 0.22))
+        ).sort((a, b) => a - b);
+        const top = Math.max(0, Math.min(...pointsAbs) - dotSize / 2);
+        const bottom = Math.min(pageH, Math.max(...pointsAbs) + dotSize / 2);
+        const width = Math.max(dotSize, strokeWidth) + 6;
+        const x = clampDesignObject(lineX - width / 2, 0, Math.max(0, pageW - width));
+
+        return {
+          ...smart,
+          x,
+          y: top,
+          width,
+          height: Math.max(dotSize, bottom - top),
+          rotation: 0,
+          resolvedPoints: pointsAbs.map(point => point - top),
+        } as SmartDesignObject;
+      }
+
+      return null;
+    }
+
+    if (source.type !== "shape" || !source.attachment) {
+      return source.page === page ? source : null;
+    }
+
+    const attachment = source.attachment;
+
+    if (attachment.kind === "page") {
+      if (source.page !== page) return null;
+      return {
+        ...source,
+        x: 0,
+        y: 0,
+        width: pageW,
+        height: pageH,
+        rotation: 0,
+      } as ShapeDesignObject;
+    }
+
+    if (attachment.kind === "header") {
+      if (page !== 0) return null;
+      const bounds = headerFragmentBounds(page);
+      if (!bounds) return null;
+      const r = paddedRect(bounds, Math.max(0, attachment.padding ?? 10));
+      return {
+        ...source,
+        x: r.x,
+        y: r.y,
+        width: r.w,
+        height: r.h,
+        rotation: 0,
+      } as ShapeDesignObject;
+    }
+
+    const section = attachment.sectionId;
+    const fragment = sectionFragmentBounds(section, page);
+    if (!fragment) return null;
+
+    const renderedHeight = sectionRenderedFragmentHeight(section, page);
+    const base = {
+      x: fragment.x,
+      y: fragment.y,
+      w: fragment.w,
+      h: Math.max(fragment.h, renderedHeight),
+    };
+
+    // Follow live section/group movement too, not only the committed layout.
+    if (groupDrag && groupDrag.prefix === section + ".") {
+      base.x += groupDrag.dx;
+      base.y += groupDrag.dy;
+    }
+    if (
+      continuationDrag &&
+      continuationDrag.section === section &&
+      continuationDrag.page === page
+    ) {
+      base.x += continuationDrag.dx;
+      base.y += continuationDrag.dy;
+    }
+
+    const r = paddedRect(base, Math.max(0, attachment.padding ?? 8));
+    const headingId = headingIdForSection(section);
+    const liveRot = groupRotation?.prefix === section + "." ? groupRotation.rot : undefined;
+    const sectionRotation = liveRot ?? overrides[headingId]?.rotation ?? 0;
+
+    return {
+      ...source,
+      x: r.x,
+      y: r.y,
+      width: r.w,
+      height: r.h,
+      rotation: sectionRotation || 0,
+    } as ShapeDesignObject;
+  }
+
+  function resolvedDesignObjectsForPage(
+    page: number,
+    layer: DesignObjectLayer,
+  ): ResolvedDesignObject[] {
+    return designObjectsForPage(d, page, layer)
+      .map(source => {
+        const rendered = resolveDesignObjectForPage(source, page);
+        return rendered ? { source, rendered } : null;
+      })
+      .filter((item): item is ResolvedDesignObject => !!item);
+  }
+
+  function commitDesignObjectChanges(changed: ResumeDesignObject[]) {
+    if (changed.length === 0) return;
+
+    // Apply each edit against the progressively-updated design. Movement remains
+    // local, while linked size/rotation/appearance fields fan out to peers.
+    const next = changed.reduce(
+      (design, object) => applyLinkedDesignObjectChange(design, object),
+      d as ResumeDesign,
+    );
+    onDesignChange(next);
+  }
+
   // Entries belonging to one logical section fragment on one physical page.
   // The heading is intentionally excluded: continuation pages have no duplicate
   // printed heading, only an editor-only fragment control box.
@@ -2963,7 +4989,13 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
     setContinuationDrag(null);
   }
 
-  function ContinuationSectionBox({ prefix, page }: { prefix: "work" | "education"; page: number }) {
+  function ContinuationSectionBox({
+    prefix,
+    page,
+  }: {
+    prefix: "work" | "projects" | "education";
+    page: number;
+  }) {
     const fragment = sectionFragmentBounds(prefix, page);
     const headingId = headingIdForSection(prefix);
     const headingCp = computedPositions[headingId];
@@ -3098,6 +5130,7 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
           <div
             key={`page-${pageIndex}`}
             data-resume-page={pageIndex + 1}
+            onMouseDown={() => onActivePageChange?.(pageIndex)}
             style={{ width: pageW * scale, height: pageH * scale, position: "relative", flexShrink: 0 }}
           >
             <div style={{
@@ -3111,10 +5144,33 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
               boxSizing: "border-box",
               position: "relative",
             }}>
-              {/* Continuation pages get their own editor-only Experience/Education
-                  fragment box. It shares the logical section rotation but uses this
-                  page fragment's local center and position. */}
-              {(["work", "education"] as const).map(prefix =>
+              {(() => {
+                const backgroundObjects = resolvedDesignObjectsForPage(pageIndex, "background");
+                const foregroundObjects = resolvedDesignObjectsForPage(pageIndex, "foreground");
+                const allPageObjects = [...backgroundObjects, ...foregroundObjects];
+
+                return (
+                  <CanvasDesignObjectLayer
+                    objects={backgroundObjects}
+                    allResolvedObjects={allPageObjects}
+                    page={pageIndex}
+                    scale={scale}
+                    pageW={pageW}
+                    pageH={pageH}
+                    selectedIds={selectedDesignObjectIds}
+                    onSelect={(source, rendered, rect, additive) =>
+                      onSelectDesignObject?.(source, rendered, rect, pageIndex, additive)}
+                    onChange={object => onDesignChange(applyLinkedDesignObjectChange(d, object))}
+                    onChangeMany={commitDesignObjectChanges}
+                    onGuidesChange={setDesignSnapGuides}
+                  />
+                );
+              })()}
+
+              {/* Continuation pages get their own editor-only section fragment box.
+                  It shares the logical section rotation but uses this page fragment's
+                  local center and position. */}
+              {(["work", "projects", "education"] as const).map(prefix =>
                 ContinuationSectionBox({ prefix, page: pageIndex })
               )}
 
@@ -3127,8 +5183,9 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
           const rawSectionPrefix = isHeading ? bid.replace(".heading", "") : bid.split(".")[0];
           const sectionPrefix = rawSectionPrefix === "edu" ? "education" : rawSectionPrefix;
 
-          // Group rotation: when a work/edu heading is rotated, orbit its entries around
-          // the group center so they follow the heading as a rigid body.
+          // Group rotation: when a repeatable section heading is rotated, orbit its
+          // entries around the group center so they follow the heading as a rigid body.
+          // Projects use the same rigid-group geometry as Work and Education.
           // The heading itself stays at its natural position and CSS-rotates in place
           // (moving it would disconnect it from its selection box / groupHeight area).
           //
@@ -3136,7 +5193,11 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
           // orbit center is stable. Any user-applied visual displacement is then
           // re-applied in the rotated coordinate frame, keeping manual tweaks intact.
           let entryAdditionalRotation: number | undefined;
-          if (bid.startsWith("work.") || bid.startsWith("edu.")) {
+          if (
+            bid.startsWith("work.") ||
+            bid.startsWith("projects.") ||
+            bid.startsWith("edu.")
+          ) {
             const headingBid = headingIdForSection(sectionPrefix);
             // Live rotation during drag takes priority over the saved logical-section angle.
             const liveRot    = groupRotation?.prefix === sectionPrefix + "." ? groupRotation.rot : undefined;
@@ -3274,6 +5335,81 @@ function FreeFormLayout({ data, d, ctx, setData, scale, pageW, pageH, remeasureK
             </DraggableBlock>
           );
               })}
+
+              {(() => {
+                const backgroundObjects = resolvedDesignObjectsForPage(pageIndex, "background");
+                const foregroundObjects = resolvedDesignObjectsForPage(pageIndex, "foreground");
+                const allPageObjects = [...backgroundObjects, ...foregroundObjects];
+                const selectedOnPage = allPageObjects.filter(item =>
+                  selectedDesignObjectIds.includes(item.source.id)
+                );
+
+                return (
+                  <>
+                    <CanvasDesignObjectLayer
+                      objects={foregroundObjects}
+                      allResolvedObjects={allPageObjects}
+                      page={pageIndex}
+                      scale={scale}
+                      pageW={pageW}
+                      pageH={pageH}
+                      selectedIds={selectedDesignObjectIds}
+                      onSelect={(source, rendered, rect, additive) =>
+                        onSelectDesignObject?.(source, rendered, rect, pageIndex, additive)}
+                      onChange={object => onDesignChange(applyLinkedDesignObjectChange(d, object))}
+                      onChangeMany={commitDesignObjectChanges}
+                      onGuidesChange={setDesignSnapGuides}
+                    />
+
+                    {designSnapGuides?.page === pageIndex && (
+                      <DesignSnapGuides
+                        guides={designSnapGuides}
+                        pageW={pageW}
+                        pageH={pageH}
+                      />
+                    )}
+
+                    {pageIndex === selectedDesignObjectPage && selectedOnPage.length > 1 && (
+                      <CanvasMultiSelectionOverlay
+                        objects={selectedOnPage}
+                        allResolvedObjects={allPageObjects}
+                        page={pageIndex}
+                        scale={scale}
+                        pageW={pageW}
+                        pageH={pageH}
+                        onChangeMany={commitDesignObjectChanges}
+                        onRectChange={rect => onDesignObjectRectChange?.(rect)}
+                        onGuidesChange={setDesignSnapGuides}
+                      />
+                    )}
+
+                    {selectedDesignObjectId &&
+                      pageIndex === selectedDesignObjectPage &&
+                      selectedOnPage.length === 1 &&
+                      (() => {
+                        const source = getDesignObjects(d).find(item => item.id === selectedDesignObjectId);
+                        if (!source) return null;
+                        const rendered = resolveDesignObjectForPage(source, pageIndex);
+                        if (!rendered) return null;
+
+                        return (
+                          <CanvasDesignObjectSelectionOverlay
+                            sourceObject={source}
+                            object={rendered}
+                            scale={scale}
+                            pageW={pageW}
+                            pageH={pageH}
+                            snapTargets={allPageObjects.map(item => item.rendered)}
+                            page={pageIndex}
+                            onChange={next => onDesignChange(applyLinkedDesignObjectChange(d, next))}
+                            onRectChange={rect => onDesignObjectRectChange?.(rect)}
+                            onGuidesChange={setDesignSnapGuides}
+                          />
+                        );
+                      })()}
+                  </>
+                );
+              })()}
             </div>
           </div>
         ))}
@@ -3291,6 +5427,1368 @@ interface ResumeCanvasProps {
   containerWidth: number;
   remeasureKey?: number;
 }
+
+
+function DesignObjectToolbar({
+  object,
+  anchorRect,
+  linkedCount = 0,
+  onChange,
+  onUnlink,
+  onBringForward,
+  onSendBackward,
+  onDelete,
+  onReplaceImage,
+}: {
+  object: ResumeDesignObject;
+  anchorRect: DOMRect;
+  linkedCount?: number;
+  onChange: (partial: Partial<ResumeDesignObject>) => void;
+  onUnlink?: () => void;
+  onBringForward: () => void;
+  onSendBackward: () => void;
+  onDelete: () => void;
+  onReplaceImage?: () => void;
+}) {
+  const shape = object.type === "shape" ? object : null;
+  const image = object.type === "image" ? object : null;
+  const smart = object.type === "smart" ? object : null;
+  if (!shape && !image && !smart) return null;
+
+  const width = image ? 760 : smart ? 700 : 630;
+  const estimatedHeight = image ? 78 : smart ? 58 : 48;
+  const top = anchorRect.top - estimatedHeight - 6 >= 4
+    ? anchorRect.top - estimatedHeight - 6
+    : anchorRect.bottom + 8;
+  const left = Math.max(4, Math.min(window.innerWidth - Math.min(width, window.innerWidth - 8) - 4, anchorRect.left));
+
+  const labelStyle: CSSProperties = {
+    fontSize: 9,
+    color: "#64748b",
+    lineHeight: 1,
+    whiteSpace: "nowrap",
+  };
+
+  const tinyButton: CSSProperties = {
+    width: 28,
+    height: 28,
+    border: "1px solid #e2e8f0",
+    borderRadius: 6,
+    background: "white",
+    color: "#475569",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    flexShrink: 0,
+  };
+
+  const commonTail = (
+    <>
+      <select
+        value={designObjectDefaultLayer(object)}
+        title={designObjectIsResumeDriven(object) ? "Smart/attached components keep their semantic resume layer" : "Resume layer"}
+        disabled={designObjectIsResumeDriven(object)}
+        onChange={e => onChange({ layer: e.target.value as DesignObjectLayer } as Partial<ResumeDesignObject>)}
+        style={{
+          height: 28,
+          border: "1px solid #e2e8f0",
+          borderRadius: 6,
+          background: designObjectIsResumeDriven(object) ? "#f8fafc" : "white",
+          color: designObjectIsResumeDriven(object) ? "#94a3b8" : "#475569",
+          fontSize: 10,
+          padding: "0 4px",
+          cursor: designObjectIsResumeDriven(object) ? "not-allowed" : "pointer",
+        }}
+      >
+        <option value="background">Behind</option>
+        <option value="foreground">Front</option>
+      </select>
+
+      <button type="button" title="Bring forward" onClick={onBringForward} style={tinyButton}>
+        <ArrowUp size={14} />
+      </button>
+      <button type="button" title="Send backward" onClick={onSendBackward} style={tinyButton}>
+        <ArrowDown size={14} />
+      </button>
+      <button
+        type="button"
+        title={`Delete ${object.type === "smart" ? "component" : object.type === "image" ? "image" : "shape"}`}
+        onClick={onDelete}
+        style={{ ...tinyButton, color: "#dc2626", borderColor: "#fecaca", background: "#fffafa" }}
+      >
+        <Trash2 size={14} />
+      </button>
+    </>
+  );
+
+  return (
+    <div
+      data-design-object-toolbar
+      onMouseDown={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+      style={{
+        position: "fixed",
+        top,
+        left,
+        zIndex: 10001,
+        minHeight: 40,
+        maxWidth: "calc(100vw - 8px)",
+        display: "flex",
+        flexWrap: image ? "wrap" : "nowrap",
+        alignItems: "center",
+        gap: 7,
+        padding: "5px 7px",
+        background: "white",
+        border: "1px solid #e2e8f0",
+        borderRadius: 9,
+        boxShadow: "0 5px 24px rgba(15,23,42,0.15)",
+        fontFamily: "system-ui, sans-serif",
+        userSelect: "none",
+      }}
+    >
+      {object.linkId && linkedCount > 1 && (
+        <button
+          type="button"
+          title="Linked peers share size and appearance, but keep their own position and content. Click to unlink this object."
+          onClick={onUnlink}
+          style={{
+            height: 28,
+            padding: "0 7px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            borderRadius: 6,
+            border: "1px solid rgba(245,158,11,0.38)",
+            background: "rgba(255,251,235,0.98)",
+            color: "#a16207",
+            fontSize: 9.5,
+            fontWeight: 700,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <Link2 size={12} />
+          Linked · {linkedCount}
+        </button>
+      )}
+
+      {shape && (() => {
+        const attachmentValue =
+          !shape.attachment ? "free" :
+          shape.attachment.kind === "section" ? `section:${shape.attachment.sectionId}` :
+          shape.attachment.kind;
+
+        const attachmentPadding =
+          shape.attachment?.kind === "section" || shape.attachment?.kind === "header"
+            ? shape.attachment.padding ?? 0
+            : 0;
+
+        return (
+          <>
+            {shape.shape !== "line" && (
+              <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                <span style={labelStyle}>Fill</span>
+                <input
+                  type="color"
+                  value={shape.fill ?? "#ede9fe"}
+                  onChange={e => onChange({ fill: e.target.value } as Partial<ShapeDesignObject>)}
+                  style={{ width: 27, height: 27, padding: 1, border: "1px solid #e2e8f0", borderRadius: 5, background: "white", cursor: "pointer" }}
+                />
+              </label>
+            )}
+
+            <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+              <span style={labelStyle}>{shape.shape === "line" ? "Color" : "Border"}</span>
+              <input
+                type="color"
+                value={shape.stroke ?? "#7c3aed"}
+                onChange={e => onChange({ stroke: e.target.value } as Partial<ShapeDesignObject>)}
+                style={{ width: 27, height: 27, padding: 1, border: "1px solid #e2e8f0", borderRadius: 5, background: "white", cursor: "pointer" }}
+              />
+            </label>
+
+            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={labelStyle}>Width</span>
+              <input
+                type="number"
+                min={0}
+                max={20}
+                step={1}
+                value={shape.strokeWidth ?? 1}
+                onChange={e => onChange({ strokeWidth: clampDesignObject(Number(e.target.value) || 0, 0, 20) } as Partial<ShapeDesignObject>)}
+                style={{ width: 43, height: 27, border: "1px solid #e2e8f0", borderRadius: 5, padding: "0 4px", fontSize: 10 }}
+              />
+            </label>
+
+            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={labelStyle}>Opacity</span>
+              <input
+                type="range"
+                min={10}
+                max={100}
+                value={Math.round((shape.opacity ?? 1) * 100)}
+                onChange={e => onChange({ opacity: Number(e.target.value) / 100 } as Partial<ShapeDesignObject>)}
+                style={{ width: 58 }}
+              />
+            </label>
+
+            {shape.shape === "rectangle" && (
+              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={labelStyle}>Round</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={shape.borderRadius ?? 0}
+                  onChange={e => onChange({ borderRadius: clampDesignObject(Number(e.target.value) || 0, 0, 100) } as Partial<ShapeDesignObject>)}
+                  style={{ width: 42, height: 27, border: "1px solid #e2e8f0", borderRadius: 5, padding: "0 4px", fontSize: 10 }}
+                />
+              </label>
+            )}
+
+            <select
+              value={attachmentValue}
+              title="Attach this shape to resume content"
+              onChange={e => {
+                const value = e.target.value;
+
+                if (value === "free") {
+                  onChange({ attachment: undefined } as Partial<ShapeDesignObject>);
+                  return;
+                }
+
+                if (value === "page") {
+                  onChange({
+                    attachment: { kind: "page" },
+                    layer: "background",
+                  } as Partial<ShapeDesignObject>);
+                  return;
+                }
+
+                if (value === "header") {
+                  onChange({
+                    attachment: { kind: "header", padding: 10 },
+                    layer: "background",
+                  } as Partial<ShapeDesignObject>);
+                  return;
+                }
+
+                if (value.startsWith("section:")) {
+                  const sectionId = value.slice("section:".length) as DesignSectionTarget;
+                  onChange({
+                    attachment: { kind: "section", sectionId, padding: 8 },
+                    layer: "background",
+                  } as Partial<ShapeDesignObject>);
+                }
+              }}
+              style={{ height: 28, border: "1px solid #ddd6fe", borderRadius: 6, background: "#faf5ff", color: "#6d28d9", fontSize: 10, padding: "0 5px", fontWeight: 600 }}
+            >
+              <option value="free">Free shape</option>
+              <option value="page">Page background</option>
+              <option value="header">Header background</option>
+              <option value="section:work">Experience background</option>
+              <option value="section:education">Education background</option>
+              <option value="section:skills">Skills background</option>
+              <option value="section:bio">Summary background</option>
+              <option value="section:links">Links background</option>
+            </select>
+
+            {(shape.attachment?.kind === "section" || shape.attachment?.kind === "header") && (
+              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={labelStyle}>Pad</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={80}
+                  step={1}
+                  value={attachmentPadding}
+                  onChange={e => {
+                    const padding = clampDesignObject(Number(e.target.value) || 0, 0, 80);
+                    const attachment = shape.attachment;
+                    if (!attachment) return;
+
+                    onChange({
+                      attachment: attachment.kind === "header"
+                        ? { kind: "header", padding }
+                        : { kind: "section", sectionId: attachment.sectionId, padding },
+                    } as Partial<ShapeDesignObject>);
+                  }}
+                  style={{ width: 40, height: 27, border: "1px solid #e2e8f0", borderRadius: 5, padding: "0 4px", fontSize: 10 }}
+                />
+              </label>
+            )}
+
+            {commonTail}
+          </>
+        );
+      })()}
+
+      {image && (() => {
+        const mask = image.mask ?? (image.imageKind === "photo" ? "circle" : "square");
+        const cropX = clampDesignObject(image.cropX ?? 50, 0, 100);
+        const cropY = clampDesignObject(image.cropY ?? 50, 0, 100);
+
+        return (
+          <>
+            <button
+              type="button"
+              title="Choose a different image"
+              onClick={onReplaceImage}
+              style={{ ...tinyButton, width: "auto", padding: "0 8px", gap: 5, fontSize: 10, fontWeight: 600 }}
+            >
+              <Upload size={13} />
+              Replace
+            </button>
+
+            <select
+              value={image.objectFit ?? "cover"}
+              title="How the image fits inside its frame"
+              onChange={e => onChange({ objectFit: e.target.value as ImageDesignObject["objectFit"] } as Partial<ImageDesignObject>)}
+              style={{ height: 28, border: "1px solid #e2e8f0", borderRadius: 6, background: "white", color: "#475569", fontSize: 10, padding: "0 5px" }}
+            >
+              <option value="cover">Crop to fill</option>
+              <option value="contain">Fit whole image</option>
+              <option value="fill">Stretch</option>
+            </select>
+
+            <select
+              value={mask}
+              title="Image frame"
+              onChange={e => {
+                const nextMask = e.target.value as ImageMask;
+                if (nextMask === "circle") {
+                  const size = Math.max(20, Math.min(image.width, image.height));
+                  onChange({
+                    mask: nextMask,
+                    width: size,
+                    height: size,
+                    objectFit: "cover",
+                  } as Partial<ImageDesignObject>);
+                } else {
+                  onChange({ mask: nextMask } as Partial<ImageDesignObject>);
+                }
+              }}
+              style={{ height: 28, border: "1px solid #ddd6fe", borderRadius: 6, background: "#faf5ff", color: "#6d28d9", fontSize: 10, padding: "0 5px", fontWeight: 600 }}
+            >
+              <option value="square">Square frame</option>
+              <option value="rounded">Rounded frame</option>
+              <option value="circle">Circle frame</option>
+            </select>
+
+            {mask === "rounded" && (
+              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={labelStyle}>Round</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={image.borderRadius ?? 12}
+                  onChange={e => onChange({ borderRadius: clampDesignObject(Number(e.target.value) || 0, 0, 100) } as Partial<ImageDesignObject>)}
+                  style={{ width: 42, height: 27, border: "1px solid #e2e8f0", borderRadius: 5, padding: "0 4px", fontSize: 10 }}
+                />
+              </label>
+            )}
+
+            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={labelStyle}>X</span>
+              <input
+                type="range"
+                title={`Crop position X: ${Math.round(cropX)}%`}
+                min={0}
+                max={100}
+                value={cropX}
+                disabled={(image.objectFit ?? "cover") === "fill"}
+                onChange={e => onChange({ cropX: Number(e.target.value) } as Partial<ImageDesignObject>)}
+                style={{ width: 64 }}
+              />
+            </label>
+
+            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={labelStyle}>Y</span>
+              <input
+                type="range"
+                title={`Crop position Y: ${Math.round(cropY)}%`}
+                min={0}
+                max={100}
+                value={cropY}
+                disabled={(image.objectFit ?? "cover") === "fill"}
+                onChange={e => onChange({ cropY: Number(e.target.value) } as Partial<ImageDesignObject>)}
+                style={{ width: 64 }}
+              />
+            </label>
+
+            <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+              <span style={labelStyle}>Border</span>
+              <input
+                type="color"
+                value={image.borderColor ?? "#ffffff"}
+                onChange={e => onChange({ borderColor: e.target.value } as Partial<ImageDesignObject>)}
+                style={{ width: 27, height: 27, padding: 1, border: "1px solid #e2e8f0", borderRadius: 5, background: "white", cursor: "pointer" }}
+              />
+            </label>
+
+            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={labelStyle}>Width</span>
+              <input
+                type="number"
+                min={0}
+                max={20}
+                value={image.borderWidth ?? 0}
+                onChange={e => onChange({ borderWidth: clampDesignObject(Number(e.target.value) || 0, 0, 20) } as Partial<ImageDesignObject>)}
+                style={{ width: 40, height: 27, border: "1px solid #e2e8f0", borderRadius: 5, padding: "0 4px", fontSize: 10 }}
+              />
+            </label>
+
+            <select
+              value={image.shadow ?? "none"}
+              title="Image shadow"
+              onChange={e => onChange({ shadow: e.target.value as ImageShadow } as Partial<ImageDesignObject>)}
+              style={{ height: 28, border: "1px solid #e2e8f0", borderRadius: 6, background: "white", color: "#475569", fontSize: 10, padding: "0 5px" }}
+            >
+              <option value="none">No shadow</option>
+              <option value="soft">Soft shadow</option>
+              <option value="medium">Medium shadow</option>
+              <option value="strong">Strong shadow</option>
+            </select>
+
+            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={labelStyle}>Opacity</span>
+              <input
+                type="range"
+                min={10}
+                max={100}
+                value={Math.round((image.opacity ?? 1) * 100)}
+                onChange={e => onChange({ opacity: Number(e.target.value) / 100 } as Partial<ImageDesignObject>)}
+                style={{ width: 58 }}
+              />
+            </label>
+
+            {commonTail}
+          </>
+        );
+      })()}
+
+      {smart && (() => {
+        const isSidebar = smart.smartKind === "sidebar";
+        const isTimeline = smart.smartKind === "timeline";
+        const isDivider = smart.smartKind === "section-divider";
+        const isHeaderAccent = smart.smartKind === "header-accent";
+
+        return (
+          <>
+            <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+              <span style={labelStyle}>{isTimeline ? "Dots" : isDivider ? "Color" : "Fill"}</span>
+              <input
+                type="color"
+                value={isDivider ? (smart.stroke ?? "#7c3aed") : (smart.fill ?? "#7c3aed")}
+                onChange={e => onChange(
+                  isDivider
+                    ? ({ stroke: e.target.value } as Partial<SmartDesignObject>)
+                    : ({ fill: e.target.value } as Partial<SmartDesignObject>)
+                )}
+                style={{ width: 27, height: 27, padding: 1, border: "1px solid #e2e8f0", borderRadius: 5, background: "white", cursor: "pointer" }}
+              />
+            </label>
+
+            {isTimeline && (
+              <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                <span style={labelStyle}>Line</span>
+                <input
+                  type="color"
+                  value={smart.stroke ?? smart.fill ?? "#7c3aed"}
+                  onChange={e => onChange({ stroke: e.target.value } as Partial<SmartDesignObject>)}
+                  style={{ width: 27, height: 27, padding: 1, border: "1px solid #e2e8f0", borderRadius: 5, background: "white", cursor: "pointer" }}
+                />
+              </label>
+            )}
+
+            {isSidebar && (
+              <>
+                <select
+                  value={smart.side ?? "left"}
+                  title="Sidebar side"
+                  onChange={e => onChange({ side: e.target.value as SmartDesignObject["side"] } as Partial<SmartDesignObject>)}
+                  style={{ height: 28, border: "1px solid #ddd6fe", borderRadius: 6, background: "#faf5ff", color: "#6d28d9", fontSize: 10, padding: "0 5px", fontWeight: 600 }}
+                >
+                  <option value="left">Left side</option>
+                  <option value="right">Right side</option>
+                </select>
+                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={labelStyle}>Width</span>
+                  <input
+                    type="number" min={20} max={260} step={1}
+                    value={Math.round(smart.width || 72)}
+                    onChange={e => onChange({ width: clampDesignObject(Number(e.target.value) || 72, 20, 260) } as Partial<SmartDesignObject>)}
+                    style={{ width: 48, height: 27, border: "1px solid #e2e8f0", borderRadius: 5, padding: "0 4px", fontSize: 10 }}
+                  />
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={labelStyle}>Round</span>
+                  <input
+                    type="number" min={0} max={80} step={1}
+                    value={smart.borderRadius ?? 0}
+                    onChange={e => onChange({ borderRadius: clampDesignObject(Number(e.target.value) || 0, 0, 80) } as Partial<SmartDesignObject>)}
+                    style={{ width: 43, height: 27, border: "1px solid #e2e8f0", borderRadius: 5, padding: "0 4px", fontSize: 10 }}
+                  />
+                </label>
+              </>
+            )}
+
+            {(isTimeline || isDivider) && (
+              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={labelStyle}>Line</span>
+                <input
+                  type="number" min={1} max={16} step={1}
+                  value={smart.strokeWidth ?? 2}
+                  onChange={e => onChange({ strokeWidth: clampDesignObject(Number(e.target.value) || 1, 1, 16) } as Partial<SmartDesignObject>)}
+                  style={{ width: 40, height: 27, border: "1px solid #e2e8f0", borderRadius: 5, padding: "0 4px", fontSize: 10 }}
+                />
+              </label>
+            )}
+
+            {isHeaderAccent && (
+              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={labelStyle}>Thick</span>
+                <input
+                  type="number" min={1} max={40} step={1}
+                  value={Math.round(smart.height || 4)}
+                  onChange={e => onChange({ height: clampDesignObject(Number(e.target.value) || 4, 1, 40) } as Partial<SmartDesignObject>)}
+                  style={{ width: 42, height: 27, border: "1px solid #e2e8f0", borderRadius: 5, padding: "0 4px", fontSize: 10 }}
+                />
+              </label>
+            )}
+
+            {isTimeline && (
+              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={labelStyle}>Dot</span>
+                <input
+                  type="number" min={4} max={30} step={1}
+                  value={smart.dotSize ?? 8}
+                  onChange={e => onChange({ dotSize: clampDesignObject(Number(e.target.value) || 8, 4, 30) } as Partial<SmartDesignObject>)}
+                  style={{ width: 40, height: 27, border: "1px solid #e2e8f0", borderRadius: 5, padding: "0 4px", fontSize: 10 }}
+                />
+              </label>
+            )}
+
+            {!isSidebar && (
+              <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={labelStyle}>{isTimeline ? "Offset" : "Gap"}</span>
+                <input
+                  type="number"
+                  min={isHeaderAccent || isDivider ? -20 : 4}
+                  max={80}
+                  step={1}
+                  value={smart.offset ?? (isTimeline ? 14 : isHeaderAccent ? 8 : 5)}
+                  onChange={e => onChange({ offset: clampDesignObject(Number(e.target.value) || 0, isTimeline ? 4 : -20, 80) } as Partial<SmartDesignObject>)}
+                  style={{ width: 44, height: 27, border: "1px solid #e2e8f0", borderRadius: 5, padding: "0 4px", fontSize: 10 }}
+                />
+              </label>
+            )}
+
+            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={labelStyle}>Opacity</span>
+              <input
+                type="range" min={10} max={100}
+                value={Math.round((smart.opacity ?? 1) * 100)}
+                onChange={e => onChange({ opacity: Number(e.target.value) / 100 } as Partial<SmartDesignObject>)}
+                style={{ width: 58 }}
+              />
+            </label>
+
+            {commonTail}
+          </>
+        );
+      })()}
+    </div>
+  );
+}
+
+
+function designObjectLabel(object: ResumeDesignObject): string {
+  if (object.name?.trim()) return object.name.trim();
+
+  if (object.type === "image") {
+    return object.imageKind === "photo" ? "Profile photo" : "Image";
+  }
+
+  if (object.type === "shape") {
+    if (object.attachment?.kind === "page") return `Page ${object.page + 1} background`;
+    if (object.attachment?.kind === "header") return "Header background";
+    if (object.attachment?.kind === "section") {
+      return `${SECTION_LABELS[object.attachment.sectionId]} background`;
+    }
+
+    return object.shape === "ellipse"
+      ? "Circle"
+      : object.shape === "line"
+      ? "Line"
+      : "Rectangle";
+  }
+
+  if (object.type === "smart") {
+    if (object.smartKind === "sidebar") return `${object.side === "right" ? "Right" : "Left"} sidebar`;
+    if (object.smartKind === "header-accent") return "Header accent";
+    if (object.smartKind === "timeline") return `${object.sectionId ? SECTION_LABELS[object.sectionId] : "Section"} timeline`;
+    if (object.smartKind === "section-divider") return `${object.sectionId ? SECTION_LABELS[object.sectionId] : "Section"} divider`;
+  }
+  if (object.type === "text") return object.text.trim() || "Text";
+  if (object.type === "icon") return object.icon || "Icon";
+  return "Object";
+}
+
+function designObjectPageBadge(object: ResumeDesignObject): string {
+  if (object.type === "shape" && object.attachment?.kind === "section") return "AUTO";
+  if (object.type === "shape" && object.attachment?.kind === "header") return "P1";
+  if (object.type === "smart" && object.smartKind === "sidebar") return "ALL";
+  if (object.type === "smart" && (object.smartKind === "timeline" || object.smartKind === "section-divider")) return "AUTO";
+  if (object.type === "smart" && object.smartKind === "header-accent") return "P1";
+  return `P${object.page + 1}`;
+}
+
+function designObjectMatchesPage(object: ResumeDesignObject, page: number): boolean {
+  if (object.type === "shape" && object.attachment?.kind === "section") return true;
+  if (object.type === "shape" && object.attachment?.kind === "header") return page === 0;
+  if (object.type === "smart" && object.smartKind === "sidebar") return true;
+  if (object.type === "smart" && (object.smartKind === "timeline" || object.smartKind === "section-divider")) return true;
+  if (object.type === "smart" && object.smartKind === "header-accent") return page === 0;
+  return object.page === page;
+}
+
+function LayersPanel({
+  objects,
+  activePage,
+  selectedIds,
+  onSelect,
+  onToggleHidden,
+  onToggleLocked,
+  onRename,
+  onReorder,
+  onClose,
+}: {
+  objects: ResumeDesignObject[];
+  activePage: number;
+  selectedIds: string[];
+  onSelect: (object: ResumeDesignObject, additive: boolean) => void;
+  onToggleHidden: (object: ResumeDesignObject) => void;
+  onToggleLocked: (object: ResumeDesignObject) => void;
+  onRename: (object: ResumeDesignObject, name: string) => void;
+  onReorder: (draggedId: string, targetId: string) => void;
+  onClose: () => void;
+}) {
+  const [showAllPages, setShowAllPages] = useState(false);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [nameDraft, setNameDraft] = useState("");
+
+  const visibleForPanel = objects.filter(object =>
+    showAllPages || designObjectMatchesPage(object, activePage)
+  );
+
+  // Highest z-index is visually closest to the user, so show it first.
+  const foreground = visibleForPanel
+    .filter(object => designObjectDefaultLayer(object) === "foreground")
+    .sort((a, b) => (b.zIndex ?? 0) - (a.zIndex ?? 0));
+
+  const background = visibleForPanel
+    .filter(object => designObjectDefaultLayer(object) === "background")
+    .sort((a, b) => (b.zIndex ?? 0) - (a.zIndex ?? 0));
+
+  function iconFor(object: ResumeDesignObject) {
+    if (object.type === "image") {
+      return object.imageKind === "photo"
+        ? <User size={13} />
+        : <ImageIcon size={13} />;
+    }
+
+    if (object.type === "shape") {
+      if (object.shape === "ellipse") return <Circle size={13} />;
+      if (object.shape === "line") return <Minus size={14} />;
+      return <Square size={13} />;
+    }
+
+    if (object.type === "smart") return <Layers3 size={13} />;
+
+    return <FileText size={13} />;
+  }
+
+  function commitRename(object: ResumeDesignObject) {
+    const next = nameDraft.trim();
+    onRename(object, next || designObjectLabel(object));
+    setEditingId(null);
+    setNameDraft("");
+  }
+
+  function group(label: string, items: ResumeDesignObject[]) {
+    return (
+      <>
+        <div
+          style={{
+            height: 25,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 8px",
+            fontSize: 9.5,
+            fontWeight: 700,
+            letterSpacing: "0.04em",
+            color: "#64748b",
+            textTransform: "uppercase",
+            background: "#f8fafc",
+            borderTop: "1px solid #eef2f7",
+            borderBottom: "1px solid #eef2f7",
+          }}
+        >
+          <span>{label}</span>
+          <span style={{ color: "#94a3b8", fontWeight: 600 }}>{items.length}</span>
+        </div>
+
+        {items.length === 0 ? (
+          <div
+            style={{
+              padding: "9px 10px",
+              fontSize: 10,
+              color: "#94a3b8",
+              fontStyle: "italic",
+            }}
+          >
+            No design objects
+          </div>
+        ) : items.map(object => {
+          const selected = selectedIds.includes(object.id);
+          const dragging = draggedId === object.id;
+          const dragTarget = dragOverId === object.id && draggedId !== object.id;
+
+          return (
+            <div
+              key={object.id}
+              draggable
+              onDragStart={e => {
+                setDraggedId(object.id);
+                e.dataTransfer.effectAllowed = "move";
+                try { e.dataTransfer.setData("text/plain", object.id); } catch {}
+              }}
+              onDragEnd={() => {
+                setDraggedId(null);
+                setDragOverId(null);
+              }}
+              onDragOver={e => {
+                if (!draggedId || draggedId === object.id) return;
+                const dragged = objects.find(item => item.id === draggedId);
+                if (!dragged) return;
+
+                const draggedLayer = designObjectDefaultLayer(dragged);
+                const targetLayer = object.layer ?? (object.type === "image" ? "foreground" : "background");
+                if (draggedLayer !== targetLayer) return;
+
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                setDragOverId(object.id);
+              }}
+              onDrop={e => {
+                e.preventDefault();
+                if (draggedId && draggedId !== object.id) onReorder(draggedId, object.id);
+                setDraggedId(null);
+                setDragOverId(null);
+              }}
+              onMouseDown={e => e.stopPropagation()}
+              onClick={e => {
+                e.stopPropagation();
+                onSelect(object, e.shiftKey || e.metaKey || e.ctrlKey);
+              }}
+              style={{
+                minHeight: 38,
+                display: "grid",
+                gridTemplateColumns: "18px 22px minmax(0,1fr) auto auto",
+                alignItems: "center",
+                gap: 4,
+                padding: "3px 5px",
+                background: selected ? "#f5f3ff" : dragTarget ? "#faf5ff" : "white",
+                borderLeft: selected ? "3px solid #7c3aed" : "3px solid transparent",
+                borderBottom: "1px solid #f1f5f9",
+                opacity: object.hidden ? 0.55 : dragging ? 0.45 : 1,
+                cursor: "pointer",
+                transition: "background 0.1s, opacity 0.1s",
+                boxShadow: dragTarget ? "inset 0 2px 0 #a78bfa" : undefined,
+              }}
+            >
+              <span
+                title="Drag to reorder within this layer"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#cbd5e1",
+                  cursor: "grab",
+                }}
+              >
+                <GripVertical size={13} />
+              </span>
+
+              <span
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 5,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: selected ? "#ede9fe" : "#f8fafc",
+                  color: selected ? "#7c3aed" : "#64748b",
+                }}
+              >
+                {iconFor(object)}
+              </span>
+
+              <div style={{ minWidth: 0 }}>
+                {editingId === object.id ? (
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 3 }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <input
+                      autoFocus
+                      value={nameDraft}
+                      onChange={e => setNameDraft(e.target.value)}
+                      onKeyDown={e => {
+                        e.stopPropagation();
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          commitRename(object);
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          setEditingId(null);
+                          setNameDraft("");
+                        }
+                      }}
+                      onBlur={() => commitRename(object)}
+                      style={{
+                        minWidth: 0,
+                        width: "100%",
+                        height: 23,
+                        border: "1px solid #c4b5fd",
+                        borderRadius: 4,
+                        padding: "0 5px",
+                        fontSize: 10.5,
+                        color: "#334155",
+                        outline: "none",
+                      }}
+                    />
+                    <Check size={12} color="#7c3aed" />
+                  </div>
+                ) : (
+                  <div
+                    title="Double-click to rename"
+                    onDoubleClick={e => {
+                      e.stopPropagation();
+                      setEditingId(object.id);
+                      setNameDraft(designObjectLabel(object));
+                    }}
+                    style={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      fontSize: 10.5,
+                      fontWeight: selected ? 650 : 500,
+                      color: object.hidden ? "#94a3b8" : "#334155",
+                    }}
+                  >
+                    {designObjectLabel(object)}
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    marginTop: 1,
+                    fontSize: 8.5,
+                    color: "#94a3b8",
+                  }}
+                >
+                  <span>{designObjectPageBadge(object)}</span>
+                  {((object.type === "shape" && object.attachment) || object.type === "smart") && (
+                    <span style={{ color: "#8b5cf6" }}>{object.type === "smart" ? "smart" : "attached"}</span>
+                  )}
+                  {object.groupId && <span style={{ color: "#7c3aed" }}>grouped</span>}
+                  {object.linkId && (
+                    <span style={{ color: "#a16207", display: "inline-flex", alignItems: "center", gap: 2 }}>
+                      <Link2 size={8} />
+                      linked · {objects.filter(item => item.linkId === object.linkId).length}
+                    </span>
+                  )}
+                  {object.locked && <span>locked</span>}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                title={object.hidden ? "Show object" : "Hide object"}
+                onMouseDown={e => e.stopPropagation()}
+                onClick={e => {
+                  e.stopPropagation();
+                  onToggleHidden(object);
+                }}
+                style={{
+                  width: 25,
+                  height: 25,
+                  border: "none",
+                  borderRadius: 5,
+                  background: "transparent",
+                  color: object.hidden ? "#94a3b8" : "#64748b",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                }}
+              >
+                {object.hidden ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+
+              <button
+                type="button"
+                title={object.locked ? "Unlock object" : "Lock object"}
+                onMouseDown={e => e.stopPropagation()}
+                onClick={e => {
+                  e.stopPropagation();
+                  onToggleLocked(object);
+                }}
+                style={{
+                  width: 25,
+                  height: 25,
+                  border: "none",
+                  borderRadius: 5,
+                  background: object.locked ? "#f5f3ff" : "transparent",
+                  color: object.locked ? "#7c3aed" : "#64748b",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                }}
+              >
+                {object.locked ? <Lock size={13} /> : <Unlock size={13} />}
+              </button>
+            </div>
+          );
+        })}
+      </>
+    );
+  }
+
+  return (
+    <div
+      data-layers-panel
+      onMouseDown={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+      style={{
+        position: "absolute",
+        top: 35,
+        right: 0,
+        zIndex: 10003,
+        width: 285,
+        maxHeight: "min(520px, calc(100vh - 120px))",
+        display: "flex",
+        flexDirection: "column",
+        background: "white",
+        border: "1px solid #e2e8f0",
+        borderRadius: 10,
+        boxShadow: "0 12px 34px rgba(15,23,42,0.18)",
+        overflow: "hidden",
+        fontFamily: "system-ui, sans-serif",
+      }}
+    >
+      <div
+        style={{
+          minHeight: 42,
+          display: "flex",
+          alignItems: "center",
+          gap: 7,
+          padding: "6px 8px 6px 10px",
+          borderBottom: "1px solid #e2e8f0",
+        }}
+      >
+        <Layers3 size={15} color="#6d28d9" />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: "#334155" }}>Layers</div>
+          <div style={{ fontSize: 8.5, color: "#94a3b8" }}>
+            Top rows appear in front
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            padding: 2,
+            borderRadius: 6,
+            background: "#f1f5f9",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setShowAllPages(false)}
+            style={{
+              height: 22,
+              padding: "0 6px",
+              border: "none",
+              borderRadius: 4,
+              background: !showAllPages ? "white" : "transparent",
+              color: !showAllPages ? "#6d28d9" : "#64748b",
+              fontSize: 8.5,
+              fontWeight: 650,
+              cursor: "pointer",
+              boxShadow: !showAllPages ? "0 1px 2px rgba(15,23,42,0.10)" : "none",
+            }}
+          >
+            P{activePage + 1}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowAllPages(true)}
+            style={{
+              height: 22,
+              padding: "0 6px",
+              border: "none",
+              borderRadius: 4,
+              background: showAllPages ? "white" : "transparent",
+              color: showAllPages ? "#6d28d9" : "#64748b",
+              fontSize: 8.5,
+              fontWeight: 650,
+              cursor: "pointer",
+              boxShadow: showAllPages ? "0 1px 2px rgba(15,23,42,0.10)" : "none",
+            }}
+          >
+            All
+          </button>
+        </div>
+
+        <button
+          type="button"
+          title="Close layers"
+          onClick={onClose}
+          style={{
+            width: 26,
+            height: 26,
+            border: "none",
+            borderRadius: 5,
+            background: "transparent",
+            color: "#64748b",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+          }}
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      <div style={{ overflowY: "auto", minHeight: 0 }}>
+        {group("Front", foreground)}
+
+        {/* The structured resume is the fixed middle layer. It stays semantic/ATS-safe
+            and cannot accidentally be hidden, reordered or turned into decoration. */}
+        <div
+          style={{
+            minHeight: 42,
+            display: "grid",
+            gridTemplateColumns: "18px 22px minmax(0,1fr) auto",
+            alignItems: "center",
+            gap: 4,
+            padding: "4px 8px 4px 5px",
+            background: "#fcfcfd",
+            borderTop: "1px solid #e2e8f0",
+            borderBottom: "1px solid #e2e8f0",
+          }}
+        >
+          <span />
+          <span
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: 5,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "#eef2ff",
+              color: "#6366f1",
+            }}
+          >
+            <FileText size={13} />
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 650, color: "#334155" }}>
+              Resume content
+            </div>
+            <div style={{ marginTop: 1, fontSize: 8.5, color: "#94a3b8" }}>
+              Structured flow / ATS content
+            </div>
+          </div>
+          <Lock size={12} color="#cbd5e1" />
+        </div>
+
+        {group("Behind", background)}
+      </div>
+
+      <div
+        style={{
+          padding: "6px 9px",
+          borderTop: "1px solid #e2e8f0",
+          background: "#f8fafc",
+          fontSize: 8.5,
+          color: "#94a3b8",
+          lineHeight: 1.35,
+        }}
+      >
+        Shift-click to multi-select · group = move together · link = size/style together
+      </div>
+    </div>
+  );
+}
+
+
+type DesignAlignMode = "left" | "center" | "right" | "top" | "middle" | "bottom";
+
+function MiniAlignGlyph({
+  mode,
+}: {
+  mode: DesignAlignMode;
+}) {
+  const horizontal = mode === "left" || mode === "center" || mode === "right";
+  const justify =
+    mode === "left" || mode === "top" ? "flex-start" :
+    mode === "right" || mode === "bottom" ? "flex-end" :
+    "center";
+
+  return (
+    <span
+      style={{
+        width: 14,
+        height: 14,
+        display: "flex",
+        flexDirection: horizontal ? "column" : "row",
+        justifyContent: "space-between",
+        alignItems: justify,
+      }}
+    >
+      <span style={{ width: horizontal ? 12 : 2, height: horizontal ? 2 : 12, background: "currentColor", borderRadius: 1 }} />
+      <span style={{ width: horizontal ? 8 : 2, height: horizontal ? 2 : 8, background: "currentColor", borderRadius: 1 }} />
+      <span style={{ width: horizontal ? 10 : 2, height: horizontal ? 2 : 10, background: "currentColor", borderRadius: 1 }} />
+    </span>
+  );
+}
+
+function MultiDesignObjectToolbar({
+  count,
+  anchorRect,
+  canDistribute,
+  canLink,
+  isLinkedSet,
+  hasGroup,
+  allLocked,
+  onAlign,
+  onDistribute,
+  onLink,
+  onUnlink,
+  onGroup,
+  onUngroup,
+  onToggleLock,
+  onDelete,
+}: {
+  count: number;
+  anchorRect: DOMRect;
+  canDistribute: boolean;
+  canLink: boolean;
+  isLinkedSet: boolean;
+  hasGroup: boolean;
+  allLocked: boolean;
+  onAlign: (mode: DesignAlignMode) => void;
+  onDistribute: (axis: "horizontal" | "vertical") => void;
+  onLink: () => void;
+  onUnlink: () => void;
+  onGroup: () => void;
+  onUngroup: () => void;
+  onToggleLock: () => void;
+  onDelete: () => void;
+}) {
+  const width = 540;
+  const top = anchorRect.top - 45 >= 4 ? anchorRect.top - 45 : anchorRect.bottom + 8;
+  const left = Math.max(4, Math.min(window.innerWidth - width - 4, anchorRect.left));
+
+  const button: CSSProperties = {
+    width: 28,
+    height: 28,
+    border: "1px solid #e2e8f0",
+    borderRadius: 6,
+    background: "white",
+    color: "#475569",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    flexShrink: 0,
+  };
+
+  return (
+    <div
+      data-multi-design-toolbar
+      onMouseDown={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+      style={{
+        position: "fixed",
+        top,
+        left,
+        zIndex: 10002,
+        minHeight: 38,
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "4px 6px",
+        background: "white",
+        border: "1px solid #ddd6fe",
+        borderRadius: 9,
+        boxShadow: "0 5px 24px rgba(15,23,42,0.16)",
+        fontFamily: "system-ui, sans-serif",
+        userSelect: "none",
+      }}
+    >
+      <span
+        style={{
+          padding: "0 6px 0 2px",
+          borderRight: "1px solid #e5e7eb",
+          color: "#7c3aed",
+          fontSize: 10,
+          fontWeight: 700,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {count} selected
+      </span>
+
+      {(["left", "center", "right", "top", "middle", "bottom"] as DesignAlignMode[]).map(mode => (
+        <button
+          key={mode}
+          type="button"
+          title={`Align ${mode}`}
+          onClick={() => onAlign(mode)}
+          style={button}
+        >
+          <MiniAlignGlyph mode={mode} />
+        </button>
+      ))}
+
+      <span style={{ width: 1, height: 18, background: "#e5e7eb", margin: "0 2px" }} />
+
+      <button
+        type="button"
+        title="Distribute horizontally"
+        disabled={!canDistribute}
+        onClick={() => onDistribute("horizontal")}
+        style={{ ...button, opacity: canDistribute ? 1 : 0.35, cursor: canDistribute ? "pointer" : "not-allowed" }}
+      >
+        <MoveHorizontal size={14} />
+      </button>
+      <button
+        type="button"
+        title="Distribute vertically"
+        disabled={!canDistribute}
+        onClick={() => onDistribute("vertical")}
+        style={{ ...button, opacity: canDistribute ? 1 : 0.35, cursor: canDistribute ? "pointer" : "not-allowed" }}
+      >
+        <MoveVertical size={14} />
+      </button>
+
+      <span style={{ width: 1, height: 18, background: "#e5e7eb", margin: "0 2px" }} />
+
+      {isLinkedSet ? (
+        <button
+          type="button"
+          title="Unlink selected objects. Their current appearance stays the same, but future edits become independent."
+          onClick={onUnlink}
+          style={{
+            ...button,
+            width: "auto",
+            padding: "0 7px",
+            gap: 4,
+            fontSize: 9.5,
+            fontWeight: 650,
+            color: "#a16207",
+            borderColor: "rgba(245,158,11,0.38)",
+            background: "#fffbeb",
+          }}
+        >
+          <Unlink2 size={12} />
+          Unlink
+        </button>
+      ) : (
+        <button
+          type="button"
+          title={canLink
+            ? "Link size and appearance. Each object keeps its own position, page and content."
+            : "Linking requires compatible objects (same object type; shapes must use the same shape)."}
+          disabled={!canLink}
+          onClick={onLink}
+          style={{
+            ...button,
+            width: "auto",
+            padding: "0 7px",
+            gap: 4,
+            fontSize: 9.5,
+            fontWeight: 650,
+            opacity: canLink ? 1 : 0.35,
+            cursor: canLink ? "pointer" : "not-allowed",
+          }}
+        >
+          <Link2 size={12} />
+          Link
+        </button>
+      )}
+
+      <span style={{ width: 1, height: 18, background: "#e5e7eb", margin: "0 2px" }} />
+
+      {hasGroup ? (
+        <button
+          type="button"
+          title="Ungroup selected objects"
+          onClick={onUngroup}
+          style={{ ...button, width: "auto", padding: "0 7px", fontSize: 9.5, fontWeight: 650 }}
+        >
+          Ungroup
+        </button>
+      ) : (
+        <button
+          type="button"
+          title="Group selected objects"
+          onClick={onGroup}
+          style={{ ...button, width: "auto", padding: "0 7px", fontSize: 9.5, fontWeight: 650 }}
+        >
+          Group
+        </button>
+      )}
+
+      <button
+        type="button"
+        title={allLocked ? "Unlock selected objects" : "Lock selected objects"}
+        onClick={onToggleLock}
+        style={button}
+      >
+        {allLocked ? <Unlock size={13} /> : <Lock size={13} />}
+      </button>
+
+      <button
+        type="button"
+        title="Delete selected objects"
+        onClick={onDelete}
+        style={{ ...button, color: "#dc2626", borderColor: "#fecaca", background: "#fffafa" }}
+      >
+        <Trash2 size={13} />
+      </button>
+    </div>
+  );
+}
+
 
 export default function ResumeCanvas({ data, onDesignChange, onDataChange, containerWidth, remeasureKey = 0 }: ResumeCanvasProps) {
   // Merge with DEFAULT_DESIGN so partial design objects (e.g. only layoutOverrides set)
@@ -3310,7 +6808,51 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
   const [blockActionRect, setBlockActionRect] = useState<DOMRect | null>(null);
   const [selectedSubDragKey, setSelectedSubDragKey] = useState<string | null>(null);
 
+  // Phase 2 design-object editor state.
+  const [selectedDesignObjectId, setSelectedDesignObjectId] = useState<string | null>(null);
+  const [selectedDesignObjectIds, setSelectedDesignObjectIds] = useState<string[]>([]);
+  const [designObjectAnchorRect, setDesignObjectAnchorRect] = useState<DOMRect | null>(null);
+  const [activePageIndex, setActivePageIndex] = useState(0);
+  const [selectedDesignObjectPage, setSelectedDesignObjectPage] = useState(0);
+  const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
+  const [backgroundMenuOpen, setBackgroundMenuOpen] = useState(false);
+  const [imageMenuOpen, setImageMenuOpen] = useState(false);
+  const [componentMenuOpen, setComponentMenuOpen] = useState(false);
+  const [layersPanelOpen, setLayersPanelOpen] = useState(false);
+  const [pendingImageKind, setPendingImageKind] = useState<ImageDesignKind>("image");
+  const [pendingReplaceObjectId, setPendingReplaceObjectId] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  // Selecting a design object happens on mousedown so dragging can begin immediately.
+  // React then mounts the selection overlay before mouseup. The browser may synthesize
+  // the following click on the nearest common ancestor (rather than the original object),
+  // which used to reach the canvas click-away handler and instantly clear the selection.
+  // Keep a one-pointer-cycle guard so that click cannot deselect the object we just grabbed.
+  const suppressCanvasClearForDesignObjectRef = useRef(false);
+
+  function armDesignObjectCanvasClearGuard() {
+    suppressCanvasClearForDesignObjectRef.current = true;
+
+    const releaseAfterClick = () => {
+      // `click` is dispatched after `mouseup`; a 0ms task keeps the guard alive
+      // through that click but guarantees it cannot swallow the next real click.
+      window.setTimeout(() => {
+        suppressCanvasClearForDesignObjectRef.current = false;
+      }, 0);
+    };
+
+    document.addEventListener("mouseup", releaseAfterClick, { once: true });
+  }
+
+  function handleCanvasClickAway() {
+    if (suppressCanvasClearForDesignObjectRef.current) return;
+    clearSelection();
+  }
+
   function handleSelect(key: SelectableKey, el: HTMLElement) {
+    setSelectedDesignObjectId(null);
+    setSelectedDesignObjectIds([]);
+    setDesignObjectAnchorRect(null);
     setSelected(key);
     setAnchorRect(el.getBoundingClientRect());
     const subDrag = el.closest("[data-subdrag-key]") as HTMLElement | null;
@@ -3319,6 +6861,9 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
   }
 
   function handleRightClick(key: SelectableKey, el: HTMLElement) {
+    setSelectedDesignObjectId(null);
+    setSelectedDesignObjectIds([]);
+    setDesignObjectAnchorRect(null);
     setRightKey(key);
     setRightAnchor(el.getBoundingClientRect());
     setRightBlockId(hoveredBlock);
@@ -3331,6 +6876,13 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     setRightKey(null); setRightAnchor(null);
     setBlockActionId(null); setBlockActionRect(null);
     setSelectedSubDragKey(null);
+    setSelectedDesignObjectId(null);
+    setSelectedDesignObjectIds([]);
+    setDesignObjectAnchorRect(null);
+    setShapeMenuOpen(false);
+    setBackgroundMenuOpen(false);
+    setImageMenuOpen(false);
+    setComponentMenuOpen(false);
   }
 
   function handleBlockClick(id: string, rect: DOMRect | null) {
@@ -3349,15 +6901,855 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     setBlockActionRect(null);
   }
 
+  function refreshDesignObjectSelectionAnchor(ids: string[], page: number) {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      setDesignObjectAnchorRect(selectionBoundingClientRect(ids, page));
+    }));
+  }
+
+  function selectDesignObject(
+    source: ResumeDesignObject,
+    _rendered: ResumeDesignObject,
+    rect: DOMRect | null,
+    page: number,
+    additive: boolean,
+  ) {
+    armDesignObjectCanvasClearGuard();
+
+    setSelected(null); setAnchorRect(null);
+    setRightKey(null); setRightAnchor(null);
+    setBlockActionId(null); setBlockActionRect(null);
+    setSelectedSubDragKey(null);
+    setShapeMenuOpen(false);
+    setBackgroundMenuOpen(false);
+    setImageMenuOpen(false);
+    setComponentMenuOpen(false);
+
+    setActivePageIndex(page);
+    setSelectedDesignObjectPage(page);
+
+    const all = getDesignObjects(d);
+
+    let nextIds: string[];
+    if (!additive && source.groupId && !designObjectIsResumeDriven(source)) {
+      nextIds = all
+        .filter(object =>
+          object.groupId === source.groupId &&
+          designObjectMatchesPage(object, page) &&
+          !object.hidden
+        )
+        .map(object => object.id);
+    } else if (additive && selectedDesignObjectPage === page) {
+      nextIds = selectedDesignObjectIds.includes(source.id)
+        ? selectedDesignObjectIds.filter(id => id !== source.id)
+        : [...selectedDesignObjectIds, source.id];
+    } else {
+      nextIds = [source.id];
+    }
+
+    if (nextIds.length === 0) {
+      setSelectedDesignObjectId(null);
+      setSelectedDesignObjectIds([]);
+      setDesignObjectAnchorRect(null);
+      return;
+    }
+
+    setSelectedDesignObjectIds(nextIds);
+    setSelectedDesignObjectId(nextIds.includes(source.id) ? source.id : nextIds[nextIds.length - 1]);
+
+    if (nextIds.length === 1) {
+      setDesignObjectAnchorRect(rect);
+    } else {
+      refreshDesignObjectSelectionAnchor(nextIds, page);
+    }
+  }
+
+  function addShape(shape: ShapeDesignObject["shape"]) {
+    const existing = getDesignObjects(d);
+    const onPage = existing.filter(o => o.page === activePageIndex);
+    const offset = (onPage.length % 5) * 12;
+
+    const size =
+      shape === "ellipse" ? { width: 90, height: 90 } :
+      shape === "line"    ? { width: 150, height: 2 } :
+                            { width: 160, height: 72 };
+
+    const layer: DesignObjectLayer = "background";
+    const maxZ = existing
+      .filter(o => o.page === activePageIndex && (o.layer ?? "background") === layer)
+      .reduce((m, o) => Math.max(m, o.zIndex ?? 0), 0);
+
+    const object: ShapeDesignObject = {
+      id: `shape-${genId()}`,
+      type: "shape",
+      shape,
+      page: activePageIndex,
+      x: clampDesignObject((PAGE_W - size.width) / 2 + offset, 8, PAGE_W - size.width - 8),
+      y: clampDesignObject(90 + offset, 8, PAGE_H - size.height - 8),
+      width: size.width,
+      height: size.height,
+      rotation: 0,
+      opacity: 1,
+      zIndex: maxZ + 1,
+      layer,
+      locked: false,
+      hidden: false,
+      name: shape === "rectangle" ? "Rectangle" : shape === "ellipse" ? "Circle" : "Line",
+      fill: shape === "line" ? undefined : "#ede9fe",
+      stroke: "#7c3aed",
+      strokeWidth: shape === "line" ? 2 : 1,
+      borderRadius: shape === "rectangle" ? 8 : undefined,
+    };
+
+    onDesignChange(upsertDesignObject(d, object));
+    setShapeMenuOpen(false);
+    setBackgroundMenuOpen(false);
+    setImageMenuOpen(false);
+    setComponentMenuOpen(false);
+    setSelectedDesignObjectPage(activePageIndex);
+    setSelectedDesignObjectIds([object.id]);
+    setSelectedDesignObjectId(object.id);
+
+    requestAnimationFrame(() => {
+      const el = renderedDesignObjectElements(object.id)[0];
+      setDesignObjectAnchorRect(el?.getBoundingClientRect() ?? null);
+    });
+  }
+
+  function activateNewDesignObject(objectId: string, fallbackPage: number) {
+    setSelectedDesignObjectIds([objectId]);
+    setSelectedDesignObjectId(objectId);
+    setSelectedDesignObjectPage(fallbackPage);
+
+    // Smart section backgrounds can first appear on a page other than the page where
+    // the command was invoked. After React paints, discover the first rendered fragment.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const candidates = renderedDesignObjectElements(objectId);
+      const el =
+        candidates.find(node => node.dataset.designObjectPage === String(fallbackPage)) ??
+        candidates[0];
+      const page = Number(el?.dataset.designObjectPage ?? fallbackPage);
+      if (Number.isFinite(page)) {
+        setActivePageIndex(page);
+        setSelectedDesignObjectPage(page);
+      }
+      setDesignObjectAnchorRect(el?.getBoundingClientRect() ?? null);
+    }));
+  }
+
+  function addSmartBackground(
+    target: "page" | "header" | DesignSectionTarget,
+  ) {
+    const existing = getDesignObjects(d);
+    const layer: DesignObjectLayer = "background";
+    const maxZ = existing
+      .filter(o => (o.layer ?? "background") === layer)
+      .reduce((m, o) => Math.max(m, o.zIndex ?? 0), 0);
+
+    const attachment: DesignObjectAttachment =
+      target === "page"
+        ? { kind: "page" }
+        : target === "header"
+        ? { kind: "header", padding: 10 }
+        : { kind: "section", sectionId: target, padding: 8 };
+
+    const friendly =
+      target === "page" ? `Page ${activePageIndex + 1} background` :
+      target === "header" ? "Header background" :
+      `${SECTION_LABELS[target]} background`;
+
+    const object: ShapeDesignObject = {
+      id: `background-${genId()}`,
+      type: "shape",
+      shape: "rectangle",
+      page: target === "header" ? 0 : activePageIndex,
+
+      // Retained free-form geometry. Smart attachment overrides this only while attached.
+      x: 40,
+      y: 40,
+      width: 220,
+      height: 100,
+
+      rotation: 0,
+      opacity: 1,
+      zIndex: maxZ + 1,
+      layer,
+      locked: false,
+      hidden: false,
+      name: friendly,
+
+      fill: target === "page" ? "#faf7ff" : "#f5f3ff",
+      strokeWidth: 0,
+      borderRadius: target === "page" ? 0 : 10,
+      attachment,
+    };
+
+    onDesignChange(upsertDesignObject(d, object));
+    setShapeMenuOpen(false);
+    setBackgroundMenuOpen(false);
+    setImageMenuOpen(false);
+    setComponentMenuOpen(false);
+    activateNewDesignObject(object.id, object.page);
+  }
+
+  type SmartComponentPreset =
+    | "sidebar-left"
+    | "sidebar-right"
+    | "header-accent"
+    | "work-timeline"
+    | "education-timeline"
+    | "work-divider"
+    | "education-divider"
+    | "skills-divider"
+    | "bio-divider"
+    | "links-divider";
+
+  function addSmartComponent(preset: SmartComponentPreset) {
+    const existing = getDesignObjects(d);
+    const accent = d.sectionHeading.color || "#7c3aed";
+
+    const timelineSection: DesignSectionTarget | undefined =
+      preset === "work-timeline" ? "work" :
+      preset === "education-timeline" ? "education" :
+      undefined;
+
+    const dividerSection: DesignSectionTarget | undefined =
+      preset === "work-divider" ? "work" :
+      preset === "education-divider" ? "education" :
+      preset === "skills-divider" ? "skills" :
+      preset === "bio-divider" ? "bio" :
+      preset === "links-divider" ? "links" :
+      undefined;
+
+    const smartKind: SmartDesignKind =
+      preset.startsWith("sidebar-") ? "sidebar" :
+      preset === "header-accent" ? "header-accent" :
+      preset.endsWith("-timeline") ? "timeline" :
+      "section-divider";
+
+    const layer: DesignObjectLayer =
+      smartKind === "timeline" || smartKind === "section-divider"
+        ? "foreground"
+        : "background";
+
+    const maxZ = existing
+      .filter(object => designObjectDefaultLayer(object) === layer)
+      .reduce((max, object) => Math.max(max, object.zIndex ?? 0), 0);
+
+    // `page` remains useful as the creation/selection anchor. Page-spanning smart
+    // components such as sidebars ignore it when rendering and resolve on every page.
+    const page = smartKind === "header-accent" ? 0 : activePageIndex;
+    const side = preset === "sidebar-right" ? "right" : "left";
+    const sectionId = timelineSection ?? dividerSection;
+
+    const name =
+      smartKind === "sidebar" ? `${side === "right" ? "Right" : "Left"} sidebar` :
+      smartKind === "header-accent" ? "Header accent" :
+      smartKind === "timeline" ? `${SECTION_LABELS[sectionId!]} timeline` :
+      `${SECTION_LABELS[sectionId!]} divider`;
+
+    const object: SmartDesignObject = {
+      id: `smart-${genId()}`,
+      type: "smart",
+      smartKind,
+      page,
+      x: 0,
+      y: 0,
+      width: smartKind === "sidebar" ? 72 : 120,
+      height: smartKind === "header-accent" ? 4 : smartKind === "section-divider" ? 2 : 80,
+      rotation: 0,
+      opacity: 1,
+      zIndex: maxZ + 1,
+      layer,
+      locked: false,
+      hidden: false,
+      name,
+      side: smartKind === "sidebar" ? side : undefined,
+      sectionId,
+      fill: smartKind === "sidebar" ? accent : smartKind === "timeline" ? accent : accent,
+      stroke: accent,
+      strokeWidth: smartKind === "timeline" || smartKind === "section-divider" ? 2 : undefined,
+      dotSize: smartKind === "timeline" ? 8 : undefined,
+      offset: smartKind === "timeline" ? 14 : smartKind === "header-accent" ? 8 : smartKind === "section-divider" ? 5 : undefined,
+      borderRadius: 0,
+    };
+
+    onDesignChange(upsertDesignObject(d, object));
+    setShapeMenuOpen(false);
+    setBackgroundMenuOpen(false);
+    setImageMenuOpen(false);
+    setComponentMenuOpen(false);
+    activateNewDesignObject(object.id, page);
+  }
+
+  function requestImageUpload(kind: ImageDesignKind, replaceObjectId?: string) {
+    setPendingImageKind(kind);
+    setPendingReplaceObjectId(replaceObjectId ?? null);
+    setShapeMenuOpen(false);
+    setBackgroundMenuOpen(false);
+    setImageMenuOpen(false);
+    setComponentMenuOpen(false);
+
+    if (imageInputRef.current) {
+      // Allows choosing the same local file again after replacing/deleting it.
+      imageInputRef.current.value = "";
+      imageInputRef.current.click();
+    }
+  }
+
+  async function handleImageFile(file: File | null) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return;
+
+    try {
+      const designObjects = getDesignObjects(d);
+      const replacing = pendingReplaceObjectId
+        ? designObjects.find(
+            object => object.id === pendingReplaceObjectId && object.type === "image"
+          ) as ImageDesignObject | undefined
+        : undefined;
+
+      const imageKind: ImageDesignKind = replacing?.imageKind ?? pendingImageKind;
+      const imageCount = designObjects.filter(object => object.type === "image").length + (replacing ? 0 : 1);
+      const loaded = await prepareResumeImageFile(
+        file,
+        imageKind,
+        resumeImageTargetChars(imageCount, imageKind),
+      );
+
+      if (replacing) {
+        const existing = replacing;
+        if (existing) {
+          const next: ImageDesignObject = {
+            ...existing,
+            src: loaded.src,
+            alt: file.name,
+            name: file.name || existing.name,
+            intrinsicWidth: loaded.width,
+            intrinsicHeight: loaded.height,
+            cropX: 50,
+            cropY: 50,
+          };
+          onDesignChange(applyLinkedDesignObjectChange(d, next));
+          setPendingReplaceObjectId(null);
+          activateNewDesignObject(next.id, next.page);
+          return;
+        }
+      }
+
+      const existing = getDesignObjects(d);
+      const layer: DesignObjectLayer = "foreground";
+      const maxZ = existing
+        .filter(o => o.page === activePageIndex && (o.layer ?? "background") === layer)
+        .reduce((m, o) => Math.max(m, o.zIndex ?? 0), 0);
+
+      const aspect = loaded.width / Math.max(1, loaded.height);
+      const isPhoto = imageKind === "photo";
+
+      const width = isPhoto
+        ? 112
+        : aspect >= 1 ? 170 : clampDesignObject(118 * aspect, 80, 145);
+
+      const height = isPhoto
+        ? 112
+        : aspect >= 1 ? clampDesignObject(170 / aspect, 78, 145) : 150;
+
+      const onPageCount = existing.filter(o => o.page === activePageIndex).length;
+      const offset = (onPageCount % 5) * 10;
+
+      const object: ImageDesignObject = {
+        id: `image-${genId()}`,
+        type: "image",
+        imageKind,
+        page: activePageIndex,
+        x: clampDesignObject((PAGE_W - width) / 2 + offset, 8, PAGE_W - width - 8),
+        y: clampDesignObject(82 + offset, 8, PAGE_H - height - 8),
+        width,
+        height,
+        rotation: 0,
+        opacity: 1,
+        zIndex: maxZ + 1,
+        layer,
+        locked: false,
+        hidden: false,
+        name: file.name || (isPhoto ? "Profile photo" : "Image"),
+
+        src: loaded.src,
+        alt: file.name,
+        objectFit: isPhoto ? "cover" : "contain",
+        cropX: 50,
+        cropY: 50,
+        mask: isPhoto ? "circle" : "square",
+        borderRadius: isPhoto ? 999 : 0,
+        borderColor: "#ffffff",
+        borderWidth: isPhoto ? 2 : 0,
+        shadow: isPhoto ? "soft" : "none",
+        backgroundColor: "transparent",
+        intrinsicWidth: loaded.width,
+        intrinsicHeight: loaded.height,
+      };
+
+      onDesignChange(upsertDesignObject(d, object));
+      setPendingReplaceObjectId(null);
+      activateNewDesignObject(object.id, object.page);
+    } catch (error) {
+      console.error("Unable to add resume image", error);
+    }
+  }
+
+  const selectedDesignObject = selectedDesignObjectId
+    ? getDesignObjects(d).find(object => object.id === selectedDesignObjectId) ?? null
+    : null;
+
+  function changeSelectedDesignObject(partial: Partial<ResumeDesignObject>) {
+    if (!selectedDesignObject) return;
+
+    let next = { ...selectedDesignObject, ...partial } as ResumeDesignObject;
+
+    // Moving between background and foreground layers should put the object at the
+    // front of the destination layer instead of inheriting a meaningless old z-index.
+    if (partial.layer && partial.layer !== (selectedDesignObject.layer ?? "background")) {
+      const maxZ = getDesignObjects(d)
+        .filter(o =>
+          o.id !== selectedDesignObject.id &&
+          (o.layer ?? (o.type === "image" ? "foreground" : "background")) === partial.layer
+        )
+        .reduce((m, o) => Math.max(m, o.zIndex ?? 0), 0);
+      next = { ...next, zIndex: maxZ + 1 } as ResumeDesignObject;
+    }
+
+    onDesignChange(applyLinkedDesignObjectChange(d, next));
+  }
+
+  function reorderSelectedDesignObject(direction: -1 | 1) {
+    if (!selectedDesignObject) return;
+
+    const all = getDesignObjects(d);
+    const layer = selectedDesignObject.layer ?? "background";
+    const group = all
+      .filter(o => (o.layer ?? (o.type === "image" ? "foreground" : "background")) === layer)
+      .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+
+    const index = group.findIndex(o => o.id === selectedDesignObject.id);
+    const target = clampDesignObject(index + direction, 0, Math.max(0, group.length - 1));
+    if (index < 0 || target === index) return;
+
+    const reordered = [...group];
+    const [moving] = reordered.splice(index, 1);
+    reordered.splice(target, 0, moving);
+
+    const zById = new Map(reordered.map((o, i) => [o.id, i + 1]));
+    const next = all.map(o => zById.has(o.id) ? { ...o, zIndex: zById.get(o.id)! } as ResumeDesignObject : o);
+    onDesignChange(withDesignObjects(d, next));
+  }
+
+  function deleteSelectedDesignObject() {
+    const ids = selectedDesignObjectIds.length
+      ? selectedDesignObjectIds
+      : selectedDesignObjectId ? [selectedDesignObjectId] : [];
+    if (ids.length === 0) return;
+
+    const remove = new Set(ids);
+    onDesignChange(withDesignObjects(
+      d,
+      normalizeDesignObjectLinks(
+        getDesignObjects(d).filter(object => !remove.has(object.id))
+      ),
+    ));
+    setSelectedDesignObjectId(null);
+    setSelectedDesignObjectIds([]);
+    setDesignObjectAnchorRect(null);
+  }
+
+  function selectDesignObjectFromLayers(object: ResumeDesignObject, additive: boolean) {
+    setSelected(null); setAnchorRect(null);
+    setRightKey(null); setRightAnchor(null);
+    setBlockActionId(null); setBlockActionRect(null);
+    setSelectedSubDragKey(null);
+
+    const candidates = renderedDesignObjectElements(object.id);
+    const preferred =
+      candidates.find(el => el.dataset.designObjectPage === String(activePageIndex)) ??
+      candidates[0];
+
+    const page = Number(preferred?.dataset.designObjectPage ?? object.page);
+    const resolvedPage = Number.isFinite(page) ? page : object.page;
+
+    let nextIds: string[];
+    if (!additive && object.groupId && !(object.type === "shape" && object.attachment)) {
+      nextIds = getDesignObjects(d)
+        .filter(item =>
+          item.groupId === object.groupId &&
+          designObjectMatchesPage(item, resolvedPage) &&
+          !item.hidden
+        )
+        .map(item => item.id);
+    } else if (additive && selectedDesignObjectPage === resolvedPage) {
+      nextIds = selectedDesignObjectIds.includes(object.id)
+        ? selectedDesignObjectIds.filter(id => id !== object.id)
+        : [...selectedDesignObjectIds, object.id];
+    } else {
+      nextIds = [object.id];
+    }
+
+    if (nextIds.length === 0) {
+      setSelectedDesignObjectId(null);
+      setSelectedDesignObjectIds([]);
+      setDesignObjectAnchorRect(null);
+      return;
+    }
+
+    setActivePageIndex(resolvedPage);
+    setSelectedDesignObjectPage(resolvedPage);
+    setSelectedDesignObjectIds(nextIds);
+    setSelectedDesignObjectId(nextIds.includes(object.id) ? object.id : nextIds[nextIds.length - 1]);
+    refreshDesignObjectSelectionAnchor(nextIds, resolvedPage);
+  }
+
+  function toggleDesignObjectHidden(object: ResumeDesignObject) {
+    const hidden = !object.hidden;
+    const next = { ...object, hidden } as ResumeDesignObject;
+    onDesignChange(upsertDesignObject(d, next));
+
+    if (selectedDesignObjectIds.includes(object.id)) {
+      if (hidden) {
+        const remaining = selectedDesignObjectIds.filter(id => id !== object.id);
+        setSelectedDesignObjectIds(remaining);
+        setSelectedDesignObjectId(remaining[remaining.length - 1] ?? null);
+        refreshDesignObjectSelectionAnchor(remaining, selectedDesignObjectPage);
+      } else {
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          const candidates = renderedDesignObjectElements(object.id);
+          const preferred =
+            candidates.find(el => el.dataset.designObjectPage === String(activePageIndex)) ??
+            candidates[0];
+          if (preferred) {
+            const page = Number(preferred.dataset.designObjectPage ?? object.page);
+            if (Number.isFinite(page)) setSelectedDesignObjectPage(page);
+            refreshDesignObjectSelectionAnchor(
+              selectedDesignObjectIds.includes(object.id)
+                ? selectedDesignObjectIds
+                : [...selectedDesignObjectIds, object.id],
+              Number.isFinite(page) ? page : selectedDesignObjectPage,
+            );
+          }
+        }));
+      }
+    }
+  }
+
+  function toggleDesignObjectLocked(object: ResumeDesignObject) {
+    onDesignChange(upsertDesignObject(d, {
+      ...object,
+      locked: !object.locked,
+    } as ResumeDesignObject));
+  }
+
+  function renameDesignObject(object: ResumeDesignObject, name: string) {
+    onDesignChange(upsertDesignObject(d, {
+      ...object,
+      name: name.trim() || undefined,
+    } as ResumeDesignObject));
+  }
+
+  function reorderDesignObjectsFromLayers(draggedId: string, targetId: string) {
+    if (draggedId === targetId) return;
+
+    const all = getDesignObjects(d);
+    const dragged = all.find(object => object.id === draggedId);
+    const target = all.find(object => object.id === targetId);
+    if (!dragged || !target) return;
+
+    const draggedLayer = dragged.layer ?? (dragged.type === "image" ? "foreground" : "background");
+    const targetLayer = designObjectDefaultLayer(target);
+    if (draggedLayer !== targetLayer) return;
+
+    // Panel order is TOP -> BOTTOM, i.e. high z-index -> low z-index.
+    const panelOrder = all
+      .filter(object =>
+        designObjectDefaultLayer(object) === draggedLayer
+      )
+      .sort((a, b) => (b.zIndex ?? 0) - (a.zIndex ?? 0));
+
+    const from = panelOrder.findIndex(object => object.id === draggedId);
+    const to = panelOrder.findIndex(object => object.id === targetId);
+    if (from < 0 || to < 0) return;
+
+    const reordered = [...panelOrder];
+    const [moving] = reordered.splice(from, 1);
+    reordered.splice(to, 0, moving);
+
+    const total = reordered.length;
+    const zById = new Map(
+      reordered.map((object, index) => [object.id, total - index])
+    );
+
+    const next = all.map(object =>
+      zById.has(object.id)
+        ? { ...object, zIndex: zById.get(object.id)! } as ResumeDesignObject
+        : object
+    );
+
+    onDesignChange(withDesignObjects(d, next));
+  }
+
+  const selectedDesignObjects = getDesignObjects(d).filter(object =>
+    selectedDesignObjectIds.includes(object.id)
+  );
+
+  const selectedObjectsCanLink = canLinkDesignObjects(selectedDesignObjects);
+  const selectedSharedLinkId = selectedDesignObjects.length > 1 &&
+    selectedDesignObjects[0]?.linkId &&
+    selectedDesignObjects.every(object => object.linkId === selectedDesignObjects[0].linkId)
+      ? selectedDesignObjects[0].linkId
+      : null;
+
+  function linkSelectedDesignObjects() {
+    if (!selectedObjectsCanLink) return;
+
+    const primary = selectedDesignObjects.find(object => object.id === selectedDesignObjectId)
+      ?? selectedDesignObjects[selectedDesignObjects.length - 1];
+    if (!primary) return;
+
+    const linkId = `link-${genId()}`;
+    const selectedIds = new Set(selectedDesignObjects.map(object => object.id));
+
+    const next = getDesignObjects(d).map(object => {
+      if (!selectedIds.has(object.id)) return object;
+      const visuallySynced = copyLinkedDesignAppearance(primary, object);
+      return { ...visuallySynced, linkId } as ResumeDesignObject;
+    });
+
+    onDesignChange(withDesignObjects(d, normalizeDesignObjectLinks(next)));
+  }
+
+  function unlinkDesignObjectIds(ids: string[]) {
+    if (ids.length === 0) return;
+    const remove = new Set(ids);
+    const next = getDesignObjects(d).map(object => {
+      if (!remove.has(object.id) || !object.linkId) return object;
+      const unlinked = { ...object } as ResumeDesignObject;
+      delete unlinked.linkId;
+      return unlinked;
+    });
+    onDesignChange(withDesignObjects(d, normalizeDesignObjectLinks(next)));
+  }
+
+  function unlinkSelectedDesignObjects() {
+    unlinkDesignObjectIds(selectedDesignObjectIds);
+  }
+
+  function unlinkPrimaryDesignObject() {
+    if (!selectedDesignObjectId) return;
+    unlinkDesignObjectIds([selectedDesignObjectId]);
+  }
+
+  function selectedEditableDesignObjects(): ResumeDesignObject[] {
+    return selectedDesignObjects.filter(object =>
+      !object.hidden &&
+      !object.locked &&
+      !designObjectIsResumeDriven(object) &&
+      designObjectMatchesPage(object, selectedDesignObjectPage)
+    );
+  }
+
+  function commitSelectedGeometry(nextById: Map<string, ResumeDesignObject>) {
+    const next = getDesignObjects(d).map(object => nextById.get(object.id) ?? object);
+    onDesignChange(withDesignObjects(d, next));
+    refreshDesignObjectSelectionAnchor(selectedDesignObjectIds, selectedDesignObjectPage);
+  }
+
+  function alignSelectedDesignObjects(mode: DesignAlignMode) {
+    const editable = selectedEditableDesignObjects();
+    if (editable.length < 2) return;
+
+    const bounds = unionDesignRects(editable.map(designRectForObject));
+    if (!bounds) return;
+
+    const nextById = new Map<string, ResumeDesignObject>();
+
+    editable.forEach(object => {
+      let x = object.x;
+      let y = object.y;
+
+      if (mode === "left") x = bounds.x;
+      if (mode === "center") x = bounds.x + bounds.w / 2 - object.width / 2;
+      if (mode === "right") x = bounds.x + bounds.w - object.width;
+      if (mode === "top") y = bounds.y;
+      if (mode === "middle") y = bounds.y + bounds.h / 2 - object.height / 2;
+      if (mode === "bottom") y = bounds.y + bounds.h - object.height;
+
+      nextById.set(object.id, {
+        ...object,
+        x: clampDesignObject(x, 0, PAGE_W - object.width),
+        y: clampDesignObject(y, 0, PAGE_H - object.height),
+      } as ResumeDesignObject);
+    });
+
+    commitSelectedGeometry(nextById);
+  }
+
+  function distributeSelectedDesignObjects(axis: "horizontal" | "vertical") {
+    const editable = selectedEditableDesignObjects();
+    if (editable.length < 3) return;
+
+    const sorted = [...editable].sort((a, b) =>
+      axis === "horizontal" ? a.x - b.x : a.y - b.y
+    );
+
+    const nextById = new Map<string, ResumeDesignObject>();
+
+    if (axis === "horizontal") {
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+      const span = (last.x + last.width) - first.x;
+      const occupied = sorted.reduce((sum, object) => sum + object.width, 0);
+      const gap = (span - occupied) / (sorted.length - 1);
+
+      let cursor = first.x;
+      sorted.forEach((object, index) => {
+        const x = index === 0 ? first.x : index === sorted.length - 1 ? last.x : cursor;
+        nextById.set(object.id, { ...object, x } as ResumeDesignObject);
+        cursor = x + object.width + gap;
+      });
+    } else {
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+      const span = (last.y + last.height) - first.y;
+      const occupied = sorted.reduce((sum, object) => sum + object.height, 0);
+      const gap = (span - occupied) / (sorted.length - 1);
+
+      let cursor = first.y;
+      sorted.forEach((object, index) => {
+        const y = index === 0 ? first.y : index === sorted.length - 1 ? last.y : cursor;
+        nextById.set(object.id, { ...object, y } as ResumeDesignObject);
+        cursor = y + object.height + gap;
+      });
+    }
+
+    commitSelectedGeometry(nextById);
+  }
+
+  function groupSelectedDesignObjects() {
+    const groupable = selectedDesignObjects.filter(object =>
+      !object.hidden &&
+      !designObjectIsResumeDriven(object) &&
+      designObjectMatchesPage(object, selectedDesignObjectPage)
+    );
+    if (groupable.length < 2) return;
+
+    const groupId = `group-${genId()}`;
+    const ids = new Set(groupable.map(object => object.id));
+    onDesignChange(withDesignObjects(
+      d,
+      getDesignObjects(d).map(object =>
+        ids.has(object.id)
+          ? { ...object, groupId } as ResumeDesignObject
+          : object
+      ),
+    ));
+  }
+
+  function ungroupSelectedDesignObjects() {
+    const groupIds = new Set(
+      selectedDesignObjects.map(object => object.groupId).filter((id): id is string => !!id)
+    );
+    if (groupIds.size === 0) return;
+
+    onDesignChange(withDesignObjects(
+      d,
+      getDesignObjects(d).map(object => {
+        if (!object.groupId || !groupIds.has(object.groupId)) return object;
+        const next = { ...object } as ResumeDesignObject;
+        delete next.groupId;
+        return next;
+      }),
+    ));
+  }
+
+  function toggleSelectedDesignObjectLock() {
+    if (selectedDesignObjects.length === 0) return;
+    const allLocked = selectedDesignObjects.every(object => !!object.locked);
+    const ids = new Set(selectedDesignObjects.map(object => object.id));
+
+    onDesignChange(withDesignObjects(
+      d,
+      getDesignObjects(d).map(object =>
+        ids.has(object.id)
+          ? { ...object, locked: !allLocked } as ResumeDesignObject
+          : object
+      ),
+    ));
+  }
+
+  function nudgeSelectedDesignObjects(dx: number, dy: number) {
+    const editable = selectedEditableDesignObjects();
+    if (editable.length === 0) return;
+
+    const bounds = unionDesignRects(editable.map(designRectForObject));
+    if (!bounds) return;
+
+    const boundedDx = clampDesignObject(dx, -bounds.x, PAGE_W - (bounds.x + bounds.w));
+    const boundedDy = clampDesignObject(dy, -bounds.y, PAGE_H - (bounds.y + bounds.h));
+
+    const byId = new Map<string, ResumeDesignObject>();
+    editable.forEach(object => {
+      byId.set(object.id, {
+        ...object,
+        x: object.x + boundedDx,
+        y: object.y + boundedDy,
+      } as ResumeDesignObject);
+    });
+
+    commitSelectedGeometry(byId);
+  }
+
   useEffect(() => {
-    const h = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") clearSelection(); };
+    const h = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") {
+        clearSelection();
+        return;
+      }
+
+      const target = e.target as HTMLElement | null;
+      if (target?.isContentEditable || target?.closest?.("input, textarea, select, [contenteditable='true']")) return;
+
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedDesignObjectIds.length > 0) {
+        e.preventDefault();
+        deleteSelectedDesignObject();
+        return;
+      }
+
+      if (selectedDesignObjectIds.length > 0 && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        if (e.key === "ArrowLeft") nudgeSelectedDesignObjects(-step, 0);
+        if (e.key === "ArrowRight") nudgeSelectedDesignObjects(step, 0);
+        if (e.key === "ArrowUp") nudgeSelectedDesignObjects(0, -step);
+        if (e.key === "ArrowDown") nudgeSelectedDesignObjects(0, step);
+      }
+    };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, []);
+  }, [selectedDesignObjectIds, selectedDesignObjectPage, d]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Resume text styling callbacks. These are deliberately kept in ResumeCanvas so
+  // the floating ContextToolbar/StylePopover always edit the current merged design.
   function changeTs(key: SelectableKey, partial: Partial<TextStyle>) {
-    const current = d[key] as TextStyle & Record<string, unknown>;
-    onDesignChange({ ...d, [key]: { ...current, ...partial } });
+    const role = visualRoleForDesignKey(key);
+    if (!role) {
+      const current = d[key] as TextStyle & Record<string, unknown>;
+      onDesignChange({ ...d, [key]: { ...current, ...partial } });
+      return;
+    }
+
+    onDesignChange(applyPdfEditorTextStylePatch(d, role, partial));
+  }
+
+  function toggleTextStyleLink(key: SelectableKey) {
+    const role = visualRoleForDesignKey(key);
+    if (!role) return;
+    onDesignChange(setWebTextLinked(d, role, !isWebTextLinked(d, role)));
   }
 
   function changeBlock(id: string, partial: Partial<LayoutOverride>) {
@@ -3373,14 +7765,50 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     onDesignChange({ ...d, layoutOverrides });
   }
 
+  // The regular text toolbar needs to know which repeated SubDrag owns the text
+  // selection so it can surface the same linked/unlinked control used by the compact
+  // logo/description toolbar. Phase 7 extends this to education as well as work.
   function linkKeysForSubDrag(key: string): string[] {
-    const m = key.match(/^work\.[^.]+\.(logo|title|org|date|body)$/);
-    if (!m) return [];
-    const part = m[1];
-    return data.workEntries.map(entry => `work.${entry.id}.${part}`);
+    const work = key.match(/^work\.[^.]+\.(logo|title|org|date|body)$/);
+    if (work) {
+      const part = work[1];
+      return data.workEntries.map(entry => `work.${entry.id}.${part}`);
+    }
+
+    const edu = key.match(/^edu\.[^.]+\.(title|org|date)$/);
+    if (edu) {
+      const part = edu[1];
+      return data.education.map(entry => `edu.${entry.id}.${part}`);
+    }
+
+    const project = key.match(
+      /^projects\.[^.]+\.(title|tech|body|github|live)$/,
+    );
+    if (project) {
+      const part = project[1];
+      return getResumeProjects(data).map(
+        entry => `projects.${entry.id}.${part}`,
+      );
+    }
+
+    return [];
   }
 
   function linkLabelForSubDrag(key: string): string {
+    if (key.startsWith("edu.")) {
+      if (key.endsWith(".title")) return "School";
+      if (key.endsWith(".org")) return "Degree";
+      if (key.endsWith(".date")) return "Education date";
+    }
+
+    if (key.startsWith("projects.")) {
+      if (key.endsWith(".title")) return "Project title";
+      if (key.endsWith(".tech")) return "Project tech";
+      if (key.endsWith(".body")) return "Project description";
+      if (key.endsWith(".github")) return "GitHub link";
+      if (key.endsWith(".live")) return "Live project link";
+    }
+
     if (key.endsWith(".logo")) return "Company logo";
     if (key.endsWith(".title")) return "Job title";
     if (key.endsWith(".org")) return "Company";
@@ -3395,6 +7823,7 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     if (!next.visualDy) delete next.visualDy;
     if (!next.rotation) delete next.rotation;
     if (!next.width) delete next.width;
+    // linked=true is the default, so persist only the explicit opt-out.
     if (next.linked !== false) delete next.linked;
     return next;
   }
@@ -3417,6 +7846,7 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     })();
 
     if (isCurrentlyLinked) {
+      // Freeze the effective shared geometry before detaching so nothing jumps.
       layoutOverrides[key] = cleanLinkOverride({
         ...existing,
         visualDx: existing.visualDx ?? source?.visualDx,
@@ -3426,6 +7856,7 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
         linked: false,
       });
     } else {
+      // Relinking intentionally adopts the first still-linked peer's geometry.
       const next = cleanLinkOverride({
         ...existing,
         visualDx: source?.visualDx,
@@ -3445,11 +7876,13 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     if (!selectedSubDragKey) return undefined;
     const keys = linkKeysForSubDrag(selectedSubDragKey);
     if (keys.length <= 1) return undefined;
+
     const own = linkedOverride(d.layoutOverrides?.[selectedSubDragKey]);
     const linked = own?.linked !== false;
     const count = keys.filter(key =>
       key === selectedSubDragKey || linkedOverride(d.layoutOverrides?.[key])?.linked !== false
     ).length;
+
     return {
       label: linkLabelForSubDrag(selectedSubDragKey),
       linked,
@@ -3468,7 +7901,7 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
   };
 
   return (
-    <div onClick={clearSelection}>
+    <div onClick={handleCanvasClickAway}>
 
       {/* Status bar */}
       <div style={{
@@ -3499,6 +7932,448 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
             </>}
       </div>
 
+      {/* Design objects — shapes, images, backgrounds and resume-aware smart
+          components. They share one selection/layer model while staying outside
+          structured resume flow and pagination. */}
+      <div
+        style={{
+          height: 34,
+          marginBottom: 8,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          fontFamily: "system-ui, sans-serif",
+          userSelect: "none",
+        }}
+        onMouseDown={e => e.stopPropagation()}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setBackgroundMenuOpen(false);
+              setImageMenuOpen(false);
+              setComponentMenuOpen(false);
+              setLayersPanelOpen(false);
+              setShapeMenuOpen(v => !v);
+            }}
+            style={{
+              height: 31,
+              padding: "0 10px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 7,
+              border: "1px solid #ddd6fe",
+              background: "#fff",
+              color: "#6d28d9",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+            }}
+          >
+            <Plus size={13} />
+            Add shape
+            <ChevronDown size={12} />
+          </button>
+
+          {shapeMenuOpen && (
+            <div
+              style={{
+                position: "absolute",
+                top: 35,
+                left: 0,
+                zIndex: 10002,
+                width: 150,
+                padding: 5,
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 8,
+                boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
+              }}
+            >
+              {[
+                { type: "rectangle" as const, label: "Rectangle", icon: <Square size={14} /> },
+                { type: "ellipse" as const, label: "Circle", icon: <Circle size={14} /> },
+                { type: "line" as const, label: "Line", icon: <Minus size={15} /> },
+              ].map(item => (
+                <button
+                  key={item.type}
+                  type="button"
+                  onClick={() => addShape(item.type)}
+                  style={{
+                    width: "100%",
+                    height: 31,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "0 8px",
+                    border: "none",
+                    borderRadius: 6,
+                    background: "transparent",
+                    color: "#334155",
+                    fontSize: 11,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  {item.icon}
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={{ position: "relative", marginRight: "auto" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setShapeMenuOpen(false);
+              setImageMenuOpen(false);
+              setComponentMenuOpen(false);
+              setLayersPanelOpen(false);
+              setBackgroundMenuOpen(v => !v);
+            }}
+            style={{
+              height: 31,
+              padding: "0 10px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 7,
+              border: "1px solid #e2e8f0",
+              background: "#fff",
+              color: "#475569",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+            }}
+          >
+            <Square size={13} />
+            Background
+            <ChevronDown size={12} />
+          </button>
+
+          {backgroundMenuOpen && (
+            <div
+              style={{
+                position: "absolute",
+                top: 35,
+                left: 0,
+                zIndex: 10002,
+                width: 180,
+                padding: 5,
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 8,
+                boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
+              }}
+            >
+              {[
+                { key: "page" as const, label: `Page ${activePageIndex + 1}` },
+                { key: "header" as const, label: "Header" },
+                { key: "work" as const, label: "Experience" },
+                { key: "education" as const, label: "Education" },
+                { key: "skills" as const, label: "Skills" },
+                { key: "bio" as const, label: "Summary" },
+                { key: "links" as const, label: "Links" },
+              ].map(item => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => addSmartBackground(item.key)}
+                  style={{
+                    width: "100%",
+                    height: 30,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "0 8px",
+                    border: "none",
+                    borderRadius: 6,
+                    background: "transparent",
+                    color: "#334155",
+                    fontSize: 11,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <Square size={12} />
+                  {item.label} background
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Resume-aware smart components. */}
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setShapeMenuOpen(false);
+              setBackgroundMenuOpen(false);
+              setImageMenuOpen(false);
+              setLayersPanelOpen(false);
+              setComponentMenuOpen(v => !v);
+            }}
+            style={{
+              height: 31,
+              padding: "0 10px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 7,
+              border: componentMenuOpen ? "1px solid #c4b5fd" : "1px solid #e2e8f0",
+              background: componentMenuOpen ? "#faf5ff" : "#fff",
+              color: componentMenuOpen ? "#6d28d9" : "#475569",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+            }}
+          >
+            <Layers3 size={13} />
+            Components
+            <ChevronDown size={12} />
+          </button>
+
+          {componentMenuOpen && (
+            <div
+              style={{
+                position: "absolute",
+                top: 35,
+                left: 0,
+                zIndex: 10002,
+                width: 218,
+                maxHeight: 330,
+                overflowY: "auto",
+                padding: 5,
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 8,
+                boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
+              }}
+            >
+              <div style={{ padding: "4px 7px 5px", fontSize: 8.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Page accents
+              </div>
+              {[
+                ["sidebar-left", "Left sidebar"],
+                ["sidebar-right", "Right sidebar"],
+                ["header-accent", "Header accent bar"],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => addSmartComponent(key as SmartComponentPreset)}
+                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 10.5, cursor: "pointer", textAlign: "left" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <Square size={12} /> {label}
+                </button>
+              ))}
+
+              <div style={{ marginTop: 4, padding: "5px 7px", borderTop: "1px solid #f1f5f9", fontSize: 8.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Resume-aware
+              </div>
+              {[
+                ["work-timeline", "Experience timeline"],
+                ["education-timeline", "Education timeline"],
+                ["work-divider", "Experience divider"],
+                ["education-divider", "Education divider"],
+                ["skills-divider", "Skills divider"],
+                ["bio-divider", "Summary divider"],
+                ["links-divider", "Links divider"],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => addSmartComponent(key as SmartComponentPreset)}
+                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 10.5, cursor: "pointer", textAlign: "left" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  {key.endsWith("timeline") ? <Circle size={11} /> : <Minus size={13} />} {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Images / photos. */}
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setShapeMenuOpen(false);
+              setBackgroundMenuOpen(false);
+              setComponentMenuOpen(false);
+              setLayersPanelOpen(false);
+              setImageMenuOpen(v => !v);
+            }}
+            style={{
+              height: 31,
+              padding: "0 10px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 7,
+              border: "1px solid #e2e8f0",
+              background: "#fff",
+              color: "#475569",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+            }}
+          >
+            <ImageIcon size={13} />
+            Image
+            <ChevronDown size={12} />
+          </button>
+
+          {imageMenuOpen && (
+            <div
+              style={{
+                position: "absolute",
+                top: 35,
+                left: 0,
+                zIndex: 10002,
+                width: 166,
+                padding: 5,
+                background: "white",
+                border: "1px solid #e2e8f0",
+                borderRadius: 8,
+                boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => requestImageUpload("photo")}
+                style={{
+                  width: "100%", height: 32, display: "flex", alignItems: "center", gap: 8,
+                  padding: "0 8px", border: "none", borderRadius: 6,
+                  background: "transparent", color: "#334155", fontSize: 11,
+                  cursor: "pointer", textAlign: "left",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+              >
+                <User size={14} />
+                Profile photo
+              </button>
+
+              <button
+                type="button"
+                onClick={() => requestImageUpload("image")}
+                style={{
+                  width: "100%", height: 32, display: "flex", alignItems: "center", gap: 8,
+                  padding: "0 8px", border: "none", borderRadius: 6,
+                  background: "transparent", color: "#334155", fontSize: 11,
+                  cursor: "pointer", textAlign: "left",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+              >
+                <ImageIcon size={14} />
+                Image / graphic
+              </button>
+            </div>
+          )}
+        </div>
+
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          aria-label="Upload resume image"
+          style={{ display: "none" }}
+          onChange={e => {
+            const file = e.target.files?.[0] ?? null;
+            void handleImageFile(file);
+          }}
+        />
+
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setShapeMenuOpen(false);
+              setBackgroundMenuOpen(false);
+              setImageMenuOpen(false);
+              setComponentMenuOpen(false);
+              setLayersPanelOpen(v => !v);
+            }}
+            style={{
+              height: 31,
+              padding: "0 10px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 7,
+              border: layersPanelOpen ? "1px solid #c4b5fd" : "1px solid #e2e8f0",
+              background: layersPanelOpen ? "#faf5ff" : "#fff",
+              color: layersPanelOpen ? "#6d28d9" : "#475569",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+            }}
+          >
+            <Layers3 size={13} />
+            Layers
+            {getDesignObjects(d).length > 0 && (
+              <span
+                style={{
+                  minWidth: 16,
+                  height: 16,
+                  padding: "0 4px",
+                  borderRadius: 999,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: layersPanelOpen ? "#ede9fe" : "#f1f5f9",
+                  color: layersPanelOpen ? "#7c3aed" : "#64748b",
+                  fontSize: 8.5,
+                  fontWeight: 700,
+                }}
+              >
+                {getDesignObjects(d).length}
+              </span>
+            )}
+          </button>
+
+          {layersPanelOpen && (
+            <LayersPanel
+              objects={getDesignObjects(d)}
+              activePage={activePageIndex}
+              selectedIds={selectedDesignObjectIds}
+              onSelect={selectDesignObjectFromLayers}
+              onToggleHidden={toggleDesignObjectHidden}
+              onToggleLocked={toggleDesignObjectLocked}
+              onRename={renameDesignObject}
+              onReorder={reorderDesignObjectsFromLayers}
+              onClose={() => setLayersPanelOpen(false)}
+            />
+          )}
+        </div>
+
+        <span style={{ fontSize: 10, color: "#94a3b8" }}>
+          Active page {activePageIndex + 1} · Shift-click to multi-select · Link = shared design
+        </span>
+      </div>
+
       {/* Paginated resume pages — FreeFormLayout owns the physical page shells so
           it can add page 2/3/etc. as soon as measured flow exceeds the current page. */}
       <FreeFormLayout
@@ -3513,7 +8388,58 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
         onDesignChange={onDesignChange}
         onHoverBlock={setHoveredBlock}
         onBlockClick={handleBlockClick}
+        selectedDesignObjectId={selectedDesignObjectId}
+        selectedDesignObjectIds={selectedDesignObjectIds}
+        selectedDesignObjectPage={selectedDesignObjectPage}
+        onSelectDesignObject={selectDesignObject}
+        onDesignObjectRectChange={setDesignObjectAnchorRect}
+        onActivePageChange={setActivePageIndex}
       />
+
+      {/* Multi-selection toolbar — align/distribute/group without touching resume flow. */}
+      {selectedDesignObjectIds.length > 1 && designObjectAnchorRect && createPortal(
+        <MultiDesignObjectToolbar
+          count={selectedDesignObjectIds.length}
+          anchorRect={designObjectAnchorRect}
+          canDistribute={selectedEditableDesignObjects().length >= 3}
+          canLink={selectedObjectsCanLink}
+          isLinkedSet={!!selectedSharedLinkId}
+          hasGroup={selectedDesignObjects.some(object => !!object.groupId)}
+          allLocked={selectedDesignObjects.length > 0 && selectedDesignObjects.every(object => !!object.locked)}
+          onAlign={alignSelectedDesignObjects}
+          onDistribute={distributeSelectedDesignObjects}
+          onLink={linkSelectedDesignObjects}
+          onUnlink={unlinkSelectedDesignObjects}
+          onGroup={groupSelectedDesignObjects}
+          onUngroup={ungroupSelectedDesignObjects}
+          onToggleLock={toggleSelectedDesignObjectLock}
+          onDelete={deleteSelectedDesignObject}
+        />,
+        document.body
+      )}
+
+      {/* Design-object toolbar — shapes/images stay isolated from resume text styling. */}
+      {selectedDesignObject && selectedDesignObjectIds.length === 1 && designObjectAnchorRect && createPortal(
+        <DesignObjectToolbar
+          object={selectedDesignObject}
+          anchorRect={designObjectAnchorRect}
+          linkedCount={selectedDesignObject.linkId
+            ? linkedDesignObjectPeers(d, selectedDesignObject).length
+            : 0}
+          onChange={changeSelectedDesignObject}
+          onUnlink={unlinkPrimaryDesignObject}
+          onBringForward={() => reorderSelectedDesignObject(1)}
+          onSendBackward={() => reorderSelectedDesignObject(-1)}
+          onDelete={deleteSelectedDesignObject}
+          onReplaceImage={selectedDesignObject.type === "image"
+            ? () => requestImageUpload(
+                (selectedDesignObject as ImageDesignObject).imageKind ?? "image",
+                selectedDesignObject.id,
+              )
+            : undefined}
+        />,
+        document.body
+      )}
 
       {/* Context toolbar — single click */}
       {selected && anchorRect && createPortal(
@@ -3523,6 +8449,8 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
           anchorRect={anchorRect}
           onChangeTs={changeTs}
           linkControl={selectedLinkControl}
+          styleLinked={!!visualRoleForDesignKey(selected) && isWebTextLinked(d, visualRoleForDesignKey(selected)!)}
+          onToggleStyleLink={() => toggleTextStyleLink(selected)}
           onOpenFull={() => handleRightClick(selected, { getBoundingClientRect: () => anchorRect } as HTMLElement)}
           onClose={clearSelection}
         />,
@@ -3553,6 +8481,8 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
           anchorRect={rightAnchor}
           onChangeTs={changeTs}
           onChangeDesign={partial => onDesignChange({ ...d, ...partial })}
+          styleLinked={!!visualRoleForDesignKey(rightKey) && isWebTextLinked(d, visualRoleForDesignKey(rightKey)!)}
+          onToggleStyleLink={() => toggleTextStyleLink(rightKey)}
           onClose={clearSelection}
           blockId={rightBlockId}
           onChangeBlock={changeBlock}
@@ -3668,13 +8598,16 @@ function BlockActionBar({ anchorRect, onSnapBack, onClose }: {
 }
 
 function ContextToolbar({
-  elementKey, design, anchorRect, onChangeTs, linkControl, onOpenFull, onClose,
+  elementKey, design, anchorRect, onChangeTs, linkControl,
+  styleLinked, onToggleStyleLink, onOpenFull, onClose,
 }: {
   elementKey: SelectableKey;
   design: ResumeDesign;
   anchorRect: DOMRect;
   onChangeTs: (key: SelectableKey, partial: Partial<TextStyle>) => void;
   linkControl?: { label: string; linked: boolean; count: number; onToggle: () => void };
+  styleLinked: boolean;
+  onToggleStyleLink: () => void;
   onOpenFull: () => void;
   onClose: () => void;
 }) {
@@ -3722,6 +8655,30 @@ function ContextToolbar({
         {ELEMENT_LABELS[elementKey]}
       </span>
 
+      {visualRoleForDesignKey(elementKey) && (
+        <button
+          type="button"
+          onClick={onToggleStyleLink}
+          title={
+            styleLinked
+              ? "Typography linked between Designed PDF and Web. Click to unlink Web."
+              : "Web has its own typography override. Click to relink."
+          }
+          style={{
+            ...TB_BTN,
+            width: "auto",
+            minWidth: 30,
+            padding: "0 7px",
+            border: styleLinked ? "1px solid #ddd6fe" : "1px solid #fed7aa",
+            background: styleLinked ? "#f5f3ff" : "#fff7ed",
+            color: styleLinked ? "#6d28d9" : "#c2410c",
+            fontSize: 11,
+          }}
+        >
+          {styleLinked ? "🔗" : "⛓"}
+        </button>
+      )}
+
       {/* Linking is first because it controls the repeated layout relationship;
           everything after it is ordinary text styling. */}
       {linkControl && (
@@ -3729,7 +8686,7 @@ function ContextToolbar({
           <button
             type="button"
             title={linkControl.linked
-              ? `${linkControl.label} is linked across roles`
+              ? `${linkControl.label} matches all same fields`
               : `${linkControl.label} is independent`}
             onClick={linkControl.onToggle}
             style={{
@@ -3749,7 +8706,7 @@ function ContextToolbar({
             }}
           >
             {linkControl.linked ? <Link2 size={13} strokeWidth={2.1} /> : <Unlink2 size={13} strokeWidth={2} />}
-            <span>{linkControl.linked ? `Linked · ${linkControl.count}` : "Unlinked"}</span>
+            <span>{linkControl.linked ? `All ${linkControl.label.toLowerCase()} · ${linkControl.count}` : "Individual"}</span>
           </button>
           {divider}
         </>
@@ -3817,6 +8774,8 @@ const FONTS: { value: FontFamily; label: string }[] = [
 interface PopoverProps {
   elementKey: SelectableKey;
   design: ResumeDesign;
+  styleLinked: boolean;
+  onToggleStyleLink: () => void;
   anchorRect: DOMRect;
   onChangeTs: (key: SelectableKey, partial: Partial<TextStyle>) => void;
   onChangeDesign: (partial: Partial<ResumeDesign>) => void;
@@ -3825,7 +8784,18 @@ interface PopoverProps {
   onChangeBlock?: (id: string, partial: Partial<LayoutOverride>) => void;
 }
 
-function StylePopover({ elementKey, design: d, anchorRect, onChangeTs, onChangeDesign, onClose, blockId, onChangeBlock }: PopoverProps) {
+function StylePopover({
+  elementKey,
+  design: d,
+  anchorRect,
+  onChangeTs,
+  onChangeDesign,
+  onClose,
+  blockId,
+  onChangeBlock,
+  styleLinked,
+  onToggleStyleLink,
+}: PopoverProps) {
   const popRef = useRef<HTMLDivElement>(null);
   const s = d[elementKey] as TextStyle & Record<string, unknown>;
   const set = (p: Partial<TextStyle>) => onChangeTs(elementKey, p);
@@ -3924,12 +8894,53 @@ function StylePopover({ elementKey, design: d, anchorRect, onChangeTs, onChangeD
       }}
       onClick={e => e.stopPropagation()}
     >
-      <div style={{ background: "#7c3aed", padding: "9px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ background: "#7c3aed", padding: "9px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <span style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>✏ {ELEMENT_LABELS[elementKey]}</span>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: 18, lineHeight: 1, opacity: 0.8 }}>×</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {visualRoleForDesignKey(elementKey) && (
+            <button
+              type="button"
+              onClick={onToggleStyleLink}
+              title={
+                styleLinked
+                  ? "Typography linked to Web"
+                  : "Web typography overridden"
+              }
+              style={{
+                height: 24,
+                border: "1px solid rgba(255,255,255,.35)",
+                borderRadius: 6,
+                background: "rgba(255,255,255,.14)",
+                color: "#fff",
+                padding: "0 7px",
+                cursor: "pointer",
+                fontSize: 10,
+                fontWeight: 700,
+              }}
+            >
+              {styleLinked ? "🔗 Linked" : "⛓ PDF only"}
+            </button>
+          )}
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: 18, lineHeight: 1, opacity: 0.8 }}>×</button>
+        </div>
       </div>
 
       <div style={{ padding: "12px 12px 14px", display: "flex", flexDirection: "column" as const, gap: 10, maxHeight: 440, overflowY: "auto" as const }}>
+
+        {visualRoleForDesignKey(elementKey) && (
+          <div style={{
+            borderRadius: 7,
+            background: styleLinked ? "#f5f3ff" : "#fff7ed",
+            padding: "6px 7px",
+            color: styleLinked ? "#6d28d9" : "#9a3412",
+            fontSize: 9,
+            lineHeight: 1.4,
+          }}>
+            {styleLinked
+              ? "🔗 Typography is linked. PDF text changes also update the Web resume."
+              : "⛓ Web typography is independent. PDF changes stay PDF-only until you relink."}
+          </div>
+        )}
 
         {selectField("Font family", s.fontFamily as string, v => set({ fontFamily: v as FontFamily }), FONTS)}
         {row2(

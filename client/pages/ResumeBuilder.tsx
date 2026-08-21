@@ -4,17 +4,51 @@ import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { useAuth } from "@/hooks/useAuth";
 import { pdf } from "@react-pdf/renderer";
-import UniversalTemplate from "@/components/resume-templates/UniversalTemplate";
+import UniversalTemplate from "@/components/resume-templates/UniversalTemplateWithProjects";
+import ATSResumeTemplate from "@/components/resume-templates/ATSResumeTemplate";
 import ResumeCanvas from "@/components/resume-templates/ResumeCanvas";
-import { DEFAULT_DESIGN, STARTING_POINTS } from "@/components/resume-templates/defaults";
+import ResumeATSTwin from "@/components/resume-templates/ResumeATSTwin";
+import ResumeWebPreview from "@/components/resume-templates/ResumeWebPreview";
+import ResumeWebControls from "@/components/resume-templates/ResumeWebControls";
+import ResumeInteractivePreview from "@/components/resume-templates/ResumeInteractivePreview";
+import ResumeWebModeSwitch from "@/components/resume-templates/ResumeWebModeSwitch";
+import { DEFAULT_DESIGN } from "@/components/resume-templates/defaults";
 import ResumeDesignPanel from "@/components/ResumeDesignPanel";
+import ResumeDesignIntelligence from "@/components/resume-templates/ResumeDesignIntelligence";
 import type { ResumeData, WorkEntry, EducationEntry } from "@/components/resume-templates/types";
 import { genId } from "@/components/resume-templates/types";
-import { Lock, Download, Plus, Trash2, ChevronDown, ChevronUp, Save, Loader2, AlertCircle } from "lucide-react";
+import { Lock, Download, Plus, Trash2, ChevronDown, ChevronUp, Save, Loader2, AlertCircle, LayoutTemplate, Check, X, Sparkles, FileText, Globe2, ExternalLink } from "lucide-react";
 import { Component, type ReactNode } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import RichTextEditor from "@/components/RichTextEditor";
+import {
+  RESUME_TEMPLATES,
+  applyResumeTemplate,
+  detachResumeTemplate,
+  getAppliedResumeTemplateId,
+  getResumeTemplate,
+  type ResumeTemplateDefinition,
+} from "@/components/resume-templates/resumeDesignTemplates";
+import { compactResumeDesignImages } from "@/components/resume-templates/resumeImageCompression";
+import { buildAnimatedStandaloneResumeWebHtml } from "@/components/resume-templates/resumeWebAnimation";
+import { buildStandaloneInteractiveResumeHtml } from "@/components/resume-templates/resumeInteractivePublish";
+import {
+  getResumeProjects,
+  migrateLegacyWebPortfolioData,
+  withResumeProjects,
+  type ResumeProjectEntry,
+} from "@/components/resume-templates/resumeProjects";
+import {
+  getResumeWebSettings,
+  withResumeWebSettings,
+  type ResumeWebVideoPlacement,
+} from "@/components/resume-templates/resumeWeb";
+import {
+  getActiveWebExperienceMode,
+  setActiveWebExperienceMode,
+  type WebExperienceMode,
+} from "@/components/resume-templates/resumeWebExperience";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -57,6 +91,18 @@ function emptyEdu(): EducationEntry {
 /** Normalizes a saved education entry — adds stable id if absent. */
 function normalizeEduEntry(e: any): EducationEntry {
   return { ...e, id: e.id ?? genId() };
+}
+
+function emptyProject(): ResumeProjectEntry {
+  return {
+    id: genId(),
+    title: "",
+    description: "",
+    techStack: "",
+    githubUrl: "",
+    liveUrl: "",
+    imageUrl: "",
+  };
 }
 
 
@@ -381,13 +427,518 @@ function SkillsTab({ skills, onChange }: { skills: string[]; onChange: (skills: 
   );
 }
 
+
+// ── Templates 2.0 preview UI ─────────────────────────────────────────────────
+
+function TemplateMiniPreview({ template, large = false }: {
+  template: ResumeTemplateDefinition;
+  large?: boolean;
+}) {
+  const p = template.preview;
+  const width = large ? 176 : 74;
+  const height = large ? 222 : 94;
+  const pad = large ? 12 : 5;
+  const sidebarW = p.layout === "single" ? 0 : Math.round(width * 0.27);
+  const contentX = p.layout === "sidebar-left" ? sidebarW : 0;
+  const lineH = large ? 4 : 2;
+  const headingH = large ? 7 : 3;
+
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        width,
+        height,
+        position: "relative",
+        overflow: "hidden",
+        flexShrink: 0,
+        borderRadius: large ? 8 : 5,
+        background: p.paper,
+        border: "1px solid #e4e4e7",
+        boxShadow: large ? "0 8px 20px rgba(15,23,42,0.08)" : "0 2px 6px rgba(15,23,42,0.06)",
+      }}
+    >
+      {p.layout !== "single" && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            width: sidebarW,
+            left: p.layout === "sidebar-left" ? 0 : undefined,
+            right: p.layout === "sidebar-right" ? 0 : undefined,
+            background: p.sidebarColor ?? `${p.accent}18`,
+          }}
+        />
+      )}
+
+      <div
+        style={{
+          position: "absolute",
+          left: contentX + pad,
+          right: p.layout === "sidebar-right" ? sidebarW + pad : pad,
+          top: pad,
+        }}
+      >
+        <div style={{ width: "58%", height: headingH, borderRadius: 999, background: "#27272a", opacity: 0.92 }} />
+        <div style={{ width: "72%", height: lineH, borderRadius: 999, background: "#a1a1aa", marginTop: large ? 6 : 3 }} />
+
+        {p.headerAccent && (
+          <div style={{ width: "100%", height: large ? 3 : 2, background: p.accent, borderRadius: 999, marginTop: large ? 8 : 4 }} />
+        )}
+
+        {[0, 1, 2].map(section => (
+          <div key={section} style={{ marginTop: large ? 15 : 7, position: "relative" }}>
+            {p.timeline && section < 2 && (
+              <>
+                <div style={{
+                  position: "absolute",
+                  left: large ? -7 : -3,
+                  top: large ? 13 : 6,
+                  width: large ? 2 : 1,
+                  height: large ? 37 : 16,
+                  background: p.accent,
+                  opacity: 0.65,
+                }} />
+                <div style={{
+                  position: "absolute",
+                  left: large ? -10 : -5,
+                  top: large ? 11 : 5,
+                  width: large ? 8 : 4,
+                  height: large ? 8 : 4,
+                  borderRadius: "50%",
+                  background: p.accent,
+                }} />
+              </>
+            )}
+            <div style={{ width: "38%", height: large ? 4 : 2, borderRadius: 999, background: p.accent }} />
+            <div style={{ width: section === 1 ? "78%" : "88%", height: lineH, borderRadius: 999, background: "#71717a", marginTop: large ? 8 : 4 }} />
+            <div style={{ width: "96%", height: lineH, borderRadius: 999, background: "#d4d4d8", marginTop: large ? 5 : 2 }} />
+            <div style={{ width: "82%", height: lineH, borderRadius: 999, background: "#d4d4d8", marginTop: large ? 4 : 2 }} />
+          </div>
+        ))}
+      </div>
+
+      {p.layout !== "single" && (
+        <div
+          style={{
+            position: "absolute",
+            width: Math.max(10, sidebarW - pad * 2),
+            left: p.layout === "sidebar-left" ? pad : undefined,
+            right: p.layout === "sidebar-right" ? pad : undefined,
+            top: large ? 48 : 21,
+          }}
+        >
+          {[0, 1, 2, 3].map(i => (
+            <div
+              key={i}
+              style={{
+                width: i % 2 ? "70%" : "88%",
+                height: lineH,
+                borderRadius: 999,
+                background: i === 0 ? p.accent : "#a78bfa",
+                opacity: i === 0 ? 0.9 : 0.5,
+                marginTop: large ? 8 : 4,
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TemplateGallery({
+  currentTemplateId,
+  onApply,
+  onDetach,
+  onClose,
+}: {
+  currentTemplateId?: string;
+  onApply: (template: ResumeTemplateDefinition) => void;
+  onDetach: () => void;
+  onClose: () => void;
+}) {
+  const [category, setCategory] = useState<"All" | "Professional" | "Modern" | "Creative">("All");
+  const categories = ["All", "Professional", "Modern", "Creative"] as const;
+  const visible = category === "All"
+    ? RESUME_TEMPLATES
+    : RESUME_TEMPLATES.filter(template => template.category === category);
+
+  return (
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-3 sm:p-6"
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-2xl border border-border bg-background shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <Sparkles size={16} className="text-[#2e0562]" />
+              <h2 className="text-base font-semibold text-foreground">Templates</h2>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Editable starting points — your resume content and custom images stay yours.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Close templates"
+          >
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3">
+          {categories.map(item => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setCategory(item)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                category === item
+                  ? "bg-[#2e0562] text-white"
+                  : "border border-border text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {item}
+            </button>
+          ))}
+          {currentTemplateId && (
+            <button
+              type="button"
+              onClick={onDetach}
+              className="ml-auto text-xs font-medium text-muted-foreground hover:text-foreground"
+              title="Keep the current appearance but stop treating it as an applied template"
+            >
+              Make current design custom
+            </button>
+          )}
+        </div>
+
+        <div className="max-h-[calc(90vh-9rem)] overflow-y-auto p-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {visible.map(template => {
+              const active = currentTemplateId === template.id;
+              return (
+                <div
+                  key={template.id}
+                  className={`rounded-2xl border p-4 transition-all ${
+                    active
+                      ? "border-[#2e0562] bg-[#2e0562]/[0.035] shadow-sm"
+                      : "border-border bg-card hover:border-[#2e0562]/40"
+                  }`}
+                >
+                  <div className="flex justify-center rounded-xl bg-muted/30 py-4">
+                    <TemplateMiniPreview template={template} large />
+                  </div>
+
+                  <div className="mt-4 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-foreground">{template.name}</h3>
+                        {active && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-[#2e0562]/10 px-2 py-0.5 text-[10px] font-semibold text-[#2e0562]">
+                            <Check size={10} /> Applied
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{template.description}</p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onApply(template)}
+                    className={`mt-4 w-full rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                      active
+                        ? "border border-[#2e0562]/30 text-[#2e0562] hover:bg-[#2e0562]/5"
+                        : "bg-[#2e0562] text-white hover:bg-[#2e0562]/90"
+                    }`}
+                  >
+                    {active ? "Reapply template" : "Use this template"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-5 rounded-xl border border-border bg-muted/20 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+            Applying a template changes layout, typography and template decorations. It keeps your work history,
+            projects, education, skills, summary, links, uploaded photos and custom design objects. Manual text positioning is
+            reset so the new layout can flow cleanly.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Projects — shared resume content ─────────────────────────────────────────
+
+function ProjectEntryEditor({
+  project,
+  onChange,
+  onRemove,
+}: {
+  project: ResumeProjectEntry;
+  onChange: (project: ResumeProjectEntry) => void;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+          {project.title || "New project"}
+        </span>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setOpen(value => !value)}
+            className="rounded p-1 text-muted-foreground hover:text-foreground"
+          >
+            {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="rounded p-1 text-muted-foreground hover:text-red-500"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
+
+      {open && (
+        <div className="space-y-3">
+          <input
+            value={project.title}
+            placeholder="Project name"
+            onChange={event => onChange({ ...project, title: event.target.value })}
+            className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+          />
+
+          <textarea
+            value={project.description}
+            rows={4}
+            placeholder="What did you build? What problem did it solve?"
+            onChange={event => onChange({ ...project, description: event.target.value })}
+            className="w-full resize-y rounded border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+          />
+
+          <input
+            value={project.techStack}
+            placeholder="Tech stack — e.g. React, TypeScript, PostgreSQL"
+            onChange={event => onChange({ ...project, techStack: event.target.value })}
+            className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+          />
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <input
+              value={project.githubUrl}
+              placeholder="GitHub URL"
+              onChange={event => onChange({ ...project, githubUrl: event.target.value })}
+              className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+            />
+            <input
+              value={project.liveUrl}
+              placeholder="Live / demo URL"
+              onChange={event => onChange({ ...project, liveUrl: event.target.value })}
+              className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+            />
+          </div>
+
+          <div>
+            <input
+              value={project.imageUrl}
+              placeholder="Project image URL (optional)"
+              onChange={event => onChange({ ...project, imageUrl: event.target.value })}
+              className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+            />
+            <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+              Used by the Web presentation. Designed PDF and ATS stay text-first and ignore the image.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProjectsTab({
+  projects,
+  onChange,
+}: {
+  projects: ResumeProjectEntry[];
+  onChange: (projects: ResumeProjectEntry[]) => void;
+}) {
+  const dragFromRef = useRef<number | null>(null);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
+
+  function reorder(from: number, to: number) {
+    if (from === to) return;
+    const next = [...projects];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    onChange(next);
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border border-[#2e0562]/12 bg-[#2e0562]/[0.025] px-3 py-2.5 text-[10.5px] leading-relaxed text-muted-foreground">
+        Project content is shared by <strong className="text-foreground">Designed PDF, ATS and Web</strong>.
+        Each presentation renders it appropriately: text + full links in PDF/ATS, richer cards on Web.
+      </div>
+
+      {projects.map((project, index) => (
+        <div
+          key={project.id}
+          draggable
+          onDragStart={event => {
+            dragFromRef.current = index;
+            setDragFrom(index);
+            event.dataTransfer.effectAllowed = "move";
+          }}
+          onDragOver={event => {
+            event.preventDefault();
+            setDragOver(index);
+          }}
+          onDragLeave={() => setDragOver(null)}
+          onDrop={event => {
+            event.preventDefault();
+            const from = dragFromRef.current;
+            if (from != null) reorder(from, index);
+            dragFromRef.current = null;
+            setDragFrom(null);
+            setDragOver(null);
+          }}
+          onDragEnd={() => {
+            dragFromRef.current = null;
+            setDragFrom(null);
+            setDragOver(null);
+          }}
+          style={{
+            opacity: dragFrom === index ? .45 : 1,
+            outline: dragOver === index && dragFrom !== null && dragFrom !== index
+              ? "2px dashed #7c3aed"
+              : "none",
+            borderRadius: 12,
+          }}
+        >
+          <ProjectEntryEditor
+            project={project}
+            onChange={next => {
+              const copy = [...projects];
+              copy[index] = next;
+              onChange(copy);
+            }}
+            onRemove={() => onChange(projects.filter((_, i) => i !== index))}
+          />
+        </div>
+      ))}
+
+      <button
+        type="button"
+        onClick={() => onChange([...projects, emptyProject()])}
+        className="flex items-center gap-2 text-sm text-[#2e0562] transition-colors hover:text-[#2e0562]/80"
+      >
+        <Plus size={14} /> Add project
+      </button>
+    </div>
+  );
+}
+
+// ── Video — intentionally Web-only ──────────────────────────────────────────
+
+function VideoTab({
+  data,
+  onChange,
+}: {
+  data: ResumeData;
+  onChange: (next: ResumeData) => void;
+}) {
+  const settings = getResumeWebSettings(data.design);
+  const video = settings.videoIntro;
+
+  function patchVideo(patch: Partial<typeof video>) {
+    onChange({
+      ...data,
+      design: withResumeWebSettings(data.design, {
+        videoIntro: { ...video, ...patch },
+      }),
+    });
+  }
+
+  const inputCls = "w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground";
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border border-[#2e0562]/12 bg-[#2e0562]/[0.025] px-3 py-2.5 text-[10.5px] leading-relaxed text-muted-foreground">
+        Video is a <strong className="text-foreground">Web-only presentation feature</strong>. It never enters the Designed PDF or ATS twin.
+      </div>
+
+      <label className="flex cursor-pointer items-start justify-between gap-3 rounded-xl border border-border bg-background px-3 py-3">
+        <div>
+          <div className="text-sm font-semibold text-foreground">Show video introduction</div>
+          <div className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
+            YouTube, Vimeo, or a direct MP4/WebM URL.
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          checked={video.enabled}
+          onChange={event => patchVideo({ enabled: event.target.checked })}
+          className="mt-0.5 h-4 w-4 accent-[#2e0562]"
+        />
+      </label>
+
+      <input
+        value={video.url}
+        placeholder="Video URL"
+        onChange={event => patchVideo({ url: event.target.value })}
+        className={inputCls}
+      />
+      <input
+        value={video.title}
+        placeholder="Section title — e.g. Video introduction"
+        onChange={event => patchVideo({ title: event.target.value })}
+        className={inputCls}
+      />
+      <textarea
+        value={video.caption}
+        rows={3}
+        placeholder="Optional caption"
+        onChange={event => patchVideo({ caption: event.target.value })}
+        className={`${inputCls} resize-y`}
+      />
+
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">Placement</label>
+        <select
+          value={video.placement}
+          onChange={event => patchVideo({ placement: event.target.value as ResumeWebVideoPlacement })}
+          className={inputCls}
+        >
+          <option value="after-hero">After personal info</option>
+          <option value="after-about">After summary</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
 // ── Main builder ──────────────────────────────────────────────────────────────
 
-const TABS = ["Work", "Education", "Skills", "Bio", "Links", "Design"] as const;
-type Tab = typeof TABS[number];
+const CORE_TABS = ["Work", "Projects", "Education", "Skills", "Bio", "Links"] as const;
+type Tab = typeof CORE_TABS[number] | "Video" | "Design";
 
 function defaultData(user: { firstName?: string; lastName?: string; email?: string }): ResumeData {
-  return {
+  const base: ResumeData = {
     firstName:   user.firstName ?? "",
     lastName:    user.lastName  ?? "",
     email:       user.email     ?? "",
@@ -401,6 +952,7 @@ function defaultData(user: { firstName?: string; lastName?: string; email?: stri
     extraLinks:  [],
     design:      DEFAULT_DESIGN,
   };
+  return withResumeProjects(base, []);
 }
 
 export default function ResumeBuilder() {
@@ -412,12 +964,29 @@ export default function ResumeBuilder() {
   const [saving,            setSaving]            = useState(false);
   const [loading,           setLoading]           = useState(true);
   const [canvasRemeasureKey, setCanvasRemeasureKey] = useState(0);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [previewMode, setPreviewMode] = useState<"design" | "ats" | "web">("design");
+
+  const webExperienceMode: WebExperienceMode =
+    data ? getActiveWebExperienceMode(data.design) : "responsive";
 
   const saveTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSave  = useRef<ResumeData | null>(null);
 
   const [canvasWidth, setCanvasWidth] = useState(560);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
+
+  const visibleTabs: Tab[] = [
+    ...CORE_TABS,
+    ...(previewMode === "web" ? (["Video"] as Tab[]) : []),
+    "Design",
+  ];
+
+  useEffect(() => {
+    if (tab === "Video" && previewMode !== "web") {
+      setTab("Projects");
+    }
+  }, [previewMode, tab]);
 
   useEffect(() => {
     function update() {
@@ -442,11 +1011,22 @@ export default function ResumeBuilder() {
         if (!cancelled) {
           if (res.status === 200 && res.data?.data) {
             const saved = res.data.data;
-            setData({
-              ...defaultData(user), ...saved,
+            const normalizedSaved = {
+              ...saved,
               workEntries: (saved.workEntries ?? []).map(normalizeWorkEntry),
               education:   (saved.education   ?? []).map(normalizeEduEntry),
               design: saved.design ?? DEFAULT_DESIGN,
+            } as ResumeData;
+
+            const migrated = migrateLegacyWebPortfolioData(normalizedSaved);
+            setData({
+              ...defaultData(user),
+              ...migrated,
+              workEntries: migrated.workEntries ?? [],
+              education: migrated.education ?? [],
+              skills: migrated.skills ?? [],
+              extraLinks: migrated.extraLinks ?? [],
+              design: migrated.design ?? DEFAULT_DESIGN,
             });
           } else {
             // 204 = no resume yet — try prefill
@@ -485,20 +1065,53 @@ export default function ResumeBuilder() {
   const doSave = useCallback(async (d: ResumeData) => {
     setSaving(true);
     try {
-      await axios.put(`${API_BASE}/api/resumes/mine`, {
+      // Images used to be persisted as unrestricted base64 data URLs, which could
+      // make this JSON request several MB and trigger HTTP 413. New uploads are
+      // compacted before entering state, and this is a second safety pass for any
+      // legacy/current-session images created by older editor versions.
+      const compactedDesign = await compactResumeDesignImages(d.design ?? DEFAULT_DESIGN);
+
+      const payload = {
         summary:     d.summary,
         skills:      d.skills,
         education:   d.education,
         workEntries: d.workEntries,
+        projects:    getResumeProjects(d),
         extraLinks:  d.extraLinks,
-        design:      d.design,
-      });
+        design:      compactedDesign,
+      };
+
+      // Keep a margin below Express/body-parser's common 100KB default request limit. If the
+      // resume somehow exceeds this without images, fail locally instead of sending
+      // a request that we already know the server will reject.
+      const payloadChars = JSON.stringify(payload).length;
+      if (payloadChars > 90_000) {
+        throw new Error(
+          `Resume save payload is still too large (${Math.ceil(payloadChars / 1024)} KB). ` +
+          "Remove one or more large decorative images and try again."
+        );
+      }
+
+      await axios.put(`${API_BASE}/api/resumes/mine`, payload);
+
+      // If compaction changed an old image, update local state only when the user has
+      // not edited the design while the async compression was running. This avoids
+      // clobbering newer edits and prevents the same legacy image being recompressed
+      // on every subsequent autosave.
+      if (compactedDesign !== d.design) {
+        setData(current => {
+          if (!current || current.design !== d.design) return current;
+          const next = { ...current, design: compactedDesign };
+          if (pendingSave.current?.design === d.design) pendingSave.current = next;
+          return next;
+        });
+      }
     } catch (e: any) {
       const status = e?.response?.status;
       const body   = e?.response?.data;
       const msg    = (typeof body === "string" ? body : body?.message ?? body?.error) ?? e?.message ?? "unknown";
       console.error(`[Resume] save failed: HTTP ${status ?? "network error"} —`, msg, body ?? e);
-      toast.error(`Failed to save (${status ?? "network error"}): ${msg}`);
+      toast.error(status ? `Failed to save (${status}): ${msg}` : msg);
     } finally {
       setSaving(false);
     }
@@ -520,15 +1133,73 @@ export default function ResumeBuilder() {
   const handleDownload = async () => {
     if (!data) return;
     try {
-      const blob = await pdf(<UniversalTemplate data={data} />).toBlob();
+      if (previewMode === "web") {
+        const html =
+          webExperienceMode === "interactive"
+            ? buildStandaloneInteractiveResumeHtml(data)
+            : buildAnimatedStandaloneResumeWebHtml(data);
+        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = window.document.createElement("a");
+        a.href = url;
+        a.download = `${data.firstName}-${data.lastName}-resume.html`.replace(/\s+/g, "-").toLowerCase();
+        a.click();
+        URL.revokeObjectURL(url);
+        return;
+      }
+
+      const pdfDocument = previewMode === "ats"
+        ? <ATSResumeTemplate data={data} />
+        : <UniversalTemplate data={data} />;
+      const blob = await pdf(pdfDocument).toBlob();
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement("a");
       a.href     = url;
-      a.download = `${data.firstName}-${data.lastName}-resume.pdf`.replace(/\s+/g, "-").toLowerCase();
+      const suffix = previewMode === "ats" ? "-ats" : "";
+      a.download = `${data.firstName}-${data.lastName}-resume${suffix}.pdf`.replace(/\s+/g, "-").toLowerCase();
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      toast.error("Failed to generate PDF");
+      toast.error(
+        previewMode === "web"
+          ? "Failed to export web resume"
+          : previewMode === "ats"
+            ? "Failed to generate ATS PDF"
+            : "Failed to generate PDF"
+      );
+    }
+  };
+
+  const handleOpenWebPreview = () => {
+    if (!data) return;
+
+    try {
+      const html =
+        webExperienceMode === "interactive"
+          ? buildStandaloneInteractiveResumeHtml(data)
+          : buildAnimatedStandaloneResumeWebHtml(data);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const opened = window.open("about:blank", "_blank");
+      if (!opened) {
+        URL.revokeObjectURL(url);
+        toast.error("Your browser blocked the preview window");
+        return;
+      }
+
+      try {
+        opened.opener = null;
+        opened.location.href = url;
+      } catch {
+        opened.close();
+        URL.revokeObjectURL(url);
+        toast.error("Failed to open web preview");
+        return;
+      }
+
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      toast.error("Failed to open web preview");
     }
   };
 
@@ -568,18 +1239,96 @@ export default function ResumeBuilder() {
     <Layout>
       {/* Top bar */}
       <div className="border-b border-border bg-background sticky top-16 z-30">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 min-h-14 py-2 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <h1 className="text-[15px] font-semibold text-foreground">Resume Builder</h1>
             {saving && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Loader2 size={11} className="animate-spin" /> Saving…</span>}
             {!saving && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Save size={11} /> Auto-saved</span>}
           </div>
-          <button
-            onClick={handleDownload}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#2e0562] px-4 py-2 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors"
-          >
-            <Download size={14} /> Download PDF
-          </button>
+
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5" aria-label="Resume preview mode">
+              <button
+                type="button"
+                onClick={() => setPreviewMode("design")}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                  previewMode === "design"
+                    ? "bg-background text-[#2e0562] shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <LayoutTemplate size={12} />
+                Designed
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewMode("ats")}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                  previewMode === "ats"
+                    ? "bg-background text-[#2e0562] shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <FileText size={12} />
+                ATS twin
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewMode("web")}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                  previewMode === "web"
+                    ? "bg-background text-[#2e0562] shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Globe2 size={12} />
+                Web
+              </button>
+            </div>
+
+            {previewMode === "web" && (
+              <ResumeWebModeSwitch
+                mode={webExperienceMode}
+                onChange={mode => {
+                  onChange({
+                    ...data,
+                    design: setActiveWebExperienceMode(
+                      data.design,
+                      mode,
+                    ),
+                  });
+                }}
+              />
+            )}
+
+            {previewMode === "web" && (
+              <button
+                type="button"
+                onClick={handleOpenWebPreview}
+                className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-[#2e0562]/25 bg-background px-3 py-2 text-xs font-semibold text-[#2e0562] hover:bg-[#2e0562]/5 transition-colors"
+              >
+                <ExternalLink size={13} />
+                Open preview
+              </button>
+            )}
+
+            <button
+              onClick={handleDownload}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#2e0562] px-3 sm:px-4 py-2 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors"
+            >
+              <Download size={14} />
+              <span className="hidden sm:inline">
+                {previewMode === "web"
+                  ? "Export HTML"
+                  : previewMode === "ats"
+                    ? "Download ATS PDF"
+                    : "Download PDF"}
+              </span>
+              <span className="sm:hidden">
+                {previewMode === "web" ? "HTML" : "PDF"}
+              </span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -610,36 +1359,88 @@ export default function ResumeBuilder() {
                 className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground" />
             </div>
 
-            {/* Starting points strip */}
-            <div className="rounded-2xl border border-border bg-card p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Layout</p>
-              <div className="grid grid-cols-4 gap-1.5">
-                {STARTING_POINTS.map(sp => (
-                  <button
-                    key={sp.id}
-                    type="button"
-                    onClick={() => {
-                      if (!data) return;
-                      onChange({ ...data, design: { ...sp.design, layoutOverrides: undefined } });
-                      setCanvasRemeasureKey(k => k + 1);
-                    }}
-                    className="rounded-lg border border-border px-2 py-1.5 text-left hover:border-[#2e0562]/60 hover:bg-[#2e0562]/5 transition-colors"
-                  >
-                    <p className="text-[11px] font-semibold text-foreground leading-tight">{sp.label}</p>
-                    <p className="text-[9px] text-muted-foreground mt-0.5 leading-tight hidden sm:block">{sp.desc.split(" · ")[0]}</p>
-                  </button>
-                ))}
+            {/* Templates 2.0 — editable design starting points */}
+            {(() => {
+              const appliedTemplateId = getAppliedResumeTemplateId(data.design);
+              const appliedTemplate = getResumeTemplate(appliedTemplateId);
+              return (
+                <div className="rounded-2xl border border-border bg-card p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Template</p>
+                      <p className="mt-0.5 text-xs font-semibold text-foreground">
+                        {appliedTemplate?.name ?? "Custom design"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setTemplatePickerOpen(true)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[#2e0562]/25 px-2.5 py-1.5 text-[11px] font-semibold text-[#2e0562] hover:bg-[#2e0562]/5"
+                    >
+                      <LayoutTemplate size={13} />
+                      Browse
+                    </button>
+                  </div>
+
+                  <div className="mt-3 flex items-center gap-3 rounded-xl bg-muted/25 p-2.5">
+                    {appliedTemplate ? (
+                      <TemplateMiniPreview template={appliedTemplate} />
+                    ) : (
+                      <div className="flex h-[94px] w-[74px] flex-shrink-0 items-center justify-center rounded-md border border-dashed border-border bg-background text-muted-foreground">
+                        <LayoutTemplate size={18} />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">
+                        {appliedTemplate
+                          ? appliedTemplate.description
+                          : "Your current design is fully custom. Templates can seed a new look without replacing your resume content."}
+                      </p>
+                      <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+                        Templates remain fully editable on the canvas.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {previewMode === "web" && webExperienceMode === "responsive" && (
+              <ResumeWebControls
+                design={data.design}
+                onChange={design => onChange({ ...data, design })}
+              />
+            )}
+
+            {previewMode === "web" && webExperienceMode === "interactive" && (
+              <div className="rounded-2xl border border-border bg-card p-3.5">
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Interactive Experience
+                </div>
+                <div className="mt-1 text-xs font-semibold text-foreground">
+                  Separate Web presentation
+                </div>
+                <p className="mt-1.5 text-[9.5px] leading-relaxed text-muted-foreground">
+                  Responsive Site is preserved independently. Shared resume facts
+                  still come from Work, Projects, Education, Skills, Bio and Links.
+                  Open preview runs the visitor-facing scroll experience in a clean
+                  browser tab, and Export HTML creates the standalone version.
+                </p>
               </div>
-            </div>
+            )}
 
             {/* Tabs */}
             <div className="rounded-2xl border border-border bg-card overflow-hidden">
-              <div className="flex border-b border-border">
-                {TABS.map(t => (
-                  <button key={t} onClick={() => setTab(t)}
-                    className={`flex-1 py-2.5 text-xs font-semibold transition-colors ${
+              <div className="flex overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {visibleTabs.map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTab(t)}
+                    className={`flex-none whitespace-nowrap px-3.5 py-2.5 text-xs font-semibold transition-colors ${
                       tab === t ? "bg-[#2e0562] text-white" : "text-muted-foreground hover:text-foreground"
-                    }`}>
+                    }`}
+                  >
                     {t}
                   </button>
                 ))}
@@ -654,6 +1455,19 @@ export default function ResumeBuilder() {
                     onChange={entries => onChange({ ...data, workEntries: entries })}
                     onAdd={() => onChange({ ...data, workEntries: [...data.workEntries, emptyWork()] })}
                   />
+                )}
+
+                {/* Projects — shared across PDF / ATS / Web */}
+                {tab === "Projects" && (
+                  <ProjectsTab
+                    projects={getResumeProjects(data)}
+                    onChange={projects => onChange(withResumeProjects(data, projects))}
+                  />
+                )}
+
+                {/* Video — intentionally visible only while Web is selected */}
+                {tab === "Video" && previewMode === "web" && (
+                  <VideoTab data={data} onChange={onChange} />
                 )}
 
                 {/* Education */}
@@ -716,6 +1530,27 @@ export default function ResumeBuilder() {
             {/* Design panel — rendered as its own scrollable card below the tabs */}
             {tab === "Design" && (
               <div className="rounded-2xl border border-border bg-card overflow-hidden overflow-y-auto" style={{ maxHeight: "calc(100vh - 16rem)" }}>
+                {previewMode !== "design" && (
+                  <div className="border-b border-border bg-[#2e0562]/5 px-4 py-3 text-[11px] leading-relaxed text-muted-foreground">
+                    {previewMode === "ats" ? (
+                      <>
+                        Design controls still edit your <strong className="text-foreground">Designed</strong> resume.
+                        The ATS twin intentionally ignores visual styling, photos, shapes, columns, and manual positioning.
+                      </>
+                    ) : (
+                      <>
+                        The <strong className="text-foreground">Web</strong> resume is a direct-manipulation canvas.
+                        Click an element to select it, drag it to move/reorder, resize with the handles, and double-click editable text.
+                        Typography is <strong className="text-foreground">linked to Designed PDF by default</strong>; use the chain control on the selected element only when you want a Web-specific override.
+                      </>
+                    )}
+                  </div>
+                )}
+                <ResumeDesignIntelligence
+                  data={data}
+                  onChangeDesign={design => onChange({ ...data, design })}
+                  onRemeasure={() => setCanvasRemeasureKey(k => k + 1)}
+                />
                 <DesignPanelErrorBoundary>
                   <ResumeDesignPanel
                     design={data.design}
@@ -733,18 +1568,55 @@ export default function ResumeBuilder() {
               className="sticky top-[7.5rem] rounded-2xl border border-border overflow-y-auto bg-muted/30 p-3"
               style={{ maxHeight: "calc(100vh - 9rem)" }}
             >
-              <ResumeCanvas
-                data={data}
-                onDesignChange={design => onChange({ ...data, design })}
-                onDataChange={onChange}
-                containerWidth={canvasWidth}
-                remeasureKey={canvasRemeasureKey}
-              />
+              {previewMode === "design" ? (
+                <ResumeCanvas
+                  data={data}
+                  onDesignChange={design => onChange({ ...data, design })}
+                  onDataChange={onChange}
+                  containerWidth={canvasWidth}
+                  remeasureKey={canvasRemeasureKey}
+                />
+              ) : previewMode === "ats" ? (
+                <ResumeATSTwin data={data} />
+              ) : webExperienceMode === "interactive" ? (
+                <ResumeInteractivePreview
+                  data={data}
+                  onDesignChange={design =>
+                    onChange({ ...data, design })
+                  }
+                />
+              ) : (
+                <ResumeWebPreview
+                  data={data}
+                  onDesignChange={design => onChange({ ...data, design })}
+                  onDataChange={onChange}
+                />
+              )}
             </div>
           </div>
 
         </div>
       </div>
+
+      {templatePickerOpen && (
+        <TemplateGallery
+          currentTemplateId={getAppliedResumeTemplateId(data.design)}
+          onClose={() => setTemplatePickerOpen(false)}
+          onApply={template => {
+            const nextDesign = applyResumeTemplate(data.design ?? DEFAULT_DESIGN, template.id);
+            onChange({ ...data, design: nextDesign });
+            setCanvasRemeasureKey(k => k + 1);
+            setTemplatePickerOpen(false);
+            toast.success(`${template.name} template applied`);
+          }}
+          onDetach={() => {
+            const nextDesign = detachResumeTemplate(data.design ?? DEFAULT_DESIGN);
+            onChange({ ...data, design: nextDesign });
+            setTemplatePickerOpen(false);
+            toast.success("Current appearance is now a custom design");
+          }}
+        />
+      )}
     </Layout>
   );
 }

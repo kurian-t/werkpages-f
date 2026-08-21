@@ -14,7 +14,7 @@ export default function FindYourManager() {
             Find your manager
           </h1>
           <p className="mt-3 text-sm sm:text-base text-muted-foreground">
-            Search for your manager to see how others rated them.
+            Search for your manager to see how others feel about them.
           </p>
         </div>
 

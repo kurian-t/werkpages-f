@@ -183,7 +183,7 @@ export default function Directory() {
                 Uncover the manager behind the job offer
               </h1>
               <p className="mt-2 max-w-md text-sm text-muted-foreground">
-                Read candid ratings from people who've worked with them.
+                Read candid opinions from people who've worked with them.
               </p>
             </div>
           </div>
@@ -197,7 +197,7 @@ export default function Directory() {
                 Uncover the manager<br />behind the job offer
               </h1>
               <p className="mt-3 max-w-md text-base text-muted-foreground">
-                Read candid ratings from people who've worked with them. Know a manager's leadership style, communication, and culture fit.
+                Read candid opinions from people who've worked with them. Know what others think about a manager's leadership style, communication, and culture fit.
               </p>
             </div>
           </div>

@@ -110,7 +110,7 @@ export default function Companies() {
                 See the culture<br />behind the company
               </h1>
               <p className="mt-3 max-w-md text-base text-muted-foreground">
-                Explore companies by how their managers are rated. Understand leadership style, communication, and culture fit.
+                Explore companies by how their managers are perceived. Understand what others think about their leadership style, communication, and culture fit.
               </p>
             </div>
           </div>

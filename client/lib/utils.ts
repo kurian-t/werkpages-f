@@ -51,7 +51,10 @@ export function toJobTitleCase(title: string): string {
     .map(word => {
       const upper = word.toUpperCase();
       if (TITLE_ABBREVIATIONS.has(upper)) return upper;
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      // Handle leading punctuation like '(' — find the first alphabetic char and capitalise it.
+      return word.replace(/^([^a-zA-Z]*)([a-zA-Z])(.*)$/, (_, prefix, letter, rest) =>
+        prefix + letter.toUpperCase() + rest.toLowerCase()
+      );
     })
     .join(" ");
 }

@@ -278,14 +278,17 @@ export default function BossProfile() {
       }));
       const all = [...enriched, ...ghosts];
       all.sort((a: any, b: any) => {
-        // Current company always sorts last — it's where the manager works now
-        const aIsCurrent = a.company?.toLowerCase().trim() === managerCompanyKey;
-        const bIsCurrent = b.company?.toLowerCase().trim() === managerCompanyKey;
-        if (aIsCurrent !== bIsCurrent) return aIsCurrent ? 1 : -1;
-        if (!a.startDate && !b.startDate) return 0;
+        // Sort by startDate ascending; null startDates go last
+        if (!a.startDate && !b.startDate) {
+          if (a.isCurrent !== b.isCurrent) return a.isCurrent ? 1 : -1;
+          return 0;
+        }
         if (!a.startDate) return 1;
         if (!b.startDate) return -1;
-        return a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0;
+        if (a.startDate !== b.startDate) return a.startDate < b.startDate ? -1 : 1;
+        // Same startDate: current (no endDate) role sorts last
+        if (a.isCurrent !== b.isCurrent) return a.isCurrent ? 1 : -1;
+        return 0;
       });
       return all;
     }
@@ -453,6 +456,7 @@ export default function BossProfile() {
   const [editStartDate, setEditStartDate] = useState({ month: "", year: "" });
   const [editEndDate, setEditEndDate] = useState({ month: "", year: "" });
   const [editEndCurrent, setEditEndCurrent] = useState(true);
+  const [selectedCareerRoleIdx, setSelectedCareerRoleIdx] = useState(0);
   const [editModalTouched, setEditModalTouched] = useState(false);
   const [editAuthorType, setEditAuthorType] = useState<"username" | "real_name" | "anonymous">("username");
   const [editGeneratedName, setEditGeneratedName] = useState(() => generateUsername());
@@ -664,13 +668,29 @@ export default function BossProfile() {
     if (reviewStep !== null) {
       if (skipResetRef.current) { skipResetRef.current = false; return; }
       setModalRatings(initializeRatings());
-      setReviewWorkedFrom({ month: "", year: "" });
-      setReviewWorkedUntil({ month: "", year: "" });
-      setReviewCurrentlyWorking(false);
       setReviewSubmitError(null);
       setReviewTitleError(null);
       setReviewDateError(null);
       setEditingRoleInline(false);
+      // Default to most recent career history entry
+      setSelectedCareerRoleIdx(0);
+      const ch0 = manager?.careerHistory?.[0];
+      setReviewManagerTitle(ch0?.title ?? manager?.title ?? "");
+      setReviewManagerCompany(ch0?.company ?? manager?.company ?? "");
+      if (ch0?.startDate) {
+        const [y, m] = ch0.startDate.split("-");
+        setReviewWorkedFrom({ year: y ?? "", month: m ?? "" });
+      } else {
+        setReviewWorkedFrom({ month: "", year: "" });
+      }
+      if (ch0?.endDate) {
+        const [y, m] = ch0.endDate.split("-");
+        setReviewWorkedUntil({ year: y ?? "", month: m ?? "" });
+        setReviewCurrentlyWorking(false);
+      } else {
+        setReviewWorkedUntil({ month: "", year: "" });
+        setReviewCurrentlyWorking(!ch0);
+      }
     }
   }, [reviewStep !== null]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -875,6 +895,34 @@ export default function BossProfile() {
     } finally {
       setIsSubmittingReport(false);
     }
+  };
+
+  const handleCancelEdit = () => {
+    if (!manager) { setEditManagerStep(null); return; }
+    setEditFormData({
+      company: manager.company,
+      title: manager.title,
+      status: manager.status === "retired" ? "retired" : "active",
+      country: manager.country || "",
+      linkedinUrl: manager.linkedinUrl || "",
+    });
+    const ch = manager.careerHistory?.[0];
+    if (ch?.startDate) {
+      const [y, m] = ch.startDate.split("-");
+      setEditStartDate({ year: y ?? "", month: m ?? "" });
+    } else {
+      setEditStartDate({ month: "", year: "" });
+    }
+    if (ch?.endDate) {
+      const [y, m] = ch.endDate.split("-");
+      setEditEndDate({ year: y ?? "", month: m ?? "" });
+      setEditEndCurrent(false);
+    } else {
+      setEditEndDate({ month: "", year: "" });
+      setEditEndCurrent(true);
+    }
+    setEditModalTouched(false);
+    setEditManagerStep(null);
   };
 
   const handleSubmitReview = async (overrideUser?: User) => {
@@ -1099,7 +1147,7 @@ export default function BossProfile() {
         });
         queryClient.invalidateQueries({ queryKey: managerQueryKey });
         queryClient.invalidateQueries({ queryKey: ["my-submitted-managers"] });
-        queryClient.invalidateQueries({ queryKey: ["company-profile"] });
+        queryClient.invalidateQueries({ queryKey: ["company-profile-slug"] });
         queryClient.invalidateQueries({ queryKey: ["company-listing"] });
         toast.success("Manager updated!", {
           description: "Your changes have been saved.",
@@ -1385,7 +1433,7 @@ export default function BossProfile() {
                               queryClient.removeQueries({ queryKey: ["managers-directory"] });
                               queryClient.removeQueries({ queryKey: ["managers-top"] });
                               queryClient.removeQueries({ queryKey: ["company-listing"] });
-                              queryClient.removeQueries({ queryKey: ["company-profile"] });
+                              queryClient.removeQueries({ queryKey: ["company-profile-slug"] });
                               queryClient.removeQueries({ queryKey: ["stats"] });
                               navigate("/directory");
                             } catch {
@@ -1757,7 +1805,7 @@ export default function BossProfile() {
                       queryClient.invalidateQueries({ queryKey: ["manager-reviews", manager?.id] }),
                       queryClient.invalidateQueries({ queryKey: ["manager-career-segments", manager?.id] }),
                       queryClient.invalidateQueries({ queryKey: ["user-reviews", manager?.id] }),
-                      queryClient.invalidateQueries({ queryKey: ["company-profile"] }),
+                      queryClient.invalidateQueries({ queryKey: ["company-profile-slug"] }),
                       queryClient.invalidateQueries({ queryKey: ["company-listing"] }),
                     ]);
                     setAdminEditing(false);
@@ -2580,6 +2628,55 @@ export default function BossProfile() {
                       <p className="mt-1 text-sm text-muted-foreground">Takes just a minute. Your firsthand experience helps other job seekers make more informed decisions.</p>
                     </div>
 
+                    {/* Role selector — lets reviewer pick which role they're reviewing */}
+                    {manager.careerHistory && manager.careerHistory.length > 1 && (
+                      <div>
+                        <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                          Which role are you reviewing?
+                        </label>
+                        <select
+                          value={selectedCareerRoleIdx}
+                          onChange={(e) => {
+                            const idx = Number(e.target.value);
+                            setSelectedCareerRoleIdx(idx);
+                            const ch = (manager.careerHistory as any[])[idx];
+                            if (!ch) return;
+                            setReviewManagerTitle(ch.title ?? "");
+                            setReviewManagerCompany(ch.company ?? "");
+                            setEditingRoleInline(false);
+                            if (ch.startDate) {
+                              const [y, m] = ch.startDate.split("-");
+                              setReviewWorkedFrom({ year: y ?? "", month: m ?? "" });
+                            } else {
+                              setReviewWorkedFrom({ month: "", year: "" });
+                            }
+                            if (ch.endDate) {
+                              const [y, m] = ch.endDate.split("-");
+                              setReviewWorkedUntil({ year: y ?? "", month: m ?? "" });
+                              setReviewCurrentlyWorking(false);
+                            } else {
+                              setReviewWorkedUntil({ month: "", year: "" });
+                              setReviewCurrentlyWorking(true);
+                            }
+                          }}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
+                        >
+                          {(manager.careerHistory as any[]).map((ch: any, idx: number) => {
+                            const startYear = ch.startDate ? ch.startDate.slice(0, 4) : null;
+                            const endYear = ch.endDate ? ch.endDate.slice(0, 4) : null;
+                            const dateStr = startYear
+                              ? endYear ? `${startYear}–${endYear}` : `Since ${startYear}`
+                              : "";
+                            return (
+                              <option key={ch.id ?? idx} value={idx}>
+                                {ch.title} at {ch.company}{dateStr ? ` · ${dateStr}` : ""}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                    )}
+
                     {/* Manager role context — read-only with inline edit toggle */}
                     <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
                       {!editingRoleInline ? (
@@ -2851,7 +2948,7 @@ export default function BossProfile() {
             {/* Header */}
             <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
               <button
-                onClick={() => setEditManagerStep(null)}
+                onClick={handleCancelEdit}
                 className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors min-w-[60px]"
               >
                 Cancel
@@ -2861,7 +2958,7 @@ export default function BossProfile() {
                 <p className="text-xs text-muted-foreground">Step 1 of 1 · {manager.name}</p>
               </div>
               <button
-                onClick={() => setEditManagerStep(null)}
+                onClick={handleCancelEdit}
                 aria-label="Close"
                 className="text-muted-foreground hover:text-foreground transition-colors p-1 min-w-[60px] flex justify-end"
               >

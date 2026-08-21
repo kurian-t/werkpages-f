@@ -230,7 +230,7 @@ export default function Admin() {
           ? { ...m, name: res.data.name ?? m.name, title: res.data.title ?? m.title, company: res.data.company ?? m.company }
           : m
       ));
-      queryClient.invalidateQueries({ queryKey: ["company-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["company-profile-slug"] });
       queryClient.invalidateQueries({ queryKey: ["company-listing"] });
       toast.success("Manager updated.");
       setEditingManagerId(null);
@@ -316,7 +316,7 @@ export default function Admin() {
       setMergeManager(null);
       setMergeResults([]);
       setMergeSearch("");
-      queryClient.invalidateQueries({ queryKey: ["company-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["company-profile-slug"] });
       queryClient.invalidateQueries({ queryKey: ["company-listing"] });
     } catch (err: any) {
       toast.error(err?.response?.data?.error || "Merge failed.");
@@ -352,7 +352,7 @@ export default function Admin() {
       setCoMerge(null);
       setCoMergeSearch("");
       setCoMergeResults([]);
-      queryClient.invalidateQueries({ queryKey: ["company-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["company-profile-slug"] });
       queryClient.invalidateQueries({ queryKey: ["company-listing"] });
     } catch (err: any) {
       toast.error(err?.response?.data?.error || "Merge failed.");

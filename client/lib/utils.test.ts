@@ -171,6 +171,18 @@ describe("toJobTitleCase", () => {
   it("handles uppercase known abbreviation input unchanged", () => {
     expect(toJobTitleCase("CEO")).toBe("CEO");
   });
+
+  it("capitalises the first letter inside opening parenthesis", () => {
+    expect(toJobTitleCase("Team Leader (business Banking)")).toBe("Team Leader (Business Banking)");
+  });
+
+  it("capitalises first letter inside paren when word is already mixed case", () => {
+    expect(toJobTitleCase("Team Leader (Business Banking)")).toBe("Team Leader (Business Banking)");
+  });
+
+  it("handles trailing punctuation on last word", () => {
+    expect(toJobTitleCase("Software Engineer)")).toBe("Software Engineer)");
+  });
 });
 
 describe("getRelativeTime", () => {

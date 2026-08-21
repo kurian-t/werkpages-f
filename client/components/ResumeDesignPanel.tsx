@@ -92,13 +92,24 @@ function Panel({ title, children, defaultOpen = true }: { title: string; childre
 // ── Section ordering ──────────────────────────────────────────────────────────
 
 const SECTION_LABELS_UI: Record<string, string> = {
-  work: "Work Experience", education: "Education", skills: "Skills", bio: "Bio / Summary", links: "Links",
+  work: "Work Experience",
+  projects: "Projects",
+  education: "Education",
+  skills: "Skills",
+  bio: "Bio / Summary",
+  links: "Links",
 };
-const DEFAULT_ORDER = ["work", "education", "skills", "bio", "links"];
+const DEFAULT_ORDER = ["work", "projects", "education", "skills", "bio", "links"];
 
 function SectionsList({ d, onChange }: { d: ResumeDesign; onChange: (d: ResumeDesign) => void }) {
   const isSidebar = d.layout === "sidebar-left" || d.layout === "sidebar-right";
-  const order  = (d.sectionOrder ?? []).length > 0 ? d.sectionOrder : DEFAULT_ORDER;
+  const configured = (d.sectionOrder ?? []).filter(id =>
+    DEFAULT_ORDER.includes(id as string)
+  );
+  const order = [
+    ...configured,
+    ...DEFAULT_ORDER.filter(id => !configured.includes(id as never)),
+  ];
   const hidden = d.hiddenSections ?? [];
 
   function move(idx: number, dir: -1 | 1) {
