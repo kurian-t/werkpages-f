@@ -60,15 +60,15 @@ export default function InteractiveTemplateOverlay({
               <LayoutTemplate size={16} />
             </span>
             <div className="min-w-0">
-              <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#2e0562]">
+              <div className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#2e0562]">
                 Interactive templates
               </div>
-              <h2 id="interactive-template-title" className="mt-0.5 text-sm font-semibold text-foreground">
+              <h2 id="interactive-template-title" className="mt-0.5 text-[16px] font-semibold text-foreground">
                 {mode === "initial"
                   ? "Choose a starting experience"
                   : "Choose a new Interactive base"}
               </h2>
-              <p className="mt-1 max-w-3xl text-[9px] leading-relaxed text-muted-foreground">
+              <p className="mt-1 max-w-3xl text-[12px] leading-relaxed text-muted-foreground">
                 {mode === "initial"
                   ? "Templates arrange your shared resume data into a complete Interactive experience. You can change every scene, object and motion setting afterward."
                   : "Preview the available starting styles without crowding the canvas. Applying one replaces only this Interactive presentation; your shared resume facts and other formats stay unchanged."}
@@ -95,7 +95,7 @@ export default function InteractiveTemplateOverlay({
           />
         </div>
 
-        <footer className="flex flex-none flex-wrap items-center justify-between gap-2 border-t border-border bg-muted/15 px-4 py-2.5 text-[8px] leading-relaxed text-muted-foreground sm:px-5">
+        <footer className="flex flex-none flex-wrap items-center justify-between gap-2 border-t border-border bg-muted/15 px-4 py-2.5 text-[12px] leading-relaxed text-muted-foreground sm:px-5">
           <span>
             Templates reference the same Work, Projects, Education, Skills and Links data — they never duplicate or replace those facts.
           </span>
