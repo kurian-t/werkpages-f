@@ -2189,6 +2189,9 @@ function InteractiveEditor({
   const publishReport = analyzeInteractivePublish(data);
 
   const canvasRef = useRef<HTMLDivElement>(null);
+  const centerScrollRef = useRef<HTMLDivElement>(null);
+  const canvasStageRef = useRef<HTMLDivElement>(null);
+  const previewRestoreRef = useRef<{ zoom: number; scrollTop: number } | null>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const pendingGroupMotionUpdaterRef = useRef<
     ((object: InteractiveSceneObject) => InteractiveSceneObject) | null
@@ -3888,6 +3891,122 @@ function InteractiveEditor({
     (activeSceneLayout.scrollLength * scrollProgress) / 100,
   );
 
+  const fitMotionPreview = useCallback(() => {
+    if (!workspaceMode) return;
+
+    const scrollRoot = centerScrollRef.current;
+    const stage = canvasStageRef.current;
+    if (!scrollRoot || !stage) return;
+
+    const stageStyle = window.getComputedStyle(stage);
+    const horizontalPadding =
+      Number.parseFloat(stageStyle.paddingLeft || "0") +
+      Number.parseFloat(stageStyle.paddingRight || "0");
+    const baseSceneWidth = Math.max(1, stage.clientWidth - horizontalPadding);
+    const baseSceneHeight =
+      baseSceneWidth *
+      (activeSceneLayout.height / Math.max(1, activeSceneLayout.width));
+    const availableHeight = Math.max(120, scrollRoot.clientHeight - 8);
+    const fitZoom = Math.min(
+      1,
+      Math.max(0.2, availableHeight / Math.max(1, baseSceneHeight)),
+    );
+
+    setZoom(fitZoom);
+
+    window.requestAnimationFrame(() => {
+      const root = centerScrollRef.current;
+      const currentStage = canvasStageRef.current;
+      if (!root || !currentStage) return;
+
+      const rootRect = root.getBoundingClientRect();
+      const stageRect = currentStage.getBoundingClientRect();
+      root.scrollTop = Math.max(
+        0,
+        root.scrollTop + stageRect.top - rootRect.top,
+      );
+    });
+  }, [
+    activeSceneLayout.height,
+    activeSceneLayout.width,
+    workspaceMode,
+  ]);
+
+  const exitMotionPreview = useCallback(() => {
+    const restore = previewRestoreRef.current;
+    previewRestoreRef.current = null;
+    setScrollWheelPreview(false);
+
+    if (!workspaceMode || !restore) return;
+
+    setZoom(restore.zoom);
+    window.requestAnimationFrame(() => {
+      if (centerScrollRef.current) {
+        centerScrollRef.current.scrollTop = restore.scrollTop;
+      }
+    });
+  }, [workspaceMode]);
+
+  const toggleMotionPreview = useCallback(() => {
+    if (!workspaceMode) {
+      setScrollWheelPreview(value => !value);
+      return;
+    }
+
+    if (scrollWheelPreview) {
+      exitMotionPreview();
+      return;
+    }
+
+    previewRestoreRef.current = {
+      zoom,
+      scrollTop: centerScrollRef.current?.scrollTop ?? 0,
+    };
+    setScrollWheelPreview(true);
+  }, [exitMotionPreview, scrollWheelPreview, workspaceMode, zoom]);
+
+  useEffect(() => {
+    if (!workspaceMode || !scrollWheelPreview) return;
+
+    let firstFrame = 0;
+    let secondFrame = 0;
+    firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(fitMotionPreview);
+    });
+
+    const scrollRoot = centerScrollRef.current;
+    const observer =
+      typeof ResizeObserver !== "undefined" && scrollRoot
+        ? new ResizeObserver(() => fitMotionPreview())
+        : null;
+    observer?.observe(scrollRoot);
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+      observer?.disconnect();
+    };
+  }, [
+    activeBreakpoint,
+    activeScene.id,
+    fitMotionPreview,
+    scrollWheelPreview,
+    workspaceMode,
+  ]);
+
+  useEffect(() => {
+    if (!workspaceMode || !scrollWheelPreview) return;
+
+    const handlePreviewEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      exitMotionPreview();
+    };
+
+    window.addEventListener("keydown", handlePreviewEscape);
+    return () => window.removeEventListener("keydown", handlePreviewEscape);
+  }, [exitMotionPreview, scrollWheelPreview, workspaceMode]);
+
   return (
     <div
       className={
@@ -4636,11 +4755,37 @@ function InteractiveEditor({
           </aside>
 
           {/* Canvas */}
-          <main className={workspaceMode ? "min-h-0 min-w-0 overflow-y-auto pr-1" : "min-w-0"}>
+          <main
+            className={
+              workspaceMode
+                ? "flex min-h-0 min-w-0 flex-col overflow-hidden pr-1"
+                : "min-w-0"
+            }
+          >
+            <div
+              ref={centerScrollRef}
+              className={
+                workspaceMode
+                  ? `min-h-0 flex-1 ${
+                      scrollWheelPreview ? "overflow-hidden" : "overflow-auto"
+                    }`
+                  : ""
+              }
+              style={
+                workspaceMode
+                  ? {
+                      overscrollBehavior: scrollWheelPreview ? "none" : "auto",
+                      scrollbarGutter: scrollWheelPreview ? undefined : "stable",
+                    }
+                  : undefined
+              }
+            >
             <div
               className="relative mb-2 flex flex-wrap items-center justify-between gap-2"
               style={{
-                zIndex: 1000,
+                // Keep scene controls above the canvas, but below the sticky
+                // Resume Builder / app headers when the editor scrolls.
+                zIndex: 20,
                 isolation: "isolate",
               }}
             >
@@ -4872,6 +5017,7 @@ function InteractiveEditor({
             />
 
             <div
+              ref={canvasStageRef}
               className="relative rounded-xl border border-border bg-muted/30 p-2"
               style={{
                 zIndex: 0,
@@ -4879,11 +5025,20 @@ function InteractiveEditor({
               }}
             >
               <div
-                className={`${zoom <= 1 ? "overflow-hidden" : "overflow-auto"} rounded-lg`}
+                className={`${
+                  workspaceMode
+                    ? scrollWheelPreview
+                      ? "overflow-hidden"
+                      : "overflow-visible"
+                    : zoom <= 1
+                      ? "overflow-hidden"
+                      : "overflow-auto"
+                } rounded-lg`}
                 style={{
                   maxHeight: workspaceMode ? "none" : 620,
-                  overscrollBehavior: "contain",
-                  scrollbarGutter: zoom > 1 ? "stable" : undefined,
+                  overscrollBehavior: scrollWheelPreview ? "none" : "auto",
+                  scrollbarGutter:
+                    !workspaceMode && zoom > 1 ? "stable" : undefined,
                 }}
                 onWheelCapture={event => {
                   if (!scrollWheelPreview) return;
@@ -5192,7 +5347,9 @@ function InteractiveEditor({
               </span>
             </div>
 
-            <div className={workspaceMode ? "sticky bottom-0 z-30 mt-2 pb-1" : "mt-2"}>
+            </div>
+
+            <div className={workspaceMode ? "relative z-30 mt-2 flex-none pb-1" : "mt-2"}>
               <InteractiveTimeline
                 sceneName={activeScene.name}
                 selectedObjectLabel={selectedObject
@@ -5210,9 +5367,7 @@ function InteractiveEditor({
                 onProgressChange={value =>
                   setScrollProgress(Math.max(0, Math.min(100, value)))
                 }
-                onToggleWheelPreview={() =>
-                  setScrollWheelPreview(value => !value)
-                }
+                onToggleWheelPreview={toggleMotionPreview}
                 onReset={() => setScrollProgress(0)}
               />
             </div>

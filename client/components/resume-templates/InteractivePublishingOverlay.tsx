@@ -55,24 +55,24 @@ export default function InteractivePublishingOverlay({
         role="dialog"
         aria-modal="true"
         aria-labelledby="interactive-publish-title"
-        className="flex max-h-[calc(100vh-24px)] w-full max-w-[980px] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl sm:max-h-[calc(100vh-40px)]"
+        className="flex max-h-[calc(100vh-24px)] w-full max-w-[1120px] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl sm:max-h-[calc(100vh-40px)]"
       >
         <header className="flex flex-none items-start justify-between gap-4 border-b border-border px-4 py-3.5 sm:px-5 sm:py-4">
           <div className="flex min-w-0 items-start gap-3">
-            <span className="mt-0.5 inline-flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-[#2e0562]/8 text-[#2e0562]">
-              <CloudUpload size={16} />
+            <span className="mt-0.5 inline-flex h-11 w-11 flex-none items-center justify-center rounded-xl bg-[#2e0562]/8 text-[#2e0562]">
+              <CloudUpload size={20} />
             </span>
             <div className="min-w-0">
-              <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#2e0562]">
+              <div className="text-[13px] font-bold uppercase tracking-[0.16em] text-[#2e0562]">
                 Interactive publishing
               </div>
               <h2
                 id="interactive-publish-title"
-                className="mt-0.5 text-sm font-semibold text-foreground"
+                className="mt-0.5 text-[18px] font-semibold text-foreground"
               >
                 Publish your Interactive Experience
               </h2>
-              <p className="mt-1 max-w-3xl text-[9.5px] leading-relaxed text-muted-foreground">
+              <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-muted-foreground">
                 Choose the address, visibility and hosted destination for this Interactive resume. Publishing settings stay separate from your shared resume facts and editor layout.
               </p>
             </div>
@@ -83,9 +83,9 @@ export default function InteractivePublishingOverlay({
             type="button"
             onClick={onClose}
             aria-label="Close publishing"
-            className="inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+            className="inline-flex h-10 w-10 flex-none items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
           >
-            <X size={14} />
+            <X size={17} />
           </button>
         </header>
 
@@ -97,7 +97,7 @@ export default function InteractivePublishingOverlay({
           />
         </div>
 
-        <footer className="flex flex-none flex-wrap items-center justify-between gap-2 border-t border-border bg-muted/15 px-4 py-2.5 text-[8px] leading-relaxed text-muted-foreground sm:px-5">
+        <footer className="flex flex-none flex-wrap items-center justify-between gap-2 border-t border-border bg-muted/15 px-4 py-2.5 text-[12px] leading-relaxed text-muted-foreground sm:px-5">
           <span>
             Hosted publishing uses the address you choose here. Export HTML remains a separate optional self-hosting path.
           </span>

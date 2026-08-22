@@ -257,13 +257,13 @@ export default function InteractivePublishingPanel({
       <div className="space-y-4">
         <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+            <div className="text-[13px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
               Address
             </div>
-            <h3 className="mt-1 text-sm font-semibold text-foreground">
+            <h3 className="mt-1 text-[16px] font-semibold text-foreground">
               Where should this resume live?
             </h3>
-            <p className="mt-1 text-[9.5px] leading-relaxed text-muted-foreground">
+            <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
               Use a free Werkpages address or connect a domain you already own.
             </p>
           </div>
@@ -292,10 +292,10 @@ export default function InteractivePublishingPanel({
                   )}
                 </span>
                 <div className="min-w-0">
-                  <div className="text-[10px] font-semibold text-foreground">
+                  <div className="text-[13px] font-semibold text-foreground">
                     Free Werkpages address
                   </div>
-                  <div className="mt-1 text-[8.5px] leading-relaxed text-muted-foreground">
+                  <div className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
                     werkpages.com/resume/your-name
                   </div>
                 </div>
@@ -325,10 +325,10 @@ export default function InteractivePublishingPanel({
                   )}
                 </span>
                 <div className="min-w-0">
-                  <div className="text-[10px] font-semibold text-foreground">
+                  <div className="text-[13px] font-semibold text-foreground">
                     Use a domain I already own
                   </div>
-                  <div className="mt-1 text-[8.5px] leading-relaxed text-muted-foreground">
+                  <div className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
                     yourname.com or resume.yourname.com
                   </div>
                 </div>
@@ -338,11 +338,11 @@ export default function InteractivePublishingPanel({
 
           {addressMode === "werkpages" ? (
             <label className="mt-4 block">
-              <span className="mb-1.5 block text-[9px] font-semibold text-foreground">
+              <span className="mb-1.5 block text-[13px] font-semibold text-foreground">
                 Your free Werkpages address
               </span>
               <div className="flex min-w-0 items-center overflow-hidden rounded-xl border border-border bg-background focus-within:border-[#2e0562]/35">
-                <span className="flex h-10 flex-none items-center border-r border-border bg-muted/20 px-3 text-[9px] font-semibold text-muted-foreground">
+                <span className="flex h-11 flex-none items-center border-r border-border bg-muted/20 px-3 text-[13px] font-semibold text-muted-foreground">
                   werkpages.com/resume/
                 </span>
                 <input
@@ -355,24 +355,24 @@ export default function InteractivePublishingPanel({
                       event.currentTarget.blur();
                     }
                   }}
-                  className="h-10 min-w-0 flex-1 bg-transparent px-3 text-[10px] font-semibold text-foreground outline-none"
+                  className="h-11 min-w-0 flex-1 bg-transparent px-3 text-[13px] font-semibold text-foreground outline-none"
                   spellCheck={false}
                   aria-invalid={!slugValidation.valid}
                 />
               </div>
 
               {!slugValidation.valid ? (
-                <div className="mt-1.5 flex items-start gap-1.5 text-[8px] leading-relaxed text-red-600">
+                <div className="mt-1.5 flex items-start gap-1.5 text-[12px] leading-relaxed text-red-600">
                   <TriangleAlert size={10} className="mt-[1px] flex-none" />
                   <span>{slugValidation.error}</span>
                 </div>
               ) : slugValidation.warning ? (
-                <div className="mt-1.5 flex items-start gap-1.5 text-[8px] leading-relaxed text-amber-700">
+                <div className="mt-1.5 flex items-start gap-1.5 text-[12px] leading-relaxed text-amber-700">
                   <TriangleAlert size={10} className="mt-[1px] flex-none" />
                   <span>{slugValidation.warning}</span>
                 </div>
               ) : (
-                <div className="mt-1.5 flex items-start gap-1.5 text-[8px] leading-relaxed text-muted-foreground">
+                <div className="mt-1.5 flex items-start gap-1.5 text-[12px] leading-relaxed text-muted-foreground">
                   <Link2 size={10} className="mt-[1px] flex-none" />
                   <span>
                     Public route: <strong>werkpages.com/resume/{slugValidation.value}</strong>. Werkpages confirms availability when publishing.
@@ -382,7 +382,7 @@ export default function InteractivePublishingPanel({
             </label>
           ) : (
             <label className="mt-4 block">
-              <span className="mb-1.5 flex items-center gap-1.5 text-[9px] font-semibold text-foreground">
+              <span className="mb-1.5 flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
                 <Globe2 size={11} />
                 Domain you already own
               </span>
@@ -397,12 +397,12 @@ export default function InteractivePublishingPanel({
                   }
                 }}
                 placeholder="yourname.com"
-                className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[10px] text-foreground outline-none focus:border-[#2e0562]/35"
+                className="h-11 w-full rounded-xl border border-border bg-background px-3 text-[13px] text-foreground outline-none focus:border-[#2e0562]/35"
                 spellCheck={false}
               />
 
               <div
-                className={`mt-1.5 flex items-start gap-1.5 text-[8px] leading-relaxed ${
+                className={`mt-1.5 flex items-start gap-1.5 text-[12px] leading-relaxed ${
                   !domainReadiness.syntacticallyValid
                     ? "text-red-600"
                     : domainReadiness.ready
@@ -430,10 +430,10 @@ export default function InteractivePublishingPanel({
         <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+              <div className="text-[13px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
                 Visibility
               </div>
-              <p className="mt-1 text-[9px] leading-relaxed text-muted-foreground">
+              <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
                 Choose how discoverable the hosted resume should be.
               </p>
             </div>
@@ -452,7 +452,7 @@ export default function InteractivePublishingPanel({
                       type="button"
                       onClick={() => changeVisibility(visibility)}
                       aria-pressed={active}
-                      className={`rounded-lg px-3 py-1.5 text-[9px] font-semibold capitalize transition-colors ${
+                      className={`rounded-lg px-3 py-2 text-[13px] font-semibold capitalize transition-colors ${
                         active
                           ? "bg-background text-[#2e0562] shadow-sm"
                           : "text-muted-foreground hover:text-foreground"
@@ -471,7 +471,7 @@ export default function InteractivePublishingPanel({
           type="button"
           disabled={preparing || !addressReady}
           onClick={prepareSnapshot}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#2e0562] px-4 py-3 text-[10px] font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#2e0562] px-4 py-3 text-[13px] font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
         >
           <CloudUpload size={14} />
           {preparing ? "Preparing publish…" : "Prepare publish"}
@@ -482,19 +482,19 @@ export default function InteractivePublishingPanel({
         <section className="rounded-2xl border border-border bg-card p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+              <div className="text-[13px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
                 Status
               </div>
-              <h3 className="mt-1 text-[11px] font-semibold text-foreground">
+              <h3 className="mt-1 text-[14px] font-semibold text-foreground">
                 Publishing state
               </h3>
             </div>
-            <span className={`rounded-full border px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider ${statusClass}`}>
+            <span className={`rounded-full border px-2.5 py-1 text-[12px] font-bold uppercase tracking-wider ${statusClass}`}>
               {statusLabel}
             </span>
           </div>
 
-          <p className="mt-2 text-[8.5px] leading-relaxed text-muted-foreground">
+          <p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
             {draftStatus.status === "published-current"
               ? "The current Interactive draft matches the latest published version."
               : draftStatus.status === "unpublished-changes"
@@ -510,20 +510,20 @@ export default function InteractivePublishingPanel({
                 <Gauge size={13} />
               </span>
               <div className="min-w-0">
-                <div className="text-[9px] font-semibold text-foreground">
+                <div className="text-[13px] font-semibold text-foreground">
                   Publish readiness
                 </div>
-                <div className="mt-0.5 text-[7.5px] text-muted-foreground">
+                <div className="mt-0.5 text-[12px] text-muted-foreground">
                   {publishReport.score}/100 · {publishReport.errorCount} blocking · {publishReport.warningCount} warnings
                 </div>
               </div>
             </div>
-            <span className={`rounded-full border px-2 py-1 text-[7px] font-bold uppercase tracking-wider ${readinessClass}`}>
+            <span className={`rounded-full border px-2 py-1 text-[12px] font-bold uppercase tracking-wider ${readinessClass}`}>
               {readinessLabel}
             </span>
           </div>
 
-          <p className="mt-2 text-[8px] leading-relaxed text-muted-foreground">
+          <p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
             {publishReport.readiness === "ready"
               ? "No current editor-side warnings. Final HTML size is checked during prepare."
               : publishReport.readiness === "blocked"
@@ -535,7 +535,7 @@ export default function InteractivePublishingPanel({
             <button
               type="button"
               onClick={onReviewReadiness}
-              className="mt-2 inline-flex items-center gap-1.5 text-[8px] font-semibold text-[#2e0562] hover:underline"
+              className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#2e0562] hover:underline"
             >
               <Gauge size={10} />
               Review readiness
@@ -545,21 +545,21 @@ export default function InteractivePublishingPanel({
 
         {publishing.latestPublished && (
           <section className="rounded-2xl border border-emerald-200 bg-emerald-50/45 p-4">
-            <div className="flex items-center gap-1.5 text-[8px] font-bold uppercase tracking-[0.12em] text-emerald-700">
+            <div className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.12em] text-emerald-700">
               <CheckCircle2 size={10} />
               Latest published
             </div>
-            <div className="mt-2 break-all text-[9px] font-semibold text-foreground">
+            <div className="mt-2 break-all text-[13px] font-semibold text-foreground">
               {publishing.latestPublished.versionId}
             </div>
-            <div className="mt-1 text-[8px] text-muted-foreground">
+            <div className="mt-1 text-[12px] text-muted-foreground">
               {dateLabel(publishing.latestPublished.publishedAt)}
             </div>
             <a
               href={publishing.latestPublished.publicUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-2 inline-flex items-center gap-1.5 text-[8.5px] font-semibold text-[#2e0562] hover:underline"
+              className="mt-2 inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#2e0562] hover:underline"
             >
               <ExternalLink size={10} />
               Open published URL
@@ -569,24 +569,24 @@ export default function InteractivePublishingPanel({
 
         {publishing.lastPrepared && (
           <section className="rounded-2xl border border-border bg-card p-4">
-            <div className="flex items-center gap-1.5 text-[8px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            <div className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
               <Clock3 size={10} />
               Last prepared version
             </div>
-            <div className="mt-2 text-[9px] font-semibold leading-relaxed text-foreground">
+            <div className="mt-2 text-[13px] font-semibold leading-relaxed text-foreground">
               {describePublishSnapshot(publishing.lastPrepared)}
             </div>
-            <div className="mt-1 text-[8px] text-muted-foreground">
+            <div className="mt-1 text-[12px] text-muted-foreground">
               {dateLabel(publishing.lastPrepared.preparedAt)}
             </div>
           </section>
         )}
 
         <section className="rounded-2xl border border-dashed border-border bg-muted/10 p-4">
-          <div className="text-[9px] font-semibold text-foreground">
+          <div className="text-[13px] font-semibold text-foreground">
             Hosted by Werkpages
           </div>
-          <p className="mt-1 text-[8px] leading-relaxed text-muted-foreground">
+          <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
             Werkpages keeps internal deployment metadata behind the scenes. Export HTML remains available separately when you want to self-host.
           </p>
         </section>
