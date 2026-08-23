@@ -3,9 +3,11 @@ import {
   useEffect,
   useRef,
   useState,
+  type ChangeEvent,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type WheelEvent as ReactWheelEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -118,10 +120,12 @@ import {
   updateInteractiveSceneBreakpointLayout,
 } from "./resumeInteractiveResponsive";
 import { analyzeInteractivePublish } from "./resumeInteractivePerformance";
+import { getResumeProjects } from "./resumeProjects";
 import {
+  applyInteractiveBindingDraft,
   getInteractiveBindingOptions,
   interactiveBindingDisplayName,
-  resolveInteractiveBinding,
+  resolveInteractiveObjectBinding,
   type InteractiveBindingOption,
 } from "./resumeInteractiveBindings";
 import {
@@ -1030,7 +1034,7 @@ function SceneObjectContent({
   }
 
   if (object.type === "resume-content") {
-    const resolved = resolveInteractiveBinding(data, object.binding);
+    const resolved = resolveInteractiveObjectBinding(data, object);
 
     if (!resolved) {
       return (
@@ -1186,6 +1190,408 @@ function SceneObjectContent({
   );
 }
 
+function InteractiveInlineTextEditor({
+  object,
+  sceneWidth,
+  onCommit,
+  onCancel,
+}: {
+  object: Extract<InteractiveSceneObject, { type: "text" }>;
+  sceneWidth: number;
+  onCommit: (value: string) => void;
+  onCancel: () => void;
+}) {
+  const appearance = interactiveObjectAppearanceStyle(object.appearance);
+  const [draft, setDraft] = useState(object.text);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const logicalFontSize = object.appearance?.fontSize ?? 24;
+  const logicalLetterSpacing = object.appearance?.letterSpacing ?? 0;
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      const end = textarea.value.length;
+      textarea.setSelectionRange(end, end);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [object.id]);
+
+  return (
+    <div
+      className="flex h-full w-full items-center overflow-hidden px-3"
+      style={appearance.shell}
+    >
+      <textarea
+        ref={textareaRef}
+        value={draft}
+        aria-label={`Edit ${object.name || "text"}`}
+        onChange={event => setDraft(event.target.value)}
+        onBlur={() => onCommit(draft)}
+        onPointerDown={event => event.stopPropagation()}
+        onClick={event => event.stopPropagation()}
+        onDoubleClick={event => event.stopPropagation()}
+        onKeyDown={event => {
+          event.stopPropagation();
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onCancel();
+            return;
+          }
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            event.currentTarget.blur();
+          }
+        }}
+        className="h-full w-full resize-none border-0 bg-transparent p-0 outline-none"
+        style={{
+          color: appearance.textColor,
+          fontFamily: object.appearance?.fontFamily,
+          fontSize: `${(logicalFontSize / Math.max(1, sceneWidth)) * 100}cqw`,
+          fontWeight: object.appearance?.fontWeight ?? 650,
+          fontStyle: object.appearance?.fontStyle ?? "normal",
+          textAlign: object.appearance?.textAlign ?? "left",
+          lineHeight: object.appearance?.lineHeight ?? 1.35,
+          letterSpacing: `${(logicalLetterSpacing / Math.max(1, sceneWidth)) * 100}cqw`,
+          overflow: "auto",
+          touchAction: "manipulation",
+          userSelect: "text",
+        }}
+      />
+    </div>
+  );
+}
+
+
+type InteractiveBoundTextDraft = Record<string, string>;
+
+type InteractiveBoundEditorField = {
+  key: string;
+  label: string;
+  value: string;
+  multiline?: boolean;
+};
+
+function resumeEditorText(value: unknown): string {
+  if (value == null) return "";
+  return typeof value === "string" ? value : String(value);
+}
+
+function resumeEditorRecords(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value)
+    ? value
+        .filter(item => !!item && typeof item === "object")
+        .map(item => item as Record<string, unknown>)
+    : [];
+}
+
+function interactiveBoundEditorFields(
+  data: ResumeData,
+  binding: InteractiveResumeContentBinding | undefined,
+): InteractiveBoundEditorField[] {
+  if (!binding) return [];
+  const field = binding.field ?? "entry";
+
+  if (binding.source === "personal") {
+    const fullName = `${resumeEditorText(data.firstName)} ${resumeEditorText(data.lastName)}`.trim();
+    const values: Record<string, string> = {
+      fullName,
+      firstName: resumeEditorText(data.firstName),
+      lastName: resumeEditorText(data.lastName),
+      email: resumeEditorText(data.email),
+      phone: resumeEditorText(data.phone),
+      location: resumeEditorText(data.location),
+      website: resumeEditorText(data.website),
+      summary: resumeEditorText(data.summary),
+    };
+    const labels: Record<string, string> = {
+      fullName: "Name",
+      firstName: "First name",
+      lastName: "Last name",
+      email: "Email",
+      phone: "Phone",
+      location: "Location",
+      website: "Website",
+      summary: "Bio / summary",
+    };
+    const key = values[field] == null ? "fullName" : field;
+    return [{
+      key,
+      label: labels[key] ?? "Text",
+      value: values[key] ?? "",
+      multiline: key === "summary",
+    }];
+  }
+
+  if (binding.source === "work") {
+    const entries = resumeEditorRecords(data.workEntries);
+    const entry = entries.find(
+      item => resumeEditorText(item.id) === resumeEditorText(binding.entryId),
+    );
+    if (!entry) return [];
+    const bodyKey = "body" in entry ? "body" : "description";
+    if (field === "entry") {
+      return [
+        { key: "title", label: "Role title", value: resumeEditorText(entry.title) },
+        { key: "company", label: "Company", value: resumeEditorText(entry.company) },
+        { key: "startDate", label: "Start", value: resumeEditorText(entry.startDate) },
+        { key: "endDate", label: "End", value: resumeEditorText(entry.endDate) },
+        {
+          key: bodyKey,
+          label: "Description",
+          value: resumeEditorText(entry[bodyKey]),
+          multiline: true,
+        },
+      ];
+    }
+    if (field === "dates") {
+      return [
+        { key: "startDate", label: "Start", value: resumeEditorText(entry.startDate) },
+        { key: "endDate", label: "End", value: resumeEditorText(entry.endDate) },
+      ];
+    }
+    if (field === "logoUrl") return [];
+    const key = field === "body" ? bodyKey : field;
+    return [{
+      key,
+      label:
+        field === "company" ? "Company" : field === "body" ? "Description" : "Role title",
+      value: resumeEditorText(entry[key]),
+      multiline: field === "body",
+    }];
+  }
+
+  if (binding.source === "project") {
+    const project = getResumeProjects(data).find(item => item.id === binding.entryId);
+    if (!project) return [];
+    if (field === "entry") {
+      return [
+        { key: "title", label: "Project title", value: project.title },
+        { key: "techStack", label: "Tech stack", value: project.techStack },
+        { key: "description", label: "Description", value: project.description, multiline: true },
+        { key: "liveUrl", label: "Live URL", value: project.liveUrl },
+        { key: "githubUrl", label: "GitHub URL", value: project.githubUrl },
+      ];
+    }
+    if (field === "imageUrl") return [];
+    return [{
+      key: field,
+      label:
+        field === "description"
+          ? "Description"
+          : field === "techStack"
+            ? "Tech stack"
+            : field === "githubUrl"
+              ? "GitHub URL"
+              : field === "liveUrl"
+                ? "Live URL"
+                : "Project title",
+      value: resumeEditorText(project[field as keyof typeof project]),
+      multiline: field === "description",
+    }];
+  }
+
+  if (binding.source === "education") {
+    const entries = resumeEditorRecords(data.education);
+    const entry = entries.find(
+      item => resumeEditorText(item.id) === resumeEditorText(binding.entryId),
+    );
+    if (!entry) return [];
+    if (field === "entry") {
+      return [
+        { key: "degree", label: "Degree", value: resumeEditorText(entry.degree) },
+        { key: "field", label: "Field", value: resumeEditorText(entry.field) },
+        { key: "school", label: "School", value: resumeEditorText(entry.school) },
+        { key: "startYear", label: "Start year", value: resumeEditorText(entry.startYear) },
+        { key: "endYear", label: "End year", value: resumeEditorText(entry.endYear) },
+      ];
+    }
+    if (field === "years") {
+      return [
+        { key: "startYear", label: "Start year", value: resumeEditorText(entry.startYear) },
+        { key: "endYear", label: "End year", value: resumeEditorText(entry.endYear) },
+      ];
+    }
+    return [{
+      key: field,
+      label:
+        field === "school" ? "School" : field === "degree" ? "Degree" : "Field",
+      value: resumeEditorText(entry[field]),
+    }];
+  }
+
+  if (binding.source === "skill") {
+    const index = Number(binding.entryId);
+    const skills = Array.isArray(data.skills) ? data.skills : [];
+    if (!Number.isInteger(index) || index < 0 || index >= skills.length) return [];
+    return [{ key: "value", label: "Skill", value: resumeEditorText(skills[index]) }];
+  }
+
+  if (binding.source === "link") {
+    const index = Number(binding.entryId);
+    const links = Array.isArray(data.extraLinks) ? data.extraLinks : [];
+    if (!Number.isInteger(index) || index < 0 || index >= links.length) return [];
+    const link = links[index] && typeof links[index] === "object"
+      ? (links[index] as Record<string, unknown>)
+      : {};
+    if (field === "entry") {
+      return [
+        { key: "label", label: "Label", value: resumeEditorText(link.label) },
+        { key: "url", label: "URL", value: resumeEditorText(link.url) },
+      ];
+    }
+    return [{
+      key: field === "url" ? "url" : "label",
+      label: field === "url" ? "URL" : "Label",
+      value: resumeEditorText(link[field === "url" ? "url" : "label"]),
+    }];
+  }
+
+  return [];
+}
+
+function interactiveResumeContentData(
+  data: ResumeData,
+  object: Extract<InteractiveSceneObject, { type: "resume-content" }>,
+): ResumeData {
+  return object.sharedContentUnlinked && object.localContent
+    ? applyInteractiveBindingDraft(data, object.binding, object.localContent)
+    : data;
+}
+
+function captureInteractiveLocalContent(
+  data: ResumeData,
+  binding: InteractiveResumeContentBinding | undefined,
+): InteractiveBoundTextDraft {
+  const fields = interactiveBoundEditorFields(data, binding);
+  const snapshot: InteractiveBoundTextDraft = Object.fromEntries(
+    fields.map(field => [field.key, field.value]),
+  );
+  if (!binding) return snapshot;
+
+  const field = binding.field ?? "entry";
+  if (binding.source === "work" && field === "entry") {
+    const entry = resumeEditorRecords(data.workEntries).find(
+      item => resumeEditorText(item.id) === resumeEditorText(binding.entryId),
+    );
+    if (entry) snapshot.logoUrl = resumeEditorText(entry.logoUrl);
+  }
+  if (binding.source === "project" && field === "entry") {
+    const project = getResumeProjects(data).find(item => item.id === binding.entryId);
+    if (project) snapshot.imageUrl = project.imageUrl ?? "";
+  }
+
+  return snapshot;
+}
+
+function InteractiveInlineResumeContentEditor({
+  object,
+  data,
+  onCommit,
+  onCancel,
+}: {
+  object: Extract<InteractiveSceneObject, { type: "resume-content" }>;
+  data: ResumeData;
+  onCommit: (draft: InteractiveBoundTextDraft) => void;
+  onCancel: () => void;
+}) {
+  const appearance = interactiveObjectAppearanceStyle(object.appearance);
+  const effectiveData = interactiveResumeContentData(data, object);
+  const fields = interactiveBoundEditorFields(effectiveData, object.binding);
+  const [draft, setDraft] = useState<InteractiveBoundTextDraft>(() =>
+    Object.fromEntries(fields.map(field => [field.key, field.value])),
+  );
+  const firstFieldRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const cancelledRef = useRef(false);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const field = firstFieldRef.current;
+      if (!field) return;
+      field.focus();
+      if ("setSelectionRange" in field) {
+        const end = field.value.length;
+        field.setSelectionRange(end, end);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [object.id]);
+
+  if (!fields.length) {
+    return <SceneObjectContent object={object} data={data} sceneWidth={1440} />;
+  }
+
+  const finish = () => {
+    if (cancelledRef.current) return;
+    onCommit(draft);
+  };
+
+  return (
+    <div
+      className="h-full w-full overflow-auto px-3 py-2"
+      style={{ ...appearance.shell, color: appearance.textColor }}
+      onPointerDown={event => event.stopPropagation()}
+      onClick={event => event.stopPropagation()}
+      onDoubleClick={event => event.stopPropagation()}
+      onBlurCapture={event => {
+        const next = event.relatedTarget as Node | null;
+        if (!next || !event.currentTarget.contains(next)) finish();
+      }}
+      onKeyDown={event => {
+        event.stopPropagation();
+        if (event.key === "Escape") {
+          event.preventDefault();
+          cancelledRef.current = true;
+          onCancel();
+          return;
+        }
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault();
+          finish();
+        }
+      }}
+    >
+      <div className="space-y-1.5">
+        {fields.map((field, index) => {
+          const common = {
+            value: draft[field.key] ?? "",
+            onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+              setDraft(current => ({ ...current, [field.key]: event.target.value })),
+            className:
+              "w-full rounded border border-current/15 bg-white/10 px-1.5 py-1 text-[11px] font-medium outline-none focus:border-current/40",
+            style: { color: appearance.textColor },
+          };
+          return (
+            <label key={field.key} className="block">
+              <span
+                className="mb-0.5 block text-[8px] font-bold uppercase tracking-[0.08em]"
+                style={{ color: appearance.accentColor, opacity: 0.75 }}
+              >
+                {field.label}
+              </span>
+              {field.multiline ? (
+                <textarea
+                  {...common}
+                  ref={index === 0 ? node => { firstFieldRef.current = node; } : undefined}
+                  rows={3}
+                  className={`${common.className} resize-none`}
+                />
+              ) : (
+                <input
+                  {...common}
+                  ref={index === 0 ? node => { firstFieldRef.current = node; } : undefined}
+                  type="text"
+                />
+              )}
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function EditorObject({
   object,
   scene,
@@ -1196,9 +1602,16 @@ function EditorObject({
   motionReplayKey,
   scrollProgress,
   parallaxPointer,
+  editingText,
+  editingResumeContent,
   onPointerDown,
   onResizePointerDown,
   onRotatePointerDown,
+  onBeginTextEdit,
+  onBeginResumeContentEdit,
+  onCommitTextEdit,
+  onCommitResumeContentEdit,
+  onCancelTextEdit,
 }: {
   object: InteractiveSceneObject;
   scene: InteractiveScene;
@@ -1209,6 +1622,8 @@ function EditorObject({
   motionReplayKey: number;
   scrollProgress: number;
   parallaxPointer: InteractiveParallaxPointer;
+  editingText: boolean;
+  editingResumeContent: boolean;
   onPointerDown: (
     event: ReactPointerEvent<HTMLDivElement>,
     object: InteractiveSceneObject,
@@ -1223,7 +1638,30 @@ function EditorObject({
     event: ReactPointerEvent<HTMLDivElement>,
     object: InteractiveSceneObject,
   ) => void;
+  onBeginTextEdit: (object: InteractiveSceneObject) => void;
+  onBeginResumeContentEdit: (object: InteractiveSceneObject) => void;
+  onCommitTextEdit: (objectId: string, value: string) => void;
+  onCommitResumeContentEdit: (objectId: string, draft: InteractiveBoundTextDraft) => void;
+  onCancelTextEdit: () => void;
 }) {
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const lastEditTapRef = useRef<{
+    time: number;
+    x: number;
+    y: number;
+    pointerType: string;
+  } | null>(null);
+  const suppressSecondTapMoveRef = useRef(false);
+  const editingObject = editingText || editingResumeContent;
+  const editableObject =
+    !object.locked &&
+    (object.type === "text" ||
+      (object.type === "resume-content" &&
+        interactiveBoundEditorFields(
+          interactiveResumeContentData(data, object),
+          object.binding,
+        ).length > 0));
+
   if (geometry.hidden) return null;
 
   const handles = [
@@ -1236,7 +1674,74 @@ function EditorObject({
   return (
     <div
       data-interactive-object={object.id}
-      onPointerDown={event => onPointerDown(event, object)}
+      onPointerDown={event => {
+        if (editingObject) {
+          event.stopPropagation();
+          return;
+        }
+
+        // The second press of a double-click/double-tap must never start a
+        // move gesture. Detect it before beginMove so editing and dragging are
+        // mutually exclusive rather than both becoming active together.
+        if (editableObject && (event.button === 0 || event.pointerType === "touch")) {
+          const previous = lastEditTapRef.current;
+          const now = Date.now();
+          const maxDelay = event.pointerType === "touch" ? 350 : 450;
+          if (
+            previous &&
+            previous.pointerType === event.pointerType &&
+            now - previous.time <= maxDelay &&
+            Math.hypot(event.clientX - previous.x, event.clientY - previous.y) <= 24
+          ) {
+            suppressSecondTapMoveRef.current = true;
+            pointerStartRef.current = { x: event.clientX, y: event.clientY };
+            event.stopPropagation();
+            event.preventDefault();
+            return;
+          }
+        }
+
+        suppressSecondTapMoveRef.current = false;
+        if (event.button === 0 || event.pointerType === "touch") {
+          pointerStartRef.current = { x: event.clientX, y: event.clientY };
+        }
+        onPointerDown(event, object);
+      }}
+      onPointerUp={event => {
+        if (editingObject || !editableObject) return;
+
+        const start = pointerStartRef.current;
+        pointerStartRef.current = null;
+        const stayedStill =
+          !!start &&
+          Math.hypot(event.clientX - start.x, event.clientY - start.y) <= 10;
+
+        if (suppressSecondTapMoveRef.current) {
+          suppressSecondTapMoveRef.current = false;
+          lastEditTapRef.current = null;
+          if (!stayedStill) return;
+          event.stopPropagation();
+          if (object.type === "text") onBeginTextEdit(object);
+          else if (object.type === "resume-content") onBeginResumeContentEdit(object);
+          return;
+        }
+
+        if (stayedStill) {
+          lastEditTapRef.current = {
+            time: Date.now(),
+            x: event.clientX,
+            y: event.clientY,
+            pointerType: event.pointerType,
+          };
+        }
+      }}
+      onDoubleClick={event => {
+        event.stopPropagation();
+        if (!editableObject) return;
+        event.preventDefault();
+        if (object.type === "text") onBeginTextEdit(object);
+        else if (object.type === "resume-content") onBeginResumeContentEdit(object);
+      }}
       onClick={event => {
         event.stopPropagation();
       }}
@@ -1252,13 +1757,15 @@ function EditorObject({
           : undefined,
         transformOrigin: "center center",
         zIndex: geometry.zIndex,
-        cursor: object.locked
-          ? "default"
-          : selected
-            ? "move"
-            : "grab",
-        touchAction: "none",
-        userSelect: "none",
+        cursor: editingObject
+          ? "text"
+          : object.locked
+            ? "default"
+            : selected
+              ? "move"
+              : "grab",
+        touchAction: editingObject ? "manipulation" : "none",
+        userSelect: editingObject ? "text" : "none",
         overflow: "visible",
         boxSizing: "border-box",
       }}
@@ -1295,9 +1802,24 @@ function EditorObject({
           ...(groupAnimation.variables ?? {}),
         };
 
-        const rawContent = (
-          <SceneObjectContent object={object} data={data} sceneWidth={scene.width} />
-        );
+        const rawContent =
+          editingText && object.type === "text" ? (
+            <InteractiveInlineTextEditor
+              object={object}
+              sceneWidth={scene.width}
+              onCommit={value => onCommitTextEdit(object.id, value)}
+              onCancel={onCancelTextEdit}
+            />
+          ) : editingResumeContent && object.type === "resume-content" ? (
+            <InteractiveInlineResumeContentEditor
+              object={object}
+              data={data}
+              onCommit={draft => onCommitResumeContentEdit(object.id, draft)}
+              onCancel={onCancelTextEdit}
+            />
+          ) : (
+            <SceneObjectContent object={object} data={data} sceneWidth={scene.width} />
+          );
 
         // Grouping alone is organizational: keep each member's existing motion.
         // Once synchronized group motion exists, it is the single source of motion
@@ -1351,7 +1873,7 @@ function EditorObject({
         );
       })()}
 
-      {selected && (
+      {selected && !editingObject && (
         <>
           <div
             aria-hidden="true"
@@ -2130,14 +2652,18 @@ function AdvancedMotionEditor({
 
 function InteractiveEditor({
   data,
+  onDataChange,
   onDesignChange,
   interactive,
   workspaceMode = false,
+  templateOpenRequest,
 }: {
   data: ResumeData;
+  onDataChange: (data: ResumeData) => void;
   onDesignChange: (design: ResumeDesign) => void;
   interactive: InteractiveExperienceState;
   workspaceMode?: boolean;
+  templateOpenRequest?: number;
 }) {
   const scenes = getOrderedInteractiveScenes(interactive);
   const activeScene = getActiveInteractiveScene(interactive);
@@ -2147,6 +2673,8 @@ function InteractiveEditor({
     null,
   );
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>([]);
+  const [editingTextObjectId, setEditingTextObjectId] = useState<string | null>(null);
+  const [editingResumeContentObjectId, setEditingResumeContentObjectId] = useState<string | null>(null);
   const [liveGeometry, setLiveGeometry] =
     useState<LiveGeometry | null>(null);
   const [liveGroupGeometries, setLiveGroupGeometries] = useState<
@@ -2192,6 +2720,7 @@ function InteractiveEditor({
   const centerScrollRef = useRef<HTMLDivElement>(null);
   const canvasStageRef = useRef<HTMLDivElement>(null);
   const previewRestoreRef = useRef<{ zoom: number; scrollTop: number } | null>(null);
+  const lastTemplateOpenRequestRef = useRef(templateOpenRequest);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const pendingGroupMotionUpdaterRef = useRef<
     ((object: InteractiveSceneObject) => InteractiveSceneObject) | null
@@ -2596,6 +3125,179 @@ function InteractiveEditor({
       ),
     );
   };
+
+  const beginInlineTextEdit = useCallback(
+    (object: InteractiveSceneObject) => {
+      if (object.type !== "text" || object.locked) return;
+      setSelectedObjectId(object.id);
+      setEditingTextObjectId(object.id);
+      setAddMenuOpen(false);
+      setBindingPickerMode(null);
+    },
+    [],
+  );
+
+  const beginInlineResumeContentEdit = useCallback(
+    (object: InteractiveSceneObject) => {
+      if (object.type !== "resume-content" || object.locked) return;
+      if (!interactiveBoundEditorFields(
+        interactiveResumeContentData(data, object),
+        object.binding,
+      ).length) return;
+      setSelectedObjectId(object.id);
+      setEditingResumeContentObjectId(object.id);
+      setAddMenuOpen(false);
+      setBindingPickerMode(null);
+    },
+    [data],
+  );
+
+  const commitInlineTextEdit = useCallback(
+    (objectId: string, value: string) => {
+      mutateScenes(collection =>
+        updateInteractiveObject(
+          collection,
+          activeScene.id,
+          objectId,
+          current =>
+            current.type === "text"
+              ? {
+                  ...current,
+                  text: value,
+                }
+              : current,
+        ),
+      );
+      setEditingTextObjectId(null);
+    },
+    [activeScene.id, mutateScenes],
+  );
+
+  const commitInlineResumeContentEdit = useCallback(
+    (objectId: string, draft: InteractiveBoundTextDraft) => {
+      const object = activeScene.objects[objectId];
+      if (object?.type === "resume-content") {
+        if (object.sharedContentUnlinked) {
+          mutateScenes(collection =>
+            updateInteractiveObject(
+              collection,
+              activeScene.id,
+              objectId,
+              current =>
+                current.type === "resume-content"
+                  ? {
+                      ...current,
+                      localContent: {
+                        ...(current.localContent ?? {}),
+                        ...draft,
+                      },
+                    }
+                  : current,
+            ),
+          );
+        } else {
+          onDataChange(applyInteractiveBindingDraft(data, object.binding, draft));
+        }
+      }
+      setEditingResumeContentObjectId(null);
+    },
+    [activeScene.id, activeScene.objects, data, mutateScenes, onDataChange],
+  );
+
+  const cancelInlineTextEdit = useCallback(() => {
+    setEditingTextObjectId(null);
+    setEditingResumeContentObjectId(null);
+  }, []);
+
+  const editSelectedSharedContentOnlyHere = useCallback(() => {
+    if (!selectedObjectId) return;
+    const object = activeScene.objects[selectedObjectId];
+    if (!object || object.type !== "resume-content" || object.sharedContentUnlinked) return;
+
+    const snapshot = captureInteractiveLocalContent(data, object.binding);
+
+    mutateScenes(collection =>
+      updateInteractiveObject(
+        collection,
+        activeScene.id,
+        selectedObjectId,
+        current =>
+          current.type === "resume-content"
+            ? {
+                ...current,
+                sharedContentUnlinked: true,
+                localContent: snapshot,
+              }
+            : current,
+      ),
+    );
+    setEditingResumeContentObjectId(null);
+  }, [activeScene.id, activeScene.objects, data, mutateScenes, selectedObjectId]);
+
+  const relinkSelectedUsingShared = useCallback(() => {
+    if (!selectedObjectId) return;
+    mutateScenes(collection =>
+      updateInteractiveObject(
+        collection,
+        activeScene.id,
+        selectedObjectId,
+        current =>
+          current.type === "resume-content"
+            ? {
+                ...current,
+                sharedContentUnlinked: undefined,
+                localContent: undefined,
+              }
+            : current,
+      ),
+    );
+    setEditingResumeContentObjectId(null);
+  }, [activeScene.id, mutateScenes, selectedObjectId]);
+
+  const relinkSelectedUsingLocal = useCallback(() => {
+    if (!selectedObjectId) return;
+    const object = activeScene.objects[selectedObjectId];
+    if (!object || object.type !== "resume-content") return;
+
+    const nextData = object.localContent
+      ? applyInteractiveBindingDraft(data, object.binding, object.localContent)
+      : data;
+    const nextCollection = updateInteractiveObject(
+      currentCollection,
+      activeScene.id,
+      selectedObjectId,
+      current =>
+        current.type === "resume-content"
+          ? {
+              ...current,
+              sharedContentUnlinked: undefined,
+              localContent: undefined,
+            }
+          : current,
+    );
+
+    const history = historyRef.current;
+    history.past.push(cloneCollection(currentCollection));
+    if (history.past.length > MAX_HISTORY) history.past.shift();
+    history.future = [];
+    setHistoryVersion(value => value + 1);
+
+    const nextDesign = updateInteractiveExperience(
+      nextData.design,
+      current => ({
+        ...current,
+        ...nextCollection,
+      }),
+    );
+    onDataChange({ ...nextData, design: nextDesign });
+    setEditingResumeContentObjectId(null);
+  }, [activeScene.id, activeScene.objects, currentCollection, data, onDataChange, selectedObjectId]);
+
+  const openSharedContentPicker = useCallback(() => {
+    setAddMenuOpen(false);
+    setBindingPickerMode("change");
+    setBindingSearch("");
+  }, []);
 
   const patchSelectedObjects = (
     updater: (object: InteractiveSceneObject) => InteractiveSceneObject,
@@ -3036,6 +3738,8 @@ function InteractiveEditor({
           ...current,
           name: label,
           binding: bindingValue,
+          sharedContentUnlinked: undefined,
+          localContent: undefined,
         },
         activeBreakpoint,
         {
@@ -3172,6 +3876,8 @@ function InteractiveEditor({
     setScrollWheelPreview(false);
     setParallaxPointer({ x: 0, y: 0 });
     setLiveMotionPath(null);
+    setEditingTextObjectId(null);
+    setEditingResumeContentObjectId(null);
     setLiveGeometry(null);
     setLiveGroupGeometries({});
     setGuides({});
@@ -3184,10 +3890,28 @@ function InteractiveEditor({
     ) {
       setSelectedObjectId(null);
     }
+    if (
+      editingTextObjectId &&
+      !activeScene.objects[editingTextObjectId]
+    ) {
+      setEditingTextObjectId(null);
+    }
+    if (
+      editingResumeContentObjectId &&
+      !activeScene.objects[editingResumeContentObjectId]
+    ) {
+      setEditingResumeContentObjectId(null);
+    }
     setLiveGeometry(null);
     setLiveGroupGeometries({});
     setGuides({});
-  }, [activeScene.id, activeScene.objects, selectedObjectId]);
+  }, [
+    activeScene.id,
+    activeScene.objects,
+    editingResumeContentObjectId,
+    editingTextObjectId,
+    selectedObjectId,
+  ]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -3813,9 +4537,16 @@ function InteractiveEditor({
         motionReplayKey={motionReplayKey}
         scrollProgress={scrollProgress}
         parallaxPointer={parallaxPointer}
+        editingText={editingTextObjectId === object.id}
+        editingResumeContent={editingResumeContentObjectId === object.id}
         onPointerDown={beginMove}
         onResizePointerDown={beginResize}
         onRotatePointerDown={beginRotate}
+        onBeginTextEdit={beginInlineTextEdit}
+        onBeginResumeContentEdit={beginInlineResumeContentEdit}
+        onCommitTextEdit={commitInlineTextEdit}
+        onCommitResumeContentEdit={commitInlineResumeContentEdit}
+        onCancelTextEdit={cancelInlineTextEdit}
       />
     );
   };
@@ -4007,6 +4738,49 @@ function InteractiveEditor({
     return () => window.removeEventListener("keydown", handlePreviewEscape);
   }, [exitMotionPreview, scrollWheelPreview, workspaceMode]);
 
+  useEffect(() => {
+    if (templateOpenRequest == null) return;
+    if (lastTemplateOpenRequestRef.current === templateOpenRequest) return;
+    lastTemplateOpenRequestRef.current = templateOpenRequest;
+    setPublishingOpen(false);
+    setReadinessOpen(false);
+    setTemplateGalleryOpen(true);
+  }, [templateOpenRequest]);
+
+  const handleSidePanelWheel = useCallback((event: ReactWheelEvent<HTMLElement>) => {
+    if (!workspaceMode || scrollWheelPreview || event.defaultPrevented) return;
+    if (!event.deltaY || Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
+
+    const target = event.target as HTMLElement;
+    if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+
+    // Let an actual sidebar scroller consume the wheel while it still has room.
+    // Once it reaches an edge (or the cursor is over a static part of the panel),
+    // hand the wheel back to the primary editor scroll so the page never feels stuck.
+    let node: HTMLElement | null = target;
+    while (node && node !== event.currentTarget) {
+      const style = window.getComputedStyle(node);
+      const scrollable =
+        (style.overflowY === "auto" || style.overflowY === "scroll") &&
+        node.scrollHeight > node.clientHeight + 1;
+      if (scrollable) {
+        const max = node.scrollHeight - node.clientHeight;
+        const canConsume = event.deltaY < 0 ? node.scrollTop > 0 : node.scrollTop < max - 1;
+        if (canConsume) return;
+      }
+      node = node.parentElement;
+    }
+
+    const center = centerScrollRef.current;
+    if (!center) return;
+    const max = center.scrollHeight - center.clientHeight;
+    if (max <= 0) return;
+
+    const before = center.scrollTop;
+    center.scrollTop = Math.max(0, Math.min(max, before + event.deltaY));
+    if (center.scrollTop !== before) event.preventDefault();
+  }, [scrollWheelPreview, workspaceMode]);
+
   return (
     <div
       className={
@@ -4047,24 +4821,6 @@ function InteractiveEditor({
           </div>
 
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => {
-                setPublishingOpen(false);
-                setReadinessOpen(false);
-                setTemplateGalleryOpen(open => !open);
-              }}
-              aria-pressed={templateGalleryOpen}
-              className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-semibold ${
-                templateGalleryOpen
-                  ? "border-[#2e0562]/30 bg-[#2e0562]/5 text-[#2e0562]"
-                  : "border-border text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <LayoutTemplate size={11} />
-              Templates
-            </button>
-
             <button
               type="button"
               onClick={() => {
@@ -4173,6 +4929,7 @@ function InteractiveEditor({
         >
           {/* Scenes + layers */}
           <aside
+            onWheel={handleSidePanelWheel}
             className={
               workspaceMode
                 ? "min-h-0 overflow-hidden rounded-xl border border-border bg-card"
@@ -5269,6 +6026,38 @@ function InteractiveEditor({
                           onGroupNameChange={
                             selectedGroupId ? renameSelectedGroup : undefined
                           }
+                          sharedContentStatus={
+                            !hasMultipleSelection && selectedObject.type === "resume-content"
+                              ? selectedObject.sharedContentUnlinked
+                                ? "local"
+                                : "shared"
+                              : undefined
+                          }
+                          onEditOnlyHere={
+                            !hasMultipleSelection &&
+                            selectedObject.type === "resume-content" &&
+                            interactiveBoundEditorFields(
+                              interactiveResumeContentData(data, selectedObject),
+                              selectedObject.binding,
+                            ).length > 0
+                              ? editSelectedSharedContentOnlyHere
+                              : undefined
+                          }
+                          onRelinkUseShared={
+                            !hasMultipleSelection && selectedObject.type === "resume-content"
+                              ? relinkSelectedUsingShared
+                              : undefined
+                          }
+                          onRelinkPushLocal={
+                            !hasMultipleSelection && selectedObject.type === "resume-content"
+                              ? relinkSelectedUsingLocal
+                              : undefined
+                          }
+                          onChangeSharedContent={
+                            !hasMultipleSelection && selectedObject.type === "resume-content"
+                              ? openSharedContentPicker
+                              : undefined
+                          }
                         />
                       )}
 
@@ -6074,44 +6863,11 @@ function InteractiveEditor({
                   </InspectorSection>
                 )}
 
-                {selectedObject.type !== "shape" && (
+                {selectedObject.type === "image" && (
                 <InspectorSection
-                  title={
-                    selectedObject.type === "text"
-                      ? "Text"
-                      : selectedObject.type === "image"
-                        ? "Image"
-                        : "Shared content"
-                  }
-                  description={
-                    selectedObject.type === "resume-content"
-                      ? "Connected to shared resume data"
-                      : "Object-specific content"
-                  }
+                  title="Image"
+                  description="Object-specific content"
                 >
-                {selectedObject.type === "text" && (
-                  <label className="block">
-                    <span className="mb-1 block text-[12px] font-semibold text-muted-foreground">
-                      Text
-                    </span>
-                    <textarea
-                      rows={4}
-                      value={selectedObject.text}
-                      onChange={event =>
-                        patchSelectedObject(current =>
-                          current.type === "text"
-                            ? {
-                                ...current,
-                                text: event.target.value,
-                              }
-                            : current,
-                        )
-                      }
-                      className="w-full resize-none rounded-lg border border-border bg-background px-2 py-1.5 text-[13px] text-foreground outline-none"
-                    />
-                  </label>
-                )}
-
                 {selectedObject.type === "image" && (
                   <>
                     <label className="block">
@@ -6137,59 +6893,6 @@ function InteractiveEditor({
                   </>
                 )}
 
-
-                {selectedObject.type === "resume-content" && (() => {
-                  const resolved = resolveInteractiveBinding(
-                    data,
-                    selectedObject.binding,
-                  );
-
-                  return (
-                    <div className="space-y-2">
-                      <div className="rounded-lg border border-[#2e0562]/15 bg-[#2e0562]/5 p-2">
-                        <div className="text-[12px] font-bold uppercase tracking-wider text-[#2e0562]">
-                          Shared binding
-                        </div>
-
-                        {resolved ? (
-                          <>
-                            <div className="mt-1 truncate text-[13px] font-semibold text-foreground">
-                              {resolved.primary || resolved.label}
-                            </div>
-                            <div className="mt-0.5 truncate text-[12px] text-muted-foreground">
-                              {resolved.found
-                                ? `${resolved.label} · updates automatically`
-                                : resolved.secondary}
-                            </div>
-                          </>
-                        ) : (
-                          <div className="mt-1 text-[12px] text-muted-foreground">
-                            No resume content selected yet.
-                          </div>
-                        )}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAddMenuOpen(false);
-                          setBindingPickerMode("change");
-                          setBindingSearch("");
-                        }}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#2e0562]/20 bg-background px-2 py-1.5 text-[12px] font-semibold text-[#2e0562] hover:bg-[#2e0562]/5"
-                      >
-                        <UserRound size={9} />
-                        {selectedObject.binding
-                          ? "Change shared content"
-                          : "Choose shared content"}
-                      </button>
-
-                      <p className="text-[12px] leading-relaxed text-muted-foreground">
-                        Linked to shared resume data · updates automatically.
-                      </p>
-                    </div>
-                  );
-                })()}
 
                 </InspectorSection>
 
@@ -7096,17 +7799,29 @@ function InteractiveEditor({
 
 export default function ResumeInteractivePreview({
   data,
+  onDataChange,
   onDesignChange,
   workspaceMode = false,
+  templateOpenRequest,
 }: {
   data: ResumeData;
+  onDataChange: (data: ResumeData) => void;
   onDesignChange: (design: ResumeDesign) => void;
   workspaceMode?: boolean;
+  templateOpenRequest?: number;
 }) {
   const state = getResumeWebExperienceState(data.design);
   const interactive = state.interactive;
   const [initialTemplateGalleryOpen, setInitialTemplateGalleryOpen] =
     useState(false);
+  const lastInitialTemplateOpenRequestRef = useRef(templateOpenRequest);
+
+  useEffect(() => {
+    if (interactive || templateOpenRequest == null) return;
+    if (lastInitialTemplateOpenRequestRef.current === templateOpenRequest) return;
+    lastInitialTemplateOpenRequestRef.current = templateOpenRequest;
+    setInitialTemplateGalleryOpen(true);
+  }, [interactive, templateOpenRequest]);
 
   const initializeFromTemplate = (
     templateId: InteractiveTemplateId,
@@ -7211,9 +7926,11 @@ export default function ResumeInteractivePreview({
   return (
     <InteractiveEditor
       data={data}
+      onDataChange={onDataChange}
       onDesignChange={onDesignChange}
       interactive={interactive}
       workspaceMode={workspaceMode}
+      templateOpenRequest={templateOpenRequest}
     />
   );
 }

@@ -5,7 +5,7 @@ import {
   type InteractiveSceneObject,
 } from "./resumeInteractive";
 import {
-  resolveInteractiveBinding,
+  resolveInteractiveObjectBinding,
   type ResolvedInteractiveBinding,
 } from "./resumeInteractiveBindings";
 import {
@@ -62,13 +62,13 @@ export function buildInteractiveVisitorProjection(
       .map(objectId => scene.objects[objectId])
       .filter(
         (object): object is InteractiveSceneObject =>
-          !!object && object.geometry.hidden !== true,
+          !!object,
       )
       .map(object => ({
         object,
         resolved:
           object.type === "resume-content"
-            ? resolveInteractiveBinding(data, object.binding)
+            ? resolveInteractiveObjectBinding(data, object)
             : undefined,
       })),
     ambient: {

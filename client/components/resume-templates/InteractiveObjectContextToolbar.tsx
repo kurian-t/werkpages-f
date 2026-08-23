@@ -10,6 +10,8 @@ import {
   ArrowDown,
   ArrowUp,
   Layers3,
+  Link2,
+  Unlink2,
   Lock,
   Unlock,
 } from "lucide-react";
@@ -164,6 +166,11 @@ export default function InteractiveObjectContextToolbar({
   onToggleLock,
   onToggleGroup,
   onGroupNameChange,
+  sharedContentStatus,
+  onEditOnlyHere,
+  onRelinkUseShared,
+  onRelinkPushLocal,
+  onChangeSharedContent,
 }: {
   object: InteractiveSceneObject;
   geometry: InteractiveObjectGeometry;
@@ -183,9 +190,14 @@ export default function InteractiveObjectContextToolbar({
   onToggleLock?: () => void;
   onToggleGroup?: () => void;
   onGroupNameChange?: (name: string) => void;
+  sharedContentStatus?: "shared" | "local";
+  onEditOnlyHere?: () => void;
+  onRelinkUseShared?: () => void;
+  onRelinkPushLocal?: () => void;
+  onChangeSharedContent?: () => void;
 }) {
   const [openPopover, setOpenPopover] = useState<
-    "opacity" | "border" | "more" | "arrange" | "groupName" | null
+    "opacity" | "border" | "more" | "arrange" | "groupName" | "shared" | null
   >(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -194,6 +206,7 @@ export default function InteractiveObjectContextToolbar({
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const arrangeButtonRef = useRef<HTMLButtonElement>(null);
   const groupNameButtonRef = useRef<HTMLButtonElement>(null);
+  const sharedButtonRef = useRef<HTMLButtonElement>(null);
   const [groupNameDraft, setGroupNameDraft] = useState(groupName ?? "Group");
 
   useEffect(() => {
@@ -480,6 +493,134 @@ export default function InteractiveObjectContextToolbar({
 
         {selectionCount === 1 && (
           <>
+        {object.type === "resume-content" && sharedContentStatus && (
+          <div className="relative">
+            <button
+              ref={sharedButtonRef}
+              type="button"
+              onClick={() =>
+                setOpenPopover(current =>
+                  current === "shared" ? null : "shared",
+                )
+              }
+              aria-expanded={openPopover === "shared"}
+              className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-semibold ${
+                sharedContentStatus === "shared"
+                  ? "border-[#2e0562]/25 bg-[#2e0562]/6 text-[#2e0562] hover:bg-[#2e0562]/10"
+                  : "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+              }`}
+              title={
+                sharedContentStatus === "shared"
+                  ? "Shared content — changes update the resume anywhere this content is used"
+                  : "Local content — changes apply only to this Interactive page"
+              }
+            >
+              {sharedContentStatus === "shared" ? <Link2 size={13} /> : <Unlink2 size={13} />}
+              {sharedContentStatus === "shared" ? "Shared" : "Local"}
+              <ChevronDown size={12} />
+            </button>
+
+            {openPopover === "shared" && (
+              <Popup
+                anchorRef={sharedButtonRef}
+                popupRef={popupRef}
+                align="left"
+                side={showBelow ? "bottom" : "top"}
+              >
+                {sharedContentStatus === "shared" ? (
+                  <>
+                    <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+                      <Link2 size={14} className="text-[#2e0562]" />
+                      Shared content
+                    </div>
+                    <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
+                      This uses your shared resume content. Text changes here update the same content anywhere else it is linked.
+                    </p>
+                    {onEditOnlyHere && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onEditOnlyHere();
+                          setOpenPopover(null);
+                        }}
+                        className="mt-3 flex w-full items-start gap-2 rounded-lg border border-border px-2.5 py-2 text-left hover:bg-muted/50"
+                      >
+                        <Unlink2 size={14} className="mt-0.5 shrink-0 text-amber-700" />
+                        <span>
+                          <span className="block text-[12px] font-semibold text-foreground">Edit only here</span>
+                          <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
+                            Make a local version for this Interactive page. The shared resume stays unchanged.
+                          </span>
+                        </span>
+                      </button>
+                    )}
+                    {onChangeSharedContent && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onChangeSharedContent();
+                          setOpenPopover(null);
+                        }}
+                        className="mt-1.5 w-full rounded-lg px-2.5 py-2 text-left text-[12px] font-semibold text-[#2e0562] hover:bg-[#2e0562]/5"
+                      >
+                        Change shared content…
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+                      <Unlink2 size={14} className="text-amber-700" />
+                      Local version
+                    </div>
+                    <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
+                      Changes to this content apply only to this Interactive page. The shared resume can continue changing independently.
+                    </p>
+                    <div className="mt-3 border-t border-border pt-2.5">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                        Relink to shared content
+                      </div>
+                      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                        These versions may differ. Choose which version should win.
+                      </p>
+                      {onRelinkUseShared && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onRelinkUseShared();
+                            setOpenPopover(null);
+                          }}
+                          className="mt-2 w-full rounded-lg border border-border px-2.5 py-2 text-left hover:bg-muted/50"
+                        >
+                          <span className="block text-[12px] font-semibold text-foreground">Use shared version here</span>
+                          <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
+                            Shared → This page · discard the local changes and sync this page to the resume.
+                          </span>
+                        </button>
+                      )}
+                      {onRelinkPushLocal && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onRelinkPushLocal();
+                            setOpenPopover(null);
+                          }}
+                          className="mt-1.5 w-full rounded-lg border border-[#2e0562]/20 bg-[#2e0562]/5 px-2.5 py-2 text-left hover:bg-[#2e0562]/10"
+                        >
+                          <span className="block text-[12px] font-semibold text-[#2e0562]">Make this the shared version</span>
+                          <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
+                            This page → Shared · keep these changes and update the shared resume for other linked uses.
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </Popup>
+            )}
+          </div>
+        )}
+
         {object.type === "text" && (
           <>
             <select

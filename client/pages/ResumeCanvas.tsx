@@ -25,7 +25,7 @@ import {
   withResumeProjects,
   type ResumeProjectEntry,
 } from "./resumeProjects";
-import { Link2, Unlink2, List, ListOrdered, Plus, ChevronDown, Square, Circle, Minus, ArrowUp, ArrowDown, Trash2, Image as ImageIcon, User, Upload, Layers3, Eye, EyeOff, Lock, Unlock, GripVertical, X, FileText, Check, MoveHorizontal, MoveVertical } from "lucide-react";
+import { Link2, Unlink2, List, ListOrdered, Plus, ChevronDown, Square, Circle, Minus, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, MoreHorizontal, Trash2, Image as ImageIcon, User, Upload, Layers3, Eye, EyeOff, Lock, Unlock, GripVertical, X, FileText, Check, MoveHorizontal, MoveVertical, Pencil } from "lucide-react";
 import { companyLogoDomain } from "@/lib/utils";
 import {
   applyLinkedDesignObjectChange,
@@ -49,6 +49,9 @@ import {
   type ShapeDesignObject,
   type SmartDesignKind,
   type SmartDesignObject,
+  type TextDesignObject,
+  createLinkedTextDesignObject,
+  setLinkedTextLayoutUnlinked,
 } from "./resumeDesignObjects";
 import {
   prepareResumeImageFile,
@@ -64,6 +67,15 @@ import {
   syncCompanyLogoSizeFromPdfNow,
   visualRoleForDesignKey,
 } from "./resumePresentation";
+import {
+  CONTEXT_ACTIVE_BUTTON,
+  CONTEXT_BUTTON,
+  CONTEXT_ICON_BUTTON,
+  CONTEXT_POPOVER_SURFACE,
+  CONTEXT_PURPLE,
+  CONTEXT_TOOLBAR_SURFACE,
+  CONTEXT_WARNING_BUTTON,
+} from "./resumeContextualUi";
 
 // ── Editor-only PDF canvas zoom ──────────────────────────────────────────────
 
@@ -797,12 +809,7 @@ function SubDrag({
               height: toolbarH,
               display: "flex", alignItems: "center", gap: 5,
               padding: "4px 6px",
-              background: "white",
-              border: "1px solid #e2e8f0",
-              borderRadius: 8,
-              boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
-              fontFamily: "system-ui, sans-serif",
-              userSelect: "none",
+              ...CONTEXT_TOOLBAR_SURFACE,
             }}
           >
             <span style={{
@@ -862,30 +869,14 @@ function SubDrag({
                     : "PDF and Web logo sizes are independent."
                 }
                 style={{
-                  height: 24,
-                  padding: "0 8px",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 6,
-                  border: isCompanyLogoCrossFormatLinked(ctx.design)
-                    ? "1px solid #ddd6fe"
-                    : "1px solid #d1d5db",
-                  background: isCompanyLogoCrossFormatLinked(ctx.design)
-                    ? "#f5f3ff"
-                    : "#fff",
-                  color: isCompanyLogoCrossFormatLinked(ctx.design)
-                    ? "#6d28d9"
-                    : "#64748b",
-                  fontSize: 10,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
+                  ...CONTEXT_BUTTON,
+                  minHeight: 28,
+                  height: 28,
+                  ...(isCompanyLogoCrossFormatLinked(ctx.design) ? CONTEXT_ACTIVE_BUTTON : CONTEXT_WARNING_BUTTON),
                 }}
               >
-                {isCompanyLogoCrossFormatLinked(ctx.design)
-                  ? "⇄ PDF + Web"
-                  : "PDF only"}
+                {isCompanyLogoCrossFormatLinked(ctx.design) ? <Link2 size={13} /> : <Unlink2 size={13} />}
+                {isCompanyLogoCrossFormatLinked(ctx.design) ? "PDF + Web" : "PDF only"}
               </button>
             )}
           </div>
@@ -2510,12 +2501,7 @@ function SingleWorkEntryC({ entry: e, i, data, d, ctx, setData }: SectionProps &
               minHeight: toolbarH,
               display: "flex", alignItems: "center", gap: 2,
               padding: "4px 6px",
-              background: "white",
-              border: "1px solid #e2e8f0",
-              borderRadius: 8,
-              boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
-              fontFamily: "system-ui, sans-serif",
-              userSelect: "none",
+              ...CONTEXT_TOOLBAR_SURFACE,
               whiteSpace: "nowrap",
             }}
           >
@@ -3462,9 +3448,19 @@ function CanvasDesignObject({
   onGuidesChange: (guides: DesignSnapGuideState | null) => void;
 }) {
   const ref = useRef<HTMLElement | null>(null);
+  const [editingText, setEditingText] = useState(false);
+  const [textDraft, setTextDraft] = useState(sourceObject.type === "text" ? sourceObject.text : "");
   const attached = designObjectIsResumeDriven(sourceObject);
 
+  useEffect(() => {
+    if (sourceObject.type === "text" && !editingText) setTextDraft(sourceObject.text);
+  }, [sourceObject, editingText]);
+
   function beginMove(ev: React.MouseEvent) {
+    if (editingText) {
+      ev.stopPropagation();
+      return;
+    }
     const additive = ev.shiftKey || ev.metaKey || ev.ctrlKey;
 
     if (attached || sourceObject.locked) {
@@ -3481,6 +3477,10 @@ function CanvasDesignObject({
     // Modifier-click is selection-only. This avoids accidentally nudging an object
     // while the user is building a multi-selection.
     if (additive) return;
+
+    // Let the second click of a text double-click reach onDoubleClick instead of
+    // beginning another drag gesture.
+    if (sourceObject.type === "text" && ev.detail >= 2) return;
 
     ev.preventDefault();
 
@@ -3688,7 +3688,15 @@ function CanvasDesignObject({
       );
     }
 
-    case "text":
+    case "text": {
+      const textObject = sourceObject.type === "text" ? sourceObject : object;
+      const commit = () => {
+        if (textObject.type !== "text") return;
+        const nextText = textDraft.trimEnd();
+        onChange({ ...textObject, text: nextText || "Text" });
+        setEditingText(false);
+      };
+
       return (
         <div
           ref={el => { ref.current = el; }}
@@ -3697,6 +3705,12 @@ function CanvasDesignObject({
           data-design-object-type={object.type}
           onMouseDown={beginMove}
           onClick={e => e.stopPropagation()}
+          onDoubleClick={e => {
+            e.stopPropagation();
+            if (textObject.locked) return;
+            setTextDraft(textObject.text);
+            setEditingText(true);
+          }}
           style={{
             ...common,
             color: object.color ?? "#111827",
@@ -3707,11 +3721,49 @@ function CanvasDesignObject({
             textAlign: object.textAlign,
             whiteSpace: "pre-wrap",
             overflow: "hidden",
+            cursor: editingText ? "text" : common.cursor,
+            userSelect: editingText ? "text" : "none",
           }}
         >
-          {object.text}
+          {editingText ? (
+            <textarea
+              autoFocus
+              value={textDraft}
+              onChange={e => setTextDraft(e.target.value)}
+              onMouseDown={e => e.stopPropagation()}
+              onBlur={commit}
+              onKeyDown={e => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setTextDraft(textObject.text);
+                  setEditingText(false);
+                }
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  e.preventDefault();
+                  commit();
+                }
+              }}
+              style={{
+                width: "100%",
+                height: "100%",
+                resize: "none",
+                border: "1px dashed #7c3aed",
+                outline: "none",
+                padding: 0,
+                margin: 0,
+                background: "rgba(255,255,255,0.92)",
+                color: "inherit",
+                font: "inherit",
+                fontStyle: "inherit",
+                textAlign: "inherit",
+                lineHeight: "inherit",
+                boxSizing: "border-box",
+              }}
+            />
+          ) : object.text}
         </div>
       );
+    }
 
     case "smart": {
       const strokeWidth = Math.max(1, object.strokeWidth ?? 2);
@@ -5466,6 +5518,7 @@ function DesignObjectToolbar({
   onSendBackward,
   onDelete,
   onReplaceImage,
+  onToggleTextLayoutLink,
 }: {
   object: ResumeDesignObject;
   anchorRect: DOMRect;
@@ -5476,14 +5529,16 @@ function DesignObjectToolbar({
   onSendBackward: () => void;
   onDelete: () => void;
   onReplaceImage?: () => void;
+  onToggleTextLayoutLink?: () => void;
 }) {
   const shape = object.type === "shape" ? object : null;
   const image = object.type === "image" ? object : null;
+  const text = object.type === "text" ? object : null;
   const smart = object.type === "smart" ? object : null;
-  if (!shape && !image && !smart) return null;
+  if (!shape && !image && !text && !smart) return null;
 
-  const width = image ? 760 : smart ? 700 : 630;
-  const estimatedHeight = image ? 78 : smart ? 58 : 48;
+  const width = image ? 760 : text ? 760 : smart ? 700 : 630;
+  const estimatedHeight = image ? 78 : text ? 58 : smart ? 58 : 48;
   const top = anchorRect.top - estimatedHeight - 6 >= 4
     ? anchorRect.top - estimatedHeight - 6
     : anchorRect.bottom + 8;
@@ -5540,7 +5595,7 @@ function DesignObjectToolbar({
       </button>
       <button
         type="button"
-        title={`Delete ${object.type === "smart" ? "component" : object.type === "image" ? "image" : "shape"}`}
+        title={`Delete ${object.type === "smart" ? "component" : object.type === "image" ? "image" : object.type === "text" ? "text box" : "shape"}`}
         onClick={onDelete}
         style={{ ...tinyButton, color: "#dc2626", borderColor: "#fecaca", background: "#fffafa" }}
       >
@@ -5562,16 +5617,11 @@ function DesignObjectToolbar({
         minHeight: 40,
         maxWidth: "calc(100vw - 8px)",
         display: "flex",
-        flexWrap: image ? "wrap" : "nowrap",
+        flexWrap: image || text ? "wrap" : "nowrap",
         alignItems: "center",
         gap: 7,
         padding: "5px 7px",
-        background: "white",
-        border: "1px solid #e2e8f0",
-        borderRadius: 9,
-        boxShadow: "0 5px 24px rgba(15,23,42,0.15)",
-        fontFamily: "system-ui, sans-serif",
-        userSelect: "none",
+        ...CONTEXT_TOOLBAR_SURFACE,
       }}
     >
       {object.linkId && linkedCount > 1 && (
@@ -5895,6 +5945,89 @@ function DesignObjectToolbar({
           </>
         );
       })()}
+
+      {text && (
+        <>
+          <button
+            type="button"
+            title={text.webLayoutUnlinked
+              ? "Relink this textbox layout to Responsive Web. Text and style are already shared."
+              : "PDF and Responsive Web placement are linked. Unlink layout to position Web independently."}
+            onClick={onToggleTextLayoutLink}
+            style={{
+              height: 28,
+              padding: "0 8px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              borderRadius: 6,
+              border: text.webLayoutUnlinked ? "1px solid #e2e8f0" : "1px solid #ddd6fe",
+              background: text.webLayoutUnlinked ? "#fff" : "#faf5ff",
+              color: text.webLayoutUnlinked ? "#64748b" : "#6d28d9",
+              fontSize: 9.5,
+              fontWeight: 750,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {text.webLayoutUnlinked ? <Unlink2 size={12} /> : <Link2 size={12} />}
+            {text.webLayoutUnlinked ? "Layout unlinked" : "Linked to Web"}
+          </button>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+            <span style={labelStyle}>Color</span>
+            <input
+              type="color"
+              value={text.color ?? "#111827"}
+              onChange={e => onChange({ color: e.target.value } as Partial<TextDesignObject>)}
+              style={{ width: 27, height: 27, padding: 1, border: "1px solid #e2e8f0", borderRadius: 5, background: "white", cursor: "pointer" }}
+            />
+          </label>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={labelStyle}>Size</span>
+            <input
+              type="number" min={6} max={96} step={1}
+              value={text.fontSize ?? 12}
+              onChange={e => onChange({ fontSize: clampDesignObject(Number(e.target.value) || 12, 6, 96) } as Partial<TextDesignObject>)}
+              style={{ width: 45, height: 27, border: "1px solid #e2e8f0", borderRadius: 5, padding: "0 4px", fontSize: 10 }}
+            />
+          </label>
+
+          <button
+            type="button"
+            title="Bold"
+            onClick={() => onChange({ fontWeight: Number(text.fontWeight) >= 600 || String(text.fontFamily ?? "").includes("Bold") ? 400 : 700 } as Partial<TextDesignObject>)}
+            style={{ ...tinyButton, fontWeight: 800, background: Number(text.fontWeight) >= 600 ? "#f5f3ff" : "white", color: Number(text.fontWeight) >= 600 ? "#6d28d9" : "#475569" }}
+          >
+            B
+          </button>
+
+          <button
+            type="button"
+            title="Italic"
+            onClick={() => onChange({ fontStyle: text.fontStyle === "italic" ? "normal" : "italic" } as Partial<TextDesignObject>)}
+            style={{ ...tinyButton, fontStyle: "italic", background: text.fontStyle === "italic" ? "#f5f3ff" : "white", color: text.fontStyle === "italic" ? "#6d28d9" : "#475569" }}
+          >
+            I
+          </button>
+
+          <select
+            value={text.textAlign ?? "left"}
+            title="Text alignment"
+            onChange={e => onChange({ textAlign: e.target.value as TextDesignObject["textAlign"] } as Partial<TextDesignObject>)}
+            style={{ height: 28, border: "1px solid #e2e8f0", borderRadius: 6, background: "white", color: "#475569", fontSize: 10, padding: "0 5px" }}
+          >
+            <option value="left">Left</option>
+            <option value="center">Center</option>
+            <option value="right">Right</option>
+          </select>
+
+          <span style={{ color: "#94a3b8", fontSize: 9, whiteSpace: "nowrap" }}>Double-click text to edit</span>
+
+          {commonTail}
+        </>
+      )}
 
       {smart && (() => {
         const isSidebar = smart.smartKind === "sidebar";
@@ -6673,12 +6806,7 @@ function MultiDesignObjectToolbar({
         alignItems: "center",
         gap: 4,
         padding: "4px 6px",
-        background: "white",
-        border: "1px solid #ddd6fe",
-        borderRadius: 9,
-        boxShadow: "0 5px 24px rgba(15,23,42,0.16)",
-        fontFamily: "system-ui, sans-serif",
-        userSelect: "none",
+        ...CONTEXT_TOOLBAR_SURFACE,
       }}
     >
       <span
@@ -6860,6 +6988,8 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
   const [imageMenuOpen, setImageMenuOpen] = useState(false);
   const [componentMenuOpen, setComponentMenuOpen] = useState(false);
   const [layersPanelOpen, setLayersPanelOpen] = useState(false);
+  const [arrangeMenuOpen, setArrangeMenuOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [pendingImageKind, setPendingImageKind] = useState<ImageDesignKind>("image");
   const [pendingReplaceObjectId, setPendingReplaceObjectId] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -6941,6 +7071,9 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     setBackgroundMenuOpen(false);
     setImageMenuOpen(false);
     setComponentMenuOpen(false);
+    setArrangeMenuOpen(false);
+    setMoreMenuOpen(false);
+    setLayersPanelOpen(false);
   }
 
   function handleBlockClick(id: string, rect: DOMRect | null) {
@@ -7020,6 +7153,23 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     } else {
       refreshDesignObjectSelectionAnchor(nextIds, page);
     }
+  }
+
+  function addTextBox() {
+    const object = createLinkedTextDesignObject(d, activePageIndex);
+    onDesignChange(upsertDesignObject(d, object));
+    setShapeMenuOpen(false);
+    setBackgroundMenuOpen(false);
+    setImageMenuOpen(false);
+    setComponentMenuOpen(false);
+    setSelectedDesignObjectPage(activePageIndex);
+    setSelectedDesignObjectIds([object.id]);
+    setSelectedDesignObjectId(object.id);
+
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const el = renderedDesignObjectElements(object.id)[0];
+      setDesignObjectAnchorRect(el?.getBoundingClientRect() ?? null);
+    }));
   }
 
   function addShape(shape: ShapeDesignObject["shape"]) {
@@ -7379,6 +7529,17 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     onDesignChange(applyLinkedDesignObjectChange(d, next));
   }
 
+  function toggleSelectedTextLayoutLink() {
+    if (!selectedDesignObject || selectedDesignObject.type !== "text") return;
+    const next = setLinkedTextLayoutUnlinked(
+      selectedDesignObject,
+      !selectedDesignObject.webLayoutUnlinked,
+      PAGE_W,
+      PAGE_H,
+    );
+    onDesignChange(upsertDesignObject(d, next));
+  }
+
   function reorderSelectedDesignObject(direction: -1 | 1) {
     if (!selectedDesignObject) return;
 
@@ -7399,6 +7560,37 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     const zById = new Map(reordered.map((o, i) => [o.id, i + 1]));
     const next = all.map(o => zById.has(o.id) ? { ...o, zIndex: zById.get(o.id)! } as ResumeDesignObject : o);
     onDesignChange(withDesignObjects(d, next));
+  }
+
+  function moveSelectedDesignObjectToEdge(edge: "front" | "back") {
+    if (!selectedDesignObject) return;
+
+    const all = getDesignObjects(d);
+    const layer = designObjectDefaultLayer(selectedDesignObject);
+    const group = all
+      .filter(object => designObjectDefaultLayer(object) === layer)
+      .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+
+    const index = group.findIndex(object => object.id === selectedDesignObject.id);
+    if (index < 0 || group.length < 2) return;
+
+    const target = edge === "front" ? group.length - 1 : 0;
+    if (index === target) return;
+
+    const reordered = [...group];
+    const [moving] = reordered.splice(index, 1);
+    if (edge === "front") reordered.push(moving);
+    else reordered.unshift(moving);
+
+    const zById = new Map(reordered.map((object, i) => [object.id, i + 1]));
+    onDesignChange(withDesignObjects(
+      d,
+      all.map(object =>
+        zById.has(object.id)
+          ? { ...object, zIndex: zById.get(object.id)! } as ResumeDesignObject
+          : object
+      ),
+    ));
   }
 
   function deleteSelectedDesignObject() {
@@ -7990,469 +8182,609 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
             </>}
       </div>
 
-      {/* Design objects — shapes, images, backgrounds and resume-aware smart
-          components. They share one selection/layer model while staying outside
-          structured resume flow and pagination. */}
+      {/* Phase 6 toolbar: keep the canvas calm by grouping creation and arrangement
+          tools. Text formatting remains contextual on-canvas and is intentionally not
+          duplicated here. */}
       <div
         style={{
-          height: 34,
+          minHeight: 36,
           marginBottom: 8,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: 8,
+          gap: 10,
           fontFamily: "system-ui, sans-serif",
           userSelect: "none",
+          paddingBottom: 1,
         }}
         onMouseDown={e => e.stopPropagation()}
         onClick={e => e.stopPropagation()}
       >
-        <div style={{ position: "relative" }}>
-          <button
-            type="button"
-            onClick={() => {
-              setBackgroundMenuOpen(false);
-              setImageMenuOpen(false);
-              setComponentMenuOpen(false);
-              setLayersPanelOpen(false);
-              setShapeMenuOpen(v => !v);
-            }}
-            style={{
-              height: 31,
-              padding: "0 10px",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              borderRadius: 7,
-              border: "1px solid #ddd6fe",
-              background: "#fff",
-              color: "#6d28d9",
-              fontSize: 11,
-              fontWeight: 600,
-              cursor: "pointer",
-              boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
-            }}
-          >
-            <Plus size={13} />
-            Add shape
-            <ChevronDown size={12} />
-          </button>
-
-          {shapeMenuOpen && (
-            <div
-              style={{
-                position: "absolute",
-                top: 35,
-                left: 0,
-                zIndex: 10002,
-                width: 150,
-                padding: 5,
-                background: "white",
-                border: "1px solid #e2e8f0",
-                borderRadius: 8,
-                boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
-              }}
-            >
-              {[
-                { type: "rectangle" as const, label: "Rectangle", icon: <Square size={14} /> },
-                { type: "ellipse" as const, label: "Circle", icon: <Circle size={14} /> },
-                { type: "line" as const, label: "Line", icon: <Minus size={15} /> },
-              ].map(item => (
-                <button
-                  key={item.type}
-                  type="button"
-                  onClick={() => addShape(item.type)}
-                  style={{
-                    width: "100%",
-                    height: 31,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "0 8px",
-                    border: "none",
-                    borderRadius: 6,
-                    background: "transparent",
-                    color: "#334155",
-                    fontSize: 11,
-                    cursor: "pointer",
-                    textAlign: "left",
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-                >
-                  {item.icon}
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Editor zoom — intentionally separate from PDF design/export state. */}
         <div
           style={{
-            height: 31,
-            display: "inline-flex",
+            minWidth: "max-content",
+            display: "flex",
             alignItems: "center",
-            border: "1px solid #e2e8f0",
-            borderRadius: 7,
-            background: "#fff",
-            boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
-            overflow: "hidden",
-            flexShrink: 0,
+            gap: 6,
           }}
-          title="PDF canvas zoom — editor only"
         >
-          <button
-            type="button"
-            aria-label="Zoom PDF canvas out"
-            title="Zoom out"
-            disabled={canvasZoom <= PDF_CANVAS_ZOOM_MIN + 0.001}
-            onClick={() =>
-              setCanvasZoom(current =>
-                clampPdfCanvasZoom(
-                  Math.round((current - PDF_CANVAS_ZOOM_STEP) * 10) / 10,
-                ),
-              )
-            }
-            style={{
-              width: 30,
-              height: "100%",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: "none",
-              borderRight: "1px solid #e2e8f0",
-              background: "transparent",
-              color:
-                canvasZoom <= PDF_CANVAS_ZOOM_MIN + 0.001
-                  ? "#cbd5e1"
-                  : "#475569",
-              cursor:
-                canvasZoom <= PDF_CANVAS_ZOOM_MIN + 0.001
-                  ? "default"
-                  : "pointer",
-            }}
-          >
-            <Minus size={13} />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setCanvasZoom(1)}
-            title="Fit canvas to available width"
-            style={{
-              minWidth: 50,
-              height: "100%",
-              padding: "0 7px",
-              border: "none",
-              borderRight: "1px solid #e2e8f0",
-              background: canvasZoom === 1 ? "#faf5ff" : "transparent",
-              color: canvasZoom === 1 ? "#6d28d9" : "#475569",
-              fontSize: 10.5,
-              fontWeight: 700,
-              cursor: "pointer",
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {Math.round(canvasZoom * 100)}%
-          </button>
-
-          <button
-            type="button"
-            aria-label="Zoom PDF canvas in"
-            title="Zoom in"
-            disabled={canvasZoom >= PDF_CANVAS_ZOOM_MAX - 0.001}
-            onClick={() =>
-              setCanvasZoom(current =>
-                clampPdfCanvasZoom(
-                  Math.round((current + PDF_CANVAS_ZOOM_STEP) * 10) / 10,
-                ),
-              )
-            }
-            style={{
-              width: 30,
-              height: "100%",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: "none",
-              background: "transparent",
-              color:
-                canvasZoom >= PDF_CANVAS_ZOOM_MAX - 0.001
-                  ? "#cbd5e1"
-                  : "#475569",
-              cursor:
-                canvasZoom >= PDF_CANVAS_ZOOM_MAX - 0.001
-                  ? "default"
-                  : "pointer",
-            }}
-          >
-            <Plus size={13} />
-          </button>
-        </div>
-
-        <div style={{ position: "relative", marginRight: "auto" }}>
-          <button
-            type="button"
-            onClick={() => {
-              setShapeMenuOpen(false);
-              setImageMenuOpen(false);
-              setComponentMenuOpen(false);
-              setLayersPanelOpen(false);
-              setBackgroundMenuOpen(v => !v);
-            }}
-            style={{
-              height: 31,
-              padding: "0 10px",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              borderRadius: 7,
-              border: "1px solid #e2e8f0",
-              background: "#fff",
-              color: "#475569",
-              fontSize: 11,
-              fontWeight: 600,
-              cursor: "pointer",
-              boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
-            }}
-          >
-            <Square size={13} />
-            Background
-            <ChevronDown size={12} />
-          </button>
-
-          {backgroundMenuOpen && (
-            <div
+          {/* One creation menu replaces separate Shape / Image / Components buttons. */}
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => {
+                setBackgroundMenuOpen(false);
+                setImageMenuOpen(false);
+                setComponentMenuOpen(false);
+                setArrangeMenuOpen(false);
+                setMoreMenuOpen(false);
+                setLayersPanelOpen(false);
+                setShapeMenuOpen(value => !value);
+              }}
+              aria-expanded={shapeMenuOpen}
               style={{
-                position: "absolute",
-                top: 35,
-                left: 0,
-                zIndex: 10002,
-                width: 180,
-                padding: 5,
-                background: "white",
-                border: "1px solid #e2e8f0",
-                borderRadius: 8,
-                boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
+                height: 31,
+                padding: "0 11px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                borderRadius: 7,
+                border: shapeMenuOpen ? "1px solid #c4b5fd" : "1px solid #ddd6fe",
+                background: shapeMenuOpen ? "#faf5ff" : "#fff",
+                color: "#6d28d9",
+                fontSize: 11,
+                fontWeight: 650,
+                cursor: "pointer",
+                boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
               }}
             >
-              {[
-                { key: "page" as const, label: `Page ${activePageIndex + 1}` },
-                { key: "header" as const, label: "Header" },
-                { key: "work" as const, label: "Experience" },
-                { key: "education" as const, label: "Education" },
-                { key: "skills" as const, label: "Skills" },
-                { key: "bio" as const, label: "Summary" },
-                { key: "links" as const, label: "Links" },
-              ].map(item => (
+              <Plus size={13} />
+              Add
+              <ChevronDown size={12} />
+            </button>
+
+            {shapeMenuOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 35,
+                  left: 0,
+                  zIndex: 10002,
+                  width: 244,
+                  maxHeight: "min(460px, calc(100vh - 130px))",
+                  overflowY: "auto",
+                  padding: 6,
+                  background: "white",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 9,
+                  boxShadow: "0 10px 28px rgba(15,23,42,0.16)",
+                }}
+              >
+                <div style={{ padding: "4px 7px 5px", fontSize: 8.5, fontWeight: 750, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Text
+                </div>
                 <button
-                  key={item.key}
                   type="button"
-                  onClick={() => addSmartBackground(item.key)}
+                  onClick={addTextBox}
+                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 11, cursor: "pointer", textAlign: "left" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <FileText size={14} />
+                  Text box
+                </button>
+
+                <div style={{ marginTop: 4, padding: "5px 7px", borderTop: "1px solid #f1f5f9", fontSize: 8.5, fontWeight: 750, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Shapes
+                </div>
+                {[
+                  { type: "rectangle" as const, label: "Rectangle", icon: <Square size={14} /> },
+                  { type: "ellipse" as const, label: "Circle", icon: <Circle size={14} /> },
+                  { type: "line" as const, label: "Line", icon: <Minus size={15} /> },
+                ].map(item => (
+                  <button
+                    key={item.type}
+                    type="button"
+                    onClick={() => addShape(item.type)}
+                    style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 11, cursor: "pointer", textAlign: "left" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </button>
+                ))}
+
+                <div style={{ marginTop: 4, padding: "5px 7px", borderTop: "1px solid #f1f5f9", fontSize: 8.5, fontWeight: 750, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Images
+                </div>
+                <button
+                  type="button"
+                  onClick={() => requestImageUpload("photo")}
+                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 11, cursor: "pointer", textAlign: "left" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <User size={14} />
+                  Profile photo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => requestImageUpload("image")}
+                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 11, cursor: "pointer", textAlign: "left" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <ImageIcon size={14} />
+                  Image / graphic
+                </button>
+
+                <div style={{ marginTop: 4, padding: "5px 7px", borderTop: "1px solid #f1f5f9", fontSize: 8.5, fontWeight: 750, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Page components
+                </div>
+                {[
+                  ["sidebar-left", "Left sidebar"],
+                  ["sidebar-right", "Right sidebar"],
+                  ["header-accent", "Header accent bar"],
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => addSmartComponent(key as SmartComponentPreset)}
+                    style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 10.5, cursor: "pointer", textAlign: "left" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <Square size={12} />
+                    {label}
+                  </button>
+                ))}
+
+                <div style={{ marginTop: 4, padding: "5px 7px", borderTop: "1px solid #f1f5f9", fontSize: 8.5, fontWeight: 750, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Resume-aware components
+                </div>
+                {[
+                  ["work-timeline", "Experience timeline"],
+                  ["education-timeline", "Education timeline"],
+                  ["work-divider", "Experience divider"],
+                  ["education-divider", "Education divider"],
+                  ["skills-divider", "Skills divider"],
+                  ["bio-divider", "Summary divider"],
+                  ["links-divider", "Links divider"],
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => addSmartComponent(key as SmartComponentPreset)}
+                    style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 10.5, cursor: "pointer", textAlign: "left" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    {key.endsWith("timeline") ? <Circle size={11} /> : <Minus size={13} />}
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Background stays top-level because it is a frequent, conceptually distinct action. */}
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => {
+                setShapeMenuOpen(false);
+                setImageMenuOpen(false);
+                setComponentMenuOpen(false);
+                setArrangeMenuOpen(false);
+                setMoreMenuOpen(false);
+                setLayersPanelOpen(false);
+                setBackgroundMenuOpen(value => !value);
+              }}
+              aria-expanded={backgroundMenuOpen}
+              style={{
+                height: 31,
+                padding: "0 10px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                borderRadius: 7,
+                border: backgroundMenuOpen ? "1px solid #c4b5fd" : "1px solid #e2e8f0",
+                background: backgroundMenuOpen ? "#faf5ff" : "#fff",
+                color: backgroundMenuOpen ? "#6d28d9" : "#475569",
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: "pointer",
+                boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              <Square size={13} />
+              Background
+              <ChevronDown size={12} />
+            </button>
+
+            {backgroundMenuOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 35,
+                  left: 0,
+                  zIndex: 10002,
+                  width: 184,
+                  padding: 5,
+                  background: "white",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 8,
+                  boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
+                }}
+              >
+                {[
+                  { key: "page" as const, label: `Page ${activePageIndex + 1}` },
+                  { key: "header" as const, label: "Header" },
+                  { key: "work" as const, label: "Experience" },
+                  { key: "education" as const, label: "Education" },
+                  { key: "skills" as const, label: "Skills" },
+                  { key: "bio" as const, label: "Summary" },
+                  { key: "links" as const, label: "Links" },
+                ].map(item => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => addSmartBackground(item.key)}
+                    style={{ width: "100%", height: 30, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 11, cursor: "pointer", textAlign: "left" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <Square size={12} />
+                    {item.label} background
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Arrange groups layers and selection-dependent object ordering/grouping. */}
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => {
+                setShapeMenuOpen(false);
+                setBackgroundMenuOpen(false);
+                setImageMenuOpen(false);
+                setComponentMenuOpen(false);
+                setMoreMenuOpen(false);
+                if (layersPanelOpen) {
+                  setLayersPanelOpen(false);
+                  setArrangeMenuOpen(true);
+                } else {
+                  setArrangeMenuOpen(value => !value);
+                }
+              }}
+              aria-expanded={arrangeMenuOpen || layersPanelOpen}
+              style={{
+                height: 31,
+                padding: "0 10px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                borderRadius: 7,
+                border: arrangeMenuOpen || layersPanelOpen ? "1px solid #c4b5fd" : "1px solid #e2e8f0",
+                background: arrangeMenuOpen || layersPanelOpen ? "#faf5ff" : "#fff",
+                color: arrangeMenuOpen || layersPanelOpen ? "#6d28d9" : "#475569",
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: "pointer",
+                boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              <Layers3 size={13} />
+              Arrange
+              {getDesignObjects(d).length > 0 && (
+                <span
                   style={{
-                    width: "100%",
-                    height: 30,
-                    display: "flex",
+                    minWidth: 16,
+                    height: 16,
+                    padding: "0 4px",
+                    borderRadius: 999,
+                    display: "inline-flex",
                     alignItems: "center",
-                    gap: 8,
-                    padding: "0 8px",
-                    border: "none",
-                    borderRadius: 6,
-                    background: "transparent",
-                    color: "#334155",
-                    fontSize: 11,
-                    cursor: "pointer",
-                    textAlign: "left",
+                    justifyContent: "center",
+                    background: arrangeMenuOpen || layersPanelOpen ? "#ede9fe" : "#f1f5f9",
+                    color: arrangeMenuOpen || layersPanelOpen ? "#7c3aed" : "#64748b",
+                    fontSize: 8.5,
+                    fontWeight: 700,
                   }}
+                >
+                  {getDesignObjects(d).length}
+                </span>
+              )}
+              <ChevronDown size={12} />
+            </button>
+
+            {arrangeMenuOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 35,
+                  left: 0,
+                  zIndex: 10002,
+                  width: 206,
+                  padding: 5,
+                  background: "white",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 8,
+                  boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setArrangeMenuOpen(false);
+                    setLayersPanelOpen(true);
+                  }}
+                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 11, cursor: "pointer", textAlign: "left" }}
                   onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
                 >
-                  <Square size={12} />
-                  {item.label} background
+                  <Layers3 size={13} />
+                  Layers
+                  <span style={{ marginLeft: "auto", color: "#94a3b8", fontSize: 9 }}>{getDesignObjects(d).length}</span>
                 </button>
-              ))}
-            </div>
-          )}
-        </div>
 
-        {/* Resume-aware smart components. */}
-        <div style={{ position: "relative" }}>
-          <button
-            type="button"
-            onClick={() => {
-              setShapeMenuOpen(false);
-              setBackgroundMenuOpen(false);
-              setImageMenuOpen(false);
-              setLayersPanelOpen(false);
-              setComponentMenuOpen(v => !v);
-            }}
+                <div style={{ margin: "4px 3px", borderTop: "1px solid #f1f5f9" }} />
+                {[
+                  { label: "Bring forward", icon: <ArrowUp size={13} />, enabled: selectedDesignObjectIds.length === 1, action: () => reorderSelectedDesignObject(1) },
+                  { label: "Send backward", icon: <ArrowDown size={13} />, enabled: selectedDesignObjectIds.length === 1, action: () => reorderSelectedDesignObject(-1) },
+                  { label: "Bring to front", icon: <ChevronsUp size={13} />, enabled: selectedDesignObjectIds.length === 1, action: () => moveSelectedDesignObjectToEdge("front") },
+                  { label: "Send to back", icon: <ChevronsDown size={13} />, enabled: selectedDesignObjectIds.length === 1, action: () => moveSelectedDesignObjectToEdge("back") },
+                ].map(item => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    disabled={!item.enabled}
+                    onClick={() => {
+                      item.action();
+                      setArrangeMenuOpen(false);
+                    }}
+                    style={{ width: "100%", height: 30, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: item.enabled ? "#334155" : "#cbd5e1", fontSize: 10.5, cursor: item.enabled ? "pointer" : "default", textAlign: "left" }}
+                    onMouseEnter={e => { if (item.enabled) e.currentTarget.style.background = "#f8fafc"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </button>
+                ))}
+
+                <div style={{ margin: "4px 3px", borderTop: "1px solid #f1f5f9" }} />
+                <button
+                  type="button"
+                  disabled={selectedDesignObjectIds.length < 2}
+                  onClick={() => {
+                    groupSelectedDesignObjects();
+                    setArrangeMenuOpen(false);
+                  }}
+                  style={{ width: "100%", height: 30, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: selectedDesignObjectIds.length >= 2 ? "#334155" : "#cbd5e1", fontSize: 10.5, cursor: selectedDesignObjectIds.length >= 2 ? "pointer" : "default", textAlign: "left" }}
+                >
+                  <Layers3 size={13} />
+                  Group selection
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedDesignObjects.some(object => !!object.groupId)}
+                  onClick={() => {
+                    ungroupSelectedDesignObjects();
+                    setArrangeMenuOpen(false);
+                  }}
+                  style={{ width: "100%", height: 30, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: selectedDesignObjects.some(object => !!object.groupId) ? "#334155" : "#cbd5e1", fontSize: 10.5, cursor: selectedDesignObjects.some(object => !!object.groupId) ? "pointer" : "default", textAlign: "left" }}
+                >
+                  <Unlink2 size={13} />
+                  Ungroup selection
+                </button>
+                <button
+                  type="button"
+                  disabled={selectedDesignObjectIds.length === 0}
+                  onClick={() => {
+                    toggleSelectedDesignObjectLock();
+                    setArrangeMenuOpen(false);
+                  }}
+                  style={{ width: "100%", height: 30, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: selectedDesignObjectIds.length > 0 ? "#334155" : "#cbd5e1", fontSize: 10.5, cursor: selectedDesignObjectIds.length > 0 ? "pointer" : "default", textAlign: "left" }}
+                >
+                  {selectedDesignObjects.length > 0 && selectedDesignObjects.every(object => !!object.locked)
+                    ? <Unlock size={13} />
+                    : <Lock size={13} />}
+                  {selectedDesignObjects.length > 0 && selectedDesignObjects.every(object => !!object.locked)
+                    ? "Unlock selection"
+                    : "Lock selection"}
+                </button>
+              </div>
+            )}
+
+            {layersPanelOpen && (
+              <LayersPanel
+                objects={getDesignObjects(d)}
+                activePage={activePageIndex}
+                selectedIds={selectedDesignObjectIds}
+                onSelect={selectDesignObjectFromLayers}
+                onToggleHidden={toggleDesignObjectHidden}
+                onToggleLocked={toggleDesignObjectLocked}
+                onRename={renameDesignObject}
+                onReorder={reorderDesignObjectsFromLayers}
+                onClose={() => setLayersPanelOpen(false)}
+              />
+            )}
+          </div>
+
+          {/* Editor zoom — intentionally separate from PDF design/export state. */}
+          <div
             style={{
               height: 31,
-              padding: "0 10px",
               display: "inline-flex",
               alignItems: "center",
-              gap: 6,
-              borderRadius: 7,
-              border: componentMenuOpen ? "1px solid #c4b5fd" : "1px solid #e2e8f0",
-              background: componentMenuOpen ? "#faf5ff" : "#fff",
-              color: componentMenuOpen ? "#6d28d9" : "#475569",
-              fontSize: 11,
-              fontWeight: 600,
-              cursor: "pointer",
-              boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
-            }}
-          >
-            <Layers3 size={13} />
-            Components
-            <ChevronDown size={12} />
-          </button>
-
-          {componentMenuOpen && (
-            <div
-              style={{
-                position: "absolute",
-                top: 35,
-                left: 0,
-                zIndex: 10002,
-                width: 218,
-                maxHeight: 330,
-                overflowY: "auto",
-                padding: 5,
-                background: "white",
-                border: "1px solid #e2e8f0",
-                borderRadius: 8,
-                boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
-              }}
-            >
-              <div style={{ padding: "4px 7px 5px", fontSize: 8.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Page accents
-              </div>
-              {[
-                ["sidebar-left", "Left sidebar"],
-                ["sidebar-right", "Right sidebar"],
-                ["header-accent", "Header accent bar"],
-              ].map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => addSmartComponent(key as SmartComponentPreset)}
-                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 10.5, cursor: "pointer", textAlign: "left" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-                >
-                  <Square size={12} /> {label}
-                </button>
-              ))}
-
-              <div style={{ marginTop: 4, padding: "5px 7px", borderTop: "1px solid #f1f5f9", fontSize: 8.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Resume-aware
-              </div>
-              {[
-                ["work-timeline", "Experience timeline"],
-                ["education-timeline", "Education timeline"],
-                ["work-divider", "Experience divider"],
-                ["education-divider", "Education divider"],
-                ["skills-divider", "Skills divider"],
-                ["bio-divider", "Summary divider"],
-                ["links-divider", "Links divider"],
-              ].map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => addSmartComponent(key as SmartComponentPreset)}
-                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 10.5, cursor: "pointer", textAlign: "left" }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-                >
-                  {key.endsWith("timeline") ? <Circle size={11} /> : <Minus size={13} />} {label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Images / photos. */}
-        <div style={{ position: "relative" }}>
-          <button
-            type="button"
-            onClick={() => {
-              setShapeMenuOpen(false);
-              setBackgroundMenuOpen(false);
-              setComponentMenuOpen(false);
-              setLayersPanelOpen(false);
-              setImageMenuOpen(v => !v);
-            }}
-            style={{
-              height: 31,
-              padding: "0 10px",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              borderRadius: 7,
               border: "1px solid #e2e8f0",
+              borderRadius: 7,
               background: "#fff",
-              color: "#475569",
-              fontSize: 11,
-              fontWeight: 600,
-              cursor: "pointer",
               boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+              overflow: "hidden",
+              flexShrink: 0,
             }}
+            title="PDF canvas zoom — editor only"
           >
-            <ImageIcon size={13} />
-            Image
-            <ChevronDown size={12} />
-          </button>
-
-          {imageMenuOpen && (
-            <div
+            <button
+              type="button"
+              aria-label="Zoom PDF canvas out"
+              title="Zoom out"
+              disabled={canvasZoom <= PDF_CANVAS_ZOOM_MIN + 0.001}
+              onClick={() =>
+                setCanvasZoom(current =>
+                  clampPdfCanvasZoom(
+                    Math.round((current - PDF_CANVAS_ZOOM_STEP) * 10) / 10,
+                  ),
+                )
+              }
               style={{
-                position: "absolute",
-                top: 35,
-                left: 0,
-                zIndex: 10002,
-                width: 166,
-                padding: 5,
-                background: "white",
-                border: "1px solid #e2e8f0",
-                borderRadius: 8,
-                boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
+                width: 30,
+                height: "100%",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "none",
+                borderRight: "1px solid #e2e8f0",
+                background: "transparent",
+                color: canvasZoom <= PDF_CANVAS_ZOOM_MIN + 0.001 ? "#cbd5e1" : "#475569",
+                cursor: canvasZoom <= PDF_CANVAS_ZOOM_MIN + 0.001 ? "default" : "pointer",
               }}
             >
-              <button
-                type="button"
-                onClick={() => requestImageUpload("photo")}
-                style={{
-                  width: "100%", height: 32, display: "flex", alignItems: "center", gap: 8,
-                  padding: "0 8px", border: "none", borderRadius: 6,
-                  background: "transparent", color: "#334155", fontSize: 11,
-                  cursor: "pointer", textAlign: "left",
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-              >
-                <User size={14} />
-                Profile photo
-              </button>
+              <Minus size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setCanvasZoom(1)}
+              title="Fit canvas to available width"
+              style={{
+                minWidth: 50,
+                height: "100%",
+                padding: "0 7px",
+                border: "none",
+                borderRight: "1px solid #e2e8f0",
+                background: canvasZoom === 1 ? "#faf5ff" : "transparent",
+                color: canvasZoom === 1 ? "#6d28d9" : "#475569",
+                fontSize: 10.5,
+                fontWeight: 700,
+                cursor: "pointer",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {Math.round(canvasZoom * 100)}%
+            </button>
+            <button
+              type="button"
+              aria-label="Zoom PDF canvas in"
+              title="Zoom in"
+              disabled={canvasZoom >= PDF_CANVAS_ZOOM_MAX - 0.001}
+              onClick={() =>
+                setCanvasZoom(current =>
+                  clampPdfCanvasZoom(
+                    Math.round((current + PDF_CANVAS_ZOOM_STEP) * 10) / 10,
+                  ),
+                )
+              }
+              style={{
+                width: 30,
+                height: "100%",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "none",
+                background: "transparent",
+                color: canvasZoom >= PDF_CANVAS_ZOOM_MAX - 0.001 ? "#cbd5e1" : "#475569",
+                cursor: canvasZoom >= PDF_CANVAS_ZOOM_MAX - 0.001 ? "default" : "pointer",
+              }}
+            >
+              <Plus size={13} />
+            </button>
+          </div>
 
-              <button
-                type="button"
-                onClick={() => requestImageUpload("image")}
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              aria-label="More PDF canvas actions"
+              title="More canvas actions"
+              onClick={() => {
+                setShapeMenuOpen(false);
+                setBackgroundMenuOpen(false);
+                setArrangeMenuOpen(false);
+                setLayersPanelOpen(false);
+                setImageMenuOpen(false);
+                setComponentMenuOpen(false);
+                setMoreMenuOpen(value => !value);
+              }}
+              style={{
+                width: 32,
+                height: 31,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 7,
+                border: moreMenuOpen ? "1px solid #c4b5fd" : "1px solid #e2e8f0",
+                background: moreMenuOpen ? "#faf5ff" : "#fff",
+                color: moreMenuOpen ? "#6d28d9" : "#475569",
+                cursor: "pointer",
+                boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+                flexShrink: 0,
+              }}
+            >
+              <MoreHorizontal size={15} />
+            </button>
+
+            {moreMenuOpen && (
+              <div
                 style={{
-                  width: "100%", height: 32, display: "flex", alignItems: "center", gap: 8,
-                  padding: "0 8px", border: "none", borderRadius: 6,
-                  background: "transparent", color: "#334155", fontSize: 11,
-                  cursor: "pointer", textAlign: "left",
+                  position: "absolute",
+                  top: 35,
+                  right: 0,
+                  zIndex: 10002,
+                  width: 174,
+                  padding: 5,
+                  background: "white",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 8,
+                  boxShadow: "0 8px 24px rgba(15,23,42,0.15)",
                 }}
-                onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
               >
-                <ImageIcon size={14} />
-                Image / graphic
-              </button>
-            </div>
-          )}
+                <button
+                  type="button"
+                  disabled={!d.layoutOverrides || Object.keys(d.layoutOverrides).length === 0}
+                  onClick={() => {
+                    if (d.layoutOverrides && Object.keys(d.layoutOverrides).length > 0) {
+                      onDesignChange({ ...d, layoutOverrides: undefined });
+                    }
+                    setMoreMenuOpen(false);
+                  }}
+                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: d.layoutOverrides && Object.keys(d.layoutOverrides).length > 0 ? "#334155" : "#cbd5e1", fontSize: 10.5, cursor: d.layoutOverrides && Object.keys(d.layoutOverrides).length > 0 ? "pointer" : "default", textAlign: "left" }}
+                >
+                  <FileText size={13} />
+                  Reset layout
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearSelection();
+                    setMoreMenuOpen(false);
+                  }}
+                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 10.5, cursor: "pointer", textAlign: "left" }}
+                >
+                  <X size={13} />
+                  Clear selection
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <input
@@ -8467,72 +8799,15 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
           }}
         />
 
-        <div style={{ position: "relative" }}>
-          <button
-            type="button"
-            onClick={() => {
-              setShapeMenuOpen(false);
-              setBackgroundMenuOpen(false);
-              setImageMenuOpen(false);
-              setComponentMenuOpen(false);
-              setLayersPanelOpen(v => !v);
-            }}
-            style={{
-              height: 31,
-              padding: "0 10px",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              borderRadius: 7,
-              border: layersPanelOpen ? "1px solid #c4b5fd" : "1px solid #e2e8f0",
-              background: layersPanelOpen ? "#faf5ff" : "#fff",
-              color: layersPanelOpen ? "#6d28d9" : "#475569",
-              fontSize: 11,
-              fontWeight: 600,
-              cursor: "pointer",
-              boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
-            }}
-          >
-            <Layers3 size={13} />
-            Layers
-            {getDesignObjects(d).length > 0 && (
-              <span
-                style={{
-                  minWidth: 16,
-                  height: 16,
-                  padding: "0 4px",
-                  borderRadius: 999,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  background: layersPanelOpen ? "#ede9fe" : "#f1f5f9",
-                  color: layersPanelOpen ? "#7c3aed" : "#64748b",
-                  fontSize: 8.5,
-                  fontWeight: 700,
-                }}
-              >
-                {getDesignObjects(d).length}
-              </span>
-            )}
-          </button>
-
-          {layersPanelOpen && (
-            <LayersPanel
-              objects={getDesignObjects(d)}
-              activePage={activePageIndex}
-              selectedIds={selectedDesignObjectIds}
-              onSelect={selectDesignObjectFromLayers}
-              onToggleHidden={toggleDesignObjectHidden}
-              onToggleLocked={toggleDesignObjectLocked}
-              onRename={renameDesignObject}
-              onReorder={reorderDesignObjectsFromLayers}
-              onClose={() => setLayersPanelOpen(false)}
-            />
-          )}
-        </div>
-
-        <span style={{ fontSize: 10, color: "#94a3b8" }}>
-          Active page {activePageIndex + 1} · Shift-click to multi-select · Link = shared design
+        <span
+          style={{
+            flexShrink: 0,
+            fontSize: 9.5,
+            color: "#94a3b8",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Page {activePageIndex + 1} · Shift-click to multi-select
         </span>
       </div>
 
@@ -8608,6 +8883,9 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
                 (selectedDesignObject as ImageDesignObject).imageKind ?? "image",
                 selectedDesignObject.id,
               )
+            : undefined}
+          onToggleTextLayoutLink={selectedDesignObject.type === "text"
+            ? toggleSelectedTextLayoutLink
             : undefined}
         />,
         document.body
@@ -8714,11 +8992,12 @@ function AlignIcon({ align, size = 14 }: { align: "left" | "center" | "right"; s
 }
 
 const TB_BTN: CSSProperties = {
-  display: "flex", alignItems: "center", justifyContent: "center",
-  width: 26, height: 26, borderRadius: 4,
-  background: "none", border: "none",
-  cursor: "pointer", color: "#374151",
+  ...CONTEXT_ICON_BUTTON,
   flexShrink: 0,
+  minHeight: 30,
+  width: 30,
+  minWidth: 30,
+  height: 30,
 };
 
 function BlockActionBar({ anchorRect, onSnapBack, onClose }: {
@@ -8749,14 +9028,9 @@ function BlockActionBar({ anchorRect, onSnapBack, onClose }: {
       onClick={e => e.stopPropagation()}
       style={{
         position: "fixed", top, left, zIndex: 9999,
-        background: "white",
-        border: "1px solid #e2e8f0",
-        borderRadius: 8,
-        boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
+        ...CONTEXT_TOOLBAR_SURFACE,
         display: "flex", alignItems: "center", gap: 4,
         padding: "4px 6px",
-        fontFamily: "system-ui, sans-serif",
-        userSelect: "none",
       }}
     >
       <button
@@ -8803,7 +9077,11 @@ function ContextToolbar({
   const left = Math.min(window.innerWidth - 340, Math.max(4, anchorRect.left));
 
   const divider = <div style={{ width: 1, height: 16, background: "#e5e7eb", margin: "0 3px", flexShrink: 0 }} />;
-  const active  = (on: boolean): CSSProperties => ({ ...TB_BTN, background: on ? "#ede9fe" : "none", color: on ? "#7c3aed" : "#374151" });
+  const active = (on: boolean): CSSProperties => ({
+    ...TB_BTN,
+    ...(on ? CONTEXT_ACTIVE_BUTTON : {}),
+    background: on ? CONTEXT_ACTIVE_BUTTON.background : "#fff",
+  });
 
   return (
     <div
@@ -8812,14 +9090,9 @@ function ContextToolbar({
       onClick={e => e.stopPropagation()}
       style={{
         position: "fixed", top, left, zIndex: 9999,
-        background: "white",
-        border: "1px solid #e2e8f0",
-        borderRadius: 8,
-        boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
-        display: "flex", alignItems: "center", gap: 2,
+        ...CONTEXT_TOOLBAR_SURFACE,
+        display: "flex", alignItems: "center", gap: 4,
         padding: "4px 6px",
-        fontFamily: "system-ui, sans-serif",
-        userSelect: "none",
       }}
     >
       {/* Element label */}
@@ -8847,7 +9120,7 @@ function ContextToolbar({
             fontSize: 11,
           }}
         >
-          {styleLinked ? "🔗" : "⛓"}
+          {styleLinked ? <Link2 size={13} /> : <Unlink2 size={13} />}
         </button>
       )}
 
@@ -8972,18 +9245,22 @@ function StylePopover({
   const s = d[elementKey] as TextStyle & Record<string, unknown>;
   const set = (p: Partial<TextStyle>) => onChangeTs(elementKey, p);
 
-  const POP_W = 288;
-  const margin = 10;
+  // The full formatter is intentionally a narrow vertical panel. Nothing in
+  // here should require horizontal scrolling; advanced controls are grouped
+  // into expandable sections instead of being packed side-by-side.
+  const margin = 12;
   const vp = { w: window.innerWidth, h: window.innerHeight };
+  const POP_W = Math.min(360, Math.max(240, vp.w - margin * 2));
+  const POP_MAX_H = Math.min(620, Math.max(320, vp.h - margin * 2));
 
   let left = anchorRect.right + margin;
-  let top  = anchorRect.top;
+  let top = anchorRect.top;
   if (left + POP_W > vp.w - margin) left = anchorRect.left - POP_W - margin;
   if (left < margin) {
     left = Math.max(margin, Math.min(anchorRect.left, vp.w - POP_W - margin));
-    top  = anchorRect.bottom + margin;
+    top = anchorRect.bottom + margin;
   }
-  top = Math.max(margin, Math.min(top, vp.h - 500));
+  top = Math.max(margin, Math.min(top, vp.h - POP_MAX_H - margin));
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -8993,60 +9270,183 @@ function StylePopover({
     return () => { clearTimeout(t); document.removeEventListener("mousedown", handler); };
   }, [onClose]);
 
-  const lbl = (txt: string) => (
-    <div style={{ fontSize: 10, fontWeight: 600, color: "#6b7280", textTransform: "uppercase" as const, letterSpacing: "0.04em", marginBottom: 3 }}>{txt}</div>
+  const label = (txt: string) => (
+    <div style={{
+      fontSize: 10,
+      fontWeight: 750,
+      color: "#71717a",
+      textTransform: "uppercase" as const,
+      letterSpacing: "0.055em",
+      marginBottom: 6,
+    }}>{txt}</div>
   );
-  const row2 = (a: ReactNode, b: ReactNode) => (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 10px" }}>{a}{b}</div>
+
+  const fieldShell: CSSProperties = {
+    width: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
+    border: "1px solid #e4e4e7",
+    borderRadius: 8,
+    background: "#fff",
+    color: "#27272a",
+    fontSize: 12,
+  };
+
+  const section = (title: string, children: ReactNode) => (
+    <section style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: "#3f3f46", letterSpacing: "0.01em" }}>{title}</div>
+      {children}
+    </section>
   );
-  const colorField = (label: string, value: string, onChange: (v: string) => void) => (
-    <div>
-      {lbl(label)}
-      <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-        <input type="color" value={value.startsWith("#") ? value : "#ffffff"} onChange={e => onChange(e.target.value)}
-          style={{ width: 26, height: 22, cursor: "pointer", border: "1px solid #e5e7eb", borderRadius: 3, padding: 1, flexShrink: 0 }} />
-        <input type="text" value={value} onChange={e => onChange(e.target.value)}
-          style={{ flex: 1, fontSize: 11, fontFamily: "monospace", border: "1px solid #e5e7eb", borderRadius: 3, padding: "2px 5px" }} />
+
+  const disclosure = (title: string, children: ReactNode, open = false) => (
+    <details open={open} style={{
+      border: "1px solid #e4e4e7",
+      borderRadius: 10,
+      background: "#fafafa",
+      overflow: "hidden",
+    }}>
+      <summary style={{
+        cursor: "pointer",
+        padding: "10px 11px",
+        fontSize: 11,
+        fontWeight: 750,
+        color: "#3f3f46",
+        userSelect: "none",
+      }}>{title}</summary>
+      <div style={{
+        padding: "2px 11px 12px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 11,
+        minWidth: 0,
+      }}>{children}</div>
+    </details>
+  );
+
+  const colorField = (fieldLabel: string, value: string, onChange: (v: string) => void) => (
+    <div style={{ minWidth: 0 }}>
+      {label(fieldLabel)}
+      <div style={{
+        ...fieldShell,
+        minHeight: 36,
+        padding: "5px 7px",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}>
+        <input
+          aria-label={`${fieldLabel} picker`}
+          type="color"
+          value={value.startsWith("#") ? value : "#ffffff"}
+          onChange={e => onChange(e.target.value)}
+          style={{ width: 25, height: 24, cursor: "pointer", border: 0, padding: 0, background: "transparent", flexShrink: 0 }}
+        />
+        <input
+          aria-label={`${fieldLabel} value`}
+          type="text"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          style={{ ...fieldShell, border: 0, outline: "none", padding: 0, fontFamily: "monospace", flex: 1 }}
+        />
       </div>
     </div>
   );
-  const sliderField = (label: string, value: number, onChange: (v: number) => void, min = 0, max = 100, step = 0.5) => (
-    <div>
-      {lbl(label)}
-      <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-        <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(+e.target.value)}
-          style={{ flex: 1, accentColor: "#7c3aed", height: 14 }} />
-        <input type="number" min={min} max={max} step={step} value={value} onChange={e => onChange(+e.target.value)}
-          style={{ width: 42, fontSize: 11, border: "1px solid #e5e7eb", borderRadius: 3, padding: "2px 4px", textAlign: "right" as const }} />
+
+  const sliderField = (
+    fieldLabel: string,
+    value: number,
+    onChange: (v: number) => void,
+    min = 0,
+    max = 100,
+    step = 0.5,
+  ) => (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
+        <div style={{
+          fontSize: 10,
+          fontWeight: 750,
+          color: "#71717a",
+          textTransform: "uppercase" as const,
+          letterSpacing: "0.055em",
+        }}>{fieldLabel}</div>
+        <input
+          aria-label={`${fieldLabel} value`}
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={e => onChange(+e.target.value)}
+          style={{ ...fieldShell, width: 62, height: 30, padding: "3px 7px", textAlign: "right" as const, flexShrink: 0 }}
+        />
       </div>
+      <input
+        aria-label={fieldLabel}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={e => onChange(+e.target.value)}
+        style={{ display: "block", width: "100%", minWidth: 0, margin: 0, accentColor: CONTEXT_PURPLE }}
+      />
     </div>
   );
-  const selectField = (label: string, value: string, onChange: (v: string) => void, opts: { value: string; label: string }[]) => (
-    <div>
-      {lbl(label)}
-      <select value={value} onChange={e => onChange(e.target.value)}
-        style={{ width: "100%", fontSize: 11, border: "1px solid #e5e7eb", borderRadius: 3, padding: "3px 5px" }}>
+
+  const selectField = (fieldLabel: string, value: string, onChange: (v: string) => void, opts: { value: string; label: string }[]) => (
+    <div style={{ minWidth: 0 }}>
+      {label(fieldLabel)}
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{ ...fieldShell, height: 36, padding: "0 9px" }}
+      >
         {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </div>
   );
-  const textField = (label: string, value: string, onChange: (v: string) => void, maxLen = 20) => (
-    <div>
-      {lbl(label)}
-      <input type="text" value={value} onChange={e => onChange(e.target.value)} maxLength={maxLen}
-        style={{ width: "100%", fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 3, padding: "3px 6px", boxSizing: "border-box" as const }} />
+
+  const textField = (fieldLabel: string, value: string, onChange: (v: string) => void, maxLen = 20) => (
+    <div style={{ minWidth: 0 }}>
+      {label(fieldLabel)}
+      <input
+        type="text"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        maxLength={maxLen}
+        style={{ ...fieldShell, height: 36, padding: "0 9px" }}
+      />
     </div>
   );
-  const toggleField = (label: string, value: boolean, onChange: (v: boolean) => void) => (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-      <span style={{ fontSize: 11, color: "#374151" }}>{label}</span>
-      <button type="button" onClick={() => onChange(!value)} style={{
-        width: 34, height: 18, borderRadius: 9, border: "none", cursor: "pointer",
-        background: value ? "#7c3aed" : "#d1d5db", position: "relative" as const, flexShrink: 0,
+
+  const compactPair = (a: ReactNode, b: ReactNode) => (
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10, minWidth: 0 }}>{a}{b}</div>
+  );
+
+  const toggleField = (fieldLabel: string, value: boolean, onChange: (v: boolean) => void) => (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+      <span style={{ fontSize: 12, color: "#3f3f46", fontWeight: 600 }}>{fieldLabel}</span>
+      <button type="button" onClick={() => onChange(!value)} aria-pressed={value} style={{
+        width: 38,
+        height: 22,
+        borderRadius: 999,
+        border: "none",
+        cursor: "pointer",
+        background: value ? CONTEXT_PURPLE : "#d4d4d8",
+        position: "relative" as const,
+        flexShrink: 0,
       }}>
         <span style={{
-          position: "absolute" as const, top: 1, left: value ? 15 : 1, width: 16, height: 16,
-          borderRadius: "50%", background: "#fff", transition: "left 0.12s",
+          position: "absolute" as const,
+          top: 3,
+          left: value ? 19 : 3,
+          width: 16,
+          height: 16,
+          borderRadius: "50%",
+          background: "#fff",
+          transition: "left 0.12s",
+          boxShadow: "0 1px 2px rgba(0,0,0,.18)",
         }} />
       </button>
     </div>
@@ -9056,161 +9456,188 @@ function StylePopover({
     <div
       ref={popRef}
       style={{
-        position: "fixed" as const, zIndex: 9999, top, left, width: POP_W,
-        background: "#fff",
-        border: "1.5px solid #ede9fe",
-        borderRadius: 12,
-        boxShadow: "0 8px 32px rgba(124,58,237,0.18), 0 2px 8px rgba(0,0,0,0.08)",
-        fontFamily: "system-ui, sans-serif",
+        position: "fixed" as const,
+        zIndex: 9999,
+        top,
+        left,
+        width: POP_W,
+        maxWidth: "calc(100vw - 24px)",
+        ...CONTEXT_POPOVER_SURFACE,
         overflow: "hidden",
+        boxSizing: "border-box",
       }}
       onClick={e => e.stopPropagation()}
     >
-      <div style={{ background: "#7c3aed", padding: "9px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>✏ {ELEMENT_LABELS[elementKey]}</span>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{
+        background: "#fff",
+        borderBottom: "1px solid #e4e4e7",
+        padding: "10px 11px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 8,
+      }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, minWidth: 0, fontSize: 13, fontWeight: 800, color: "#27272a" }}>
+          <Pencil size={14} color={CONTEXT_PURPLE} />
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ELEMENT_LABELS[elementKey]}</span>
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
           {visualRoleForDesignKey(elementKey) && (
             <button
               type="button"
               onClick={onToggleStyleLink}
-              title={
-                styleLinked
-                  ? "Typography linked to Web"
-                  : "Web typography overridden"
-              }
+              title={styleLinked ? "Typography linked to Web" : "Web typography overridden"}
               style={{
-                height: 24,
-                border: "1px solid rgba(255,255,255,.35)",
-                borderRadius: 6,
-                background: "rgba(255,255,255,.14)",
-                color: "#fff",
-                padding: "0 7px",
-                cursor: "pointer",
-                fontSize: 10,
-                fontWeight: 700,
+                ...CONTEXT_BUTTON,
+                minHeight: 28,
+                height: 28,
+                ...(styleLinked ? CONTEXT_ACTIVE_BUTTON : CONTEXT_WARNING_BUTTON),
+                padding: "0 8px",
               }}
             >
-              {styleLinked ? "🔗 Linked" : "⛓ PDF only"}
+              {styleLinked ? <Link2 size={13} /> : <Unlink2 size={13} />}
+              {styleLinked ? "Linked" : "PDF only"}
             </button>
           )}
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: 18, lineHeight: 1, opacity: 0.8 }}>×</button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close formatting"
+            style={{ ...CONTEXT_ICON_BUTTON, width: 28, minWidth: 28, minHeight: 28, height: 28, borderColor: "transparent", background: "transparent", color: "#71717a" }}
+          ><X size={15} /></button>
         </div>
       </div>
 
-      <div style={{ padding: "12px 12px 14px", display: "flex", flexDirection: "column" as const, gap: 10, maxHeight: 440, overflowY: "auto" as const }}>
-
+      <div style={{
+        padding: "12px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 14,
+        maxHeight: POP_MAX_H - 52,
+        overflowY: "auto" as const,
+        overflowX: "hidden" as const,
+        boxSizing: "border-box",
+      }}>
         {visualRoleForDesignKey(elementKey) && (
           <div style={{
-            borderRadius: 7,
-            background: styleLinked ? "#f5f3ff" : "#fff7ed",
-            padding: "6px 7px",
-            color: styleLinked ? "#6d28d9" : "#9a3412",
-            fontSize: 9,
-            lineHeight: 1.4,
+            borderRadius: 9,
+            border: `1px solid ${styleLinked ? "rgba(46,5,98,0.12)" : "#fed7aa"}`,
+            background: styleLinked ? "#f7f5ff" : "#fff7ed",
+            padding: "8px 9px",
+            color: styleLinked ? CONTEXT_PURPLE : "#9a3412",
+            fontSize: 11,
+            lineHeight: 1.45,
           }}>
             {styleLinked
-              ? "🔗 Typography is linked. PDF text changes also update the Web resume."
-              : "⛓ Web typography is independent. PDF changes stay PDF-only until you relink."}
+              ? "Linked to Responsive Web. Typography changes update both formats."
+              : "PDF typography is currently independent from Responsive Web."}
           </div>
         )}
 
-        {selectField("Font family", s.fontFamily as string, v => set({ fontFamily: v as FontFamily }), FONTS)}
-        {row2(
-          sliderField("Font size (pt)", s.fontSize as number, v => set({ fontSize: v }), 7, 48, 0.5),
-          colorField("Text colour", s.color as string, v => set({ color: v })),
-        )}
-        <div>
-          {lbl("Alignment")}
-          <div style={{ display: "flex", gap: 4 }}>
-            {(["left","center","right"] as const).map(a => (
-              <button key={a} onClick={() => set({ textAlign: a })} style={{
-                flex: 1, padding: "4px 0", border: "1px solid #e5e7eb", borderRadius: 4,
-                background: (s.textAlign ?? "left") === a ? "#ede9fe" : "transparent",
-                cursor: "pointer", fontSize: 13, color: (s.textAlign ?? "left") === a ? "#7c3aed" : "#374151",
-              }}>
-                <AlignIcon align={a} size={14} />
-              </button>
-            ))}
+        {section("Typography", <>
+          {selectField("Font family", s.fontFamily as string, v => set({ fontFamily: v as FontFamily }), FONTS)}
+          {sliderField("Font size (pt)", s.fontSize as number, v => set({ fontSize: v }), 7, 48, 0.5)}
+          {colorField("Text colour", s.color as string, v => set({ color: v }))}
+          <div>
+            {label("Alignment")}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+              {(["left", "center", "right"] as const).map(a => (
+                <button
+                  key={a}
+                  type="button"
+                  title={a}
+                  onClick={() => set({ textAlign: a })}
+                  style={{
+                    ...CONTEXT_BUTTON,
+                    minWidth: 0,
+                    height: 34,
+                    minHeight: 34,
+                    padding: 0,
+                    ...((s.textAlign ?? "left") === a ? CONTEXT_ACTIVE_BUTTON : {}),
+                  }}
+                ><AlignIcon align={a} size={15} /></button>
+              ))}
+            </div>
           </div>
-        </div>
-        {row2(
-          sliderField("Letter spacing", (s.letterSpacing ?? 0) as number, v => set({ letterSpacing: v }), -2, 10, 0.5),
-          sliderField("Line height", (s.lineHeight ?? 1.2) as number, v => set({ lineHeight: v }), 1, 3, 0.05),
-        )}
-        {(elementKey === "name" || elementKey === "sectionHeading") &&
-          selectField("Text transform", (s.textTransform ?? "none") as string,
-            v => set({ textTransform: v as "none" | "uppercase" | "lowercase" | "capitalize" }), [
-            { value: "none",       label: "None" },
-            { value: "uppercase",  label: "UPPERCASE" },
-            { value: "lowercase",  label: "lowercase" },
-            { value: "capitalize", label: "Capitalize Each Word" },
-          ])
-        }
-        {row2(
-          sliderField("Space above (pt)", (s.marginTop ?? 0) as number, v => set({ marginTop: v }), 0, 40),
-          sliderField("Space below (pt)", (s.marginBottom ?? 0) as number, v => set({ marginBottom: v }), 0, 40),
-        )}
-        {(elementKey === "skillItem" || elementKey === "name" || elementKey === "sectionHeading") &&
-          colorField("Background colour", (s.backgroundColor ?? "transparent") as string, v => set({ backgroundColor: v }))
-        }
-        {elementKey === "skillItem" && row2(
-          sliderField("Padding H (pt)", (s.paddingLeft ?? 0) as number, v => set({ paddingLeft: v, paddingRight: v }), 0, 20),
-          sliderField("Padding V (pt)", (s.paddingTop ?? 0) as number, v => set({ paddingTop: v, paddingBottom: v }), 0, 12),
-        )}
-        {elementKey === "skillItem" && sliderField("Corner radius", (s.borderRadius ?? 0) as number, v => set({ borderRadius: v }), 0, 16, 1)}
-        {elementKey === "contact" &&
-          textField("Separator between items", (s as { separator?: string }).separator ?? " · ",
-            v => onChangeDesign({ contact: { ...d.contact, separator: v } }), 10)
-        }
-        {elementKey === "entryDate" &&
-          selectField("Position", (s as { position?: string }).position ?? "right",
-            v => onChangeDesign({ entryDate: { ...d.entryDate, position: v as "right" | "below" } }), [
-              { value: "right", label: "Right of title (inline)" },
-              { value: "below", label: "Below title" },
-            ])
-        }
-        {elementKey === "entryBullet" && <>
-          {row2(
+          {(elementKey === "name" || elementKey === "sectionHeading") &&
+            selectField("Text transform", (s.textTransform ?? "none") as string,
+              v => set({ textTransform: v as "none" | "uppercase" | "lowercase" | "capitalize" }), [
+                { value: "none", label: "None" },
+                { value: "uppercase", label: "UPPERCASE" },
+                { value: "lowercase", label: "lowercase" },
+                { value: "capitalize", label: "Capitalize Each Word" },
+              ])
+          }
+        </>)}
+
+        {elementKey === "entryBullet" && disclosure("Bullet settings", <>
+          {compactPair(
             textField("Bullet character", d.bulletMarkerChar, v => onChangeDesign({ bulletMarkerChar: v || "•" }), 2),
             colorField("Bullet colour", d.bulletMarkerColor, v => onChangeDesign({ bulletMarkerColor: v })),
           )}
           {sliderField("Marker indent (pt)", d.bulletMarkerWidth, v => onChangeDesign({ bulletMarkerWidth: v }), 6, 24, 1)}
-        </>}
-        {elementKey === "sectionHeading" && <>
-          {toggleField("Rule line under heading", d.sectionRuleShow, v => onChangeDesign({ sectionRuleShow: v }))}
-          {d.sectionRuleShow && row2(
-            colorField("Rule colour", d.sectionRuleColor, v => onChangeDesign({ sectionRuleColor: v })),
-            sliderField("Thickness", d.sectionRuleThickness, v => onChangeDesign({ sectionRuleThickness: v }), 0.5, 4, 0.5),
-          )}
-        </>}
-        {elementKey === "skillItem" &&
-          selectField("Display style", d.skillDisplay, v => onChangeDesign({ skillDisplay: v as typeof d.skillDisplay }), [
-            { value: "tags",   label: "Tags / pills" },
-            { value: "list",   label: "Bulleted list" },
-            { value: "inline", label: "Inline (comma separated)" },
-            { value: "grid",   label: "Grid" },
-          ])
-        }
-        {(elementKey === "entryTitle" || elementKey === "entryOrg") &&
-          sliderField("Space between entries (pt)", d.entrySpacing, v => onChangeDesign({ entrySpacing: v }), 2, 30)
-        }
+        </>, true)}
 
-        {/* Block-level: rotation + position overrides */}
+        {elementKey === "contact" && section("Element", <>
+          {textField("Separator between items", (s as { separator?: string }).separator ?? " · ",
+            v => onChangeDesign({ contact: { ...d.contact, separator: v } }), 10)}
+        </>)}
+
+        {elementKey === "entryDate" && section("Element", <>
+          {selectField("Date position", (s as { position?: string }).position ?? "right",
+            v => onChangeDesign({ entryDate: { ...d.entryDate, position: v as "right" | "below" } }), [
+              { value: "right", label: "Right of title (inline)" },
+              { value: "below", label: "Below title" },
+            ])}
+        </>)}
+
+        {elementKey === "sectionHeading" && disclosure("Heading rule", <>
+          {toggleField("Rule line under heading", d.sectionRuleShow, v => onChangeDesign({ sectionRuleShow: v }))}
+          {d.sectionRuleShow && <>
+            {colorField("Rule colour", d.sectionRuleColor, v => onChangeDesign({ sectionRuleColor: v }))}
+            {sliderField("Thickness", d.sectionRuleThickness, v => onChangeDesign({ sectionRuleThickness: v }), 0.5, 4, 0.5)}
+          </>}
+        </>)}
+
+        {elementKey === "skillItem" && disclosure("Skill appearance", <>
+          {colorField("Background colour", (s.backgroundColor ?? "transparent") as string, v => set({ backgroundColor: v }))}
+          {selectField("Display style", d.skillDisplay, v => onChangeDesign({ skillDisplay: v as typeof d.skillDisplay }), [
+            { value: "tags", label: "Tags / pills" },
+            { value: "list", label: "Bulleted list" },
+            { value: "inline", label: "Inline (comma separated)" },
+            { value: "grid", label: "Grid" },
+          ])}
+          {sliderField("Horizontal padding (pt)", (s.paddingLeft ?? 0) as number, v => set({ paddingLeft: v, paddingRight: v }), 0, 20)}
+          {sliderField("Vertical padding (pt)", (s.paddingTop ?? 0) as number, v => set({ paddingTop: v, paddingBottom: v }), 0, 12)}
+          {sliderField("Corner radius", (s.borderRadius ?? 0) as number, v => set({ borderRadius: v }), 0, 16, 1)}
+        </>)}
+
+        {(elementKey === "name" || elementKey === "sectionHeading") &&
+          disclosure("Background", <>
+            {colorField("Background colour", (s.backgroundColor ?? "transparent") as string, v => set({ backgroundColor: v }))}
+          </>)}
+
+        {(elementKey === "entryTitle" || elementKey === "entryOrg") && disclosure("Entry spacing", <>
+          {sliderField("Space between entries (pt)", d.entrySpacing, v => onChangeDesign({ entrySpacing: v }), 2, 30)}
+        </>)}
+
+        {disclosure("Spacing & rhythm", <>
+          {sliderField("Letter spacing", (s.letterSpacing ?? 0) as number, v => set({ letterSpacing: v }), -2, 10, 0.5)}
+          {sliderField("Line height", (s.lineHeight ?? 1.2) as number, v => set({ lineHeight: v }), 1, 3, 0.05)}
+          {sliderField("Space above (pt)", (s.marginTop ?? 0) as number, v => set({ marginTop: v }), 0, 40)}
+          {sliderField("Space below (pt)", (s.marginBottom ?? 0) as number, v => set({ marginBottom: v }), 0, 40)}
+        </>)}
+
         {blockId && onChangeBlock && (() => {
           const ov = d.layoutOverrides?.[blockId] ?? {};
-          return (
-            <>
-              <div style={{ height: 1, background: "#f0e9ff", margin: "4px 0" }} />
-              {sliderField("Rotation (°)", ov.rotation ?? 0,
-                v => onChangeBlock(blockId, { rotation: v || undefined }), -180, 180, 1)}
-              {row2(
-                sliderField("Horizontal offset (pt)", Math.round(ov.visualDx ?? 0),
-                  v => onChangeBlock(blockId, { visualDx: v || undefined }), -300, 300, 1),
-                sliderField("Vertical displacement (pt)", Math.round(ov.flowDisplacementY ?? 0),
-                  v => onChangeBlock(blockId, { flowDisplacementY: v || undefined }), -500, 500, 1),
-              )}
-            </>
-          );
+          return disclosure("Position & transform", <>
+            {sliderField("Rotation (°)", ov.rotation ?? 0,
+              v => onChangeBlock(blockId, { rotation: v || undefined }), -180, 180, 1)}
+            {sliderField("Horizontal offset (pt)", Math.round(ov.visualDx ?? 0),
+              v => onChangeBlock(blockId, { visualDx: v || undefined }), -300, 300, 1)}
+            {sliderField("Vertical displacement (pt)", Math.round(ov.flowDisplacementY ?? 0),
+              v => onChangeBlock(blockId, { flowDisplacementY: v || undefined }), -500, 500, 1)}
+          </>);
         })()}
       </div>
     </div>

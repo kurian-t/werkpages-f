@@ -297,6 +297,13 @@ export interface InteractiveResumeContentObject
    * resume-content picker and make these bindings editable in the UI.
    */
   binding?: InteractiveResumeContentBinding;
+  /**
+   * Shared resume content is linked by default. When explicitly unlinked,
+   * this object keeps a local field snapshot so inline edits affect only
+   * this Interactive page until the user chooses how to relink it.
+   */
+  sharedContentUnlinked?: boolean;
+  localContent?: Record<string, string>;
 }
 
 export interface InteractiveTextObject extends InteractiveObjectBase {
@@ -1376,11 +1383,25 @@ function normalizeObject(
       }
     }
 
+    const localContent =
+      source.localContent && typeof source.localContent === "object"
+        ? Object.fromEntries(
+            Object.entries(source.localContent as Record<string, unknown>)
+              .filter(([key]) => !!key)
+              .map(([key, value]) => [key, stringValue(value)]),
+          )
+        : undefined;
+
     return {
       ...base,
       type,
       geometry,
       binding,
+      sharedContentUnlinked: source.sharedContentUnlinked === true || undefined,
+      localContent:
+        source.sharedContentUnlinked === true && localContent
+          ? localContent
+          : undefined,
     };
   }
 

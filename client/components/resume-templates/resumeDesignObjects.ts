@@ -160,6 +160,22 @@ export interface ImageDesignObject extends DesignObjectBase {
   intrinsicHeight?: number;
 }
 
+export type LinkedTextWebBreakpoint = "desktop" | "tablet" | "mobile";
+
+/**
+ * Normalized placement shared by the Responsive Web projection. Keeping the
+ * values relative to a PDF page lets a linked textbox preserve its conceptual
+ * location across the fixed PDF canvas and a responsive browser artboard.
+ */
+export interface LinkedTextPlacement {
+  page: number;
+  xRatio: number;
+  yRatio: number;
+  widthRatio: number;
+  heightRatio: number;
+  rotation?: number;
+}
+
 export interface TextDesignObject extends DesignObjectBase {
   type: "text";
   text: string;
@@ -169,6 +185,19 @@ export interface TextDesignObject extends DesignObjectBase {
   fontWeight?: number | string;
   fontStyle?: "normal" | "italic";
   textAlign?: "left" | "center" | "right";
+
+  /**
+   * Designed PDF + Responsive Web are linked by default. When true, Web keeps
+   * its own desktop placement while the text/content/style remain shared.
+   */
+  webLayoutUnlinked?: boolean;
+
+  /**
+   * Responsive-specific placement. Tablet/Mobile entries are breakpoint
+   * overrides even while desktop remains linked to PDF. A desktop entry is
+   * used when the user explicitly unlinks Web layout from Designed PDF.
+   */
+  webLayout?: Partial<Record<LinkedTextWebBreakpoint, LinkedTextPlacement>>;
 }
 
 export interface IconDesignObject extends DesignObjectBase {
@@ -194,6 +223,160 @@ export type ResumeDesignObject =
 export type ResumeDesignWithObjects = ResumeDesign & {
   designObjects?: ResumeDesignObject[];
 };
+
+
+
+export function resumeDesignPageSize(design: ResumeDesign): { width: number; height: number } {
+  return design.pageSize === "A4"
+    ? { width: 595, height: 842 }
+    : { width: 612, height: 792 };
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+export function linkedTextPlacementFromPdf(
+  object: TextDesignObject,
+  pageWidth: number,
+  pageHeight: number,
+): LinkedTextPlacement {
+  return {
+    page: Math.max(0, Math.round(object.page || 0)),
+    xRatio: clamp01(object.x / Math.max(1, pageWidth)),
+    yRatio: clamp01(object.y / Math.max(1, pageHeight)),
+    widthRatio: clamp01(object.width / Math.max(1, pageWidth)),
+    heightRatio: clamp01(object.height / Math.max(1, pageHeight)),
+    rotation: object.rotation || undefined,
+  };
+}
+
+export function applyLinkedTextPlacementToPdf(
+  object: TextDesignObject,
+  placement: LinkedTextPlacement,
+  pageWidth: number,
+  pageHeight: number,
+): TextDesignObject {
+  const width = Math.max(24, clamp01(placement.widthRatio) * pageWidth);
+  const height = Math.max(18, clamp01(placement.heightRatio) * pageHeight);
+  return {
+    ...object,
+    page: Math.max(0, Math.round(placement.page || 0)),
+    x: Math.max(0, Math.min(pageWidth - width, clamp01(placement.xRatio) * pageWidth)),
+    y: Math.max(0, Math.min(pageHeight - height, clamp01(placement.yRatio) * pageHeight)),
+    width,
+    height,
+    rotation: placement.rotation || 0,
+  };
+}
+
+export function effectiveLinkedTextWebPlacement(
+  object: TextDesignObject,
+  breakpoint: LinkedTextWebBreakpoint,
+  pageWidth: number,
+  pageHeight: number,
+): LinkedTextPlacement {
+  const override = object.webLayout?.[breakpoint];
+  if (override) return override;
+
+  if (object.webLayoutUnlinked) {
+    const desktop = object.webLayout?.desktop;
+    if (desktop) return desktop;
+  }
+
+  return linkedTextPlacementFromPdf(object, pageWidth, pageHeight);
+}
+
+export function setLinkedTextWebPlacement(
+  object: TextDesignObject,
+  breakpoint: LinkedTextWebBreakpoint,
+  placement: LinkedTextPlacement,
+  pageWidth: number,
+  pageHeight: number,
+): TextDesignObject {
+  // Desktop is the canonical Web layout. While linked, desktop edits update
+  // the PDF geometry as well. Smaller breakpoints remain responsive overrides.
+  if (breakpoint === "desktop" && !object.webLayoutUnlinked) {
+    const next = applyLinkedTextPlacementToPdf(object, placement, pageWidth, pageHeight);
+    const webLayout = { ...(next.webLayout ?? {}) };
+    delete webLayout.desktop;
+    return { ...next, webLayout: Object.keys(webLayout).length ? webLayout : undefined };
+  }
+
+  return {
+    ...object,
+    webLayout: {
+      ...(object.webLayout ?? {}),
+      [breakpoint]: placement,
+    },
+  };
+}
+
+export function setLinkedTextLayoutUnlinked(
+  object: TextDesignObject,
+  unlinked: boolean,
+  pageWidth: number,
+  pageHeight: number,
+): TextDesignObject {
+  if (unlinked) {
+    return {
+      ...object,
+      webLayoutUnlinked: true,
+      webLayout: {
+        ...(object.webLayout ?? {}),
+        desktop: object.webLayout?.desktop ?? linkedTextPlacementFromPdf(object, pageWidth, pageHeight),
+      },
+    };
+  }
+
+  const webLayout = { ...(object.webLayout ?? {}) };
+  // Relinking restores PDF as the Desktop source of truth, but does not throw
+  // away deliberate Tablet/Mobile responsive overrides.
+  delete webLayout.desktop;
+  return {
+    ...object,
+    webLayoutUnlinked: false,
+    webLayout: Object.keys(webLayout).length ? webLayout : undefined,
+  };
+}
+
+export function createLinkedTextDesignObject(
+  design: ResumeDesign,
+  page = 0,
+): TextDesignObject {
+  const { width: pageWidth, height: pageHeight } = resumeDesignPageSize(design);
+  const existingText = getDesignObjects(design).filter(object => object.type === "text").length;
+  const offset = (existingText % 6) * 12;
+  const body = design.entryBullet;
+  const width = Math.min(230, pageWidth - 64);
+  const height = 44;
+
+  return {
+    id: `text-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    type: "text",
+    text: "Double-click to edit",
+    page: Math.max(0, page),
+    x: Math.max(24, (pageWidth - width) / 2 + offset),
+    y: Math.min(pageHeight - height - 24, 110 + offset),
+    width,
+    height,
+    rotation: 0,
+    opacity: 1,
+    zIndex: getDesignObjects(design).reduce((max, object) => Math.max(max, object.zIndex ?? 0), 0) + 1,
+    layer: "foreground",
+    locked: false,
+    hidden: false,
+    name: `Text ${existingText + 1}`,
+    color: body?.color ?? "#111827",
+    fontFamily: body?.fontFamily ?? "Helvetica",
+    fontSize: Math.max(10, body?.fontSize ?? 12),
+    fontWeight: 400,
+    fontStyle: "normal",
+    textAlign: "left",
+    webLayoutUnlinked: false,
+  };
+}
 
 export function getDesignObjects(design: ResumeDesign): ResumeDesignObject[] {
   const objects = (design as ResumeDesignWithObjects).designObjects;
@@ -457,4 +640,73 @@ export function designObjectsForPage(
       return object.page === page;
     })
     .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+}
+
+function escapeLinkedTextHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function linkedTextBrowserFont(fontFamily?: string): string {
+  const family = String(fontFamily ?? "");
+  if (family.includes("Times")) return "'Times New Roman', Times, serif";
+  if (family.includes("Courier")) return "'Courier New', Courier, monospace";
+  return "Arial, Helvetica, sans-serif";
+}
+
+/**
+ * The standalone Responsive export is generated by the legacy Web serializer,
+ * which predates designObjects. Inject the shared custom text layer afterward
+ * so editor preview, HTML preview and downloaded Web resumes stay consistent.
+ */
+export function injectLinkedTextIntoResponsiveHtml(
+  html: string,
+  design: ResumeDesign,
+): string {
+  const textObjects = getDesignObjects(design).filter(
+    (object): object is TextDesignObject => object.type === "text" && !object.hidden,
+  );
+  if (!textObjects.length) return html;
+
+  const pageSize = resumeDesignPageSize(design);
+  const css: string[] = [
+    "body{position:relative}",
+    ".werkpages-linked-text-layer{position:absolute;left:50%;top:0;width:min(980px,100%);min-height:100%;transform:translateX(-50%);pointer-events:none;z-index:70}",
+    ".werkpages-linked-text{position:absolute;box-sizing:border-box;white-space:pre-wrap;overflow:hidden;line-height:1.25;transform-origin:center center}",
+  ];
+  const nodes: string[] = [];
+
+  textObjects.forEach(object => {
+    const desktop = effectiveLinkedTextWebPlacement(object, "desktop", pageSize.width, pageSize.height);
+    const tablet = effectiveLinkedTextWebPlacement(object, "tablet", pageSize.width, pageSize.height);
+    const mobile = effectiveLinkedTextWebPlacement(object, "mobile", pageSize.width, pageSize.height);
+    const className = `werkpages-linked-text-${object.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+
+    const rule = (placement: LinkedTextPlacement, pageHeight: number) => [
+      `left:${(placement.xRatio * 100).toFixed(4)}%`,
+      `top:${(placement.page * pageHeight + placement.yRatio * pageHeight).toFixed(2)}px`,
+      `width:${(placement.widthRatio * 100).toFixed(4)}%`,
+      `height:${Math.max(28, placement.heightRatio * pageHeight).toFixed(2)}px`,
+      `transform:${placement.rotation ? `rotate(${placement.rotation}deg)` : "none"}`,
+    ].join(";");
+
+    const fontWeight = object.fontWeight ?? (String(object.fontFamily ?? "").includes("Bold") ? 700 : 400);
+    css.push(
+      `.${className}{${rule(desktop, 860)};color:${object.color ?? "#111827"};font-family:${linkedTextBrowserFont(object.fontFamily)};font-size:${object.fontSize ?? 12}px;font-weight:${fontWeight};font-style:${object.fontStyle ?? "normal"};text-align:${object.textAlign ?? "left"};opacity:${object.opacity ?? 1}}`,
+      `@media(max-width:760px){.${className}{${rule(tablet, 860)}}}`,
+      `@media(max-width:520px){.${className}{${rule(mobile, 760)}}}`,
+    );
+
+    nodes.push(`<div class="werkpages-linked-text ${className}">${escapeLinkedTextHtml(object.text)}</div>`);
+  });
+
+  const injected = `<style data-werkpages-linked-text>${css.join("\n")}</style><div class="werkpages-linked-text-layer" aria-hidden="false">${nodes.join("")}</div>`;
+  const bodyClose = html.lastIndexOf("</body>");
+  return bodyClose >= 0
+    ? `${html.slice(0, bodyClose)}${injected}${html.slice(bodyClose)}`
+    : `${html}${injected}`;
 }

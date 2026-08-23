@@ -7,6 +7,7 @@ import {
 } from "react";
 import {
   Link,
+  Page,
   StyleSheet,
   Text,
   View,
@@ -19,8 +20,19 @@ import {
   splitTechStack,
   type ResumeProjectEntry,
 } from "./resumeProjects";
+import {
+  getDesignObjects,
+  type TextDesignObject,
+} from "./resumeDesignObjects";
 
 const fallback = StyleSheet.create({
+  projectPage: {
+    paddingTop: 44,
+    paddingBottom: 44,
+    paddingLeft: 48,
+    paddingRight: 48,
+    fontFamily: "Helvetica",
+  },
   section: { marginTop: 14 },
   heading: {
     fontFamily: "Helvetica-Bold",
@@ -92,6 +104,11 @@ function pdfTextStyle(
   };
 }
 
+function pdfString(value: unknown): string {
+  if (value == null) return "";
+  return typeof value === "string" ? value : String(value);
+}
+
 function href(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -137,7 +154,9 @@ function ProjectLinks({ project, data }: {
   project: ResumeProjectEntry;
   data: ResumeData;
 }) {
-  const links = [project.githubUrl, project.liveUrl].map(value => value.trim()).filter(Boolean);
+  const links = [project.githubUrl, project.liveUrl]
+    .map(value => pdfString(value).trim())
+    .filter(Boolean);
   if (!links.length) return null;
 
   const style = pdfTextStyle(data.design?.linkItem, fallback.link as unknown as Record<string, unknown>);
@@ -179,12 +198,55 @@ function ProjectsPDFSection({ data }: { data: ResumeData }) {
         <View key={project.id} style={fallback.entry} wrap={false}>
           <Text style={titleStyle}>{project.title || "Project"}</Text>
           <ProjectTechTagsPDF project={project} data={data} />
-          {!!project.description.trim() && (
-            <Text style={bodyStyle}>{project.description.trim()}</Text>
+          {!!pdfString(project.description).trim() && (
+            <Text style={bodyStyle}>
+              {pdfString(project.description).trim()}
+            </Text>
           )}
           <ProjectLinks project={project} data={data} />
         </View>
       ))}
+    </View>
+  );
+}
+
+function ProjectsFallbackPage({ data }: { data: ResumeData }) {
+  const size = data.design?.pageSize === "A4" ? "A4" : "LETTER";
+
+  return (
+    <Page size={size} style={fallback.projectPage}>
+      <ProjectsPDFSection data={data} />
+    </Page>
+  );
+}
+
+function PdfCustomTextOverlay({ object }: { object: TextDesignObject }) {
+  const fontFamily = object.fontFamily || "Helvetica";
+  return (
+    <View
+      style={{
+        position: "absolute",
+        left: object.x,
+        top: object.y,
+        width: object.width,
+        height: object.height,
+        opacity: object.opacity ?? 1,
+        transform: object.rotation ? `rotate(${object.rotation}deg)` : undefined,
+      }}
+    >
+      <Text
+        style={{
+          fontFamily,
+          fontSize: object.fontSize ?? 12,
+          color: object.color ?? "#111827",
+          fontWeight: object.fontWeight as never,
+          fontStyle: object.fontStyle ?? "normal",
+          textAlign: object.textAlign ?? "left",
+          lineHeight: 1.25,
+        }}
+      >
+        {object.text}
+      </Text>
     </View>
   );
 }
@@ -198,7 +260,11 @@ function ProjectsPDFSection({ data }: { data: ResumeData }) {
  */
 export default function UniversalTemplateWithProjects({ data }: { data: ResumeData }) {
   const projects = getResumeProjects(data).filter(projectHasContent);
-  if (!projects.length) {
+  const customText = getDesignObjects(data.design).filter(
+    (object): object is TextDesignObject => object.type === "text" && !object.hidden,
+  );
+
+  if (!projects.length && !customText.length) {
     return <UniversalTemplateBase data={data} />;
   }
 
@@ -207,23 +273,56 @@ export default function UniversalTemplateWithProjects({ data }: { data: ResumeDa
 
   const documentChildren = Children.toArray(base.props.children);
   let lastPageIndex = -1;
+
   documentChildren.forEach((child, index) => {
     if (isValidElement(child)) lastPageIndex = index;
   });
 
-  if (lastPageIndex < 0) return <UniversalTemplateBase data={data} />;
+  if (lastPageIndex >= 0) {
+    let pageNumber = -1;
+    const nextChildren = documentChildren.map((child, index) => {
+      if (!isValidElement(child)) return child;
+      pageNumber += 1;
 
-  const nextChildren = documentChildren.map((child, index) => {
-    if (index !== lastPageIndex || !isValidElement(child)) return child;
+      const page = child as ReactElement<{ children?: ReactNode }>;
+      const additions: ReactNode[] = [];
 
-    const page = child as ReactElement<{ children?: ReactNode }>;
+      if (projects.length && index === lastPageIndex) {
+        additions.push(<ProjectsPDFSection key="shared-projects" data={data} />);
+      }
+
+      customText
+        .filter(object => object.page === pageNumber)
+        .forEach(object => {
+          additions.push(
+            <PdfCustomTextOverlay key={`custom-text-${object.id}`} object={object} />,
+          );
+        });
+
+      if (!additions.length) return child;
+
+      return cloneElement(
+        page,
+        page.props,
+        ...Children.toArray(page.props.children),
+        ...additions,
+      );
+    });
+
+    return cloneElement(base, base.props, ...nextChildren);
+  }
+
+  // Do not silently lose Projects if the legacy template tree changes. Custom
+  // text remains in saved design state and will reappear once the base exposes
+  // normal Page children again.
+  if (projects.length) {
     return cloneElement(
-      page,
-      page.props,
-      ...Children.toArray(page.props.children),
-      <ProjectsPDFSection key="shared-projects" data={data} />,
+      base,
+      base.props,
+      ...documentChildren,
+      <ProjectsFallbackPage key="shared-projects-page" data={data} />,
     );
-  });
+  }
 
-  return cloneElement(base, base.props, ...nextChildren);
+  return base;
 }

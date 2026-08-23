@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { ChevronDown, Link2, Unlink2 } from "lucide-react";
 import type { ResumeData, ResumeDesign } from "./types";
 import { companyLogoDomain } from "@/lib/utils";
 import {
@@ -19,6 +20,7 @@ import {
   resolveVideoEmbed,
   withResumeWebSettings,
   type ResumeWebDetailsMode,
+  type ResumeWebTemplatePresentation,
   type ResumeWebTheme,
 } from "./resumeWeb";
 import {
@@ -41,7 +43,6 @@ import {
   type WebMotionSpeed,
 } from "./resumeWebAnimation";
 import {
-  applyWebEditorTextStylePatch,
   clearWebInstancePlacement,
   clearWebPlacementOverride,
   getEffectiveWebTextStyle,
@@ -74,7 +75,6 @@ import {
   webPlacementToStyle,
   webTextStyleToCss,
   type ResumeRotationSyncTarget,
-  type ResumeTextStylePatch,
   type ResumeVisualRole,
   type WebBreakpoint,
   type WebElementTarget,
@@ -86,6 +86,32 @@ import {
   withResumeProjects,
   type ResumeProjectEntry,
 } from "./resumeProjects";
+import {
+  RESUME_TEMPLATES,
+  getAppliedResumeTemplateId,
+} from "./resumeDesignTemplates";
+import {
+  createLinkedTextDesignObject,
+  effectiveLinkedTextWebPlacement,
+  getDesignObjects,
+  removeDesignObject,
+  resumeDesignPageSize,
+  setLinkedTextLayoutUnlinked,
+  setLinkedTextWebPlacement,
+  upsertDesignObject,
+  type LinkedTextPlacement,
+  type TextDesignObject,
+} from "./resumeDesignObjects";
+import {
+  effectiveResumeDataForSurface,
+  isSharedContentBindingLocal,
+  mergeSurfaceResumeDataChange,
+  relinkSharedContentUsingLocal,
+  relinkSharedContentUsingShared,
+  sharedContentBindingLabel,
+  unlinkSharedContentBinding,
+  type SharedContentBinding,
+} from "./resumeSharedContentOverrides";
 
 type EditorTarget = WebAnimationTarget | "background";
 
@@ -105,6 +131,64 @@ type EditorRect = {
   rotation?: number;
 };
 
+type RotationPreview = {
+  selectionKey: string;
+  rotation: number;
+};
+
+function editorSelectionKey(selection: EditorSelection | null): string {
+  if (!selection) return "";
+  return [
+    selection.target,
+    selection.sectionId ?? "",
+    selection.instanceId ?? "",
+  ].join("|");
+}
+
+function sharedBindingForWebSelection(
+  selection: EditorSelection | null,
+): SharedContentBinding | null {
+  if (!selection) return null;
+
+  const instanceId = selection.instanceId ?? "";
+  const suffix = (prefix: string) =>
+    instanceId.startsWith(prefix) ? instanceId.slice(prefix.length) : "";
+
+  if (selection.target === "name") return { kind: "name" };
+  if (selection.target === "contact") return { kind: "contact" };
+  if (selection.target === "summary") return { kind: "summary" };
+
+  if (selection.target === "experience") {
+    const id = suffix("work:");
+    return id ? { kind: "work", id } : null;
+  }
+  if (instanceId.startsWith("work-title:")) return { kind: "work", id: suffix("work-title:") };
+  if (instanceId.startsWith("work-company:")) return { kind: "work", id: suffix("work-company:") };
+  if (instanceId.startsWith("work-body:")) return { kind: "work", id: suffix("work-body:") };
+
+  if (selection.target === "projects" && instanceId.startsWith("project:")) {
+    return { kind: "project", id: suffix("project:") };
+  }
+  if (instanceId.startsWith("project-title:")) return { kind: "project", id: suffix("project-title:") };
+  if (instanceId.startsWith("project-description:")) return { kind: "project", id: suffix("project-description:") };
+  if (instanceId.startsWith("project-tech:")) return { kind: "project", id: suffix("project-tech:") };
+
+  if (selection.target === "education") {
+    const id = suffix("education:");
+    return id ? { kind: "education", id } : null;
+  }
+  if (instanceId.startsWith("edu-school:")) return { kind: "education", id: suffix("edu-school:") };
+
+  if (selection.target === "skills" && selection.sectionId === "skills") {
+    return { kind: "skills" };
+  }
+  if (selection.target === "links" && selection.sectionId === "links") {
+    return { kind: "links" };
+  }
+
+  return null;
+}
+
 type DropGuide = {
   top: number;
   left: number;
@@ -118,7 +202,7 @@ type DropGuide = {
   zoneHeight?: number;
 };
 
-type InspectorTab = "text" | "layout" | "style" | "animate" | "more";
+type InspectorTab = "shared" | "text" | "layout" | "style" | "animate" | "more";
 
 const BREAKPOINT_WIDTH: Record<WebBreakpoint, number> = {
   desktop: 980,
@@ -185,55 +269,6 @@ const MOTION_EFFECTS: Array<{ value: WebMotionEffect; label: string }> = [
   { value: "pop", label: "Pop" },
   { value: "flip-in", label: "Flip in" },
 ];
-
-const FONT_FAMILIES = [
-  { value: "Helvetica", label: "Helvetica" },
-  { value: "Times-Roman", label: "Times" },
-  { value: "Courier", label: "Courier" },
-];
-
-function fontTraits(fontFamily: string | undefined) {
-  const value = fontFamily ?? "Helvetica";
-  const family =
-    value.startsWith("Times") ? "Times" :
-    value.startsWith("Courier") ? "Courier" :
-    "Helvetica";
-  const bold = value.includes("Bold");
-  const italic =
-    value.includes("Italic") ||
-    value.includes("Oblique");
-
-  return { family, bold, italic };
-}
-
-function fontVariant(
-  current: string | undefined,
-  patch: Partial<{ family: string; bold: boolean; italic: boolean }>,
-): string {
-  const traits = fontTraits(current);
-  const family = patch.family ?? traits.family;
-  const bold = patch.bold ?? traits.bold;
-  const italic = patch.italic ?? traits.italic;
-
-  if (family === "Times") {
-    if (bold && italic) return "Times-BoldItalic";
-    if (bold) return "Times-Bold";
-    if (italic) return "Times-Italic";
-    return "Times-Roman";
-  }
-
-  if (family === "Courier") {
-    if (bold && italic) return "Courier-BoldOblique";
-    if (bold) return "Courier-Bold";
-    if (italic) return "Courier-Oblique";
-    return "Courier";
-  }
-
-  if (bold && italic) return "Helvetica-BoldOblique";
-  if (bold) return "Helvetica-Bold";
-  if (italic) return "Helvetica-Oblique";
-  return "Helvetica";
-}
 
 function keyframesFor(effect: WebMotionEffect): Keyframe[] {
   switch (effect) {
@@ -466,6 +501,7 @@ function EditableText({
 }) {
   const Tag = as;
   const ref = useRef<HTMLElement | null>(null);
+  const lastTouchTapRef = useRef(0);
 
   useEffect(() => {
     if (!editing || !ref.current) return;
@@ -499,6 +535,18 @@ function EditableText({
         if (!onCommit) return;
         event.stopPropagation();
         onStartEdit?.();
+      }}
+      onTouchEnd={event => {
+        if (!onCommit || editing) return;
+        const now = Date.now();
+        const elapsed = now - lastTouchTapRef.current;
+        lastTouchTapRef.current = now;
+        if (elapsed > 0 && elapsed < 360) {
+          event.preventDefault();
+          event.stopPropagation();
+          lastTouchTapRef.current = 0;
+          onStartEdit?.();
+        }
       }}
       onBlur={commit}
       onKeyDown={event => {
@@ -794,6 +842,102 @@ const iconButton: CSSProperties = {
   fontWeight: 800,
 };
 
+function SharedContentInspector({
+  status,
+  label,
+  surfaceLabel,
+  onEditOnlyHere,
+  onRelinkUseShared,
+  onRelinkUseLocal,
+}: {
+  status: "shared" | "local";
+  label: string;
+  surfaceLabel: string;
+  onEditOnlyHere?: () => void;
+  onRelinkUseShared?: () => void;
+  onRelinkUseLocal?: () => void;
+}) {
+  const actionStyle: CSSProperties = {
+    width: "100%",
+    border: "1px solid #e4e4e7",
+    borderRadius: 9,
+    background: "#fff",
+    padding: "9px 10px",
+    textAlign: "left",
+    cursor: "pointer",
+  };
+
+  if (status === "shared") {
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 800, color: "#27272a" }}>
+          <Link2 size={13} color="#2e0562" /> Shared content
+        </div>
+        <div style={{ marginTop: 5, color: "#71717a", fontSize: 11, lineHeight: 1.5 }}>
+          {label} uses your shared resume content. Text changes here update the same content anywhere else it remains linked.
+        </div>
+        {onEditOnlyHere && (
+          <button type="button" onClick={onEditOnlyHere} style={{ ...actionStyle, marginTop: 10 }}>
+            <div style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
+              <Unlink2 size={13} color="#a16207" style={{ marginTop: 1, flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#27272a" }}>Edit only here</div>
+                <div style={{ marginTop: 2, color: "#71717a", fontSize: 10.5, lineHeight: 1.45 }}>
+                  Make a local version for {surfaceLabel}. The shared resume stays unchanged.
+                </div>
+              </div>
+            </div>
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 800, color: "#27272a" }}>
+        <Unlink2 size={13} color="#a16207" /> Local version
+      </div>
+      <div style={{ marginTop: 5, color: "#71717a", fontSize: 11, lineHeight: 1.5 }}>
+        Changes to {label.toLowerCase()} apply only to {surfaceLabel}. The shared resume can continue changing independently.
+      </div>
+      <div style={{ marginTop: 10, paddingTop: 9, borderTop: "1px solid #e4e4e7" }}>
+        <div style={{ fontSize: 8.5, fontWeight: 900, letterSpacing: ".07em", textTransform: "uppercase", color: "#71717a" }}>
+          Relink to shared content
+        </div>
+        <div style={{ marginTop: 3, color: "#71717a", fontSize: 9, lineHeight: 1.45 }}>
+          These versions may differ. Choose which version should win.
+        </div>
+        {onRelinkUseShared && (
+          <button type="button" onClick={onRelinkUseShared} style={{ ...actionStyle, marginTop: 8 }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: "#27272a" }}>Use shared version here</div>
+            <div style={{ marginTop: 2, color: "#71717a", fontSize: 9, lineHeight: 1.45 }}>
+              Shared → {surfaceLabel} · discard the local changes and sync this version to the resume.
+            </div>
+          </button>
+        )}
+        {onRelinkUseLocal && (
+          <button
+            type="button"
+            onClick={onRelinkUseLocal}
+            style={{
+              ...actionStyle,
+              marginTop: 7,
+              borderColor: "rgba(46,5,98,.18)",
+              background: "rgba(46,5,98,.045)",
+            }}
+          >
+            <div style={{ fontSize: 10, fontWeight: 800, color: "#2e0562" }}>Make this the shared version</div>
+            <div style={{ marginTop: 2, color: "#71717a", fontSize: 9, lineHeight: 1.45 }}>
+              {surfaceLabel} → Shared · keep these changes and update the shared resume for other linked uses.
+            </div>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function LayoutInspector({
   selection,
   breakpoint,
@@ -1079,200 +1223,6 @@ function StyleInspector({
           style={{ width: "100%", accentColor: "#6d28d9" }}
         />
       </label>
-    </div>
-  );
-}
-
-function TextInspector({
-  textStyle,
-  linked,
-  onPatch,
-  onToggleLink,
-}: {
-  textStyle: ResumeTextStylePatch;
-  linked: boolean;
-  onPatch: (patch: ResumeTextStylePatch) => void;
-  onToggleLink: () => void;
-}) {
-  const traits = fontTraits(textStyle.fontFamily);
-  const align = textStyle.textAlign ?? "left";
-
-  return (
-    <div style={{ display: "grid", gap: 11 }}>
-      <div style={{ color: "#71717a", fontSize: 9, lineHeight: 1.45 }}>
-        Double-click the selected text on the page to change the words. Use these controls for its Web typography.
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 74px", gap: 8 }}>
-        <label>
-          <MiniFieldLabel>Font</MiniFieldLabel>
-          <select
-            value={
-              traits.family === "Times"
-                ? "Times-Roman"
-                : traits.family === "Courier"
-                  ? "Courier"
-                  : "Helvetica"
-            }
-            onChange={event => onPatch({
-              fontFamily: fontVariant(textStyle.fontFamily, {
-                family:
-                  event.target.value.startsWith("Times")
-                    ? "Times"
-                    : event.target.value.startsWith("Courier")
-                      ? "Courier"
-                      : "Helvetica",
-              }),
-            })}
-            style={smallInput}
-          >
-            {FONT_FAMILIES.map(option => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          <MiniFieldLabel>Size</MiniFieldLabel>
-          <input
-            type="number"
-            min={7}
-            max={72}
-            step={0.5}
-            value={textStyle.fontSize ?? 12}
-            onChange={event => onPatch({
-              fontSize: Math.max(7, Math.min(72, Number(event.target.value) || 12)),
-            })}
-            style={{ ...smallInput, textAlign: "center" }}
-          />
-        </label>
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          onClick={() => onPatch({
-            fontFamily: fontVariant(textStyle.fontFamily, { bold: !traits.bold }),
-          })}
-          aria-pressed={traits.bold}
-          title="Bold"
-          style={{
-            ...iconButton,
-            borderColor: traits.bold ? "#ddd6fe" : "#e4e4e7",
-            background: traits.bold ? "#f5f3ff" : "#fff",
-            color: traits.bold ? "#6d28d9" : "#52525b",
-          }}
-        >
-          B
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onPatch({
-            fontFamily: fontVariant(textStyle.fontFamily, { italic: !traits.italic }),
-          })}
-          aria-pressed={traits.italic}
-          title="Italic"
-          style={{
-            ...iconButton,
-            fontStyle: "italic",
-            borderColor: traits.italic ? "#ddd6fe" : "#e4e4e7",
-            background: traits.italic ? "#f5f3ff" : "#fff",
-            color: traits.italic ? "#6d28d9" : "#52525b",
-          }}
-        >
-          I
-        </button>
-
-        <label
-          title="Text colour"
-          style={{
-            display: "inline-flex",
-            height: 28,
-            alignItems: "center",
-            gap: 5,
-            border: "1px solid #e4e4e7",
-            borderRadius: 7,
-            background: "#fff",
-            padding: "0 6px",
-            color: "#52525b",
-            fontSize: 8.5,
-            fontWeight: 750,
-          }}
-        >
-          <span>Colour</span>
-          <input
-            type="color"
-            value={
-              textStyle.color && /^#[0-9a-f]{6}$/i.test(textStyle.color)
-                ? textStyle.color
-                : "#18181b"
-            }
-            onChange={event => onPatch({ color: event.target.value })}
-            style={{ width: 20, height: 20, border: 0, background: "transparent", padding: 1 }}
-          />
-        </label>
-
-        <span style={{ width: 1, height: 21, background: "#e4e4e7", margin: "0 1px" }} />
-
-        {(["left", "center", "right"] as const).map(value => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => onPatch({ textAlign: value })}
-            aria-pressed={align === value}
-            title={`Align ${value}`}
-            style={{
-              ...iconButton,
-              minWidth: 30,
-              borderColor: align === value ? "#ddd6fe" : "#e4e4e7",
-              background: align === value ? "#f5f3ff" : "#fff",
-              color: align === value ? "#6d28d9" : "#52525b",
-              fontSize: 9,
-            }}
-          >
-            <span style={{
-              display: "inline-block",
-              width: 13,
-              textAlign: value,
-              letterSpacing: "-2px",
-            }}>
-              ≡
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <button
-        type="button"
-        onClick={onToggleLink}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
-          minHeight: 38,
-          border: linked ? "1px solid #ddd6fe" : "1px solid #fed7aa",
-          borderRadius: 9,
-          background: linked ? "#faf5ff" : "#fff7ed",
-          padding: "7px 9px",
-          color: linked ? "#5b21b6" : "#c2410c",
-          cursor: "pointer",
-          textAlign: "left",
-        }}
-      >
-        <span>
-          <span style={{ display: "block", fontSize: 9, fontWeight: 800 }}>
-            {linked ? "Typography linked to Designed PDF" : "Web typography override"}
-          </span>
-          <span style={{ display: "block", marginTop: 2, fontSize: 8, opacity: .78, lineHeight: 1.35 }}>
-            {linked
-              ? "Changes stay synchronized until you create a Web override."
-              : "This text styling is independent on the Web resume."}
-          </span>
-        </span>
-        <span style={{ flex: "none", fontSize: 12 }}>{linked ? "🔗" : "⛓"}</span>
-      </button>
     </div>
   );
 }
@@ -1596,6 +1546,8 @@ function SelectionToolbar({
   viewportScrollTop,
   parentGroupLabel,
   role,
+  sharedContentStatus,
+  sharedContentLabel,
   showMore,
   activeTab,
   onActiveTab,
@@ -1609,13 +1561,16 @@ function SelectionToolbar({
   viewportScrollTop: number;
   parentGroupLabel?: string | null;
   role: ResumeVisualRole | null;
+  sharedContentStatus?: "shared" | "local" | null;
+  sharedContentLabel?: string | null;
   showMore: boolean;
   activeTab: InspectorTab | null;
   onActiveTab: (tab: InspectorTab | null) => void;
   onSelectParent?: () => void;
   onClear: () => void;
 }) {
-  const estimatedWidth = role ? (showMore ? 355 : 322) : (showMore ? 310 : 277);
+  const baseEstimatedWidth = role ? (showMore ? 313 : 280) : (showMore ? 310 : 277);
+  const estimatedWidth = baseEstimatedWidth + (sharedContentStatus ? 84 : 0);
   const minLeft = viewportScrollLeft + 8;
   const maxLeft = Math.max(
     minLeft,
@@ -1718,7 +1673,51 @@ function SelectionToolbar({
 
       <span style={{ width: 1, height: 19, background: "#e4e4e7" }} />
 
-      {role && tabButton("text", "Text", 38)}
+      {sharedContentStatus && (
+        <>
+          <button
+            type="button"
+            onClick={() => onActiveTab(activeTab === "shared" ? null : "shared")}
+            aria-pressed={activeTab === "shared"}
+            title={
+              sharedContentStatus === "shared"
+                ? `${sharedContentLabel ?? "This content"} is shared across linked resume formats`
+                : `${sharedContentLabel ?? "This content"} is local to Responsive Web`
+            }
+            style={{
+              ...iconButton,
+              minWidth: 72,
+              padding: "0 7px",
+              gap: 4,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderColor: activeTab === "shared"
+                ? "#c4b5fd"
+                : sharedContentStatus === "shared"
+                  ? "rgba(46,5,98,.22)"
+                  : "#fcd34d",
+              background: activeTab === "shared"
+                ? "#f5f3ff"
+                : sharedContentStatus === "shared"
+                  ? "rgba(46,5,98,.055)"
+                  : "#fffbeb",
+              color: sharedContentStatus === "shared" ? "#2e0562" : "#a16207",
+              fontSize: 10.5,
+              fontWeight: 800,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {sharedContentStatus === "shared"
+              ? <Link2 size={12.5} strokeWidth={2.2} />
+              : <Unlink2 size={12.5} strokeWidth={2.1} />}
+            {sharedContentStatus === "shared" ? "Shared" : "Local"}
+            <ChevronDown size={11.5} strokeWidth={2} />
+          </button>
+          <span style={{ width: 1, height: 19, background: "#e4e4e7" }} />
+        </>
+      )}
+
       {tabButton("layout", "Layout", 44)}
       {tabButton("style", "Style", 38)}
       {tabButton("animate", "Motion", 44)}
@@ -1955,7 +1954,7 @@ function neutralHoverStyle(
 }
 
 export default function ResumeWebPreview({
-  data,
+  data: sharedData,
   onDesignChange,
   onDataChange,
 }: {
@@ -1963,9 +1962,52 @@ export default function ResumeWebPreview({
   onDesignChange?: (design: ResumeDesign) => void;
   onDataChange?: (data: ResumeData) => void;
 }) {
+  const data = useMemo(
+    () => effectiveResumeDataForSurface(sharedData, "responsive"),
+    [sharedData],
+  );
+
+  const commitSurfaceData = (nextEffectiveData: ResumeData) => {
+    onDataChange?.(
+      mergeSurfaceResumeDataChange(
+        sharedData,
+        nextEffectiveData,
+        "responsive",
+      ),
+    );
+  };
+
   const settings = useMemo(() => getResumeWebSettings(data.design), [data.design]);
   const sharedProjects = useMemo(() => getResumeProjects(data), [data]);
   const studio = useMemo(() => getWebAnimationStudio(data.design), [data.design]);
+  const appliedSharedTemplate = useMemo(() => {
+    const templateId = getAppliedResumeTemplateId(data.design);
+    return templateId
+      ? RESUME_TEMPLATES.find(template => template.id === templateId)
+      : undefined;
+  }, [data.design]);
+
+  const templatePresentation = useMemo<ResumeWebTemplatePresentation>(() => {
+    // New saves persist the Web adaptation explicitly so detaching a template
+    // keeps the current Responsive appearance. For existing saves created
+    // before this patch, derive the recipe from the still-applied PDF template.
+    if (settings.templatePresentation.templateId) {
+      return settings.templatePresentation;
+    }
+
+    const template = appliedSharedTemplate;
+    if (!template) return settings.templatePresentation;
+
+    return {
+      templateId: template.id,
+      layout: template.preview.layout,
+      accent: template.preview.accent,
+      paper: template.preview.paper,
+      sidebarColor: template.preview.sidebarColor ?? "",
+      headerAccent: Boolean(template.preview.headerAccent),
+      timeline: Boolean(template.preview.timeline),
+    };
+  }, [settings.templatePresentation, appliedSharedTemplate]);
 
   const [breakpoint, setBreakpoint] = useState<WebBreakpoint>("desktop");
   const [runtimeTheme, setRuntimeTheme] = useState<"light" | "dark">(
@@ -1973,6 +2015,13 @@ export default function ResumeWebPreview({
   );
   const [selection, setSelection] = useState<EditorSelection | null>(null);
   const [selectionRect, setSelectionRect] = useState<EditorRect | null>(null);
+  // Keep the live Responsive rotation in React state until persistence catches
+  // up. A ref-only/imperative bridge can be overwritten by the render that
+  // follows pointer-up, leaving rotated editor chrome around horizontal content.
+  // The state below participates in the selected element's actual render, so
+  // there is no frame where React can silently remove the dropped angle.
+  const [rotationPreview, setRotationPreviewState] = useState<RotationPreview | null>(null);
+  const rotationPreviewRef = useRef<RotationPreview | null>(null);
   const [parentGroupRect, setParentGroupRect] = useState<EditorRect | null>(null);
   const [parentGroupLabel, setParentGroupLabel] = useState<string | null>(null);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab | null>(null);
@@ -1985,13 +2034,23 @@ export default function ResumeWebPreview({
   const [renderedArtboardWidth, setRenderedArtboardWidth] = useState(
     BREAKPOINT_WIDTH.desktop,
   );
+  const [selectedCustomTextId, setSelectedCustomTextId] = useState<string | null>(null);
+  const [editingCustomTextId, setEditingCustomTextId] = useState<string | null>(null);
+  const [customTextDraft, setCustomTextDraft] = useState("");
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const artboardRef = useRef<HTMLDivElement>(null);
   const selectedElementRef = useRef<HTMLElement | null>(null);
   const parentGroupElementRef = useRef<HTMLElement | null>(null);
+  const customTextTouchTapRef = useRef<Record<string, number>>({});
+
+  const setRotationPreview = (next: RotationPreview | null) => {
+    rotationPreviewRef.current = next;
+    setRotationPreviewState(next);
+  };
 
   const clearSelection = () => {
+    setRotationPreview(null);
     selectedElementRef.current = null;
     parentGroupElementRef.current = null;
     setSelection(null);
@@ -2001,12 +2060,193 @@ export default function ResumeWebPreview({
     setInspectorTab(null);
     setDropGuide(null);
     setEditingKey(null);
+    setSelectedCustomTextId(null);
+    setEditingCustomTextId(null);
   };
 
   const projection = useMemo(
     () => projectResumeToWeb(data, runtimeTheme),
     [data, runtimeTheme],
   );
+
+  const customTextObjects = useMemo(
+    () => getDesignObjects(data.design).filter((object): object is TextDesignObject => object.type === "text" && !object.hidden),
+    [data.design],
+  );
+  const designPageSize = useMemo(() => resumeDesignPageSize(data.design), [data.design]);
+  const customWebPageHeight = breakpoint === "mobile" ? 760 : 860;
+  const customTextArtboardMinHeight = customTextObjects.reduce((max, object) => {
+    const placement = effectiveLinkedTextWebPlacement(
+      object,
+      breakpoint,
+      designPageSize.width,
+      designPageSize.height,
+    );
+    const bottom =
+      placement.page * customWebPageHeight +
+      placement.yRatio * customWebPageHeight +
+      Math.max(28, placement.heightRatio * customWebPageHeight) +
+      72;
+    return Math.max(max, bottom);
+  }, customWebPageHeight);
+
+  function customTextPlacement(object: TextDesignObject): LinkedTextPlacement {
+    return effectiveLinkedTextWebPlacement(
+      object,
+      breakpoint,
+      designPageSize.width,
+      designPageSize.height,
+    );
+  }
+
+  function customTextPixels(object: TextDesignObject) {
+    const placement = customTextPlacement(object);
+    const artboardWidth = Math.max(1, renderedArtboardWidth);
+    const width = Math.max(72, placement.widthRatio * artboardWidth);
+    const height = Math.max(28, placement.heightRatio * customWebPageHeight);
+    const maxX = Math.max(0, artboardWidth - width);
+    return {
+      x: Math.max(0, Math.min(maxX, placement.xRatio * artboardWidth)),
+      y: Math.max(0, placement.page * customWebPageHeight + placement.yRatio * customWebPageHeight),
+      width,
+      height,
+      rotation: placement.rotation ?? object.rotation ?? 0,
+    };
+  }
+
+  function customTextPlacementFromPixels(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    rotation = 0,
+  ): LinkedTextPlacement {
+    const artboardWidth = Math.max(1, renderedArtboardWidth);
+    const page = Math.max(0, Math.floor(Math.max(0, y) / customWebPageHeight));
+    const localY = Math.max(0, y - page * customWebPageHeight);
+    return {
+      page,
+      xRatio: Math.max(0, Math.min(1, x / artboardWidth)),
+      yRatio: Math.max(0, Math.min(1, localY / customWebPageHeight)),
+      widthRatio: Math.max(0.04, Math.min(1, width / artboardWidth)),
+      heightRatio: Math.max(0.025, Math.min(1, height / customWebPageHeight)),
+      rotation: rotation || undefined,
+    };
+  }
+
+  function saveCustomText(object: TextDesignObject) {
+    if (!onDesignChange) return;
+    onDesignChange(upsertDesignObject(data.design, object));
+  }
+
+  function addCustomTextBox() {
+    if (!onDesignChange) return;
+    const object = createLinkedTextDesignObject(data.design, 0);
+    onDesignChange(upsertDesignObject(data.design, object));
+    setSelection(null);
+    setSelectionRect(null);
+    setSelectedCustomTextId(object.id);
+    setCustomTextDraft(object.text);
+    requestAnimationFrame(() => {
+      viewportRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+
+  function beginCustomTextMove(event: ReactPointerEvent<HTMLDivElement>, object: TextDesignObject) {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    setSelection(null);
+    setSelectionRect(null);
+    setSelectedCustomTextId(object.id);
+    if (!onDesignChange || object.locked || editingCustomTextId === object.id || event.detail >= 2) return;
+    event.preventDefault();
+
+    const start = customTextPixels(object);
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let finalX = start.x;
+    let finalY = start.y;
+    const element = event.currentTarget;
+
+    const move = (pointerEvent: PointerEvent) => {
+      const dx = pointerEvent.clientX - startX;
+      const dy = pointerEvent.clientY - startY;
+      const artboardWidth = Math.max(1, renderedArtboardWidth);
+      finalX = Math.max(0, Math.min(artboardWidth - start.width, start.x + dx));
+      finalY = Math.max(0, start.y + dy);
+      element.style.left = `${finalX}px`;
+      element.style.top = `${finalY}px`;
+    };
+
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      const placement = customTextPlacementFromPixels(
+        finalX,
+        finalY,
+        start.width,
+        start.height,
+        start.rotation,
+      );
+      saveCustomText(setLinkedTextWebPlacement(
+        object,
+        breakpoint,
+        placement,
+        designPageSize.width,
+        designPageSize.height,
+      ));
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
+  }
+
+  function beginCustomTextResize(event: ReactPointerEvent<HTMLDivElement>, object: TextDesignObject) {
+    if (!onDesignChange || object.locked || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedCustomTextId(object.id);
+
+    const start = customTextPixels(object);
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let finalWidth = start.width;
+    let finalHeight = start.height;
+    const box = event.currentTarget.parentElement as HTMLElement | null;
+
+    const move = (pointerEvent: PointerEvent) => {
+      finalWidth = Math.max(72, start.width + (pointerEvent.clientX - startX));
+      finalHeight = Math.max(28, start.height + (pointerEvent.clientY - startY));
+      const maxWidth = Math.max(72, renderedArtboardWidth - start.x);
+      finalWidth = Math.min(maxWidth, finalWidth);
+      if (box) {
+        box.style.width = `${finalWidth}px`;
+        box.style.height = `${finalHeight}px`;
+      }
+    };
+
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      const placement = customTextPlacementFromPixels(
+        start.x,
+        start.y,
+        finalWidth,
+        finalHeight,
+        start.rotation,
+      );
+      saveCustomText(setLinkedTextWebPlacement(
+        object,
+        breakpoint,
+        placement,
+        designPageSize.width,
+        designPageSize.height,
+      ));
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
+  }
 
   useEffect(() => {
     const artboard = artboardRef.current;
@@ -2029,11 +2269,11 @@ export default function ResumeWebPreview({
 
   useEffect(() => {
     const onDocumentPointerDown = (event: PointerEvent) => {
-      if (!selection) return;
+      if (!selection && !selectedCustomTextId) return;
       const target = event.target as HTMLElement | null;
       if (!target) return;
 
-      if (target.closest("[data-web-selection-ui]")) return;
+      if (target.closest("[data-web-selection-ui], [data-web-custom-text]")) return;
 
       const viewport = viewportRef.current;
       if (!viewport || !viewport.contains(target)) {
@@ -2045,7 +2285,7 @@ export default function ResumeWebPreview({
     return () => {
       document.removeEventListener("pointerdown", onDocumentPointerDown, true);
     };
-  }, [selection]);
+  }, [selection, selectedCustomTextId]);
 
   useEffect(() => {
     if (settings.theme === "light" || settings.theme === "dark") {
@@ -2124,9 +2364,49 @@ export default function ResumeWebPreview({
     selection ? TARGET_ROLE[selection.target] ?? null : null
   );
 
-  const selectedTextStyle = roleForSelection
-    ? getEffectiveWebTextStyle(data.design, roleForSelection)
+  const selectedSharedBinding = sharedBindingForWebSelection(selection);
+  const selectedSharedContentStatus = selectedSharedBinding
+    ? isSharedContentBindingLocal(
+        sharedData.design,
+        "responsive",
+        selectedSharedBinding,
+      )
+      ? "local" as const
+      : "shared" as const
     : null;
+
+  const editSelectedSharedContentOnlyHere = () => {
+    if (!selectedSharedBinding || !onDataChange) return;
+    onDataChange(
+      unlinkSharedContentBinding(
+        sharedData,
+        "responsive",
+        selectedSharedBinding,
+      ),
+    );
+  };
+
+  const relinkSelectedSharedContentUsingShared = () => {
+    if (!selectedSharedBinding || !onDataChange) return;
+    onDataChange(
+      relinkSharedContentUsingShared(
+        sharedData,
+        "responsive",
+        selectedSharedBinding,
+      ),
+    );
+  };
+
+  const relinkSelectedSharedContentUsingLocal = () => {
+    if (!selectedSharedBinding || !onDataChange) return;
+    onDataChange(
+      relinkSharedContentUsingLocal(
+        sharedData,
+        "responsive",
+        selectedSharedBinding,
+      ),
+    );
+  };
 
   const textLinked = roleForSelection
     ? isWebTextLinked(data.design, roleForSelection)
@@ -2197,8 +2477,16 @@ export default function ResumeWebPreview({
 
     const viewportRect = viewport.getBoundingClientRect();
     const rect = element.getBoundingClientRect();
+    const preview = rotationPreviewRef.current;
+    const previewRotation =
+      preview && preview.selectionKey === editorSelectionKey(selection)
+        ? preview.rotation
+        : null;
     const placementRotation =
-      rotationOverride ?? placementForSelection(selection).rotation ?? 0;
+      rotationOverride ??
+      previewRotation ??
+      placementForSelection(selection).rotation ??
+      0;
 
     // getBoundingClientRect() becomes an axis-aligned bounding box after rotation.
     // Build the editor outline from the element's unrotated layout dimensions and
@@ -2231,7 +2519,31 @@ export default function ResumeWebPreview({
   };
 
   useLayoutEffect(() => {
-    updateSelectionRect();
+    if (!selection || selection.target === "background") {
+      updateSelectionRect();
+      return;
+    }
+
+    const preview = rotationPreviewRef.current;
+    const key = editorSelectionKey(selection);
+    const savedRotation = placementForSelection(selection).rotation ?? 0;
+
+    // The render containing the new data.design still uses rotationPreview, so
+    // clearing it here cannot create a visible snap: the following render falls
+    // back to the now-identical persisted rotation.
+    if (
+      preview &&
+      preview.selectionKey === key &&
+      Math.abs(normalizeWebRotation(savedRotation - preview.rotation)) < 0.05
+    ) {
+      setRotationPreview(null);
+      updateSelectionRect(savedRotation);
+      return;
+    }
+
+    updateSelectionRect(
+      preview?.selectionKey === key ? preview.rotation : undefined,
+    );
   }, [
     selection?.target,
     selection?.sectionId,
@@ -2239,6 +2551,15 @@ export default function ResumeWebPreview({
     breakpoint,
     data.design,
   ]);
+
+  useEffect(() => {
+    // A preview belongs to one exact selected object. Never let it bleed into a
+    // newly selected element that happens to use the same target type.
+    const preview = rotationPreviewRef.current;
+    if (preview && preview.selectionKey !== editorSelectionKey(selection)) {
+      setRotationPreview(null);
+    }
+  }, [selection?.target, selection?.sectionId, selection?.instanceId]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -2294,7 +2615,47 @@ export default function ResumeWebPreview({
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      if (!selection || editingKey) return;
+      if (editingKey || editingCustomTextId) return;
+
+      const customText = selectedCustomTextId
+        ? customTextObjects.find(object => object.id === selectedCustomTextId)
+        : undefined;
+
+      if (customText) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          clearSelection();
+          return;
+        }
+        if ((event.key === "Delete" || event.key === "Backspace") && onDesignChange) {
+          event.preventDefault();
+          onDesignChange(removeDesignObject(data.design, customText.id));
+          setSelectedCustomTextId(null);
+          return;
+        }
+        if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key) && onDesignChange && !customText.locked) {
+          event.preventDefault();
+          const amount = event.shiftKey ? 10 : 1;
+          const box = customTextPixels(customText);
+          let x = box.x;
+          let y = box.y;
+          if (event.key === "ArrowLeft") x -= amount;
+          if (event.key === "ArrowRight") x += amount;
+          if (event.key === "ArrowUp") y -= amount;
+          if (event.key === "ArrowDown") y += amount;
+          x = Math.max(0, Math.min(Math.max(0, renderedArtboardWidth - box.width), x));
+          y = Math.max(0, y);
+          const placement = customTextPlacementFromPixels(x, y, box.width, box.height, box.rotation);
+          onDesignChange(upsertDesignObject(
+            data.design,
+            setLinkedTextWebPlacement(customText, breakpoint, placement, designPageSize.width, designPageSize.height),
+          ));
+          return;
+        }
+        return;
+      }
+
+      if (!selection) return;
       if (event.key === "Escape") {
         event.preventDefault();
         clearSelection();
@@ -2326,7 +2687,7 @@ export default function ResumeWebPreview({
 
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
-  }, [selection, breakpoint, data.design, editingKey, onDesignChange]);
+  }, [selection, breakpoint, data.design, editingKey, editingCustomTextId, selectedCustomTextId, customTextObjects, renderedArtboardWidth, onDesignChange]);
 
   useEffect(() => {
     const root = artboardRef.current;
@@ -2376,7 +2737,7 @@ export default function ResumeWebPreview({
     position: "relative",
     width: BREAKPOINT_WIDTH[breakpoint],
     maxWidth: "100%",
-    minHeight: breakpoint === "mobile" ? 760 : 860,
+    minHeight: Math.max(breakpoint === "mobile" ? 760 : 860, customTextArtboardMinHeight),
     margin: "0 auto",
     padding: breakpoint === "mobile" ? "32px 24px 72px" : "44px 48px 88px",
     background: animatedBackground,
@@ -2397,17 +2758,6 @@ export default function ResumeWebPreview({
     boxSizing: "border-box",
     transition: "width .18s ease, background .18s ease",
   } as CSSProperties;
-
-  function patchText(patch: ResumeTextStylePatch) {
-    if (!onDesignChange || !roleForSelection) return;
-    onDesignChange(
-      applyWebEditorTextStylePatch(
-        data.design,
-        roleForSelection,
-        patch,
-      ),
-    );
-  }
 
   function patchBox(
     target: WebElementTarget,
@@ -2648,7 +2998,12 @@ export default function ResumeWebPreview({
     const baseX = initialPlacement.offsetX ?? 0;
     const baseY = initialPlacement.offsetY ?? 0;
 
-    const originalTransform = element.style.transform;
+    // Keep editor drag movement on the individual CSS translate channel.
+    // Using `transform` here competes with Web motion effects (which also animate
+    // transform) and can make the selection overlay move while the rendered
+    // card/text appears to stay behind. `translate` composes independently with
+    // the persisted `rotate` property and animated transform.
+    const originalTranslate = element.style.getPropertyValue("translate");
     const originalTransition = element.style.transition;
     const originalZ = element.style.zIndex;
     element.style.transition = "none";
@@ -2671,7 +3026,7 @@ export default function ResumeWebPreview({
       }
       moveEvent.preventDefault();
 
-      element.style.transform = `${originalTransform || ""} translate(${dx}px, ${dy}px)`;
+      element.style.setProperty("translate", `${dx}px ${dy}px`);
 
       if (current.target === "section" && current.sectionId && (initialPlacement.mode ?? "flow") === "flow") {
         currentGuide = computeSectionDropGuide(
@@ -2691,7 +3046,8 @@ export default function ResumeWebPreview({
     const pointerUp = () => {
       document.removeEventListener("pointermove", pointerMove);
       document.removeEventListener("pointerup", pointerUp);
-      element.style.transform = originalTransform;
+      if (originalTranslate) element.style.setProperty("translate", originalTranslate);
+      else element.style.removeProperty("translate");
       element.style.transition = originalTransition;
       element.style.zIndex = originalZ;
       document.body.style.userSelect = "";
@@ -2894,7 +3250,9 @@ export default function ResumeWebPreview({
   ) {
     if (
       !selection ||
+      !selectionRect ||
       !selectedElementRef.current ||
+      !viewportRef.current ||
       !onDesignChange ||
       selection.target === "background"
     ) {
@@ -2905,33 +3263,55 @@ export default function ResumeWebPreview({
     event.stopPropagation();
 
     const element = selectedElementRef.current;
-    const rect = element.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
+    const viewport = viewportRef.current;
+    const viewportRect = viewport.getBoundingClientRect();
+    const gestureRect: EditorRect = { ...selectionRect };
+    const centerX =
+      viewportRect.left - viewport.scrollLeft +
+      gestureRect.left + gestureRect.width / 2;
+    const centerY =
+      viewportRect.top - viewport.scrollTop +
+      gestureRect.top + gestureRect.height / 2;
+
     const startPlacement = placementForSelection(selection);
-    let rotation = startPlacement.rotation ?? 0;
+    const previewKey = editorSelectionKey(selection);
+    let rotation = startPlacement.rotation ?? gestureRect.rotation ?? 0;
+
+    const paintLiveRotation = (nextRotation: number) => {
+      rotation = nextRotation;
+      const preview = { selectionKey: previewKey, rotation: nextRotation };
+      setRotationPreview(preview);
+
+      // Keep the pointer gesture visually immediate even before React paints.
+      // React renders the same value from rotationPreview, so this imperative
+      // write is never the source of truth and cannot be lost on pointer-up.
+      element.style.rotate = nextRotation ? `${nextRotation}deg` : "";
+      setSelectionRect({
+        ...gestureRect,
+        rotation: nextRotation,
+      });
+    };
+
+    paintLiveRotation(rotation);
 
     const move = (moveEvent: PointerEvent) => {
-      rotation = snapWebRotation(
+      const nextRotation = snapWebRotation(
         Math.atan2(
           moveEvent.clientY - centerY,
           moveEvent.clientX - centerX,
         ) * 180 / Math.PI + 90,
       );
 
-      element.style.rotate = rotation ? `${rotation}deg` : "";
-      updateSelectionRect(rotation);
+      paintLiveRotation(nextRotation);
     };
 
     const up = () => {
       document.removeEventListener("pointermove", move);
       document.removeEventListener("pointerup", up);
 
-      // Keep the final live angle on the DOM node until React commits the saved
-      // design update. Restoring `originalRotate` here caused the actual Web
-      // content to snap back while the editor overlay still showed the dropped
-      // angle; a refresh then appeared to "fix" it because persistence was fine.
-      element.style.rotate = rotation ? `${rotation}deg` : "";
+      // Keep rotationPreview alive across the design update. It is cleared only
+      // by the layout effect once the persisted placement reports this angle.
+      paintLiveRotation(rotation);
 
       const syncTarget = getWebRotationSyncTarget({
         sectionId: selection.sectionId,
@@ -2954,14 +3334,8 @@ export default function ResumeWebPreview({
         });
       }
 
-      // Keep the overlay at the same live angle immediately. Once React applies
-      // the persisted design, normal selection measurement takes over.
-      updateSelectionRect(rotation);
-
-      // A second measurement after paint reconciles dimensions if the rotated
-      // element reflowed as part of the design commit.
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => updateSelectionRect());
+        updateSelectionRect(rotation);
       });
     };
 
@@ -3112,6 +3486,32 @@ export default function ResumeWebPreview({
     document.addEventListener("pointerup", up, { once: true });
   }
 
+  function previewRotationForRenderable(
+    target: WebElementTarget | "section",
+    instanceId?: string,
+    sectionId?: WebSectionId,
+  ): number | null {
+    const preview = rotationPreview;
+    if (!preview || !selection || selection.target === "background") {
+      return null;
+    }
+    if (preview.selectionKey !== editorSelectionKey(selection)) return null;
+
+    if (selection.instanceId) {
+      return selection.instanceId === instanceId ? preview.rotation : null;
+    }
+
+    if (selection.target === "section") {
+      return target === "section" && selection.sectionId === sectionId
+        ? preview.rotation
+        : null;
+    }
+
+    return selection.target === target && !instanceId
+      ? preview.rotation
+      : null;
+  }
+
   function elementPlacementStyle(
     target: WebElementTarget,
     instanceId?: string,
@@ -3119,13 +3519,28 @@ export default function ResumeWebPreview({
     const placement = instanceId
       ? getWebInstancePlacement(data.design, breakpoint, instanceId)
       : getWebElementPlacement(data.design, breakpoint, target);
-    return webPlacementToStyle(placement);
+    const previewRotation = previewRotationForRenderable(target, instanceId);
+    return webPlacementToStyle(
+      previewRotation == null
+        ? placement
+        : { ...placement, rotation: previewRotation || undefined },
+    );
   }
 
   function sectionPlacementStyle(sectionId: WebSectionId): CSSProperties {
     const placement = getWebSectionPlacement(data.design, breakpoint, sectionId);
+    const previewRotation = previewRotationForRenderable(
+      "section",
+      undefined,
+      sectionId,
+    );
     return {
-      ...webPlacementToStyle(placement, { section: true }),
+      ...webPlacementToStyle(
+        previewRotation == null
+          ? placement
+          : { ...placement, rotation: previewRotation || undefined },
+        { section: true },
+      ),
       order: activeSections.indexOf(sectionId),
     };
   }
@@ -3215,7 +3630,7 @@ export default function ResumeWebPreview({
     patch: Partial<NonNullable<ResumeData["workEntries"]>[number]>,
   ) {
     if (!onDataChange) return;
-    onDataChange({
+    commitSurfaceData({
       ...data,
       workEntries: (data.workEntries ?? []).map(entry =>
         entry.id === id ? { ...entry, ...patch } : entry
@@ -3231,7 +3646,7 @@ export default function ResumeWebPreview({
     const nextProjects = getResumeProjects(data).map(project =>
       project.id === id ? { ...project, ...patch } : project
     );
-    onDataChange(withResumeProjects(data, nextProjects));
+    commitSurfaceData(withResumeProjects(data, nextProjects));
   }
 
   function updateEducation(
@@ -3239,7 +3654,7 @@ export default function ResumeWebPreview({
     patch: Partial<NonNullable<ResumeData["education"]>[number]>,
   ) {
     if (!onDataChange) return;
-    onDataChange({
+    commitSurfaceData({
       ...data,
       education: (data.education ?? []).map(entry =>
         entry.id === id ? { ...entry, ...patch } : entry
@@ -3455,7 +3870,7 @@ export default function ResumeWebPreview({
             onStartEdit={() => setEditingKey("summary")}
             onCommit={value => {
               setEditingKey(null);
-              onDataChange?.({ ...data, summary: value });
+              commitSurfaceData({ ...data, summary: value });
             }}
             style={{ margin: 0 }}
           />
@@ -3539,12 +3954,36 @@ export default function ResumeWebPreview({
                 data-web-group-root
                 style={{
                   ...baseSelectableStyle,
-                  padding: "14px 0",
-                  borderTop: index === 0 ? "none" : "1px solid var(--web-border)",
+                  padding: templatePresentation.timeline ? "14px 0 14px 20px" : "14px 0",
+                  borderTop: templatePresentation.timeline
+                    ? "none"
+                    : index === 0
+                      ? "none"
+                      : "1px solid var(--web-border)",
+                  borderLeft: templatePresentation.timeline
+                    ? "2px solid var(--web-accent)"
+                    : undefined,
                   ...elementPlacementStyle("experience", instanceId),
                   ...boxStyle("experience", instanceId),
                 }}
               >
+                {templatePresentation.timeline && (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      left: -6,
+                      top: 19,
+                      width: 10,
+                      height: 10,
+                      borderRadius: "50%",
+                      background: "var(--web-accent)",
+                      border: "2px solid var(--web-page)",
+                      boxSizing: "border-box",
+                      pointerEvents: "none",
+                    }}
+                  />
+                )}
                 <div style={{
                   display: "grid",
                   gridTemplateColumns: breakpoint === "mobile" ? "1fr" : "minmax(0,1fr) auto",
@@ -4549,6 +4988,16 @@ export default function ResumeWebPreview({
   const heroBox = boxStyle("hero");
   const photoPlacement = elementPlacementStyle("photo");
 
+  const templateUsesSidebar = templatePresentation.layout !== "single";
+  const templateHasSideRail = templateUsesSidebar && breakpoint !== "mobile";
+  const templateSidebarLeft = templatePresentation.layout === "sidebar-left";
+  const templateSidebarSurface =
+    runtimeTheme === "dark"
+      ? "var(--web-accent-soft)"
+      : templatePresentation.sidebarColor.trim() || "var(--web-accent-soft)";
+  const templateLayoutGap = breakpoint === "tablet" ? 24 : 34;
+  const templateHeroPadding = breakpoint === "mobile" ? 20 : breakpoint === "tablet" ? 20 : 24;
+
   return (
     <div style={{ width: "100%", minWidth: 0, height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
       <style>{`
@@ -4614,6 +5063,28 @@ export default function ResumeWebPreview({
             gap: 7,
           }}
         >
+          <button
+            type="button"
+            onClick={addCustomTextBox}
+            disabled={!onDesignChange}
+            title="Add a textbox linked to Designed PDF by default"
+            style={{
+              height: 32,
+              padding: "0 10px",
+              border: "1px solid #ddd6fe",
+              borderRadius: 8,
+              background: "#fff",
+              color: "#6d28d9",
+              cursor: onDesignChange ? "pointer" : "default",
+              fontSize: 9.5,
+              fontWeight: 800,
+              whiteSpace: "nowrap",
+              opacity: onDesignChange ? 1 : .45,
+            }}
+          >
+            + Text
+          </button>
+
           <div
             role="group"
             aria-label="Responsive preview size"
@@ -4763,6 +5234,7 @@ export default function ResumeWebPreview({
 
       <div
         ref={viewportRef}
+        data-web-primary-scroll
         tabIndex={0}
         onPointerDown={handleCanvasPointerDown}
         onClick={event => {
@@ -4955,6 +5427,45 @@ export default function ResumeWebPreview({
             </div>
           )}
 
+          <div
+            data-web-shared-template-layout
+            data-web-template-id={templatePresentation.templateId || undefined}
+            style={{
+              position: "relative",
+              zIndex: 1,
+              display: templateHasSideRail ? "grid" : "block",
+              gridTemplateColumns: templateHasSideRail
+                ? templateSidebarLeft
+                  ? "minmax(190px, 30%) minmax(0, 1fr)"
+                  : "minmax(0, 1fr) minmax(190px, 30%)"
+                : undefined,
+              gap: templateHasSideRail ? templateLayoutGap : undefined,
+              alignItems: "stretch",
+              minWidth: 0,
+            }}
+          >
+            <div
+              data-web-template-hero-column
+              style={{
+                minWidth: 0,
+                ...(templateHasSideRail
+                  ? {
+                      gridColumn: templateSidebarLeft ? 1 : 2,
+                      gridRow: 1,
+                    }
+                  : {}),
+                ...(templateUsesSidebar
+                  ? {
+                      alignSelf: "stretch",
+                      borderRadius: 14,
+                      background: templateSidebarSurface,
+                      padding: templateHeroPadding,
+                      marginBottom: templateHasSideRail ? 0 : 28,
+                      boxSizing: "border-box",
+                    }
+                  : {}),
+              }}
+            >
           <header
             {...selectableAttrs("hero", "Personal info", { motion: "hero" })}
             data-web-group-root
@@ -4962,12 +5473,15 @@ export default function ResumeWebPreview({
               ...baseSelectableStyle,
               display: "grid",
               gridTemplateColumns:
-                breakpoint === "mobile" || !settings.showPhoto || !projection.profilePhoto
+                templateUsesSidebar ||
+                breakpoint === "mobile" ||
+                !settings.showPhoto ||
+                !projection.profilePhoto
                   ? "1fr"
                   : "minmax(0,1fr) auto",
               alignItems: "start",
-              gap: 26,
-              marginBottom: 28,
+              gap: templateUsesSidebar ? 16 : 26,
+              marginBottom: templateUsesSidebar ? 0 : 28,
               ...heroPlacement,
               ...heroBox,
             }}
@@ -4981,7 +5495,9 @@ export default function ResumeWebPreview({
                 style={{
                   ...baseSelectableStyle,
                   margin: 0,
-                  fontSize: breakpoint === "mobile" ? 38 : 54,
+                  fontSize: templateUsesSidebar
+                    ? breakpoint === "mobile" ? 38 : 40
+                    : breakpoint === "mobile" ? 38 : 54,
                   lineHeight: 1,
                   letterSpacing: "-.045em",
                   ...textCss.name,
@@ -4995,7 +5511,7 @@ export default function ResumeWebPreview({
                   onStartEdit={() => setEditingKey("firstName")}
                   onCommit={value => {
                     setEditingKey(null);
-                    onDataChange?.({ ...data, firstName: value });
+                    commitSurfaceData({ ...data, firstName: value });
                   }}
                 />
                 {(data.firstName || data.lastName) && " "}
@@ -5005,7 +5521,7 @@ export default function ResumeWebPreview({
                   onStartEdit={() => setEditingKey("lastName")}
                   onCommit={value => {
                     setEditingKey(null);
-                    onDataChange?.({ ...data, lastName: value });
+                    commitSurfaceData({ ...data, lastName: value });
                   }}
                 />
               </h1>
@@ -5035,7 +5551,7 @@ export default function ResumeWebPreview({
                     onStartEdit={() => setEditingKey("hero-summary")}
                     onCommit={value => {
                       setEditingKey(null);
-                      onDataChange?.({ ...data, summary: value });
+                      commitSurfaceData({ ...data, summary: value });
                     }}
                     style={{ margin: 0 }}
                   />
@@ -5082,8 +5598,8 @@ export default function ResumeWebPreview({
                 draggable={false}
                 style={{
                   ...baseSelectableStyle,
-                  width: breakpoint === "mobile" ? 96 : 132,
-                  height: breakpoint === "mobile" ? 96 : 132,
+                  width: templateUsesSidebar ? 96 : breakpoint === "mobile" ? 96 : 132,
+                  height: templateUsesSidebar ? 96 : breakpoint === "mobile" ? 96 : 132,
                   objectFit: "cover",
                   ...photoPlacement,
                   ...boxStyle("photo"),
@@ -5091,6 +5607,33 @@ export default function ResumeWebPreview({
               />
             )}
           </header>
+            </div>
+
+            <div
+              data-web-template-main-column
+              style={{
+                minWidth: 0,
+                ...(templateHasSideRail
+                  ? {
+                      gridColumn: templateSidebarLeft ? 2 : 1,
+                      gridRow: 1,
+                    }
+                  : {}),
+              }}
+            >
+              {templatePresentation.headerAccent && (
+                <div
+                  aria-hidden="true"
+                  data-web-template-header-accent
+                  style={{
+                    height: 3,
+                    width: "100%",
+                    borderRadius: 999,
+                    background: "var(--web-accent)",
+                    marginBottom: 18,
+                  }}
+                />
+              )}
 
           {q && (
             <div
@@ -5124,6 +5667,261 @@ export default function ResumeWebPreview({
           }}>
             {projection.fullName}
           </footer>
+            </div>
+          </div>
+
+          {customTextObjects.map(object => {
+            const box = customTextPixels(object);
+            const selectedText = selectedCustomTextId === object.id;
+            const editingText = editingCustomTextId === object.id;
+            const browserFont = String(object.fontFamily ?? "").includes("Times")
+              ? "'Times New Roman', Times, serif"
+              : String(object.fontFamily ?? "").includes("Courier")
+                ? "'Courier New', Courier, monospace"
+                : "Arial, Helvetica, sans-serif";
+            const inferredBold = String(object.fontFamily ?? "").includes("Bold");
+            const fontWeight = object.fontWeight ?? (inferredBold ? 700 : 400);
+
+            const commitText = () => {
+              const nextText = customTextDraft.trimEnd() || "Text";
+              saveCustomText({ ...object, text: nextText });
+              setEditingCustomTextId(null);
+            };
+
+            return (
+              <div
+                key={object.id}
+                data-web-custom-text={object.id}
+                onPointerDown={event => beginCustomTextMove(event, object)}
+                onDoubleClick={event => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (object.locked) return;
+                  setSelection(null);
+                  setSelectionRect(null);
+                  setSelectedCustomTextId(object.id);
+                  setCustomTextDraft(object.text);
+                  setEditingCustomTextId(object.id);
+                }}
+                onTouchEnd={event => {
+                  if (object.locked || editingText) return;
+                  const now = Date.now();
+                  const previous = customTextTouchTapRef.current[object.id] ?? 0;
+                  customTextTouchTapRef.current[object.id] = now;
+                  if (now - previous > 0 && now - previous < 360) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    customTextTouchTapRef.current[object.id] = 0;
+                    setSelection(null);
+                    setSelectionRect(null);
+                    setSelectedCustomTextId(object.id);
+                    setCustomTextDraft(object.text);
+                    setEditingCustomTextId(object.id);
+                  }
+                }}
+                style={{
+                  position: "absolute",
+                  left: box.x,
+                  top: box.y,
+                  width: box.width,
+                  height: box.height,
+                  zIndex: 120 + (object.zIndex ?? 0),
+                  transform: box.rotation ? `rotate(${box.rotation}deg)` : undefined,
+                  transformOrigin: "center center",
+                  boxSizing: "border-box",
+                  color: object.color ?? "var(--web-ink)",
+                  fontFamily: browserFont,
+                  fontSize: object.fontSize ?? 12,
+                  fontWeight,
+                  fontStyle: object.fontStyle ?? "normal",
+                  textAlign: object.textAlign ?? "left",
+                  whiteSpace: "pre-wrap",
+                  lineHeight: 1.25,
+                  opacity: object.opacity ?? 1,
+                  cursor: object.locked ? "not-allowed" : editingText ? "text" : "move",
+                  userSelect: editingText ? "text" : "none",
+                  outline: selectedText ? "2px solid #7c3aed" : "1px solid transparent",
+                  outlineOffset: selectedText ? 2 : 0,
+                }}
+              >
+                {editingText ? (
+                  <textarea
+                    autoFocus
+                    value={customTextDraft}
+                    onChange={event => setCustomTextDraft(event.target.value)}
+                    onPointerDown={event => event.stopPropagation()}
+                    onBlur={commitText}
+                    onKeyDown={event => {
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        setCustomTextDraft(object.text);
+                        setEditingCustomTextId(null);
+                      }
+                      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                        event.preventDefault();
+                        commitText();
+                      }
+                    }}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      resize: "none",
+                      border: 0,
+                      outline: 0,
+                      margin: 0,
+                      padding: 0,
+                      background: runtimeTheme === "dark" ? "rgba(24,24,27,.92)" : "rgba(255,255,255,.94)",
+                      color: "inherit",
+                      font: "inherit",
+                      fontStyle: "inherit",
+                      textAlign: "inherit",
+                      lineHeight: "inherit",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                ) : (
+                  object.text
+                )}
+
+                {selectedText && !editingText && (
+                  <>
+                    <div
+                      data-web-selection-ui
+                      onPointerDown={event => event.stopPropagation()}
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: box.y < 54 ? "calc(100% + 8px)" : -42,
+                        minHeight: 34,
+                        maxWidth: 470,
+                        display: "flex",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: 5,
+                        padding: 4,
+                        border: "1px solid #e4e4e7",
+                        borderRadius: 8,
+                        background: "#fff",
+                        color: "#52525b",
+                        boxShadow: "0 7px 22px rgba(15,23,42,.14)",
+                        fontFamily: "system-ui, sans-serif",
+                        transform: box.rotation ? `rotate(${-box.rotation}deg)` : undefined,
+                        transformOrigin: "left center",
+                        zIndex: 500,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        title={object.webLayoutUnlinked ? "Relink Web layout to Designed PDF" : "Unlink Web layout from Designed PDF"}
+                        onClick={() => saveCustomText(setLinkedTextLayoutUnlinked(
+                          object,
+                          !object.webLayoutUnlinked,
+                          designPageSize.width,
+                          designPageSize.height,
+                        ))}
+                        style={{
+                          height: 26,
+                          border: object.webLayoutUnlinked ? "1px solid #e4e4e7" : "1px solid #ddd6fe",
+                          borderRadius: 6,
+                          background: object.webLayoutUnlinked ? "#fafafa" : "#faf5ff",
+                          color: object.webLayoutUnlinked ? "#71717a" : "#6d28d9",
+                          padding: "0 7px",
+                          cursor: "pointer",
+                          fontSize: 8.5,
+                          fontWeight: 800,
+                        }}
+                      >
+                        {object.webLayoutUnlinked ? "Layout unlinked" : "🔗 Linked to PDF"}
+                      </button>
+
+                      <input
+                        type="color"
+                        aria-label="Text color"
+                        value={object.color ?? "#111827"}
+                        onChange={event => saveCustomText({ ...object, color: event.target.value })}
+                        style={{ width: 28, height: 26, padding: 1, border: "1px solid #e4e4e7", borderRadius: 6, background: "#fff" }}
+                      />
+
+                      <input
+                        type="number"
+                        aria-label="Font size"
+                        min={6}
+                        max={96}
+                        value={object.fontSize ?? 12}
+                        onChange={event => saveCustomText({ ...object, fontSize: Math.max(6, Math.min(96, Number(event.target.value) || 12)) })}
+                        style={{ width: 46, height: 26, border: "1px solid #e4e4e7", borderRadius: 6, padding: "0 5px", fontSize: 9 }}
+                      />
+
+                      <button
+                        type="button"
+                        title="Bold"
+                        onClick={() => saveCustomText({ ...object, fontWeight: Number(fontWeight) >= 600 ? 400 : 700 })}
+                        style={{ width: 27, height: 26, border: "1px solid #e4e4e7", borderRadius: 6, background: Number(fontWeight) >= 600 ? "#f5f3ff" : "#fff", color: Number(fontWeight) >= 600 ? "#6d28d9" : "#52525b", fontWeight: 900, cursor: "pointer" }}
+                      >
+                        B
+                      </button>
+
+                      <button
+                        type="button"
+                        title="Italic"
+                        onClick={() => saveCustomText({ ...object, fontStyle: object.fontStyle === "italic" ? "normal" : "italic" })}
+                        style={{ width: 27, height: 26, border: "1px solid #e4e4e7", borderRadius: 6, background: object.fontStyle === "italic" ? "#f5f3ff" : "#fff", color: object.fontStyle === "italic" ? "#6d28d9" : "#52525b", fontStyle: "italic", cursor: "pointer" }}
+                      >
+                        I
+                      </button>
+
+                      <select
+                        aria-label="Text alignment"
+                        value={object.textAlign ?? "left"}
+                        onChange={event => saveCustomText({ ...object, textAlign: event.target.value as TextDesignObject["textAlign"] })}
+                        style={{ height: 26, border: "1px solid #e4e4e7", borderRadius: 6, background: "#fff", color: "#52525b", fontSize: 8.5 }}
+                      >
+                        <option value="left">Left</option>
+                        <option value="center">Center</option>
+                        <option value="right">Right</option>
+                      </select>
+
+                      <button
+                        type="button"
+                        title="Delete text box"
+                        onClick={() => {
+                          if (!onDesignChange) return;
+                          onDesignChange(removeDesignObject(data.design, object.id));
+                          setSelectedCustomTextId(null);
+                        }}
+                        style={{ height: 26, border: "1px solid #fecaca", borderRadius: 6, background: "#fffafa", color: "#dc2626", padding: "0 7px", cursor: "pointer", fontSize: 8.5, fontWeight: 800 }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+
+                    {!object.locked && (
+                      <div
+                        data-web-selection-ui
+                        title="Resize text box"
+                        onPointerDown={event => beginCustomTextResize(event, object)}
+                        style={{
+                          position: "absolute",
+                          right: -6,
+                          bottom: -6,
+                          width: 12,
+                          height: 12,
+                          borderRadius: 3,
+                          border: "2px solid #fff",
+                          background: "#7c3aed",
+                          boxShadow: "0 1px 4px rgba(15,23,42,.25)",
+                          cursor: "nwse-resize",
+                          transform: box.rotation ? `rotate(${-box.rotation}deg)` : undefined,
+                          zIndex: 501,
+                        }}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {selection && selection.target !== "background" && selectionRect && (
@@ -5182,6 +5980,8 @@ export default function ResumeWebPreview({
               viewportScrollTop={viewportRef.current?.scrollTop ?? 0}
               parentGroupLabel={parentGroupLabel}
               role={roleForSelection}
+              sharedContentStatus={selectedSharedContentStatus}
+              sharedContentLabel={selectedSharedBinding ? sharedContentBindingLabel(selectedSharedBinding) : null}
               showMore={!!(
                 selectedWorkLogoEntryId ||
                 selectedRotationSyncTarget ||
@@ -5203,21 +6003,14 @@ export default function ResumeWebPreview({
                 viewportScrollLeft={viewportRef.current?.scrollLeft ?? 0}
                 viewportScrollTop={viewportRef.current?.scrollTop ?? 0}
               >
-                {inspectorTab === "text" && roleForSelection && selectedTextStyle && (
-                  <TextInspector
-                    textStyle={selectedTextStyle}
-                    linked={textLinked}
-                    onPatch={patchText}
-                    onToggleLink={() => {
-                      if (!onDesignChange || !roleForSelection) return;
-                      onDesignChange(
-                        setWebTextLinked(
-                          data.design,
-                          roleForSelection,
-                          !textLinked,
-                        ),
-                      );
-                    }}
+                {inspectorTab === "shared" && selectedSharedBinding && selectedSharedContentStatus && (
+                  <SharedContentInspector
+                    status={selectedSharedContentStatus}
+                    label={sharedContentBindingLabel(selectedSharedBinding)}
+                    surfaceLabel="Responsive Web"
+                    onEditOnlyHere={editSelectedSharedContentOnlyHere}
+                    onRelinkUseShared={relinkSelectedSharedContentUsingShared}
+                    onRelinkUseLocal={relinkSelectedSharedContentUsingLocal}
                   />
                 )}
 

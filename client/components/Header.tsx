@@ -99,33 +99,33 @@ export function Header() {
             {!user && (
               <Link
                 to="/"
-                className={`text-sm font-medium transition-colors hover:text-[#6d5091] ${pathname === "/" ? "text-[#6d5091]" : "text-foreground"}`}
+                className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${pathname === "/" ? "text-[#6d28d9]" : "text-foreground"}`}
               >
                 Home
               </Link>
             )}
             <Link
               to="/find"
-              className={`text-sm font-medium transition-colors hover:text-[#6d5091] ${pathname === "/find" ? "text-[#6d5091]" : "text-foreground"}`}
+              className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${pathname === "/find" ? "text-[#6d28d9]" : "text-foreground"}`}
             >
               Search
             </Link>
             <Link
               to="/companies"
-              className={`text-sm font-medium transition-colors hover:text-[#6d5091] ${pathname.startsWith("/companies") ? "text-[#6d5091]" : "text-foreground"}`}
+              className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${pathname.startsWith("/companies") ? "text-[#6d28d9]" : "text-foreground"}`}
             >
               Companies
             </Link>
             <Link
               to="/directory"
-              className={`text-sm font-medium transition-colors hover:text-[#6d5091] ${pathname.startsWith("/directory") ? "text-[#6d5091]" : "text-foreground"}`}
+              className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${pathname.startsWith("/directory") ? "text-[#6d28d9]" : "text-foreground"}`}
             >
               Managers
             </Link>
             {user && (
               <Link
                 to="/resume"
-                className={`text-sm font-medium transition-colors hover:text-[#6d5091] ${pathname === "/resume" ? "text-[#6d5091]" : "text-foreground"}`}
+                className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${pathname === "/resume" ? "text-[#6d28d9]" : "text-foreground"}`}
               >
                 Resume
               </Link>
@@ -153,7 +153,7 @@ export function Header() {
               <div className="relative" ref={notificationsRef}>
                 <button
                   onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                  className="relative p-2 text-muted-foreground hover:text-foreground hover:bg-accent/10 rounded-lg transition-colors"
+                  className="relative p-2 text-muted-foreground hover:text-foreground hover:bg-[#d5cde0] rounded-lg transition-colors"
                   title="Notifications"
                 >
                   <Bell size={20} />
@@ -183,7 +183,7 @@ export function Header() {
                         {recentNotifications.map((n) => (
                           <div
                             key={n.id}
-                            className="p-3 hover:bg-accent/5 transition-colors cursor-pointer"
+                            className="p-3 hover:bg-[#d5cde0] transition-colors cursor-pointer"
                             onClick={() => handleNotificationClick(n.id)}
                           >
                             <div className="flex items-start gap-2.5">
@@ -208,7 +208,7 @@ export function Header() {
                     <Link
                       to="/notifications"
                       onClick={handleViewAll}
-                      className="block w-full p-3 text-center text-sm text-primary hover:bg-accent/10 border-t border-border font-medium transition-colors"
+                      className="block w-full p-3 text-center text-sm text-primary hover:bg-[#d5cde0] border-t border-border font-medium transition-colors"
                     >
                       View All Notifications
                     </Link>
@@ -222,7 +222,7 @@ export function Header() {
               <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                  className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-accent/10 transition-all whitespace-nowrap"
+                  className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-[#d5cde0] transition-all whitespace-nowrap"
                 >
                   <User size={16} className="flex-shrink-0" />
                   <span className="hidden sm:inline">{user.username}</span>
@@ -257,14 +257,14 @@ export function Header() {
                     <Link
                       to="/settings"
                       onClick={() => setIsUserMenuOpen(false)}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-accent/10 transition-colors"
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-[#d5cde0] transition-colors"
                     >
                       <Settings size={16} />
                       Account Settings
                     </Link>
                     <button
                       onClick={handleLogout}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-accent/10 transition-colors border-t border-border"
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-[#d5cde0] transition-colors border-t border-border"
                     >
                       <LogOut size={16} />
                       Sign Out
@@ -308,7 +308,7 @@ export function Header() {
               {!user && (
                 <Link
                   to="/"
-                  className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 ${pathname === "/" ? "text-[#6d5091] bg-[#6d5091]/10" : "text-foreground"}`}
+                  className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${pathname === "/" ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Home
@@ -316,21 +316,21 @@ export function Header() {
               )}
               <Link
                 to="/find"
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 ${pathname === "/find" ? "text-[#6d5091] bg-[#6d5091]/10" : "text-foreground"}`}
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${pathname === "/find" ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}
                 onClick={() => setIsMenuOpen(false)}
               >
                 Search
               </Link>
               <Link
                 to="/companies"
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 ${pathname.startsWith("/companies") ? "text-[#6d5091] bg-[#6d5091]/10" : "text-foreground"}`}
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${pathname.startsWith("/companies") ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}
                 onClick={() => setIsMenuOpen(false)}
               >
                 Companies
               </Link>
               <Link
                 to="/directory"
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 ${pathname.startsWith("/directory") ? "text-[#6d5091] bg-[#6d5091]/10" : "text-foreground"}`}
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${pathname.startsWith("/directory") ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}
                 onClick={() => setIsMenuOpen(false)}
               >
                 Managers
@@ -338,7 +338,7 @@ export function Header() {
               {user && (
                 <Link
                   to="/resume"
-                  className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/10 ${pathname === "/resume" ? "text-[#6d5091] bg-[#6d5091]/10" : "text-foreground"}`}
+                  className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${pathname === "/resume" ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Resume

@@ -709,6 +709,22 @@ export function clearWebTextOverride(
   });
 }
 
+/**
+ * Re-link every Responsive Web text role to the shared Designed PDF/Web
+ * typography foundation. Shared templates use this so choosing a template
+ * from either presentation produces the same visual starting point while
+ * preserving Web-specific geometry, boxes, ordering and breakpoint overrides.
+ */
+export function relinkAllWebTypographyToShared(
+  design: ResumeDesign,
+): ResumeDesign {
+  const current = presentationState(design);
+  return withPresentation(design, {
+    ...current,
+    webTextOverrides: {},
+  });
+}
+
 export function getWebBoxStyle(
   design: ResumeDesign,
   target: WebElementTarget,

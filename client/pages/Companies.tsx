@@ -208,7 +208,7 @@ export default function Companies() {
                       logoUrl={co.logoUrl}
                       sizeClass="h-10 w-10"
                     />
-                    <h2 className="min-w-0 flex-1 font-semibold text-sm text-foreground leading-tight group-hover:text-primary transition-colors line-clamp-2">
+                    <h2 className="min-w-0 flex-1 font-semibold text-sm text-foreground group-hover:text-[#6d28d9] leading-tight transition-colors line-clamp-2">
                       {co.name}
                     </h2>
                   </div>

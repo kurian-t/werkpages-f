@@ -105,7 +105,7 @@ export default function Notifications() {
           onClick={() => handleSelect(n)}
           className={`w-full text-left p-4 transition-colors hover:bg-muted/50 ${
             selectedId === n.id
-              ? "bg-primary/10 border-l-4 border-primary"
+              ? "bg-[#d5cde0] border-l-4 border-[#2e0562]"
               : "border-l-4 border-transparent"
           }`}
         >
@@ -146,7 +146,7 @@ export default function Notifications() {
           <div className="pt-2">
             <Link
               to={`/manager/${notif.managerId}`}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#2e0562] text-white text-sm font-medium hover:bg-[#2e0562]/90 transition-colors"
             >
               View Manager Profile
               <ExternalLink size={14} />

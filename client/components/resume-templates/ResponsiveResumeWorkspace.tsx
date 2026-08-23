@@ -1,4 +1,11 @@
-import { useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type WheelEvent as ReactWheelEvent,
+} from "react";
 import {
   AlignLeft,
   ArrowLeft,
@@ -245,6 +252,35 @@ export default function ResponsiveResumeWorkspace({
   videoEditor,
 }: Props) {
   const [target, setTarget] = useState<SidebarTarget | null>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+
+  const handleSidebarWheel = useCallback((event: ReactWheelEvent<HTMLElement>) => {
+    if (event.defaultPrevented || !event.deltaY || Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
+    const targetElement = event.target as HTMLElement;
+    if (targetElement.closest('input, textarea, select, [contenteditable="true"]')) return;
+
+    let node: HTMLElement | null = targetElement;
+    while (node && node !== event.currentTarget) {
+      const style = window.getComputedStyle(node);
+      const scrollable =
+        (style.overflowY === "auto" || style.overflowY === "scroll") &&
+        node.scrollHeight > node.clientHeight + 1;
+      if (scrollable) {
+        const max = node.scrollHeight - node.clientHeight;
+        const canConsume = event.deltaY < 0 ? node.scrollTop > 0 : node.scrollTop < max - 1;
+        if (canConsume) return;
+      }
+      node = node.parentElement;
+    }
+
+    const primary = workspaceRef.current?.querySelector<HTMLElement>("[data-web-primary-scroll]");
+    if (!primary) return;
+    const max = primary.scrollHeight - primary.clientHeight;
+    if (max <= 0) return;
+    const before = primary.scrollTop;
+    primary.scrollTop = Math.max(0, Math.min(max, before + event.deltaY));
+    if (primary.scrollTop !== before) event.preventDefault();
+  }, []);
 
   const openTarget = (next: SidebarTarget) => {
     setTarget(next);
@@ -259,8 +295,14 @@ export default function ResponsiveResumeWorkspace({
   const closeTarget = () => setTarget(null);
 
   return (
-    <div className="grid h-full min-h-0 gap-3 overflow-y-auto p-3 lg:grid-cols-[320px_minmax(0,1fr)] lg:overflow-hidden lg:p-4">
-      <aside className="flex min-h-[360px] max-h-[460px] min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm lg:min-h-0 lg:max-h-none">
+    <div
+      ref={workspaceRef}
+      className="grid h-full min-h-0 gap-3 overflow-y-auto p-3 lg:grid-cols-[320px_minmax(0,1fr)] lg:overflow-hidden lg:p-4"
+    >
+      <aside
+        onWheel={handleSidebarWheel}
+        className="flex min-h-[360px] max-h-[460px] min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm lg:min-h-0 lg:max-h-none"
+      >
         <div className="flex-none border-b border-border px-3.5 py-3.5">
           <div className="flex items-start gap-2.5">
             <span className="inline-flex h-8 w-8 flex-none items-center justify-center rounded-xl bg-[#2e0562]/[0.07] text-[#2e0562]">

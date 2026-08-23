@@ -109,7 +109,7 @@ export default function ManagerCard({ boss, isPending = false }: ManagerCardProp
           <ManagerAvatar name={boss.name} size="sm" />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold text-foreground group-hover:text-[#2e0562] transition-colors leading-tight truncate">
+          <h3 className="text-sm font-semibold text-foreground group-hover:text-[#6d28d9] transition-colors leading-tight truncate">
             {boss.name}
           </h3>
           {isPending && (

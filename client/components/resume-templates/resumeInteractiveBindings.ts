@@ -1,7 +1,8 @@
 import type { ResumeData } from "./types";
-import { getResumeProjects } from "./resumeProjects";
+import { getResumeProjects, withResumeProjects } from "./resumeProjects";
 import type {
   InteractiveResumeContentBinding,
+  InteractiveResumeContentObject,
   InteractiveResumeContentSource,
 } from "./resumeInteractive";
 
@@ -308,6 +309,101 @@ function missing(
     secondary: "Choose another resume binding.",
     empty: true,
   };
+}
+
+
+export type InteractiveBindingDraft = Record<string, string>;
+
+/** Apply a resume-content editor draft to a cloned ResumeData value. */
+export function applyInteractiveBindingDraft(
+  data: ResumeData,
+  binding: InteractiveResumeContentBinding | undefined,
+  draft: InteractiveBindingDraft,
+): ResumeData {
+  if (!binding) return data;
+
+  if (binding.source === "personal") {
+    const next = { ...data } as ResumeData & Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(draft, "fullName")) {
+      const parts = (draft.fullName ?? "").trim().split(/\s+/).filter(Boolean);
+      next.firstName = parts.shift() ?? "";
+      next.lastName = parts.join(" ");
+    }
+    ["firstName", "lastName", "email", "phone", "location", "website", "summary"].forEach(key => {
+      if (Object.prototype.hasOwnProperty.call(draft, key)) next[key] = draft[key];
+    });
+    return next as ResumeData;
+  }
+
+  if (binding.source === "work") {
+    const source = data as ResumeData & { workEntries?: unknown[] };
+    const workEntries = Array.isArray(source.workEntries)
+      ? source.workEntries.map((raw, index) => {
+          if (!raw || typeof raw !== "object") return raw;
+          const entry = raw as Record<string, unknown>;
+          const id = asText(entry.id).trim() || `work-${index}`;
+          if (id !== asText(binding.entryId)) return raw;
+          return { ...entry, ...draft };
+        })
+      : source.workEntries;
+    return { ...data, workEntries } as ResumeData;
+  }
+
+  if (binding.source === "project") {
+    const projects = getResumeProjects(data).map(project =>
+      project.id === binding.entryId ? { ...project, ...draft } : project,
+    );
+    return withResumeProjects(data, projects);
+  }
+
+  if (binding.source === "education") {
+    const source = data as ResumeData & { education?: unknown[] };
+    const education = Array.isArray(source.education)
+      ? source.education.map((raw, index) => {
+          if (!raw || typeof raw !== "object") return raw;
+          const entry = raw as Record<string, unknown>;
+          const id = asText(entry.id).trim() || `education-${index}`;
+          if (id !== asText(binding.entryId)) return raw;
+          return { ...entry, ...draft };
+        })
+      : source.education;
+    return { ...data, education } as ResumeData;
+  }
+
+  if (binding.source === "skill") {
+    const index = Number(binding.entryId);
+    if (!Number.isInteger(index)) return data;
+    const skills = Array.isArray(data.skills) ? [...data.skills] : [];
+    if (index < 0 || index >= skills.length) return data;
+    skills[index] = draft.value ?? asText(skills[index]);
+    return { ...data, skills } as ResumeData;
+  }
+
+  if (binding.source === "link") {
+    const index = Number(binding.entryId);
+    if (!Number.isInteger(index)) return data;
+    const links = Array.isArray(data.extraLinks) ? [...data.extraLinks] : [];
+    if (index < 0 || index >= links.length) return data;
+    const current = links[index] && typeof links[index] === "object"
+      ? (links[index] as Record<string, unknown>)
+      : {};
+    links[index] = { ...current, ...draft } as typeof links[number];
+    return { ...data, extraLinks: links } as ResumeData;
+  }
+
+  return data;
+}
+
+/** Resolve a resume-content object using its local snapshot when unlinked. */
+export function resolveInteractiveObjectBinding(
+  data: ResumeData,
+  object: InteractiveResumeContentObject,
+): ResolvedInteractiveBinding | null {
+  const effectiveData =
+    object.sharedContentUnlinked && object.localContent
+      ? applyInteractiveBindingDraft(data, object.binding, object.localContent)
+      : data;
+  return resolveInteractiveBinding(effectiveData, object.binding);
 }
 
 export function resolveInteractiveBinding(

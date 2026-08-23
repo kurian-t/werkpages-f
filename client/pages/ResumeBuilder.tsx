@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type WheelEvent as ReactWheelEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
@@ -60,10 +61,11 @@ import {
   applyResumeTemplate,
   detachResumeTemplate,
   getAppliedResumeTemplateId,
-  getResumeTemplate,
   type ResumeTemplateDefinition,
 } from "@/components/resume-templates/resumeDesignTemplates";
 import { compactResumeDesignImages } from "@/components/resume-templates/resumeImageCompression";
+import { injectLinkedTextIntoResponsiveHtml } from "@/components/resume-templates/resumeDesignObjects";
+import { effectiveResumeDataForSurface } from "@/components/resume-templates/resumeSharedContentOverrides";
 import { buildAnimatedStandaloneResumeWebHtml } from "@/components/resume-templates/resumeWebAnimation";
 import { buildStandaloneInteractiveResumeHtml } from "@/components/resume-templates/resumeInteractivePublish";
 import {
@@ -81,6 +83,9 @@ import {
   migrateLegacyWebPortfolioData,
   withResumeProjects,
 } from "@/components/resume-templates/resumeProjects";
+import {
+  relinkAllWebTypographyToShared,
+} from "@/components/resume-templates/resumePresentation";
 import {
   getResumeWebSettings,
   withResumeWebSettings,
@@ -308,7 +313,7 @@ function TemplateGallery({
               <h2 className="text-base font-semibold text-foreground">Templates</h2>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Editable starting points — your resume content and custom images stay yours.
+              Shared visual starting points for Designed PDF + Responsive Web. Your resume content stays yours.
             </p>
           </div>
           <button
@@ -396,9 +401,10 @@ function TemplateGallery({
           </div>
 
           <div className="mt-5 rounded-xl border border-border bg-muted/20 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-            Applying a template changes layout, typography and template decorations. It keeps your work history,
-            projects, education, skills, summary, links, uploaded photos and custom design objects. Manual text positioning is
-            reset so the new layout can flow cleanly.
+            Applying a shared template updates the Designed PDF and gives Responsive Web a responsive adaptation of
+            the same visual structure — including sidebar direction, accent treatment and timeline styling where the
+            template uses them. Web-only content and your breakpoint-specific edits stay intact. Existing Web typography
+            overrides are re-linked so the selected template is visibly shared across both formats.
           </div>
         </div>
       </div>
@@ -657,6 +663,7 @@ export default function ResumeBuilder() {
   const [firstRunGuideVisible, setFirstRunGuideVisible] = useState(false);
   const [canvasRemeasureKey, setCanvasRemeasureKey] = useState(0);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [interactiveTemplateOpenRequest, setInteractiveTemplateOpenRequest] = useState(0);
   const [designCheckOpen, setDesignCheckOpen] = useState(false);
   const [sharedSection, setSharedSection] =
     useState<ResumeContentSection>("profile");
@@ -672,6 +679,34 @@ export default function ResumeBuilder() {
   const pendingSave = useRef<ResumeData | null>(null);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(840);
+
+  const handlePdfSidebarWheel = useCallback((event: ReactWheelEvent<HTMLElement>) => {
+    if (event.defaultPrevented || !event.deltaY || Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+
+    let node: HTMLElement | null = target;
+    while (node && node !== event.currentTarget) {
+      const style = window.getComputedStyle(node);
+      const scrollable =
+        (style.overflowY === "auto" || style.overflowY === "scroll") &&
+        node.scrollHeight > node.clientHeight + 1;
+      if (scrollable) {
+        const max = node.scrollHeight - node.clientHeight;
+        const canConsume = event.deltaY < 0 ? node.scrollTop > 0 : node.scrollTop < max - 1;
+        if (canConsume) return;
+      }
+      node = node.parentElement;
+    }
+
+    const primary = canvasWrapperRef.current;
+    if (!primary) return;
+    const max = primary.scrollHeight - primary.clientHeight;
+    if (max <= 0) return;
+    const before = primary.scrollTop;
+    primary.scrollTop = Math.max(0, Math.min(max, before + event.deltaY));
+    if (primary.scrollTop !== before) event.preventDefault();
+  }, []);
 
   const formatState = data
     ? getResumeBuilderFormats(data.design)
@@ -1047,7 +1082,14 @@ export default function ResumeBuilder() {
             );
           }
         } else {
-          html = buildAnimatedStandaloneResumeWebHtml(data);
+          const responsiveData = effectiveResumeDataForSurface(
+            data,
+            "responsive",
+          );
+          html = injectLinkedTextIntoResponsiveHtml(
+            buildAnimatedStandaloneResumeWebHtml(responsiveData),
+            responsiveData.design,
+          );
         }
 
         const blob = new Blob([html], {
@@ -1068,7 +1110,7 @@ export default function ResumeBuilder() {
         workspace === "ats" ? (
           <ATSResumeTemplate data={data} />
         ) : (
-          <UniversalTemplate data={data} />
+          <UniversalTemplate data={effectiveResumeDataForSurface(data, "pdf")} />
         );
       const blob = await pdf(pdfDocument).toBlob();
       const url = URL.createObjectURL(blob);
@@ -1132,7 +1174,14 @@ export default function ResumeBuilder() {
           );
         }
       } else {
-        html = buildAnimatedStandaloneResumeWebHtml(data);
+        const responsiveData = effectiveResumeDataForSurface(
+          data,
+          "responsive",
+        );
+        html = injectLinkedTextIntoResponsiveHtml(
+          buildAnimatedStandaloneResumeWebHtml(responsiveData),
+          responsiveData.design,
+        );
       }
 
       const blob = new Blob([html], {
@@ -1235,6 +1284,31 @@ export default function ResumeBuilder() {
   const actions =
     workspace === "content" ? null : (
       <>
+        {(workspace === "designed-pdf" ||
+          workspace === "responsive-web" ||
+          workspace === "interactive-web") && (
+          <button
+            type="button"
+            onClick={() => {
+              if (workspace === "interactive-web") {
+                setInteractiveTemplateOpenRequest(request => request + 1);
+              } else {
+                setTemplatePickerOpen(true);
+              }
+            }}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#2e0562]/25 bg-[#2e0562]/5 px-2.5 text-xs font-semibold text-[#2e0562] transition-colors hover:border-[#2e0562]/40 hover:bg-[#2e0562]/10"
+            title={
+              workspace === "interactive-web"
+                ? "Browse Interactive templates"
+                : "Browse shared PDF and Responsive Web templates"
+            }
+            aria-label="Browse templates"
+          >
+            <LayoutTemplate size={13} />
+            <span className="hidden xl:inline">Templates</span>
+          </button>
+        )}
+
         {(workspace === "responsive-web" ||
           workspace === "interactive-web") && (
           <button
@@ -1317,7 +1391,10 @@ export default function ResumeBuilder() {
           : "lg:grid-cols-[350px_minmax(0,1fr)]"
       }`}
     >
-      <aside className="flex min-h-0 flex-col overflow-hidden">
+      <aside
+        onWheel={handlePdfSidebarWheel}
+        className="flex min-h-0 flex-col overflow-hidden"
+      >
         {pdfSidebarCollapsed ? (
           <div className="flex h-full items-start justify-center">
             <button
@@ -1379,40 +1456,6 @@ export default function ResumeBuilder() {
               />
             ) : (
               <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-border bg-card">
-                <div className="border-b border-border p-4">
-                  {(() => {
-                    const appliedTemplateId = getAppliedResumeTemplateId(data.design);
-                    const appliedTemplate = getResumeTemplate(appliedTemplateId);
-
-                    return (
-                      <div className="flex items-center gap-3">
-                        {appliedTemplate ? (
-                          <TemplateMiniPreview template={appliedTemplate} />
-                        ) : (
-                          <div className="flex h-[94px] w-[74px] flex-none items-center justify-center rounded-md border border-border bg-muted/30 text-[9px] text-muted-foreground">
-                            Custom
-                          </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                            PDF template
-                          </div>
-                          <div className="mt-1 truncate text-sm font-semibold text-foreground">
-                            {appliedTemplate?.name ?? "Custom design"}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setTemplatePickerOpen(true)}
-                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-[#2e0562]/25 px-2.5 py-1.5 text-[11px] font-semibold text-[#2e0562] hover:bg-[#2e0562]/5"
-                          >
-                            <LayoutTemplate size={12} /> Browse templates
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-
                 <div className="border-b border-border">
                   <button
                     type="button"
@@ -1507,6 +1550,7 @@ export default function ResumeBuilder() {
     <InteractiveResumeWorkspace
       data={data}
       onChange={onChange}
+      templateOpenRequest={interactiveTemplateOpenRequest}
     />
   );
 
@@ -1580,10 +1624,22 @@ export default function ResumeBuilder() {
           currentTemplateId={getAppliedResumeTemplateId(data.design)}
           onClose={() => setTemplatePickerOpen(false)}
           onApply={template => {
-            const nextDesign = applyResumeTemplate(
+            const templatedDesign = applyResumeTemplate(
               data.design ?? DEFAULT_DESIGN,
               template.id,
             );
+            const relinkedDesign = relinkAllWebTypographyToShared(templatedDesign);
+            const nextDesign = withResumeWebSettings(relinkedDesign, {
+              templatePresentation: {
+                templateId: template.id,
+                layout: template.preview.layout,
+                accent: template.preview.accent,
+                paper: template.preview.paper,
+                sidebarColor: template.preview.sidebarColor ?? "",
+                headerAccent: Boolean(template.preview.headerAccent),
+                timeline: Boolean(template.preview.timeline),
+              },
+            });
             onChange({ ...data, design: nextDesign });
             setCanvasRemeasureKey(key => key + 1);
             setTemplatePickerOpen(false);

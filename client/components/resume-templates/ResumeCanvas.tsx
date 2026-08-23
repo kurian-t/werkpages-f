@@ -49,6 +49,9 @@ import {
   type ShapeDesignObject,
   type SmartDesignKind,
   type SmartDesignObject,
+  type TextDesignObject,
+  createLinkedTextDesignObject,
+  setLinkedTextLayoutUnlinked,
 } from "./resumeDesignObjects";
 import {
   prepareResumeImageFile,
@@ -64,6 +67,16 @@ import {
   syncCompanyLogoSizeFromPdfNow,
   visualRoleForDesignKey,
 } from "./resumePresentation";
+import {
+  effectiveResumeDataForSurface,
+  isSharedContentBindingLocal,
+  mergeSurfaceResumeDataChange,
+  relinkSharedContentUsingLocal,
+  relinkSharedContentUsingShared,
+  sharedContentBindingLabel,
+  unlinkSharedContentBinding,
+  type SharedContentBinding,
+} from "./resumeSharedContentOverrides";
 
 // ── Editor-only PDF canvas zoom ──────────────────────────────────────────────
 
@@ -913,6 +926,28 @@ export const ELEMENT_LABELS: Record<SelectableKey, string> = {
   skillItem:      "Skill item",
   linkItem:       "Link",
 };
+
+function sharedBindingForPdfSelection(
+  key: SelectableKey | null,
+  subDragKey: string | null,
+): SharedContentBinding | null {
+  if (!key) return null;
+  if (key === "name") return { kind: "name" };
+  if (key === "contact") return { kind: "contact" };
+  if (key === "summary") return { kind: "summary" };
+  if (key === "skillItem") return { kind: "skills" };
+
+  const parts = (subDragKey ?? "").split(".");
+  if (parts.length >= 2) {
+    const [scope, id] = parts;
+    if (scope === "work" && id) return { kind: "work", id };
+    if (scope === "projects" && id) return { kind: "project", id };
+    if (scope === "edu" && id) return { kind: "education", id };
+  }
+
+  if (key === "linkItem") return { kind: "links" };
+  return null;
+}
 
 // ── Inline edit info ──────────────────────────────────────────────────────────
 
@@ -3462,9 +3497,19 @@ function CanvasDesignObject({
   onGuidesChange: (guides: DesignSnapGuideState | null) => void;
 }) {
   const ref = useRef<HTMLElement | null>(null);
+  const [editingText, setEditingText] = useState(false);
+  const [textDraft, setTextDraft] = useState(sourceObject.type === "text" ? sourceObject.text : "");
   const attached = designObjectIsResumeDriven(sourceObject);
 
+  useEffect(() => {
+    if (sourceObject.type === "text" && !editingText) setTextDraft(sourceObject.text);
+  }, [sourceObject, editingText]);
+
   function beginMove(ev: React.MouseEvent) {
+    if (editingText) {
+      ev.stopPropagation();
+      return;
+    }
     const additive = ev.shiftKey || ev.metaKey || ev.ctrlKey;
 
     if (attached || sourceObject.locked) {
@@ -3481,6 +3526,10 @@ function CanvasDesignObject({
     // Modifier-click is selection-only. This avoids accidentally nudging an object
     // while the user is building a multi-selection.
     if (additive) return;
+
+    // Let the second click of a text double-click reach onDoubleClick instead of
+    // beginning another drag gesture.
+    if (sourceObject.type === "text" && ev.detail >= 2) return;
 
     ev.preventDefault();
 
@@ -3688,7 +3737,15 @@ function CanvasDesignObject({
       );
     }
 
-    case "text":
+    case "text": {
+      const textObject = sourceObject.type === "text" ? sourceObject : object;
+      const commit = () => {
+        if (textObject.type !== "text") return;
+        const nextText = textDraft.trimEnd();
+        onChange({ ...textObject, text: nextText || "Text" });
+        setEditingText(false);
+      };
+
       return (
         <div
           ref={el => { ref.current = el; }}
@@ -3697,6 +3754,12 @@ function CanvasDesignObject({
           data-design-object-type={object.type}
           onMouseDown={beginMove}
           onClick={e => e.stopPropagation()}
+          onDoubleClick={e => {
+            e.stopPropagation();
+            if (textObject.locked) return;
+            setTextDraft(textObject.text);
+            setEditingText(true);
+          }}
           style={{
             ...common,
             color: object.color ?? "#111827",
@@ -3707,11 +3770,49 @@ function CanvasDesignObject({
             textAlign: object.textAlign,
             whiteSpace: "pre-wrap",
             overflow: "hidden",
+            cursor: editingText ? "text" : common.cursor,
+            userSelect: editingText ? "text" : "none",
           }}
         >
-          {object.text}
+          {editingText ? (
+            <textarea
+              autoFocus
+              value={textDraft}
+              onChange={e => setTextDraft(e.target.value)}
+              onMouseDown={e => e.stopPropagation()}
+              onBlur={commit}
+              onKeyDown={e => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setTextDraft(textObject.text);
+                  setEditingText(false);
+                }
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  e.preventDefault();
+                  commit();
+                }
+              }}
+              style={{
+                width: "100%",
+                height: "100%",
+                resize: "none",
+                border: "1px dashed #7c3aed",
+                outline: "none",
+                padding: 0,
+                margin: 0,
+                background: "rgba(255,255,255,0.92)",
+                color: "inherit",
+                font: "inherit",
+                fontStyle: "inherit",
+                textAlign: "inherit",
+                lineHeight: "inherit",
+                boxSizing: "border-box",
+              }}
+            />
+          ) : object.text}
         </div>
       );
+    }
 
     case "smart": {
       const strokeWidth = Math.max(1, object.strokeWidth ?? 2);
@@ -5466,6 +5567,7 @@ function DesignObjectToolbar({
   onSendBackward,
   onDelete,
   onReplaceImage,
+  onToggleTextLayoutLink,
 }: {
   object: ResumeDesignObject;
   anchorRect: DOMRect;
@@ -5476,14 +5578,16 @@ function DesignObjectToolbar({
   onSendBackward: () => void;
   onDelete: () => void;
   onReplaceImage?: () => void;
+  onToggleTextLayoutLink?: () => void;
 }) {
   const shape = object.type === "shape" ? object : null;
   const image = object.type === "image" ? object : null;
+  const text = object.type === "text" ? object : null;
   const smart = object.type === "smart" ? object : null;
-  if (!shape && !image && !smart) return null;
+  if (!shape && !image && !text && !smart) return null;
 
-  const width = image ? 760 : smart ? 700 : 630;
-  const estimatedHeight = image ? 78 : smart ? 58 : 48;
+  const width = image ? 760 : text ? 760 : smart ? 700 : 630;
+  const estimatedHeight = image ? 78 : text ? 58 : smart ? 58 : 48;
   const top = anchorRect.top - estimatedHeight - 6 >= 4
     ? anchorRect.top - estimatedHeight - 6
     : anchorRect.bottom + 8;
@@ -5540,7 +5644,7 @@ function DesignObjectToolbar({
       </button>
       <button
         type="button"
-        title={`Delete ${object.type === "smart" ? "component" : object.type === "image" ? "image" : "shape"}`}
+        title={`Delete ${object.type === "smart" ? "component" : object.type === "image" ? "image" : object.type === "text" ? "text box" : "shape"}`}
         onClick={onDelete}
         style={{ ...tinyButton, color: "#dc2626", borderColor: "#fecaca", background: "#fffafa" }}
       >
@@ -5562,7 +5666,7 @@ function DesignObjectToolbar({
         minHeight: 40,
         maxWidth: "calc(100vw - 8px)",
         display: "flex",
-        flexWrap: image ? "wrap" : "nowrap",
+        flexWrap: image || text ? "wrap" : "nowrap",
         alignItems: "center",
         gap: 7,
         padding: "5px 7px",
@@ -5895,6 +5999,89 @@ function DesignObjectToolbar({
           </>
         );
       })()}
+
+      {text && (
+        <>
+          <button
+            type="button"
+            title={text.webLayoutUnlinked
+              ? "Relink this textbox layout to Responsive Web. Text and style are already shared."
+              : "PDF and Responsive Web placement are linked. Unlink layout to position Web independently."}
+            onClick={onToggleTextLayoutLink}
+            style={{
+              height: 28,
+              padding: "0 8px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              borderRadius: 6,
+              border: text.webLayoutUnlinked ? "1px solid #e2e8f0" : "1px solid #ddd6fe",
+              background: text.webLayoutUnlinked ? "#fff" : "#faf5ff",
+              color: text.webLayoutUnlinked ? "#64748b" : "#6d28d9",
+              fontSize: 9.5,
+              fontWeight: 750,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {text.webLayoutUnlinked ? <Unlink2 size={12} /> : <Link2 size={12} />}
+            {text.webLayoutUnlinked ? "Layout unlinked" : "Linked to Web"}
+          </button>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+            <span style={labelStyle}>Color</span>
+            <input
+              type="color"
+              value={text.color ?? "#111827"}
+              onChange={e => onChange({ color: e.target.value } as Partial<TextDesignObject>)}
+              style={{ width: 27, height: 27, padding: 1, border: "1px solid #e2e8f0", borderRadius: 5, background: "white", cursor: "pointer" }}
+            />
+          </label>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={labelStyle}>Size</span>
+            <input
+              type="number" min={6} max={96} step={1}
+              value={text.fontSize ?? 12}
+              onChange={e => onChange({ fontSize: clampDesignObject(Number(e.target.value) || 12, 6, 96) } as Partial<TextDesignObject>)}
+              style={{ width: 45, height: 27, border: "1px solid #e2e8f0", borderRadius: 5, padding: "0 4px", fontSize: 10 }}
+            />
+          </label>
+
+          <button
+            type="button"
+            title="Bold"
+            onClick={() => onChange({ fontWeight: Number(text.fontWeight) >= 600 || String(text.fontFamily ?? "").includes("Bold") ? 400 : 700 } as Partial<TextDesignObject>)}
+            style={{ ...tinyButton, fontWeight: 800, background: Number(text.fontWeight) >= 600 ? "#f5f3ff" : "white", color: Number(text.fontWeight) >= 600 ? "#6d28d9" : "#475569" }}
+          >
+            B
+          </button>
+
+          <button
+            type="button"
+            title="Italic"
+            onClick={() => onChange({ fontStyle: text.fontStyle === "italic" ? "normal" : "italic" } as Partial<TextDesignObject>)}
+            style={{ ...tinyButton, fontStyle: "italic", background: text.fontStyle === "italic" ? "#f5f3ff" : "white", color: text.fontStyle === "italic" ? "#6d28d9" : "#475569" }}
+          >
+            I
+          </button>
+
+          <select
+            value={text.textAlign ?? "left"}
+            title="Text alignment"
+            onChange={e => onChange({ textAlign: e.target.value as TextDesignObject["textAlign"] } as Partial<TextDesignObject>)}
+            style={{ height: 28, border: "1px solid #e2e8f0", borderRadius: 6, background: "white", color: "#475569", fontSize: 10, padding: "0 5px" }}
+          >
+            <option value="left">Left</option>
+            <option value="center">Center</option>
+            <option value="right">Right</option>
+          </select>
+
+          <span style={{ color: "#94a3b8", fontSize: 9, whiteSpace: "nowrap" }}>Double-click text to edit</span>
+
+          {commonTail}
+        </>
+      )}
 
       {smart && (() => {
         const isSidebar = smart.smartKind === "sidebar";
@@ -6817,7 +7004,22 @@ function MultiDesignObjectToolbar({
 }
 
 
-export default function ResumeCanvas({ data, onDesignChange, onDataChange, containerWidth, remeasureKey = 0 }: ResumeCanvasProps) {
+export default function ResumeCanvas({ data: sharedData, onDesignChange, onDataChange, containerWidth, remeasureKey = 0 }: ResumeCanvasProps) {
+  const data = useMemo(
+    () => effectiveResumeDataForSurface(sharedData, "pdf"),
+    [sharedData],
+  );
+
+  const commitSurfaceData = (nextEffectiveData: ResumeData) => {
+    onDataChange(
+      mergeSurfaceResumeDataChange(
+        sharedData,
+        nextEffectiveData,
+        "pdf",
+      ),
+    );
+  };
+
   // Merge with DEFAULT_DESIGN so partial design objects (e.g. only layoutOverrides set)
   // don't break the canvas — any missing field falls back to the default.
   const d = data.design ? { ...DEFAULT_DESIGN, ...data.design } : DEFAULT_DESIGN;
@@ -7025,6 +7227,23 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     } else {
       refreshDesignObjectSelectionAnchor(nextIds, page);
     }
+  }
+
+  function addTextBox() {
+    const object = createLinkedTextDesignObject(d, activePageIndex);
+    onDesignChange(upsertDesignObject(d, object));
+    setShapeMenuOpen(false);
+    setBackgroundMenuOpen(false);
+    setImageMenuOpen(false);
+    setComponentMenuOpen(false);
+    setSelectedDesignObjectPage(activePageIndex);
+    setSelectedDesignObjectIds([object.id]);
+    setSelectedDesignObjectId(object.id);
+
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const el = renderedDesignObjectElements(object.id)[0];
+      setDesignObjectAnchorRect(el?.getBoundingClientRect() ?? null);
+    }));
   }
 
   function addShape(shape: ShapeDesignObject["shape"]) {
@@ -7382,6 +7601,17 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     }
 
     onDesignChange(applyLinkedDesignObjectChange(d, next));
+  }
+
+  function toggleSelectedTextLayoutLink() {
+    if (!selectedDesignObject || selectedDesignObject.type !== "text") return;
+    const next = setLinkedTextLayoutUnlinked(
+      selectedDesignObject,
+      !selectedDesignObject.webLayoutUnlinked,
+      PAGE_W,
+      PAGE_H,
+    );
+    onDesignChange(upsertDesignObject(d, next));
   }
 
   function reorderSelectedDesignObject(direction: -1 | 1) {
@@ -7985,6 +8215,43 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
     };
   })();
 
+  const selectedSharedBinding = sharedBindingForPdfSelection(
+    selected,
+    selectedSubDragKey,
+  );
+
+  const selectedSharedControl = selectedSharedBinding
+    ? {
+        status: isSharedContentBindingLocal(
+          sharedData.design,
+          "pdf",
+          selectedSharedBinding,
+        ) ? "local" as const : "shared" as const,
+        label: sharedContentBindingLabel(selectedSharedBinding),
+        onEditOnlyHere: () => onDataChange(
+          unlinkSharedContentBinding(
+            sharedData,
+            "pdf",
+            selectedSharedBinding,
+          ),
+        ),
+        onRelinkUseShared: () => onDataChange(
+          relinkSharedContentUsingShared(
+            sharedData,
+            "pdf",
+            selectedSharedBinding,
+          ),
+        ),
+        onRelinkUseLocal: () => onDataChange(
+          relinkSharedContentUsingLocal(
+            sharedData,
+            "pdf",
+            selectedSharedBinding,
+          ),
+        ),
+      }
+    : undefined;
+
   const ctx: SelectCtx = {
     selected,
     hovered,
@@ -8107,6 +8374,20 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
                 }}
               >
                 <div style={{ padding: "4px 7px 5px", fontSize: 8.5, fontWeight: 750, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Text
+                </div>
+                <button
+                  type="button"
+                  onClick={addTextBox}
+                  style={{ width: "100%", height: 31, display: "flex", alignItems: "center", gap: 8, padding: "0 8px", border: "none", borderRadius: 6, background: "transparent", color: "#334155", fontSize: 11, cursor: "pointer", textAlign: "left" }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f8fafc"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <FileText size={14} />
+                  Text box
+                </button>
+
+                <div style={{ marginTop: 4, padding: "5px 7px", borderTop: "1px solid #f1f5f9", fontSize: 8.5, fontWeight: 750, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>
                   Shapes
                 </div>
                 {[
@@ -8656,7 +8937,7 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
           data={data}
           d={d}
           ctx={ctx}
-          setData={onDataChange}
+          setData={commitSurfaceData}
           scale={scale}
           pageW={PAGE_W}
           pageH={PAGE_H}
@@ -8714,6 +8995,9 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
                 selectedDesignObject.id,
               )
             : undefined}
+          onToggleTextLayoutLink={selectedDesignObject.type === "text"
+            ? toggleSelectedTextLayoutLink
+            : undefined}
         />,
         document.body
       )}
@@ -8726,6 +9010,7 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
           anchorRect={anchorRect}
           onChangeTs={changeTs}
           linkControl={selectedLinkControl}
+          sharedContentControl={selectedSharedControl}
           styleLinked={!!visualRoleForDesignKey(selected) && isWebTextLinked(d, visualRoleForDesignKey(selected)!)}
           onToggleStyleLink={() => toggleTextStyleLink(selected)}
           onOpenFull={() => handleRightClick(selected, { getBoundingClientRect: () => anchorRect } as HTMLElement)}
@@ -8875,7 +9160,7 @@ function BlockActionBar({ anchorRect, onSnapBack, onClose }: {
 }
 
 function ContextToolbar({
-  elementKey, design, anchorRect, onChangeTs, linkControl,
+  elementKey, design, anchorRect, onChangeTs, linkControl, sharedContentControl,
   styleLinked, onToggleStyleLink, onOpenFull, onClose,
 }: {
   elementKey: SelectableKey;
@@ -8883,12 +9168,20 @@ function ContextToolbar({
   anchorRect: DOMRect;
   onChangeTs: (key: SelectableKey, partial: Partial<TextStyle>) => void;
   linkControl?: { label: string; linked: boolean; count: number; onToggle: () => void };
+  sharedContentControl?: {
+    status: "shared" | "local";
+    label: string;
+    onEditOnlyHere: () => void;
+    onRelinkUseShared: () => void;
+    onRelinkUseLocal: () => void;
+  };
   styleLinked: boolean;
   onToggleStyleLink: () => void;
   onOpenFull: () => void;
   onClose: () => void;
 }) {
   const tbRef = useRef<HTMLDivElement>(null);
+  const [sharedOpen, setSharedOpen] = useState(false);
   const ts = design[elementKey] as TextStyle & { separator?: string };
   const { base, bold, italic } = parseFontFamily(ts.fontFamily);
 
@@ -8905,7 +9198,7 @@ function ContextToolbar({
   const belowTop = anchorRect.bottom + 6;
   const aboveTop = anchorRect.top - TOOLBAR_H - 6;
   const top  = belowTop + TOOLBAR_H < window.innerHeight ? belowTop : Math.max(4, aboveTop);
-  const left = Math.min(window.innerWidth - 340, Math.max(4, anchorRect.left));
+  const left = Math.min(window.innerWidth - 450, Math.max(4, anchorRect.left));
 
   const divider = <div style={{ width: 1, height: 16, background: "#e5e7eb", margin: "0 3px", flexShrink: 0 }} />;
   const active  = (on: boolean): CSSProperties => ({ ...TB_BTN, background: on ? "#ede9fe" : "none", color: on ? "#7c3aed" : "#374151" });
@@ -8931,6 +9224,124 @@ function ContextToolbar({
       <span style={{ fontSize: 10, color: "#9ca3af", paddingRight: 6, borderRight: "1px solid #e5e7eb", marginRight: 2, whiteSpace: "nowrap" }}>
         {ELEMENT_LABELS[elementKey]}
       </span>
+
+      {sharedContentControl && (
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setSharedOpen(open => !open)}
+            title={
+              sharedContentControl.status === "shared"
+                ? `${sharedContentControl.label} is shared across linked resume formats`
+                : `${sharedContentControl.label} is local to Designed PDF`
+            }
+            style={{
+              ...TB_BTN,
+              width: "auto",
+              minWidth: 64,
+              padding: "0 7px",
+              gap: 4,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: sharedContentControl.status === "shared"
+                ? "1px solid rgba(46,5,98,.22)"
+                : "1px solid #fcd34d",
+              background: sharedContentControl.status === "shared"
+                ? "rgba(46,5,98,.055)"
+                : "#fffbeb",
+              color: sharedContentControl.status === "shared" ? "#2e0562" : "#a16207",
+              fontSize: 10.5,
+              fontWeight: 700,
+            }}
+          >
+            {sharedContentControl.status === "shared"
+              ? <Link2 size={12.5} strokeWidth={2.2} />
+              : <Unlink2 size={12.5} strokeWidth={2.1} />}
+            {sharedContentControl.status === "shared" ? "Shared" : "Local"}
+            <ChevronDown size={11} strokeWidth={2} />
+          </button>
+
+          {sharedOpen && (
+            <div
+              onMouseDown={e => e.stopPropagation()}
+              onClick={e => e.stopPropagation()}
+              style={{
+                position: "absolute",
+                top: "calc(100% + 7px)",
+                left: 0,
+                width: 300,
+                zIndex: 10002,
+                border: "1px solid #e4e4e7",
+                borderRadius: 10,
+                background: "#fff",
+                padding: 11,
+                boxShadow: "0 10px 30px rgba(15,23,42,.15)",
+                whiteSpace: "normal",
+                userSelect: "none",
+              }}
+            >
+              {sharedContentControl.status === "shared" ? (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 800, color: "#27272a" }}>
+                    <Link2 size={13} color="#2e0562" /> Shared content
+                  </div>
+                  <div style={{ marginTop: 5, color: "#71717a", fontSize: 10.5, lineHeight: 1.45 }}>
+                    {sharedContentControl.label} uses your shared resume content. Text changes here update the same content anywhere else it remains linked.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { sharedContentControl.onEditOnlyHere(); setSharedOpen(false); }}
+                    style={{
+                      width: "100%", marginTop: 10, border: "1px solid #e4e4e7", borderRadius: 9,
+                      background: "#fff", padding: "9px 10px", textAlign: "left", cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
+                      <Unlink2 size={13} color="#a16207" style={{ marginTop: 1, flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: "#27272a" }}>Edit only here</div>
+                        <div style={{ marginTop: 2, color: "#71717a", fontSize: 10, lineHeight: 1.4 }}>
+                          Make a local version for Designed PDF. The shared resume stays unchanged.
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 800, color: "#27272a" }}>
+                    <Unlink2 size={13} color="#a16207" /> Local version
+                  </div>
+                  <div style={{ marginTop: 5, color: "#71717a", fontSize: 10.5, lineHeight: 1.45 }}>
+                    Changes to {sharedContentControl.label.toLowerCase()} apply only to Designed PDF. The shared resume can continue changing independently.
+                  </div>
+                  <div style={{ marginTop: 10, paddingTop: 9, borderTop: "1px solid #e4e4e7" }}>
+                    <div style={{ fontSize: 9, fontWeight: 900, textTransform: "uppercase", letterSpacing: ".07em", color: "#71717a" }}>Relink to shared content</div>
+                    <div style={{ marginTop: 3, color: "#71717a", fontSize: 10, lineHeight: 1.4 }}>These versions may differ. Choose which version should win.</div>
+                    <button
+                      type="button"
+                      onClick={() => { sharedContentControl.onRelinkUseShared(); setSharedOpen(false); }}
+                      style={{ width: "100%", marginTop: 8, border: "1px solid #e4e4e7", borderRadius: 9, background: "#fff", padding: "9px 10px", textAlign: "left", cursor: "pointer" }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 800, color: "#27272a" }}>Use shared version here</div>
+                      <div style={{ marginTop: 2, color: "#71717a", fontSize: 10, lineHeight: 1.4 }}>Shared → Designed PDF · discard the local changes.</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { sharedContentControl.onRelinkUseLocal(); setSharedOpen(false); }}
+                      style={{ width: "100%", marginTop: 7, border: "1px solid rgba(46,5,98,.18)", borderRadius: 9, background: "rgba(46,5,98,.045)", padding: "9px 10px", textAlign: "left", cursor: "pointer" }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 800, color: "#2e0562" }}>Make this the shared version</div>
+                      <div style={{ marginTop: 2, color: "#71717a", fontSize: 10, lineHeight: 1.4 }}>Designed PDF → Shared · keep these changes and update the shared resume.</div>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {visualRoleForDesignKey(elementKey) && (
         <button
@@ -9076,19 +9487,20 @@ function StylePopover({
   const popRef = useRef<HTMLDivElement>(null);
   const s = d[elementKey] as TextStyle & Record<string, unknown>;
   const set = (p: Partial<TextStyle>) => onChangeTs(elementKey, p);
+  const { base, bold, italic } = parseFontFamily((s.fontFamily ?? "Helvetica") as FontFamily);
 
-  const POP_W = 288;
+  const POP_W = 372;
   const margin = 10;
   const vp = { w: window.innerWidth, h: window.innerHeight };
 
   let left = anchorRect.right + margin;
-  let top  = anchorRect.top;
+  let top = anchorRect.top;
   if (left + POP_W > vp.w - margin) left = anchorRect.left - POP_W - margin;
   if (left < margin) {
     left = Math.max(margin, Math.min(anchorRect.left, vp.w - POP_W - margin));
-    top  = anchorRect.bottom + margin;
+    top = anchorRect.bottom + margin;
   }
-  top = Math.max(margin, Math.min(top, vp.h - 500));
+  top = Math.max(margin, Math.min(top, vp.h - 610));
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -9098,225 +9510,272 @@ function StylePopover({
     return () => { clearTimeout(t); document.removeEventListener("mousedown", handler); };
   }, [onClose]);
 
-  const lbl = (txt: string) => (
-    <div style={{ fontSize: 10, fontWeight: 600, color: "#6b7280", textTransform: "uppercase" as const, letterSpacing: "0.04em", marginBottom: 3 }}>{txt}</div>
+  const fieldLabel = (txt: string) => (
+    <div style={{ fontSize: 10.5, fontWeight: 650, color: "#52525b", marginBottom: 5 }}>{txt}</div>
   );
+
+  const sectionTitle = (txt: string) => (
+    <div style={{
+      fontSize: 10, fontWeight: 800, color: "#7c3aed", textTransform: "uppercase" as const,
+      letterSpacing: "0.08em", marginBottom: 10,
+    }}>{txt}</div>
+  );
+
+  const section = (title: string, children: ReactNode) => (
+    <section style={{ padding: "12px 14px 13px", borderTop: "1px solid #eeeaf7" }}>
+      {sectionTitle(title)}
+      {children}
+    </section>
+  );
+
   const row2 = (a: ReactNode, b: ReactNode) => (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 10px" }}>{a}{b}</div>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>{a}{b}</div>
   );
+
+  const inputBase: CSSProperties = {
+    width: "100%", height: 32, boxSizing: "border-box", border: "1px solid #dedbe7",
+    borderRadius: 7, background: "#fff", color: "#27272a", fontSize: 11.5,
+    padding: "0 9px", outline: "none",
+  };
+
+  const numberField = (
+    label: string,
+    value: number,
+    onChange: (v: number) => void,
+    min: number,
+    max: number,
+    step = 1,
+    suffix?: string,
+  ) => (
+    <div>
+      {fieldLabel(label)}
+      <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 30px", alignItems: "stretch" }}>
+        <button type="button" onClick={() => onChange(Math.max(min, +(value - step).toFixed(4)))} style={{
+          border: "1px solid #dedbe7", borderRight: 0, borderRadius: "7px 0 0 7px", background: "#fafafa",
+          cursor: "pointer", color: "#52525b", fontSize: 15,
+        }}>−</button>
+        <div style={{ position: "relative" }}>
+          <input type="number" min={min} max={max} step={step} value={value}
+            onChange={e => onChange(+e.target.value)}
+            style={{ ...inputBase, borderRadius: 0, textAlign: "center", paddingRight: suffix ? 23 : 8 }} />
+          {suffix && <span style={{ position: "absolute", right: 7, top: 8, fontSize: 9.5, color: "#a1a1aa", pointerEvents: "none" }}>{suffix}</span>}
+        </div>
+        <button type="button" onClick={() => onChange(Math.min(max, +(value + step).toFixed(4)))} style={{
+          border: "1px solid #dedbe7", borderLeft: 0, borderRadius: "0 7px 7px 0", background: "#fafafa",
+          cursor: "pointer", color: "#52525b", fontSize: 15,
+        }}>+</button>
+      </div>
+    </div>
+  );
+
+  const sliderField = (
+    label: string,
+    value: number,
+    onChange: (v: number) => void,
+    min: number,
+    max: number,
+    step = 1,
+    suffix = "",
+  ) => (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+        <span style={{ fontSize: 10.5, fontWeight: 650, color: "#52525b" }}>{label}</span>
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: "#52525b", fontVariantNumeric: "tabular-nums" }}>{value}{suffix}</span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(+e.target.value)}
+        style={{ width: "100%", accentColor: "#7c3aed" }} />
+    </div>
+  );
+
   const colorField = (label: string, value: string, onChange: (v: string) => void) => (
     <div>
-      {lbl(label)}
-      <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+      {fieldLabel(label)}
+      <label style={{
+        height: 32, border: "1px solid #dedbe7", borderRadius: 7, display: "flex", alignItems: "center",
+        gap: 8, padding: "0 8px", cursor: "pointer", background: "#fff",
+      }}>
+        <span style={{ width: 16, height: 16, borderRadius: 4, border: "1px solid #d4d4d8", background: value === "transparent" ? "#fff" : value, flexShrink: 0 }} />
+        <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 10.5, color: "#52525b", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</span>
         <input type="color" value={value.startsWith("#") ? value : "#ffffff"} onChange={e => onChange(e.target.value)}
-          style={{ width: 26, height: 22, cursor: "pointer", border: "1px solid #e5e7eb", borderRadius: 3, padding: 1, flexShrink: 0 }} />
-        <input type="text" value={value} onChange={e => onChange(e.target.value)}
-          style={{ flex: 1, fontSize: 11, fontFamily: "monospace", border: "1px solid #e5e7eb", borderRadius: 3, padding: "2px 5px" }} />
-      </div>
+          style={{ position: "absolute", opacity: 0, pointerEvents: "none" }} />
+      </label>
     </div>
   );
-  const sliderField = (label: string, value: number, onChange: (v: number) => void, min = 0, max = 100, step = 0.5) => (
-    <div>
-      {lbl(label)}
-      <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-        <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(+e.target.value)}
-          style={{ flex: 1, accentColor: "#7c3aed", height: 14 }} />
-        <input type="number" min={min} max={max} step={step} value={value} onChange={e => onChange(+e.target.value)}
-          style={{ width: 42, fontSize: 11, border: "1px solid #e5e7eb", borderRadius: 3, padding: "2px 4px", textAlign: "right" as const }} />
-      </div>
-    </div>
-  );
+
   const selectField = (label: string, value: string, onChange: (v: string) => void, opts: { value: string; label: string }[]) => (
     <div>
-      {lbl(label)}
-      <select value={value} onChange={e => onChange(e.target.value)}
-        style={{ width: "100%", fontSize: 11, border: "1px solid #e5e7eb", borderRadius: 3, padding: "3px 5px" }}>
+      {fieldLabel(label)}
+      <select value={value} onChange={e => onChange(e.target.value)} style={{ ...inputBase, cursor: "pointer" }}>
         {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </div>
   );
+
   const textField = (label: string, value: string, onChange: (v: string) => void, maxLen = 20) => (
     <div>
-      {lbl(label)}
-      <input type="text" value={value} onChange={e => onChange(e.target.value)} maxLength={maxLen}
-        style={{ width: "100%", fontSize: 12, border: "1px solid #e5e7eb", borderRadius: 3, padding: "3px 6px", boxSizing: "border-box" as const }} />
+      {fieldLabel(label)}
+      <input type="text" value={value} onChange={e => onChange(e.target.value)} maxLength={maxLen} style={inputBase} />
     </div>
   );
-  const toggleField = (label: string, value: boolean, onChange: (v: boolean) => void) => (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-      <span style={{ fontSize: 11, color: "#374151" }}>{label}</span>
-      <button type="button" onClick={() => onChange(!value)} style={{
-        width: 34, height: 18, borderRadius: 9, border: "none", cursor: "pointer",
-        background: value ? "#7c3aed" : "#d1d5db", position: "relative" as const, flexShrink: 0,
+
+  const toggleField = (label: string, value: boolean, onChange: (v: boolean) => void, helper?: string) => (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+      <div>
+        <div style={{ fontSize: 11.5, fontWeight: 650, color: "#3f3f46" }}>{label}</div>
+        {helper && <div style={{ marginTop: 2, fontSize: 9.5, lineHeight: 1.35, color: "#a1a1aa" }}>{helper}</div>}
+      </div>
+      <button type="button" onClick={() => onChange(!value)} aria-pressed={value} style={{
+        width: 36, height: 20, borderRadius: 999, border: "none", cursor: "pointer",
+        background: value ? "#7c3aed" : "#d4d4d8", position: "relative" as const, flexShrink: 0,
       }}>
         <span style={{
-          position: "absolute" as const, top: 1, left: value ? 15 : 1, width: 16, height: 16,
-          borderRadius: "50%", background: "#fff", transition: "left 0.12s",
+          position: "absolute" as const, top: 2, left: value ? 18 : 2, width: 16, height: 16,
+          borderRadius: "50%", background: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,.18)", transition: "left .12s",
         }} />
       </button>
     </div>
   );
+
+  const ov = blockId ? (d.layoutOverrides?.[blockId] ?? {}) : null;
 
   return (
     <div
       ref={popRef}
       style={{
         position: "fixed" as const, zIndex: 9999, top, left, width: POP_W,
-        background: "#fff",
-        border: "1.5px solid #ede9fe",
-        borderRadius: 12,
-        boxShadow: "0 8px 32px rgba(124,58,237,0.18), 0 2px 8px rgba(0,0,0,0.08)",
-        fontFamily: "system-ui, sans-serif",
-        overflow: "hidden",
+        background: "#fff", border: "1px solid #e6e2ef", borderRadius: 12,
+        boxShadow: "0 16px 42px rgba(36,24,58,.17), 0 3px 10px rgba(0,0,0,.06)",
+        fontFamily: "system-ui, sans-serif", overflow: "hidden",
       }}
+      onMouseDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()}
     >
-      <div style={{ background: "#7c3aed", padding: "9px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>✏ {ELEMENT_LABELS[elementKey]}</span>
+      <div style={{ padding: "12px 14px 11px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#27272a", lineHeight: 1.2 }}>{ELEMENT_LABELS[elementKey]}</div>
+          <div style={{ marginTop: 3, fontSize: 10.5, color: "#a1a1aa" }}>Advanced formatting</div>
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {visualRoleForDesignKey(elementKey) && (
-            <button
-              type="button"
-              onClick={onToggleStyleLink}
-              title={
-                styleLinked
-                  ? "Typography linked to Web"
-                  : "Web typography overridden"
-              }
-              style={{
-                height: 24,
-                border: "1px solid rgba(255,255,255,.35)",
-                borderRadius: 6,
-                background: "rgba(255,255,255,.14)",
-                color: "#fff",
-                padding: "0 7px",
-                cursor: "pointer",
-                fontSize: 10,
-                fontWeight: 700,
-              }}
-            >
-              {styleLinked ? "🔗 Linked" : "⛓ PDF only"}
+            <button type="button" onClick={onToggleStyleLink} title={styleLinked ? "Typography linked to Responsive Web" : "Typography is PDF-only"} style={{
+              height: 27, border: styleLinked ? "1px solid #ddd6fe" : "1px solid #fed7aa", borderRadius: 7,
+              background: styleLinked ? "#f5f3ff" : "#fff7ed", color: styleLinked ? "#6d28d9" : "#9a3412",
+              padding: "0 8px", cursor: "pointer", fontSize: 10, fontWeight: 750,
+            }}>
+              {styleLinked ? "🔗 PDF + Web" : "PDF only"}
             </button>
           )}
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: 18, lineHeight: 1, opacity: 0.8 }}>×</button>
+          <button type="button" onClick={onClose} aria-label="Close advanced formatting" style={{
+            width: 27, height: 27, borderRadius: 7, border: "1px solid #e4e4e7", background: "#fff",
+            color: "#71717a", cursor: "pointer", fontSize: 17, lineHeight: 1,
+          }}>×</button>
         </div>
       </div>
 
-      <div style={{ padding: "12px 12px 14px", display: "flex", flexDirection: "column" as const, gap: 10, maxHeight: 440, overflowY: "auto" as const }}>
-
-        {visualRoleForDesignKey(elementKey) && (
-          <div style={{
-            borderRadius: 7,
-            background: styleLinked ? "#f5f3ff" : "#fff7ed",
-            padding: "6px 7px",
-            color: styleLinked ? "#6d28d9" : "#9a3412",
-            fontSize: 9,
-            lineHeight: 1.4,
-          }}>
-            {styleLinked
-              ? "🔗 Typography is linked. PDF text changes also update the Web resume."
-              : "⛓ Web typography is independent. PDF changes stay PDF-only until you relink."}
-          </div>
-        )}
-
-        {selectField("Font family", s.fontFamily as string, v => set({ fontFamily: v as FontFamily }), FONTS)}
-        {row2(
-          sliderField("Font size (pt)", s.fontSize as number, v => set({ fontSize: v }), 7, 48, 0.5),
-          colorField("Text colour", s.color as string, v => set({ color: v })),
-        )}
-        <div>
-          {lbl("Alignment")}
-          <div style={{ display: "flex", gap: 4 }}>
-            {(["left","center","right"] as const).map(a => (
-              <button key={a} onClick={() => set({ textAlign: a })} style={{
-                flex: 1, padding: "4px 0", border: "1px solid #e5e7eb", borderRadius: 4,
-                background: (s.textAlign ?? "left") === a ? "#ede9fe" : "transparent",
-                cursor: "pointer", fontSize: 13, color: (s.textAlign ?? "left") === a ? "#7c3aed" : "#374151",
-              }}>
-                <AlignIcon align={a} size={14} />
-              </button>
-            ))}
-          </div>
-        </div>
-        {row2(
-          sliderField("Letter spacing", (s.letterSpacing ?? 0) as number, v => set({ letterSpacing: v }), -2, 10, 0.5),
-          sliderField("Line height", (s.lineHeight ?? 1.2) as number, v => set({ lineHeight: v }), 1, 3, 0.05),
-        )}
-        {(elementKey === "name" || elementKey === "sectionHeading") &&
-          selectField("Text transform", (s.textTransform ?? "none") as string,
-            v => set({ textTransform: v as "none" | "uppercase" | "lowercase" | "capitalize" }), [
-            { value: "none",       label: "None" },
-            { value: "uppercase",  label: "UPPERCASE" },
-            { value: "lowercase",  label: "lowercase" },
-            { value: "capitalize", label: "Capitalize Each Word" },
-          ])
-        }
-        {row2(
-          sliderField("Space above (pt)", (s.marginTop ?? 0) as number, v => set({ marginTop: v }), 0, 40),
-          sliderField("Space below (pt)", (s.marginBottom ?? 0) as number, v => set({ marginBottom: v }), 0, 40),
-        )}
-        {(elementKey === "skillItem" || elementKey === "name" || elementKey === "sectionHeading") &&
-          colorField("Background colour", (s.backgroundColor ?? "transparent") as string, v => set({ backgroundColor: v }))
-        }
-        {elementKey === "skillItem" && row2(
-          sliderField("Padding H (pt)", (s.paddingLeft ?? 0) as number, v => set({ paddingLeft: v, paddingRight: v }), 0, 20),
-          sliderField("Padding V (pt)", (s.paddingTop ?? 0) as number, v => set({ paddingTop: v, paddingBottom: v }), 0, 12),
-        )}
-        {elementKey === "skillItem" && sliderField("Corner radius", (s.borderRadius ?? 0) as number, v => set({ borderRadius: v }), 0, 16, 1)}
-        {elementKey === "contact" &&
-          textField("Separator between items", (s as { separator?: string }).separator ?? " · ",
-            v => onChangeDesign({ contact: { ...d.contact, separator: v } }), 10)
-        }
-        {elementKey === "entryDate" &&
-          selectField("Position", (s as { position?: string }).position ?? "right",
-            v => onChangeDesign({ entryDate: { ...d.entryDate, position: v as "right" | "below" } }), [
-              { value: "right", label: "Right of title (inline)" },
-              { value: "below", label: "Below title" },
-            ])
-        }
-        {elementKey === "entryBullet" && <>
+      <div style={{ maxHeight: Math.min(620, vp.h - top - margin), overflowY: "auto" as const }}>
+        {section("Text", <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {selectField("Font", s.fontFamily as string, v => set({ fontFamily: v as FontFamily }), FONTS)}
           {row2(
-            textField("Bullet character", d.bulletMarkerChar, v => onChangeDesign({ bulletMarkerChar: v || "•" }), 2),
-            colorField("Bullet colour", d.bulletMarkerColor, v => onChangeDesign({ bulletMarkerColor: v })),
+            numberField("Size", s.fontSize as number, v => set({ fontSize: v }), 7, 48, 0.5, "pt"),
+            colorField("Colour", s.color as string, v => set({ color: v })),
           )}
-          {sliderField("Marker indent (pt)", d.bulletMarkerWidth, v => onChangeDesign({ bulletMarkerWidth: v }), 6, 24, 1)}
-        </>}
-        {elementKey === "sectionHeading" && <>
-          {toggleField("Rule line under heading", d.sectionRuleShow, v => onChangeDesign({ sectionRuleShow: v }))}
-          {d.sectionRuleShow && row2(
-            colorField("Rule colour", d.sectionRuleColor, v => onChangeDesign({ sectionRuleColor: v })),
-            sliderField("Thickness", d.sectionRuleThickness, v => onChangeDesign({ sectionRuleThickness: v }), 0.5, 4, 0.5),
+          <div>
+            {fieldLabel("Style & alignment")}
+            <div style={{ display: "flex", gap: 5 }}>
+              <button type="button" onClick={() => set({ fontFamily: composeFontFamily(base, !bold, italic) })} style={{
+                ...TB_BTN, width: 32, height: 30, border: "1px solid #dedbe7", borderRadius: 7,
+                background: bold ? "#ede9fe" : "#fff", color: bold ? "#6d28d9" : "#3f3f46", fontWeight: 800,
+              }}>B</button>
+              <button type="button" onClick={() => set({ fontFamily: composeFontFamily(base, bold, !italic) })} style={{
+                ...TB_BTN, width: 32, height: 30, border: "1px solid #dedbe7", borderRadius: 7,
+                background: italic ? "#ede9fe" : "#fff", color: italic ? "#6d28d9" : "#3f3f46", fontStyle: "italic",
+              }}>I</button>
+              <div style={{ width: 1, height: 24, background: "#e4e4e7", margin: "3px 3px" }} />
+              {(["left", "center", "right"] as const).map(a => (
+                <button key={a} type="button" onClick={() => set({ textAlign: a })} style={{
+                  ...TB_BTN, width: 32, height: 30, border: "1px solid #dedbe7", borderRadius: 7,
+                  background: (s.textAlign ?? "left") === a ? "#ede9fe" : "#fff",
+                  color: (s.textAlign ?? "left") === a ? "#6d28d9" : "#52525b",
+                }}><AlignIcon align={a} size={14} /></button>
+              ))}
+            </div>
+          </div>
+          {(elementKey === "name" || elementKey === "sectionHeading") && selectField(
+            "Text case",
+            (s.textTransform ?? "none") as string,
+            v => set({ textTransform: v as "none" | "uppercase" | "lowercase" | "capitalize" }),
+            [
+              { value: "none", label: "Normal" },
+              { value: "uppercase", label: "UPPERCASE" },
+              { value: "lowercase", label: "lowercase" },
+              { value: "capitalize", label: "Capitalize Each Word" },
+            ],
           )}
-        </>}
-        {elementKey === "skillItem" &&
-          selectField("Display style", d.skillDisplay, v => onChangeDesign({ skillDisplay: v as typeof d.skillDisplay }), [
-            { value: "tags",   label: "Tags / pills" },
-            { value: "list",   label: "Bulleted list" },
-            { value: "inline", label: "Inline (comma separated)" },
-            { value: "grid",   label: "Grid" },
-          ])
-        }
-        {(elementKey === "entryTitle" || elementKey === "entryOrg") &&
-          sliderField("Space between entries (pt)", d.entrySpacing, v => onChangeDesign({ entrySpacing: v }), 2, 30)
-        }
+        </div>)}
 
-        {/* Block-level: rotation + position overrides */}
-        {blockId && onChangeBlock && (() => {
-          const ov = d.layoutOverrides?.[blockId] ?? {};
-          return (
-            <>
-              <div style={{ height: 1, background: "#f0e9ff", margin: "4px 0" }} />
-              {sliderField("Rotation (°)", ov.rotation ?? 0,
-                v => onChangeBlock(blockId, { rotation: v || undefined }), -180, 180, 1)}
-              {row2(
-                sliderField("Horizontal offset (pt)", Math.round(ov.visualDx ?? 0),
-                  v => onChangeBlock(blockId, { visualDx: v || undefined }), -300, 300, 1),
-                sliderField("Vertical displacement (pt)", Math.round(ov.flowDisplacementY ?? 0),
-                  v => onChangeBlock(blockId, { flowDisplacementY: v || undefined }), -500, 500, 1),
-              )}
-            </>
-          );
-        })()}
+        {section("Spacing", <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {row2(
+            numberField("Letter spacing", (s.letterSpacing ?? 0) as number, v => set({ letterSpacing: v }), -2, 10, 0.5),
+            numberField("Line height", (s.lineHeight ?? 1.2) as number, v => set({ lineHeight: v }), 1, 3, 0.05),
+          )}
+          {row2(
+            numberField("Space above", (s.marginTop ?? 0) as number, v => set({ marginTop: v }), 0, 40, 0.5, "pt"),
+            numberField("Space below", (s.marginBottom ?? 0) as number, v => set({ marginBottom: v }), 0, 40, 0.5, "pt"),
+          )}
+          {(elementKey === "entryTitle" || elementKey === "entryOrg") &&
+            numberField("Space between entries", d.entrySpacing, v => onChangeDesign({ entrySpacing: v }), 2, 30, 0.5, "pt")}
+        </div>)}
+
+        {(elementKey === "skillItem" || elementKey === "name" || elementKey === "sectionHeading" || elementKey === "contact" || elementKey === "entryDate" || elementKey === "entryBullet") && section("Appearance", <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {(elementKey === "skillItem" || elementKey === "name" || elementKey === "sectionHeading") &&
+            colorField("Background colour", (s.backgroundColor ?? "transparent") as string, v => set({ backgroundColor: v }))}
+          {elementKey === "skillItem" && <>
+            {selectField("Display", d.skillDisplay, v => onChangeDesign({ skillDisplay: v as typeof d.skillDisplay }), [
+              { value: "tags", label: "Tags / pills" },
+              { value: "list", label: "Bulleted list" },
+              { value: "inline", label: "Inline (comma separated)" },
+              { value: "grid", label: "Grid" },
+            ])}
+            {row2(
+              numberField("Horizontal padding", (s.paddingLeft ?? 0) as number, v => set({ paddingLeft: v, paddingRight: v }), 0, 20, 0.5, "pt"),
+              numberField("Vertical padding", (s.paddingTop ?? 0) as number, v => set({ paddingTop: v, paddingBottom: v }), 0, 12, 0.5, "pt"),
+            )}
+            {numberField("Corner radius", (s.borderRadius ?? 0) as number, v => set({ borderRadius: v }), 0, 16, 1, "pt")}
+          </>}
+          {elementKey === "contact" && textField("Separator between items", (s as { separator?: string }).separator ?? " · ", v => onChangeDesign({ contact: { ...d.contact, separator: v } }), 10)}
+          {elementKey === "entryDate" && selectField("Date position", (s as { position?: string }).position ?? "right", v => onChangeDesign({ entryDate: { ...d.entryDate, position: v as "right" | "below" } }), [
+            { value: "right", label: "Right of title (inline)" },
+            { value: "below", label: "Below title" },
+          ])}
+          {elementKey === "entryBullet" && <>
+            {row2(
+              textField("Bullet character", d.bulletMarkerChar, v => onChangeDesign({ bulletMarkerChar: v || "•" }), 2),
+              colorField("Bullet colour", d.bulletMarkerColor, v => onChangeDesign({ bulletMarkerColor: v })),
+            )}
+            {numberField("Marker indent", d.bulletMarkerWidth, v => onChangeDesign({ bulletMarkerWidth: v }), 6, 24, 1, "pt")}
+          </>}
+          {elementKey === "sectionHeading" && <>
+            {toggleField("Rule line under heading", d.sectionRuleShow, v => onChangeDesign({ sectionRuleShow: v }))}
+            {d.sectionRuleShow && row2(
+              colorField("Rule colour", d.sectionRuleColor, v => onChangeDesign({ sectionRuleColor: v })),
+              numberField("Thickness", d.sectionRuleThickness, v => onChangeDesign({ sectionRuleThickness: v }), 0.5, 4, 0.5, "pt"),
+            )}
+          </>}
+        </div>)}
+
+        {blockId && onChangeBlock && ov && section("Position", <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {sliderField("Rotation", ov.rotation ?? 0, v => onChangeBlock(blockId, { rotation: v || undefined }), -180, 180, 1, "°")}
+          {row2(
+            numberField("Horizontal", Math.round(ov.visualDx ?? 0), v => onChangeBlock(blockId, { visualDx: v || undefined }), -300, 300, 1, "pt"),
+            numberField("Vertical", Math.round(ov.flowDisplacementY ?? 0), v => onChangeBlock(blockId, { flowDisplacementY: v || undefined }), -500, 500, 1, "pt"),
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button type="button" onClick={() => onChangeBlock(blockId, { rotation: undefined, visualDx: undefined, flowDisplacementY: undefined })} style={{
+              border: "none", background: "transparent", color: "#7c3aed", cursor: "pointer", fontSize: 10.5, fontWeight: 700,
+            }}>↺ Reset position</button>
+          </div>
+        </div>)}
       </div>
     </div>
   );

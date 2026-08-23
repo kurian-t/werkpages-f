@@ -16,6 +16,23 @@ export type ResumeWebDetailsMode = "first-two" | "all" | "collapsed";
 export type ResumeWebAnimationStyle = "none" | "fade" | "slide" | "scale";
 export type ResumeWebAnimationSpeed = "gentle" | "normal" | "lively";
 export type ResumeWebVideoPlacement = "after-hero" | "after-about";
+export type ResumeWebTemplateLayout = "single" | "sidebar-left" | "sidebar-right";
+
+export interface ResumeWebTemplatePresentation {
+  /**
+   * Presentation recipe inherited from the shared Designed PDF template.
+   * This is intentionally Web-specific presentation metadata, not resume content.
+   * Keeping it here means "Make current design custom" can detach the PDF
+   * template marker without making Responsive Web suddenly lose its appearance.
+   */
+  templateId: string;
+  layout: ResumeWebTemplateLayout;
+  accent: string;
+  paper: string;
+  sidebarColor: string;
+  headerAccent: boolean;
+  timeline: boolean;
+}
 
 /** @deprecated Projects are now shared ResumeData content. */
 export type ResumeWebProject = ResumeProjectEntry;
@@ -53,6 +70,9 @@ export interface ResumeWebSettings {
   animateSkills: boolean;
   hoverLift: boolean;
 
+  // Shared-template presentation adapted for the responsive Web canvas.
+  templatePresentation: ResumeWebTemplatePresentation;
+
   // Web-only content / visitor behavior.
   videoIntro: ResumeWebVideoIntro;
   featuredLinks: ResumeWebFeaturedLink[];
@@ -75,6 +95,16 @@ export const DEFAULT_RESUME_WEB_SETTINGS: ResumeWebSettings = {
   animateSkills: false,
   hoverLift: false,
 
+  templatePresentation: {
+    templateId: "",
+    layout: "single",
+    accent: "#5b21b6",
+    paper: "#ffffff",
+    sidebarColor: "",
+    headerAccent: false,
+    timeline: false,
+  },
+
   videoIntro: {
     enabled: false,
     url: "",
@@ -87,6 +117,7 @@ export const DEFAULT_RESUME_WEB_SETTINGS: ResumeWebSettings = {
 
 type ResumeDesignWithWeb = ResumeDesign & {
   webResume?: Partial<ResumeWebSettings> & {
+    templatePresentation?: Partial<ResumeWebTemplatePresentation>;
     videoIntro?: Partial<ResumeWebVideoIntro>;
     featuredLinks?: ResumeWebFeaturedLink[];
     // Legacy Phase 13B fields are read only for migration compatibility.
@@ -217,6 +248,10 @@ export function getResumeWebSettings(design: ResumeDesign): ResumeWebSettings {
   return {
     ...DEFAULT_RESUME_WEB_SETTINGS,
     ...currentSaved,
+    templatePresentation: {
+      ...DEFAULT_RESUME_WEB_SETTINGS.templatePresentation,
+      ...(saved.templatePresentation ?? {}),
+    },
     videoIntro: {
       ...DEFAULT_RESUME_WEB_SETTINGS.videoIntro,
       ...(saved.videoIntro ?? {}),
@@ -234,6 +269,14 @@ export function withResumeWebSettings(
   const current = getResumeWebSettings(design);
   const nextPatch = {
     ...patch,
+    ...(patch.templatePresentation
+      ? {
+          templatePresentation: {
+            ...current.templatePresentation,
+            ...patch.templatePresentation,
+          },
+        }
+      : {}),
     ...(patch.videoIntro
       ? { videoIntro: { ...current.videoIntro, ...patch.videoIntro } }
       : {}),

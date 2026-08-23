@@ -5,11 +5,13 @@ import type { ResumeData } from "./types";
 interface Props {
   data: ResumeData;
   onChange: (next: ResumeData) => void;
+  templateOpenRequest?: number;
 }
 
 export default function InteractiveResumeWorkspace({
   data,
   onChange,
+  templateOpenRequest,
 }: Props) {
   return (
     <div className="h-full min-h-0 p-3 sm:p-4">
@@ -31,8 +33,10 @@ export default function InteractiveResumeWorkspace({
         <main className="min-h-0 flex-1 overflow-hidden">
           <ResumeInteractivePreview
             data={data}
+            onDataChange={onChange}
             onDesignChange={design => onChange({ ...data, design })}
             workspaceMode
+            templateOpenRequest={templateOpenRequest}
           />
         </main>
       </section>

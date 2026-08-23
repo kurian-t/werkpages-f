@@ -643,7 +643,7 @@ export default function CompanyProfile() {
                         >
                           <div className="flex items-center gap-3 mb-3">
                             <div className="flex-shrink-0"><ManagerAvatar name={boss.name} size="sm" /></div>
-                            <p className="text-sm font-semibold text-foreground group-hover:text-[#2e0562] transition-colors leading-tight truncate flex-1 min-w-0">{boss.name}</p>
+                            <p className="text-sm font-semibold text-foreground group-hover:text-[#6d28d9] transition-colors leading-tight truncate flex-1 min-w-0">{boss.name}</p>
                           </div>
                           <CompanyRow company={data.name} title={boss.title} logoUrl={data.logoUrl} />
                           <div className="mt-auto min-w-0 pt-3">
@@ -769,7 +769,7 @@ export default function CompanyProfile() {
                   >
                     <div className="flex items-center gap-3 mb-3">
                       <div className="flex-shrink-0"><ManagerAvatar name={mgr.name} size="sm" /></div>
-                      <p className="text-sm font-semibold text-foreground group-hover:text-[#2e0562] transition-colors leading-tight truncate flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground group-hover:text-[#6d28d9] transition-colors leading-tight truncate flex-1 min-w-0">
                         {mgr.name}
                       </p>
                     </div>

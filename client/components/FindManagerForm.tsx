@@ -250,7 +250,7 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
           <button
             type="submit"
             disabled={!allFilled || loading}
-            style={{ backgroundColor: !allFilled || loading ? '#c0b4d0' : '#2e0562' }}
+            style={{ backgroundColor: !allFilled || loading ? 'rgba(46, 5, 98, 0.4)' : '#2e0562' }}
             className="w-full rounded-xl px-4 py-3.5 text-sm font-semibold text-white transition-colors shadow-md disabled:cursor-not-allowed"
           >
             {loading ? "Searching…" : "Search"}
