@@ -907,7 +907,8 @@ test.describe("AddBoss — draft restore and form interactions", () => {
     for (const btn of await fourStarButtons.all()) {
       await btn.click();
     }
-    // Submit (button enables when all categories rated)
+    // Submit (button enables when all categories are rated and the attestation is checked)
+    await page.locator('input[name="attestation"]').check();
     await expect(page.getByRole("button", { name: /submit/i })).toBeEnabled({ timeout: 5000 });
     await page.getByRole("button", { name: /submit/i }).click();
     // Error message shown (lines 543-562: doSubmit catch)

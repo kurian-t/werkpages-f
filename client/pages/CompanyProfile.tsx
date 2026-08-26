@@ -328,6 +328,10 @@ export default function CompanyProfile() {
   // Whether to show unlocked tiles in the results column
   const resultsUnlocked = searchResults !== null ? searchHasContributed : !isLocked;
   const canonicalUrl = `https://werkpages.com/companies/${data.slug ?? companySlug}`;
+  // Thin pages (no reviews yet) are near-duplicate empty templates — keep them out of the index
+  // until they have real content, so Google doesn't flag them as duplicates. "follow" preserves
+  // link equity to the managers/pages that ARE worth indexing.
+  const isThin = (data.totalReviews ?? 0) === 0;
   const pageTitle = `${data.name} Manager Reviews & Ratings | Werkpages`;
   const pageDescription = `Browse anonymous reviews of managers at ${data.name}. See ratings, leadership styles, and employee experiences at ${data.name} on Werkpages.`;
   const jsonLd = {
@@ -353,6 +357,7 @@ export default function CompanyProfile() {
     <Helmet>
       <title>{pageTitle}</title>
       <meta name="description" content={pageDescription} />
+      {isThin && <meta name="robots" content="noindex,follow" />}
       <link rel="canonical" href={canonicalUrl} />
       <meta property="og:title" content={pageTitle} />
       <meta property="og:description" content={pageDescription} />

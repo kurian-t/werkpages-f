@@ -344,6 +344,9 @@ export default function BossProfile() {
   const userHasReviewedState = cachedUserReviews.length > 0;
   const atReviewLimit = cachedUserReviews.length >= 5;
 
+  // First-hand-experience attestation for the rate-a-manager flow. Persisted with the review draft
+  // so it survives the sign-in round trip that auto-submits on return.
+  const [reviewAttested, setReviewAttested] = useState(false);
   const skipResetRef = useRef(false);
   const reviewSubmitAreaRef = useRef<HTMLDivElement>(null);
   const reviewDraftTokenRef = useRef<string | null>(null);
@@ -356,6 +359,7 @@ export default function BossProfile() {
   const clearReviewDraft = () => {
     localStorage.removeItem("rmm_pending_review");
     setModalRatings(initializeRatings());
+    setReviewAttested(false);
     setReviewWorkedFrom({ month: "", year: "" });
     setReviewWorkedUntil({ month: "", year: "" });
     setReviewCurrentlyWorking(false);
@@ -668,6 +672,7 @@ export default function BossProfile() {
     if (reviewStep !== null) {
       if (skipResetRef.current) { skipResetRef.current = false; return; }
       setModalRatings(initializeRatings());
+      setReviewAttested(false);
       setReviewSubmitError(null);
       setReviewTitleError(null);
       setReviewDateError(null);
@@ -756,6 +761,7 @@ export default function BossProfile() {
           } else {
             localStorage.removeItem("rmm_pending_review");
             if (data.modalRatings)         setModalRatings(data.modalRatings);
+            if (data.reviewAttested != null) setReviewAttested(data.reviewAttested);
             if (data.generatedName)        setGeneratedName(data.generatedName);
             if (data.reviewWorkedFrom)     setReviewWorkedFrom(data.reviewWorkedFrom);
             if (data.reviewWorkedUntil)    setReviewWorkedUntil(data.reviewWorkedUntil);
@@ -801,14 +807,14 @@ export default function BossProfile() {
     localStorage.setItem("rmm_pending_review", JSON.stringify({
       returnTo: id ? `/manager/${id}` : `/companies/${companySlug}/managers/${managerSlug}`,
       managerId: id || managerSlug,
-      modalRatings, authorType, generatedName,
+      modalRatings, authorType, generatedName, reviewAttested,
       reviewWorkedFrom, reviewWorkedUntil, reviewCurrentlyWorking,
       reviewManagerCompany, reviewManagerTitle,
       ...(pendingVerificationEmail ? { signupEmail: pendingVerificationEmail, emailVerified: pendingEmailVerified } : {}),
       ...(reviewDraftTokenRef.current ? { draftToken: reviewDraftTokenRef.current } : {}),
       savedAt: Date.now(),
     }));
-  }, [reviewStep, isSubmittingReview, modalRatings, reviewWorkedFrom, reviewWorkedUntil, reviewCurrentlyWorking, reviewManagerCompany, reviewManagerTitle, authorType, id, pendingVerificationEmail, pendingEmailVerified]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reviewStep, isSubmittingReview, modalRatings, reviewAttested, reviewWorkedFrom, reviewWorkedUntil, reviewCurrentlyWorking, reviewManagerCompany, reviewManagerTitle, authorType, id, pendingVerificationEmail, pendingEmailVerified]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close review dropdown when clicking outside
   useEffect(() => {
@@ -939,6 +945,11 @@ export default function BossProfile() {
 
     if (Object.values(modalRatings).some((r) => r < 1)) {
       toast.error("Please rate all categories before submitting.");
+      return;
+    }
+
+    if (!reviewAttested) {
+      toast.error("Please confirm you personally worked with or for this manager.");
       return;
     }
 
@@ -1354,6 +1365,10 @@ export default function BossProfile() {
   const pageDescription = manager
     ? `Read anonymous employee reviews of ${manager.name}, ${manager.title} at ${manager.company}. Share your experience or browse workplace leadership ratings.`
     : "";
+  // Keep review-less (thin, near-duplicate) manager pages out of Google's index until they have
+  // real content; "follow" so link equity still flows. Matches the sitemap's reviews_count > 0 rule.
+  const managerReviewCount = contextReviews.length || Number((manager as any)?.reviewsCount ?? (manager as any)?.reviews ?? 0);
+  const managerIsThin = !!manager && managerReviewCount === 0;
 
   return (
     <>
@@ -1361,6 +1376,7 @@ export default function BossProfile() {
       <Helmet>
         <title>{pageTitle}</title>
         <meta name="description" content={pageDescription} />
+        {managerIsThin && <meta name="robots" content="noindex,follow" />}
         <link rel="canonical" href={canonicalUrl} />
         <meta property="og:title" content={pageTitle} />
         <meta property="og:description" content={pageDescription} />
@@ -2459,7 +2475,7 @@ export default function BossProfile() {
         const stepIdx = steps.indexOf(reviewStep) + 1;
         const stepTitles = { ratings: "Rate your experience", dates: "Work timeline", identity: "Review attribution" };
         const isLastStep = reviewStep === "identity";
-        const submitDisabled = !reviewAllRated || !reviewIsDateValid || isDuplicateTitle || isManagerRoleOverlap || isSubmittingReview || !!reviewTitleError || !!reviewDateError || !!reviewSubmitError || !!pendingAutoSubmit;
+        const submitDisabled = !reviewAllRated || !reviewAttested || !reviewIsDateValid || isDuplicateTitle || isManagerRoleOverlap || isSubmittingReview || !!reviewTitleError || !!reviewDateError || !!reviewSubmitError || !!pendingAutoSubmit;
         return (
           <div className="fixed inset-0 z-50 flex flex-col bg-background">
             {/* Header */}
@@ -2536,6 +2552,23 @@ export default function BossProfile() {
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground">This name is randomly generated and cannot be linked back to you.</p>
+                    </div>
+
+                    {/* First-hand-experience attestation — required before the review can be submitted */}
+                    <div className="rounded-xl border border-border p-5">
+                      <label className="flex items-start gap-3 cursor-pointer text-sm text-foreground">
+                        <input
+                          type="checkbox"
+                          name="attestation"
+                          checked={reviewAttested}
+                          onChange={e => setReviewAttested(e.target.checked)}
+                          className="mt-0.5 w-4 h-4 flex-shrink-0"
+                        />
+                        <span>
+                          I confirm that I have personally worked with or for this manager, and these
+                          ratings reflect my own experience and perceptions.
+                        </span>
+                      </label>
                     </div>
                   </div>
                 )}

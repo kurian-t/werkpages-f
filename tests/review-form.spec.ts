@@ -4,6 +4,7 @@ import {
   mockManagerPage,
   rateAllFiveStars,
   clickWriteAReview,
+  attestFirstHandExperience,
 } from "./fixtures";
 
 test.describe("Review form — multi-step flow", () => {
@@ -105,6 +106,7 @@ test.describe("Review form — multi-step flow", () => {
     await expect(page.getByText(/randomly generated/i)).toBeVisible();
 
     // Submit without being signed in → auth modal opens (Google button appears)
+    await attestFirstHandExperience(page);
     await page.getByRole("button", { name: /submit review/i }).click();
     await expect(
       page.getByRole("button", { name: /continue with google/i })

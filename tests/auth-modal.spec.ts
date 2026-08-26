@@ -5,6 +5,7 @@ import {
   mockTurnstile,
   rateAllFiveStars,
   clickWriteAReview,
+  attestFirstHandExperience,
 } from "./fixtures";
 
 test.describe("Auth modal — social-first flow", () => {
@@ -21,6 +22,7 @@ test.describe("Auth modal — social-first flow", () => {
     await page.getByLabel("From year").selectOption("2023");
     await page.getByRole("checkbox", { name: /current/i }).check();
     await page.getByRole("button", { name: /^next$/i }).click();
+    await attestFirstHandExperience(page);
     await page.getByRole("button", { name: /submit review/i }).click();
   }
 

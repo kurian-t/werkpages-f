@@ -105,10 +105,16 @@ export function Header() {
               </Link>
             )}
             <Link
-              to="/find"
-              className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${pathname === "/find" ? "text-[#6d28d9]" : "text-foreground"}`}
+              to="/explore"
+              className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${pathname === "/explore" || pathname === "/find" ? "text-[#6d28d9]" : "text-foreground"}`}
             >
-              Search
+              Explore
+            </Link>
+            <Link
+              to="/industries"
+              className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${pathname.startsWith("/industries") ? "text-[#6d28d9]" : "text-foreground"}`}
+            >
+              Industries
             </Link>
             <Link
               to="/companies"
@@ -122,7 +128,7 @@ export function Header() {
             >
               Managers
             </Link>
-            {user && (
+            {user?.role === "admin" && (
               <Link
                 to="/resume"
                 className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${pathname === "/resume" ? "text-[#6d28d9]" : "text-foreground"}`}
@@ -315,11 +321,18 @@ export function Header() {
                 </Link>
               )}
               <Link
-                to="/find"
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${pathname === "/find" ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}
+                to="/explore"
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${pathname === "/explore" || pathname === "/find" ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}
                 onClick={() => setIsMenuOpen(false)}
               >
-                Search
+                Explore
+              </Link>
+              <Link
+                to="/industries"
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${pathname.startsWith("/industries") ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Industries
               </Link>
               <Link
                 to="/companies"
@@ -335,7 +348,7 @@ export function Header() {
               >
                 Managers
               </Link>
-              {user && (
+              {user?.role === "admin" && (
                 <Link
                   to="/resume"
                   className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${pathname === "/resume" ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}

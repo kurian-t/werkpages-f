@@ -22,10 +22,15 @@ export default defineConfig(({ mode }) => ({
   },
   server: {
     host: "::",
-    port: 8080,
+    // 8081, not 8080 — RateMyManagers' dev server owns 8080 and the two run side by side.
+    // Must match the Allowed Callback URL registered for the Werkpages Web app in Auth0,
+    // because startSocialLogin builds redirect_uri from window.location.origin.
+    port: 8081,
     proxy: {
       "/api": {
-        target: "http://localhost:8888",
+        // 8889, not 8888 — matches HTTP_PORT for the Werkpages backend, which moves off the
+        // port RateMyManagers' backend holds when both run locally.
+        target: "http://localhost:8889",
         changeOrigin: true,
       },
     },

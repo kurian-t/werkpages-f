@@ -8,6 +8,7 @@ import {
   mockManagerPage,
   rateAllFiveStars,
   clickWriteAReview,
+  attestFirstHandExperience,
 } from "./fixtures";
 
 test.describe("Authenticated review actions", () => {
@@ -31,6 +32,7 @@ test.describe("Authenticated review actions", () => {
 
     // Step 3: identity — shows anonymous posting card
     await expect(page.getByText(/posting anonymously/i)).toBeVisible({ timeout: 3_000 });
+    await attestFirstHandExperience(page);
     await expect(
       page.getByRole("button", { name: /^submit review$/i })
     ).toBeEnabled({ timeout: 3_000 });
@@ -44,6 +46,35 @@ test.describe("Authenticated review actions", () => {
 
     // Form is closed after submit
     await expect(page.getByText(/posting anonymously/i)).not.toBeVisible();
+  });
+
+  // The same first-hand-experience attestation gates the rate-a-manager flow on its step 3.
+  test("attestation is required before a review can be submitted", async ({ page }) => {
+    await mockManagerPage(page, { loggedIn: true });
+    await page.goto(`/manager/${TEST_MANAGER_ID}`);
+
+    await clickWriteAReview(page);
+    await rateAllFiveStars(page);
+    await page.getByRole("button", { name: /^next$/i }).click();
+    await page.getByLabel("From month").selectOption("01");
+    await page.getByLabel("From year").selectOption("2023");
+    await page.getByRole("checkbox", { name: /current/i }).check();
+    await page.getByRole("button", { name: /^next$/i }).click();
+
+    await expect(page.getByText(/posting anonymously/i)).toBeVisible({ timeout: 3_000 });
+    const attestation = page.locator('input[name="attestation"]');
+    await expect(attestation).not.toBeChecked();
+    await expect(
+      page.getByText(/i confirm that i have personally worked with or for this manager/i)
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /^submit review$/i })
+    ).toBeDisabled({ timeout: 3_000 });
+
+    await attestation.check();
+    await expect(
+      page.getByRole("button", { name: /^submit review$/i })
+    ).toBeEnabled({ timeout: 3_000 });
   });
 
   test("delete button is NOT present in edit form step 3 (moved to dropdown)", async ({
@@ -229,6 +260,7 @@ test.describe("Manager profile auto-update — review submission fields", () => 
     await page.getByRole("button", { name: /^next$/i }).click();
 
     // Step 3: submit
+    await attestFirstHandExperience(page);
     await page.getByRole("button", { name: /^submit review$/i }).click();
     await expect(
       page.getByText(/your review of alex johnson is live/i)
@@ -361,6 +393,7 @@ test.describe("Manager profile auto-update — review submission fields", () => 
     await page.getByLabel("From year").selectOption("2024");
     await page.getByRole("checkbox", { name: /current/i }).check();
     await page.getByRole("button", { name: /^next$/i }).click();
+    await attestFirstHandExperience(page);
     await page.getByRole("button", { name: /^submit review$/i }).click();
     await expect(
       page.getByText(/your review of alex johnson is live/i)

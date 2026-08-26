@@ -7,8 +7,10 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import queryClient from "@/lib/queryClient";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/useAuth";
+import type { ReactElement } from "react";
 import { DataProvider } from "@/contexts/DataContext";
 import Index from "./pages/Index";
 import BossProfile from "./pages/BossProfile";
@@ -31,6 +33,9 @@ import Companies from "./pages/Companies";
 import CompanyProfile from "./pages/CompanyProfile";
 import WhatIsWerkpages from "./pages/WhatIsWerkpages";
 import ResumeBuilder from "./pages/ResumeBuilder";
+import Explore from "./pages/Explore";
+import Industries from "./pages/Industries";
+import IndustryProfile from "./pages/IndustryProfile";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PostHogRouteTracker } from "@/components/PostHogProvider";
@@ -38,6 +43,14 @@ import "@/lib/posthog";
 
 
 axios.defaults.withCredentials = true;
+
+/** Renders children only for admins; everyone else is redirected to /explore.
+ *  Used to keep the Resume Builder hidden while it's in progress. */
+function AdminOnly({ children }: { children: ReactElement }) {
+  const { user } = useAuth();
+  if (!user || user.role !== "admin") return <Navigate to="/explore" replace />;
+  return children;
+}
 
 const App = () => (
   <HelmetProvider>
@@ -74,10 +87,13 @@ const App = () => (
             <Route path="/support" element={<SupportUs />} />
             <Route path="/auth/verified" element={<EmailVerified />} />
             <Route path="/find" element={<FindYourManager />} />
+            <Route path="/explore" element={<Explore />} />
+            <Route path="/industries" element={<Industries />} />
+            <Route path="/industries/:slug" element={<IndustryProfile />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/companies" element={<Companies />} />
             <Route path="/companies/:companySlug" element={<CompanyProfile />} />
-            <Route path="/resume" element={<ResumeBuilder />} />
+            <Route path="/resume" element={<AdminOnly><ResumeBuilder /></AdminOnly>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

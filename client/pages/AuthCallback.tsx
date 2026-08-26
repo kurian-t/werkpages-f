@@ -20,13 +20,22 @@ export default function AuthCallback() {
     const errorParam = params.get("error");
 
     if (errorParam) {
-      // Auth0 returned an error (e.g. user cancelled)
-      navigate("/signin", { replace: true });
+      // Auth0's error_description names connections, API identifiers, and grant configuration —
+      // never put it in front of an end user. Dev builds log it for debugging; the log is
+      // stripped from production bundles, and the user always sees the same generic message.
+      if (import.meta.env.DEV) {
+        const description = params.get("error_description");
+        console.error(`[auth] Auth0 returned ${errorParam}: ${description ?? "no description"}`);
+      }
+      navigate("/signin", {
+        replace: true,
+        state: { socialError: "Sign-in was not completed. Please try again." },
+      });
       return;
     }
 
     const savedState = sessionStorage.getItem("oauth_state");
-    const returnTo   = sessionStorage.getItem("oauth_return_to") || "/find";
+    const returnTo   = sessionStorage.getItem("oauth_return_to") || "/explore";
     sessionStorage.removeItem("oauth_state");
     sessionStorage.removeItem("oauth_return_to");
 
@@ -48,7 +57,7 @@ export default function AuthCallback() {
       const { user, isNewUser } = res.data;
       setUser(user);
       localStorage.setItem("authUser", JSON.stringify(user));
-      navigate(isNewUser && !returnTo.startsWith("/add") ? "/find" : returnTo, { replace: true });
+      navigate(isNewUser && !returnTo.startsWith("/add") ? "/explore" : returnTo, { replace: true });
     }).catch(err => {
       const data = err.response?.data;
       if (data?.error === "email_already_registered") {

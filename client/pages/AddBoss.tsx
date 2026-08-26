@@ -126,7 +126,15 @@ type AddBossStep = "info" | "timeline" | "ratings";
 
 export default function AddBoss() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
+
+  // After a successful submission the user has contributed a review, which lifts the
+  // ratings lock site-wide. The gate reads user.hasContributed (sourced from /api/auth/me,
+  // only refreshed on app mount), so we must optimistically flip it here — otherwise the
+  // manager they just rated stays blurred until a full page reload.
+  const markContributed = () => {
+    if (user && !user.hasContributed) setUser({ ...user, hasContributed: true });
+  };
   const queryClient = useQueryClient();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -137,6 +145,9 @@ export default function AddBoss() {
   const [pendingEmailVerified, setPendingEmailVerified] = useState(false);
 
   const [step, setStep] = useState<AddBossStep>("info");
+  // First-hand-experience attestation. Required before any review is persisted — including the
+  // silent auto-save below, which would otherwise store a review the user never attested to.
+  const [attested, setAttested] = useState(false);
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -242,6 +253,7 @@ export default function AddBoss() {
     localStorage.removeItem("rmm_pending_manager");
     setFormData({ firstName: "", lastName: "", title: "", company: "", country: "", state: "", linkedinUrl: "", status: "active" });
     setRatings(initializeRatings());
+    setAttested(false);
     setWorkedFrom({ month: "", year: "" });
     setWorkedUntil({ month: "", year: "" });
     setCurrentlyWorking(false);
@@ -331,6 +343,7 @@ export default function AddBoss() {
   useEffect(() => {
     if (step !== "ratings") return;
     if (!user) return;
+    if (!attested) return;
     if (autoSubmitStatusRef.current !== "idle") return;
     const allRated = Object.values(ratings).every(r => r >= 1);
     if (!allRated) return;
@@ -364,6 +377,7 @@ export default function AddBoss() {
         });
         autoSavedManagerIdRef.current = res.data.id;
         autoSubmitStatusRef.current = "success";
+        markContributed();
         queryClient.removeQueries({ queryKey: ["managers-directory"] });
         queryClient.removeQueries({ queryKey: ["managers-top"] });
         queryClient.removeQueries({ queryKey: ["stats"] });
@@ -374,7 +388,7 @@ export default function AddBoss() {
         autoSubmitStatusRef.current = "failed";
       }
     })();
-  }, [ratings, step, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ratings, step, user?.id, attested]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -448,6 +462,11 @@ export default function AddBoss() {
       return;
     }
 
+    if (!attested) {
+      setErrors(["Please confirm you personally worked with or for this manager"]);
+      return;
+    }
+
     if (!user) {
       // Capture drop-off: fire-and-forget to server before showing auth modal.
       // unratedCount === 0 is guaranteed by the guard above.
@@ -484,6 +503,7 @@ export default function AddBoss() {
 
     // Auto-save already captured the review — skip the re-submit and navigate directly
     if (autoSubmitStatusRef.current === "success" && autoSavedManagerIdRef.current != null) {
+      markContributed();
       localStorage.removeItem("rmm_pending_manager");
       sessionStorage.setItem("rmm_just_rated", "1");
       toast.success(`${formData.firstName} ${formData.lastName} submitted for review!`, {
@@ -529,6 +549,7 @@ export default function AddBoss() {
       });
 
       const managerId = managerResponse.data.id;
+      markContributed();
       queryClient.removeQueries({ queryKey: ["managers-directory"] });
       queryClient.removeQueries({ queryKey: ["managers-top"] });
       queryClient.removeQueries({ queryKey: ["stats"] });
@@ -556,6 +577,7 @@ export default function AddBoss() {
         autoSavedManagerIdRef.current != null
       ) {
         // Auto-save already saved this review; navigate instead of showing a confusing error
+        markContributed();
         sessionStorage.setItem("rmm_just_rated", "1");
         navigate(`/manager/${autoSavedManagerIdRef.current}`);
       } else {
@@ -591,7 +613,7 @@ export default function AddBoss() {
   const nextDisabled =
     (step === "info"     && !step1Valid) ||
     (step === "timeline" && !step2Valid) ||
-    (step === "ratings"  && (unratedCount > 0 || isSubmitting));
+    (step === "ratings"  && (unratedCount > 0 || !attested || isSubmitting));
 
   const managerName = `${formData.firstName} ${formData.lastName}`.trim() || "New Manager";
 
@@ -913,6 +935,23 @@ export default function AddBoss() {
                       </div>
                     </div>
                   ))}
+                </div>
+
+                {/* First-hand-experience attestation — required before the review can be submitted */}
+                <div className="rounded-xl border border-border p-5">
+                  <label className="flex items-start gap-3 cursor-pointer text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      name="attestation"
+                      checked={attested}
+                      onChange={e => { touch(); setAttested(e.target.checked); }}
+                      className="mt-0.5 w-4 h-4 flex-shrink-0"
+                    />
+                    <span>
+                      I confirm that I have personally worked with or for this manager, and these
+                      ratings reflect my own experience and perceptions.
+                    </span>
+                  </label>
                 </div>
               </div>
             )}

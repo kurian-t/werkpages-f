@@ -200,8 +200,13 @@ export default function Companies() {
                 <button
                   key={co.name}
                   onClick={() => goToCompany(co.name, co.slug)}
-                  className="group h-full w-full min-w-0 text-left rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all min-[420px]:w-[200px] sm:p-5"
+                  className="group relative h-full w-full min-w-0 text-left rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all min-[420px]:w-[200px] sm:p-5"
                 >
+                  {!isLocked && co.avgRating != null && co.avgRating >= 4.5 && (
+                    <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                      <Star size={9} className="fill-amber-500 text-amber-500" /> Top rated
+                    </span>
+                  )}
                   <div className="flex items-center gap-3 mb-3">
                     <CompanyLogoImg
                       company={co.name}

@@ -131,6 +131,7 @@ test.describe("BossProfile — write review modal", () => {
     await fillDatesStep(page);
     await page.getByRole("button", { name: /^next$/i }).click();
     await expect(page.getByText(/posting anonymously/i)).toBeVisible({ timeout: 5000 });
+    await page.locator('input[name="attestation"]').check();
     // Submit → anon → setAuthFlowStep("signup") → AuthFlowModal opens (line 904)
     await page.getByRole("button", { name: /submit review/i }).click();
     await expect(page.getByText(/create account|sign up/i).first()).toBeVisible({ timeout: 10000 });
@@ -156,6 +157,7 @@ test.describe("BossProfile — write review modal", () => {
     await fillDatesStep(page);
     await page.getByRole("button", { name: /^next$/i }).click();
     await expect(page.getByText(/posting anonymously/i)).toBeVisible({ timeout: 5000 });
+    await page.locator('input[name="attestation"]').check();
     await page.getByRole("button", { name: /submit review/i }).click();
     // Error message from line 941: "You've reached the limit of 5 reviews for this manager."
     await expect(page.getByText(/limit of 5 reviews/i)).toBeVisible({ timeout: 8000 });
@@ -182,6 +184,7 @@ test.describe("BossProfile — write review modal", () => {
     await fillDatesStep(page);
     await page.getByRole("button", { name: /^next$/i }).click();
     await expect(page.getByText(/posting anonymously/i)).toBeVisible({ timeout: 5000 });
+    await page.locator('input[name="attestation"]').check();
     await page.getByRole("button", { name: /submit review/i }).click();
     // Generic error from line 961: "Failed to submit review. Please try again."
     await expect(page.getByText(/failed to submit review/i)).toBeVisible({ timeout: 8000 });
@@ -515,6 +518,7 @@ test.describe("AddBoss — draft lifecycle", () => {
     for (const btn of await page.getByRole("button", { name: "Rate 4 stars" }).all()) {
       await btn.click();
     }
+    await page.locator('input[name="attestation"]').check();
     // "Continue to Sign In" shown for anonymous (AddBoss.tsx line 942 — submit button text)
     await page.getByRole("button", { name: /continue to sign in/i }).click();
     // Auth modal (line 480: setAuthFlowStep("signup"))

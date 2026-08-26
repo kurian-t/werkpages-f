@@ -14,15 +14,20 @@ export default function SignIn() {
   const { setUser, isAuthenticated } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  // Social login failures redirect here with the reason in navigation state — Auth0's
+  // error_description, or "this email already has a password account". Seeding the banner with
+  // it means the redirect explains itself instead of looking like an unexplained page refresh.
+  const [error, setError] = useState<string>(
+    ((location.state as any)?.socialError as string) ?? ""
+  );
   const [isUnverified, setIsUnverified] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const emailVerified = (location.state as any)?.emailVerified === true;
-  const returnTo: string = (location.state as any)?.returnTo || "/find";
+  const returnTo: string = (location.state as any)?.returnTo || "/explore";
 
   if (isAuthenticated) {
-    return <Navigate to={returnTo === "/" ? "/find" : returnTo} replace />;
+    return <Navigate to={returnTo === "/" ? "/explore" : returnTo} replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -759,6 +759,14 @@ export async function rateAllFiveStars(page: Page) {
 }
 
 /**
+ * Checks the first-hand-experience attestation on step 3. Required before any review can be
+ * submitted, in both the add-manager flow and the rate-a-manager flow.
+ */
+export async function attestFirstHandExperience(page: Page) {
+  await page.locator('input[name="attestation"]').check();
+}
+
+/**
  * Opens the new review form — uses .first() because there are two "Write a Review"
  * buttons on the page (header action button + bottom CTA).
  */

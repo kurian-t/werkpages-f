@@ -1,4 +1,4 @@
-import { AUTH0_DOMAIN, AUTH0_CLIENT_ID, startSocialLogin, type SocialConnection } from "@/lib/auth";
+import { isSocialLoginConfigured, startSocialLogin, type SocialConnection } from "@/lib/auth";
 import { GoogleIcon, MicrosoftIcon, FacebookIcon } from "@/components/SocialIcons";
 
 const SOCIAL_BUTTON_STYLE = {
@@ -24,7 +24,7 @@ interface SocialLoginButtonsProps {
 }
 
 export function SocialLoginButtons({ returnTo, divider = true }: SocialLoginButtonsProps) {
-  if (!AUTH0_DOMAIN || !AUTH0_CLIENT_ID) return null;
+  if (!isSocialLoginConfigured()) return null;
 
   return (
     <div className="mb-5">

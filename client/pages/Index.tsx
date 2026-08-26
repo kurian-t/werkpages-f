@@ -91,7 +91,7 @@ export default function Index() {
         }
       } catch {}
 
-      navigate("/signin", { replace: true, state: { emailVerified: true, returnTo: "/find" } });
+      navigate("/signin", { replace: true, state: { emailVerified: true, returnTo: "/explore" } });
     }
   }, [location.search, navigate]);
 
@@ -99,14 +99,14 @@ export default function Index() {
   const heroCta = (
     <div className="mt-5 w-full max-w-[460px] space-y-3">
       <button
-        onClick={() => { track("cta_clicked", { method: "google" }); startSocialLogin("google-oauth2", "/find"); }}
+        onClick={() => { track("cta_clicked", { method: "google" }); startSocialLogin("google-oauth2", "/explore"); }}
         className="flex h-[46px] w-full items-center justify-center gap-3 rounded-md border border-[#6d28d9] bg-[#6d28d9] px-4 text-[14px] font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(109,40,217,0.45)]"
       >
         <GoogleIcon />
         Continue with Google
       </button>
       <button
-        onClick={() => { track("cta_clicked", { method: "email" }); navigate("/signin", { state: { returnTo: "/find" } }); }}
+        onClick={() => { track("cta_clicked", { method: "email" }); navigate("/signin", { state: { returnTo: "/explore" } }); }}
         className="flex h-[46px] w-full items-center justify-center rounded-md border border-black/22 bg-white px-4 text-[14px] font-semibold shadow-sm hover:bg-neutral-50"
       >
         Continue with Facebook, Microsoft, or email

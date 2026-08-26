@@ -12,8 +12,8 @@ export default defineConfig({
     : undefined,
   use: {
     // Override with PLAYWRIGHT_BASE_URL env var to test against a different server,
-    // e.g. PLAYWRIGHT_BASE_URL=http://localhost:8080 to test against the dev server.
-    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:4173",
+    // e.g. PLAYWRIGHT_BASE_URL=http://localhost:8081 to test against the dev server.
+    baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:4174",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "on-first-retry",
@@ -41,8 +41,10 @@ export default defineConfig({
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
     : {
-        command: "pnpm exec vite preview --port 4173",
-        url: "http://localhost:4173",
+        // 4174, not 4173 — RateMyManagers previews on 4173, and reuseExistingServer means a
+        // suite started while that one is up would silently test the wrong app and still pass.
+        command: "pnpm exec vite preview --port 4174",
+        url: "http://localhost:4174",
         reuseExistingServer: true,
         timeout: 30_000,
       },

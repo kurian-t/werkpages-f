@@ -1,5 +1,5 @@
 import { test, expect } from "./base";
-import { mockAddBossPage, rateAllFiveStars } from "./fixtures";
+import { mockAddBossPage, rateAllFiveStars, attestFirstHandExperience, MOCK_USER } from "./fixtures";
 
 // Helper: fill Step 1 (manager info) using name attributes since inputs have no htmlFor.
 // Country is omitted — the geo mock pre-fills "United States", so the chip view shows.
@@ -114,6 +114,39 @@ test.describe("AddBoss — 3-step flow", () => {
     await expect(page.getByRole("button", { name: /rate 5 stars/i }).first()).toBeVisible();
   });
 
+  // The attestation is a required first-hand-experience confirmation on step 3. It also gates the
+  // silent auto-save that fires once all 10 categories are rated, so an unattested review is never
+  // persisted.
+  test("step 3: Submit stays disabled until the first-hand attestation is checked", async ({
+    page,
+  }) => {
+    await mockAddBossPage(page, { loggedIn: true });
+    await page.goto("/add");
+
+    await fillStep1(page);
+    await page.getByRole("button", { name: /^next$/i }).click();
+    await fillStep2(page);
+    await page.getByRole("button", { name: /^next$/i }).click();
+    await rateAllFiveStars(page);
+
+    const attestation = page.locator('input[name="attestation"]');
+    await expect(attestation).toBeVisible({ timeout: 5_000 });
+    await expect(attestation).not.toBeChecked();
+    await expect(
+      page.getByText(/i confirm that i have personally worked with or for this manager/i)
+    ).toBeVisible();
+
+    // All 10 ratings filled but not attested — Submit must stay disabled.
+    await expect(page.getByRole("button", { name: /submit review/i })).toBeDisabled({ timeout: 3_000 });
+
+    await attestation.check();
+    await expect(page.getByRole("button", { name: /submit review/i })).toBeEnabled({ timeout: 3_000 });
+
+    // Unchecking re-locks it.
+    await attestation.uncheck();
+    await expect(page.getByRole("button", { name: /submit review/i })).toBeDisabled({ timeout: 3_000 });
+  });
+
   test("step 3: 'About your review' trust card is visible", async ({ page }) => {
     await mockAddBossPage(page);
     await page.goto("/add");
@@ -136,6 +169,7 @@ test.describe("AddBoss — 3-step flow", () => {
     await page.getByRole("button", { name: /^next$/i }).click();
 
     await rateAllFiveStars(page);
+    await attestFirstHandExperience(page);
 
     // When logged out, button says "Continue to Sign In"
     await page.getByRole("button", { name: /continue to sign in/i }).click();
@@ -158,6 +192,7 @@ test.describe("AddBoss — 3-step flow", () => {
     await page.getByRole("button", { name: /^next$/i }).click();
 
     await rateAllFiveStars(page);
+    await attestFirstHandExperience(page);
 
     // When logged in, button says "Submit Review"
     await page.getByRole("button", { name: /submit review/i }).click();
@@ -165,6 +200,37 @@ test.describe("AddBoss — 3-step flow", () => {
     await expect(
       page.getByText(/jordan smith submitted for review/i)
     ).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("REGRESSION: add + rate flips hasContributed so the ratings lock lifts (no reload needed)", async ({
+    page,
+  }) => {
+    // Start as a logged-in user who has NOT contributed yet — the ratings lock is on.
+    await mockAddBossPage(page, { loggedIn: true, user: { ...MOCK_USER, hasContributed: false } });
+    await page.goto("/add");
+
+    // Sanity: the session starts locked (hasContributed=false).
+    await expect.poll(async () =>
+      await page.evaluate(() => JSON.parse(localStorage.getItem("authUser") || "{}").hasContributed)
+    ).toBe(false);
+
+    await fillStep1(page);
+    await page.getByRole("button", { name: /^next$/i }).click();
+    await fillStep2(page);
+    await page.getByRole("button", { name: /^next$/i }).click();
+    await rateAllFiveStars(page);
+    await attestFirstHandExperience(page);
+    await page.getByRole("button", { name: /submit review/i }).click();
+
+    await expect(page.getByText(/jordan smith submitted for review/i)).toBeVisible({ timeout: 5_000 });
+
+    // The fix: AddBoss optimistically flips user.hasContributed (persisted to authUser) so the
+    // site-wide ratings lock lifts immediately. Previously it only invalidated a dead
+    // ["has-contributed"] query, leaving the just-rated manager blurred until a full reload.
+    await expect.poll(async () =>
+      await page.evaluate(() => JSON.parse(localStorage.getItem("authUser") || "{}").hasContributed),
+      { timeout: 5_000 }
+    ).toBe(true);
   });
 
   test("ready banner appears when logged-in user returns to /add with a saved draft", async ({
