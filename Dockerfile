@@ -55,8 +55,10 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Copy the built React app from stage 1
 COPY --from=builder /app/dist/spa /usr/share/nginx/html
 
-# Bake in the Cloudflare Origin Pull CA cert (public cert, not a secret)
-COPY cloudflare-origin-pull-ca.pem /etc/nginx/cloudflare-origin-pull-ca.pem
+# No Cloudflare origin-pull CA here. This container is not the edge: the RateMyManagers
+# frontend owns 80/443, terminates TLS and runs ssl_verify_client, then proxies werkpages.com
+# to us over the Docker network. nginx.conf in this image has no TLS directives, so the cert
+# would be unused — and it is gitignored (*.pem), so COPYing it broke the CI build.
 
 EXPOSE 80
 
