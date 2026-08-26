@@ -21,9 +21,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # No `version:` here on purpose. This repo's package.json pins
+      # packageManager: pnpm@10.14.0, and action-setup errors out if both are set.
+      # (RateMyManagers can specify a version because its repo root package.json
+      # has no packageManager field — the pinned one is a directory deeper.)
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         with:
