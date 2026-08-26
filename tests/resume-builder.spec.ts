@@ -50,7 +50,10 @@ function buildManyWorkEntries(count: number) {
 }
 
 async function setupContributorSession(page: import("@playwright/test").Page, hasContributed = true) {
-  const user = { ...MOCK_USER, hasContributed };
+  // role must be "admin": App.tsx wraps /resume in <AdminOnly>, which redirects everyone else
+  // to /explore while the Resume Builder is still in progress. Overridden here rather than in
+  // the shared MOCK_USER, which 24 other specs rely on being a plain "user".
+  const user = { ...MOCK_USER, role: "admin", hasContributed };
   await page.route("**/api/auth/me", route => route.fulfill({ json: user }));
   await page.addInitScript(u => {
     localStorage.setItem("authUser", JSON.stringify(u));
@@ -66,10 +69,22 @@ test.describe("Resume Builder", () => {
   // GATE AND AUTH
   // ══════════════════════════════════════════════════════════════════════════
 
-  test("logged-out user sees sign-in prompt", async ({ page }) => {
+  // The builder's own "sign in to use the resume builder" screen is currently unreachable:
+  // <AdminOnly> redirects non-admins away before ResumeBuilder renders at all. These two cover
+  // the redirect that actually happens today. Restore the sign-in-prompt assertion when
+  // AdminOnly comes off /resume and the feature ships to everyone.
+  test("logged-out user is redirected away from /resume", async ({ page }) => {
     await page.route("**/api/auth/me", route => route.fulfill({ status: 401, json: { error: "Unauthorized" } }));
     await page.goto("/resume");
-    await expect(page.getByRole("heading", { name: /sign in to use the resume builder/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page).toHaveURL(/\/explore/, { timeout: 10_000 });
+  });
+
+  test("logged-in non-admin is redirected away from /resume", async ({ page }) => {
+    const user = { ...MOCK_USER, role: "user", hasContributed: true };
+    await page.route("**/api/auth/me", route => route.fulfill({ json: user }));
+    await page.addInitScript(u => localStorage.setItem("authUser", JSON.stringify(u)), user);
+    await page.goto("/resume");
+    await expect(page).toHaveURL(/\/explore/, { timeout: 10_000 });
   });
 
   test("logged-in non-contributor sees gate screen", async ({ page }) => {
@@ -95,7 +110,7 @@ test.describe("Resume Builder", () => {
     await setupContributorSession(page, true);
     await page.route("**/api/resumes/mine", route => route.fulfill({ json: { data: MOCK_RESUME } }));
     await page.goto("/resume");
-    await expect(page.getByText(/classic/i).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: /resume builder/i })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("button", { name: /download pdf/i })).toBeVisible();
   });
 
@@ -110,7 +125,18 @@ test.describe("Resume Builder", () => {
     });
     await page.route("**/api/resumes/mine/prefill", route => route.fulfill({ json: MOCK_PREFILL }));
     await page.goto("/resume");
-    await expect(page.getByRole("textbox", { name: /company/i }).first()).toHaveValue(/StartupCo/i, { timeout: 15_000 });
+    // The builder opens on the "Designed PDF" tab now; the content form lives under "Content",
+    // with each section collapsed until its sidebar button is clicked.
+    await expect(page.getByRole("heading", { name: /resume builder/i })).toBeVisible({ timeout: 15_000 });
+    // With no saved resume the builder opens on ResumeFormatChooser, a modal with no dismiss
+    // control — its only exit is the continue button, so that is the path a real first-time
+    // user takes. The Content tab is already selected afterwards and needs no click.
+    await page.getByRole("button", { name: /(continue to|start with) content/i }).click();
+    await page.getByRole("button", { name: /^experience/i }).first().click();
+    // Prefilled entries render as collapsed summary rows ("StartupCo  Full Stack Developer · …"),
+    // not as open textboxes — the row appearing is what proves the prefill landed.
+    await expect(page.getByRole("button", { name: /StartupCo/i }).first())
+      .toBeVisible({ timeout: 15_000 });
   });
 
   test("style starting point applies design and triggers save", async ({ page }) => {
@@ -118,7 +144,19 @@ test.describe("Resume Builder", () => {
     await page.route("**/api/resumes/mine", route => route.fulfill({ json: { data: MOCK_RESUME } }));
     await page.route("**/api/resumes/mine/prefill", route => route.fulfill({ json: { data: [] } }));
     await page.goto("/resume");
-    await expect(page.getByRole("button", { name: /editorial/i })).toBeVisible({ timeout: 15_000 });
+    // Starting points moved into the Templates modal, behind the "Browse templates" button.
+    await expect(page.getByRole("heading", { name: /resume builder/i })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: /browse templates/i }).click();
+    // Each template is a card: an <h3> with the name plus a generic "Use this template" button.
+    // Innermost div holding BOTH the name and the action — the heading and the button are
+    // siblings at different depths, so filtering on one alone lands on the wrong element.
+    const editorialCard = page
+      .locator("div")
+      .filter({ has: page.getByRole("heading", { name: /^editorial$/i }) })
+      .filter({ has: page.getByRole("button", { name: /use this template/i }) })
+      .last();
+    await expect(editorialCard.getByRole("button", { name: /use this template/i }))
+      .toBeVisible({ timeout: 10_000 });
 
     let saveCalled = false;
     let savedBody: any = null;
@@ -132,7 +170,7 @@ test.describe("Resume Builder", () => {
       }
     });
 
-    await page.getByRole("button", { name: /editorial/i }).click();
+    await editorialCard.getByRole("button", { name: /use this template/i }).click();
     await page.waitForTimeout(2000);
     expect(saveCalled).toBe(true);
     expect(savedBody?.design?.layout).toBe("single");
@@ -142,7 +180,7 @@ test.describe("Resume Builder", () => {
     await setupContributorSession(page, true);
     await page.route("**/api/resumes/mine", route => route.fulfill({ json: { data: MOCK_RESUME } }));
     await page.goto("/resume");
-    await expect(page.getByText(/classic/i).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: /resume builder/i })).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole("button", { name: /skills/i }).click();
     const input = page.getByPlaceholder(/add a skill/i);

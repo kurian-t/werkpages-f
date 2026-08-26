@@ -81,7 +81,9 @@ test.describe("Sign In / Sign Up redirect — authenticated users", () => {
 });
 
 test.describe("OAuth callback routing", () => {
-  test("new user (isNewUser=true) is redirected to /find after OAuth callback", async ({
+  // AuthCallback sends new users to /explore, not /find — Werkpages' landing surface differs
+  // from the RateMyManagers original this spec was forked from.
+  test("new user (isNewUser=true) is redirected to /explore after OAuth callback", async ({
     page,
   }) => {
     await page.route("**/api/auth/me", (route) =>
@@ -104,7 +106,7 @@ test.describe("OAuth callback routing", () => {
 
     await page.goto("/auth/callback?code=test-code&state=test-state");
 
-    await expect(page).toHaveURL(/\/find/, { timeout: 10_000 });
+    await expect(page).toHaveURL(/\/explore/, { timeout: 10_000 });
   });
 
   test("returning user (isNewUser=false) is redirected to returnTo after OAuth callback", async ({

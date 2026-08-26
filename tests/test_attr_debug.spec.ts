@@ -12,8 +12,8 @@ const MOCK_RESUME = {
 };
 
 test("check data-blockid attr", async ({ page }) => {
-  await page.route("**/api/auth/me", r => r.fulfill({ json: { ...MOCK_USER, hasContributed: true } }));
-  await page.addInitScript(u => localStorage.setItem("authUser", JSON.stringify(u)), { ...MOCK_USER, hasContributed: true });
+  await page.route("**/api/auth/me", r => r.fulfill({ json: { ...MOCK_USER, role: "admin", hasContributed: true } }));
+  await page.addInitScript(u => localStorage.setItem("authUser", JSON.stringify(u)), { ...MOCK_USER, role: "admin", hasContributed: true });
   await page.route("**/api/resumes/mine", r => r.fulfill({ json: { data: MOCK_RESUME } }));
   await page.goto("/resume");
   

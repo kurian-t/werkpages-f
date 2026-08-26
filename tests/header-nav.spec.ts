@@ -54,13 +54,14 @@ test.describe("Header — logo and brand", () => {
 test.describe("Header — desktop navigation links", () => {
   test.skip(({ isMobile }) => isMobile, "Desktop nav is hidden on mobile — covered by 'mobile menu' tests");
 
-  test("'Search' nav link navigates to /find", async ({ page }) => {
+  // The "Search" → /find nav link was replaced by "Explore" → /explore.
+  test("'Explore' nav link navigates to /explore", async ({ page }) => {
     await setupAuthPage(page, { loggedIn: false });
     await page.goto("/");
 
-    await page.getByRole("link", { name: /^search$/i }).first().click();
+    await page.getByRole("link", { name: /^explore$/i }).first().click();
 
-    await expect(page).toHaveURL(/\/find/, { timeout: 5_000 });
+    await expect(page).toHaveURL(/\/explore/, { timeout: 5_000 });
   });
 
   test("'Managers' nav link navigates to /directory", async ({ page }) => {
@@ -72,16 +73,17 @@ test.describe("Header — desktop navigation links", () => {
     await expect(page).toHaveURL(/\/directory/, { timeout: 5_000 });
   });
 
-  test("'Search' link is highlighted when on /find", async ({ page }) => {
+  // Header.tsx highlights the active link with the literal class text-[#6d28d9], not text-primary.
+  // "Explore" is deliberately highlighted on /find as well as /explore.
+  test("'Explore' link is highlighted when on /find", async ({ page }) => {
     await setupAuthPage(page, { loggedIn: false });
     await page.route("**/api/managers", (route: any) =>
       route.fulfill({ json: { data: [], total: 0 } })
     );
     await page.goto("/find");
 
-    // The active link gets text-primary class
-    const searchLink = page.getByRole("link", { name: /^search$/i }).first();
-    await expect(searchLink).toHaveClass(/text-primary/, { timeout: 5_000 });
+    const exploreLink = page.getByRole("link", { name: /^explore$/i }).first();
+    await expect(exploreLink).toHaveClass(/text-\[#6d28d9\]/, { timeout: 5_000 });
   });
 
   test("'Managers' link is highlighted when on /directory", async ({ page }) => {
@@ -89,7 +91,7 @@ test.describe("Header — desktop navigation links", () => {
     await page.goto("/directory");
 
     const managersLink = page.getByRole("link", { name: /^managers$/i }).first();
-    await expect(managersLink).toHaveClass(/text-primary/, { timeout: 5_000 });
+    await expect(managersLink).toHaveClass(/text-\[#6d28d9\]/, { timeout: 5_000 });
   });
 
   test("logged-out user sees 'Companies' nav link", async ({ page }) => {
@@ -392,7 +394,7 @@ test.describe("Header — mobile menu", () => {
     ).toBeVisible({ timeout: 5_000 });
   });
 
-  test("mobile menu opens and shows Search and Managers links", async ({
+  test("mobile menu opens and shows Explore and Managers links", async ({
     page,
   }) => {
     await setupAuthPage(page, { loggedIn: false });
@@ -403,7 +405,7 @@ test.describe("Header — mobile menu", () => {
 
     // The mobile nav is a separate nav block that appears below the header
     await expect(
-      page.locator("nav").filter({ hasText: /search/i }).getByRole("link", { name: /^search$/i })
+      page.locator("nav").filter({ hasText: /explore/i }).getByRole("link", { name: /^explore$/i })
     ).toBeVisible({ timeout: 3_000 });
     await expect(
       page.locator("nav").filter({ hasText: /managers/i }).getByRole("link", { name: /^managers$/i })

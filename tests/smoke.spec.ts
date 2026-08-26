@@ -3,7 +3,7 @@ import { test, expect } from "./base";
 test.describe("Smoke tests", () => {
   test("homepage loads and has key content", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle(/Rate My Manager/i);
+    await expect(page).toHaveTitle(/Werkpages/i);
     // Hero section or main CTA should be visible
     await expect(
       page.getByRole("link", { name: /directory/i }).or(

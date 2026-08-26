@@ -1,9 +1,11 @@
 import { test, expect } from "@playwright/test";
 
-test.use({ baseURL: "http://localhost:5175" });
+// No baseURL override — it was pinned to localhost:5175, a port nothing serves.
+// Inherit playwright.config.ts so this runs against the same preview as every other spec.
 
 test("debug drag", async ({ page }) => {
-  const user = { id: "u1", email: "test@example.com", firstName: "Test", lastName: "User", hasContributed: true };
+  // role "admin" is required: /resume is behind <AdminOnly> while the builder is in progress.
+  const user = { id: "u1", email: "test@example.com", firstName: "Test", lastName: "User", role: "admin", hasContributed: true };
   await page.route("**/api/auth/me", r => r.fulfill({ json: user }));
   await page.addInitScript(u => localStorage.setItem("authUser", JSON.stringify(u)), user);
   
