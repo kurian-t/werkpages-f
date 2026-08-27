@@ -45,8 +45,9 @@ test.describe("Industry profile page (/industries/:slug)", () => {
     await page.goto("/industries/technology");
 
     await expect(page.getByRole("heading", { name: "Technology" })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("2 companies")).toBeVisible();
-    await expect(page.getByText("5 managers")).toBeVisible();
+    // Scoped to the hero: the search sidebar now also renders an "N companies" count.
+    await expect(page.locator("section").getByText("2 companies")).toBeVisible();
+    await expect(page.locator("section").getByText("5 managers")).toBeVisible();
 
     await expect(page.getByText(/how this industry rates across the 10 categories/i)).toBeVisible();
     // A couple of the category rows + their values

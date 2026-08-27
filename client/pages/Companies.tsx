@@ -15,6 +15,8 @@ interface CompanyEntry {
   name: string;
   slug?: string;
   logoUrl?: string;
+  industry?: string;
+  industrySlug?: string;
   managerCount: number;
   totalReviews: number;
   avgRating?: number;
@@ -211,11 +213,21 @@ export default function Companies() {
                     <CompanyLogoImg
                       company={co.name}
                       logoUrl={co.logoUrl}
-                      sizeClass="h-10 w-10"
+                      sizeClass="h-12 w-12"
                     />
-                    <h2 className="min-w-0 flex-1 font-semibold text-sm text-foreground group-hover:text-[#6d28d9] leading-tight transition-colors line-clamp-2">
-                      {co.name}
-                    </h2>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="font-semibold text-sm text-foreground group-hover:text-[#6d28d9] leading-tight transition-colors line-clamp-2">
+                        {co.name}
+                      </h2>
+                      {/* Plain text, not a Link: this whole card is a <button>, and nesting an
+                          anchor inside it is invalid HTML and steals the card's click. The
+                          industry is clickable on the company profile page instead. */}
+                      {co.industry && (
+                        <p className="mt-0.5 truncate text-[11px] text-muted-foreground" title={co.industry}>
+                          {co.industry}
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   {!isLocked && co.avgRating != null && <StarRating rating={co.avgRating} />}

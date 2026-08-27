@@ -8,6 +8,7 @@ interface Manager {
   name: string;
   company: string;
   title: string;
+  industry?: string;
   overallRating?: number;
   reviews?: number;
   status?: string;
@@ -79,14 +80,26 @@ export function CompanyLogoImg({ company, logoUrl, sizeClass }: { company: strin
   );
 }
 
-export function CompanyRow({ company, title, logoUrl, logoSize = "md", wrapTitle = false, companyClassName }: { company: string; title: string; logoUrl?: string; logoSize?: "md" | "lg"; wrapTitle?: boolean; companyClassName?: string }) {
-  const sizeClass = logoSize === "lg" ? "h-10 w-10" : "h-8 w-8";
+export function CompanyRow({ company, title, industry, logoUrl, logoSize = "md", wrapTitle = false, companyClassName }: { company: string; title: string; industry?: string; logoUrl?: string; logoSize?: "md" | "lg"; wrapTitle?: boolean; companyClassName?: string }) {
+  // Bumped a step (md 8→10, lg 10→12): with the industry as a third line, the old sizes
+  // left the logo visually undersized against the text column beside it.
+  // Changing "lg" changes the indent the manager profile uses to align its industry line —
+  // see the ml-14 in BossProfile.
+  const sizeClass = logoSize === "lg" ? "h-12 w-12" : "h-10 w-10";
   return (
     <div className="flex min-w-0 items-center gap-2">
       <CompanyLogoImg company={company} logoUrl={logoUrl} sizeClass={sizeClass} />
       <div className="min-w-0 flex-1">
         <p className={`text-sm font-semibold leading-tight truncate ${companyClassName ?? "text-foreground"}`}>{company}</p>
         <p className={`text-xs text-muted-foreground ${wrapTitle ? "break-words" : "truncate"}`}>{title}</p>
+        {/* Third line: the company's industry. Optional — callers that are already scoped to
+            one industry (the industry profile page) leave it off, and it is null until the
+            company has been classified. */}
+        {industry && (
+          <p className="truncate text-[11px] leading-tight text-muted-foreground/80" title={industry}>
+            {industry}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -127,7 +140,7 @@ export default function ManagerCard({ boss, isPending = false }: ManagerCardProp
       </div>
 
       {/* Row 2: company row */}
-      <CompanyRow company={boss.company} title={boss.title} logoUrl={boss.companyLogoUrl} />
+      <CompanyRow company={boss.company} title={boss.title} industry={boss.industry} logoUrl={boss.companyLogoUrl} />
 
       {/* Row 3: rating always owns its own rows on narrow cards */}
       {!isPending && (

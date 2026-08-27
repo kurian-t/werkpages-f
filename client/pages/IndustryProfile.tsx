@@ -1,7 +1,9 @@
 import API_BASE from "@/lib/api";
+import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Layout } from "@/components/Layout";
-import { Star, Building2, Users, MessageSquare, ArrowLeft, Briefcase, Lock } from "lucide-react";
+import { Star, Building2, Users, MessageSquare, ArrowLeft, Lock } from "lucide-react";
+import { IndustryTileIcon } from "@/components/IndustryTileIcon";
 import { useQuery } from "@tanstack/react-query";
 import { CompanyLogoImg } from "@/components/ManagerCard";
 import { useAuth } from "@/hooks/useAuth";
@@ -80,6 +82,7 @@ export default function IndustryProfile() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isLocked = !(user?.hasContributed ?? false);
+  const [search, setSearch] = useState("");
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["industry-profile", slug],
@@ -92,6 +95,13 @@ export default function IndustryProfile() {
   });
 
   const companies = data?.companies ?? [];
+
+  // Filters the companies already loaded for this industry, rather than searching all
+  // companies — searching inside Technology should not surface a bank.
+  const query = search.trim().toLowerCase();
+  const visible = query
+    ? companies.filter(co => co.name.toLowerCase().includes(query))
+    : companies;
 
   return (
     <Layout>
@@ -111,7 +121,7 @@ export default function IndustryProfile() {
           ) : (
             <div className="flex items-center gap-4">
               <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl bg-[#2e0562]/10 text-[#2e0562]">
-                <Briefcase size={24} />
+                <IndustryTileIcon industrySlug={data.slug} size={26} />
               </div>
               <div>
                 <h1 className="text-[24px] sm:text-[30px] font-semibold leading-tight tracking-tight text-foreground">
@@ -132,6 +142,37 @@ export default function IndustryProfile() {
       </section>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex flex-col gap-8 lg:flex-row">
+
+          {/* Sidebar — mirrors the /companies layout */}
+          <aside className="lg:w-56 flex-shrink-0">
+            <div className="space-y-6">
+              <div>
+                <label
+                  htmlFor="industry-company-search"
+                  className="text-xs font-semibold uppercase tracking-widest text-muted-foreground block mb-3"
+                >
+                  Search Companies
+                </label>
+                <input
+                  id="industry-company-search"
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search for a company…"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
+                />
+                {!isLoading && !isError && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {visible.length.toLocaleString()} {visible.length === 1 ? "company" : "companies"}
+                  </p>
+                )}
+              </div>
+            </div>
+          </aside>
+
+          {/* Main content */}
+          <div className="flex-1 min-w-0">
         {!isLoading && !isError && data && Object.keys(data.categoryAverages ?? {}).length > 0 && (
           <CategoryBreakdown categoryAverages={data.categoryAverages} />
         )}
@@ -154,9 +195,16 @@ export default function IndustryProfile() {
           </div>
         )}
 
-        {companies.length > 0 && (
+        {/* Distinguish "industry is empty" (above) from "your search matched nothing". */}
+        {!isLoading && !isError && companies.length > 0 && visible.length === 0 && (
+          <p className="text-center text-sm text-muted-foreground">
+            No companies match "{search.trim()}".
+          </p>
+        )}
+
+        {visible.length > 0 && (
           <div className="grid grid-cols-2 auto-rows-[180px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
-            {companies.map((co) => (
+            {visible.map((co) => (
               <button
                 key={co.slug ?? co.name}
                 onClick={() => navigate(co.slug ? `/companies/${co.slug}` : `/companies/${encodeURIComponent(co.name)}`)}
@@ -168,7 +216,7 @@ export default function IndustryProfile() {
                   </span>
                 )}
                 <div className="flex items-center gap-3 mb-3">
-                  <CompanyLogoImg company={co.name} logoUrl={co.logoUrl} sizeClass="h-10 w-10" />
+                  <CompanyLogoImg company={co.name} logoUrl={co.logoUrl} sizeClass="h-12 w-12" />
                   <h2 className="min-w-0 flex-1 font-semibold text-sm text-foreground group-hover:text-[#6d28d9] leading-tight transition-colors line-clamp-2">
                     {co.name}
                   </h2>
@@ -196,6 +244,8 @@ export default function IndustryProfile() {
             ))}
           </div>
         )}
+          </div>
+        </div>
       </div>
     </Layout>
   );

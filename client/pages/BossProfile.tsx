@@ -4,7 +4,8 @@ import { Helmet } from "react-helmet-async";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Star, Edit2, X, Trash2, Flag, Check, ChevronDown, ArrowLeft } from "lucide-react";
-import { ManagerAvatar, CompanyRow, getInitials, getAvatarColor } from "@/components/ManagerCard";
+import { IndustryIcon } from "@/components/IndustryIcon";
+import { ManagerAvatar, CompanyLogoImg, getInitials, getAvatarColor } from "@/components/ManagerCard";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useAnalytics } from "@/hooks/useAnalytics";
@@ -1483,14 +1484,45 @@ export default function BossProfile() {
                   </div>
                 )}
               </div>
-              <div className="mt-2">
+              {/* Logo beside a text column of company / title / industry, so the logo spans all
+                  three lines. Laid out here rather than via <CompanyRow> because the company name
+                  and the industry link to different pages: one <Link> around the whole row would
+                  make the industry navigate to the company, and nesting anchors is invalid HTML.
+                  The logo is sized to the column — h-14 against three lines of text. */}
+              <div className="mt-2 flex min-w-0 items-center gap-3">
                 <Link
                   to={manager.companySlug ? `/companies/${manager.companySlug}` : `/companies/${encodeURIComponent(manager.company)}`}
-                  className="group/company inline-flex items-center gap-1 hover:opacity-80 transition-opacity"
+                  className="flex-shrink-0 hover:opacity-80 transition-opacity"
+                  aria-label={`View ${manager.company}`}
                 >
-                  <CompanyRow company={manager.company} title={manager.title} logoUrl={manager.companyLogoUrl} logoSize="lg" wrapTitle companyClassName="text-foreground group-hover/company:text-primary transition-colors" />
-                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="ml-1 text-muted-foreground opacity-0 group-hover/company:opacity-60 transition-opacity flex-shrink-0 self-start mt-1"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  <CompanyLogoImg company={manager.company} logoUrl={manager.companyLogoUrl} sizeClass="h-14 w-14" />
                 </Link>
+
+                <div className="min-w-0 flex-1">
+                  <Link
+                    to={manager.companySlug ? `/companies/${manager.companySlug}` : `/companies/${encodeURIComponent(manager.company)}`}
+                    className="group/company inline-flex items-center gap-1"
+                  >
+                    <span className="text-sm font-semibold leading-tight text-foreground group-hover/company:text-primary transition-colors break-words">
+                      {manager.company}
+                    </span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground opacity-0 group-hover/company:opacity-60 transition-opacity flex-shrink-0"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  </Link>
+
+                  <p className="text-xs text-muted-foreground break-words">{manager.title}</p>
+
+                  {manager.industry && manager.industrySlug && (
+                    <Link
+                      to={`/industries/${manager.industrySlug}`}
+                      className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground/80 hover:text-primary transition-colors"
+                    >
+                      {/* Per-industry glyph, matching the flag on the country line and the dot
+                          on the status pill below. Inherits the link's colour on hover. */}
+                      <IndustryIcon industrySlug={manager.industrySlug} size={12} className="flex-shrink-0" />
+                      <span className="break-words">{manager.industry}</span>
+                    </Link>
+                  )}
+                </div>
               </div>
 
               {/* Country */}

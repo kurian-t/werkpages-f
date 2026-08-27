@@ -4,6 +4,7 @@ import { Helmet } from "react-helmet-async";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Star, Building2, Users, MessageSquare, TrendingUp, TrendingDown, ChevronLeft, PlusCircle, Lock, Pencil } from "lucide-react";
+import { IndustryIcon } from "@/components/IndustryIcon";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
@@ -55,6 +56,8 @@ interface CompanyData {
   name: string;
   slug?: string;
   logoUrl?: string;
+  industry?: string;
+  industrySlug?: string;
   managerCount: number;
   totalReviews: number;
   avgRating?: number;
@@ -428,6 +431,24 @@ export default function CompanyProfile() {
                   )}
                 </div>
               )}
+
+              {/* Industry — under the company name, links through to the industry page.
+                  Absent until the AI classifier has run for this company. */}
+              {data.industry && data.industrySlug && (
+                <div className="mt-1.5">
+                  {/* Plain text with the industry glyph, matching the manager profile —
+                      the pill treatment made the same information read as two different
+                      things across the two pages. */}
+                  <Link
+                    to={`/industries/${data.industrySlug}`}
+                    className="inline-flex items-center gap-1 text-xs text-muted-foreground/80 hover:text-primary transition-colors"
+                  >
+                    <IndustryIcon industrySlug={data.industrySlug} size={12} className="flex-shrink-0" />
+                    <span className="break-words">{data.industry}</span>
+                  </Link>
+                </div>
+              )}
+
               {data.avgRating != null && (
                 <div className="mt-1.5 flex items-center gap-2">
                   {isLocked ? (

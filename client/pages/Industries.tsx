@@ -1,7 +1,9 @@
 import API_BASE from "@/lib/api";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Star, Building2, Users, Briefcase } from "lucide-react";
+import { IndustryTileIcon } from "@/components/IndustryTileIcon";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 
@@ -40,6 +42,7 @@ function IndustryHeroImage({ imgClass }: { imgClass: string }) {
 
 export default function Industries() {
   const navigate = useNavigate();
+  const [search, setSearch] = useState("");
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["industry-listing"],
@@ -50,6 +53,13 @@ export default function Industries() {
   });
 
   const industries = data ?? [];
+
+  // Client-side filter: the taxonomy is fixed at 24 entries and they all arrive in one
+  // response, so there is nothing to fetch per keystroke.
+  const query = search.trim().toLowerCase();
+  const visible = query
+    ? industries.filter(ind => ind.industry.toLowerCase().includes(query))
+    : industries;
 
   return (
     <Layout>
@@ -85,6 +95,37 @@ export default function Industries() {
       </section>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex flex-col gap-8 lg:flex-row">
+
+          {/* Sidebar — mirrors the /companies layout */}
+          <aside className="lg:w-56 flex-shrink-0">
+            <div className="space-y-6">
+              <div>
+                <label
+                  htmlFor="industry-search"
+                  className="text-xs font-semibold uppercase tracking-widest text-muted-foreground block mb-3"
+                >
+                  Search Industries
+                </label>
+                <input
+                  id="industry-search"
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search for an industry…"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
+                />
+                {!isLoading && !isError && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {visible.length.toLocaleString()} {visible.length === 1 ? "industry" : "industries"}
+                  </p>
+                )}
+              </div>
+            </div>
+          </aside>
+
+          {/* Main content */}
+          <div className="flex-1 min-w-0">
         {isLoading && (
           <p className="text-center text-sm text-muted-foreground">Loading industries…</p>
         )}
@@ -99,19 +140,37 @@ export default function Industries() {
           </div>
         )}
 
-        {!isLoading && !isError && industries.length > 0 && (
-          <div className="grid grid-cols-2 auto-rows-[180px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
-            {industries.map((ind) => (
+        {/* Distinguish "nothing classified yet" (above) from "your search matched nothing". */}
+        {!isLoading && !isError && industries.length > 0 && visible.length === 0 && (
+          <p className="text-center text-sm text-muted-foreground">
+            No industries match "{search.trim()}".
+          </p>
+        )}
+
+        {!isLoading && !isError && visible.length > 0 && (
+          // 220px, not 200px: after 32px padding and the 40px icon plus its 12px gap, a 200px
+          // cell left ~116px for the name, and "Telecommunications" needs ~126px at text-sm.
+          // global.css applies `overflow-wrap: anywhere` to headings, so it broke mid-word
+          // ("Telecommunic / ations") rather than overflowing.
+          <div className="grid grid-cols-2 auto-rows-[180px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,220px)] min-[420px]:gap-4">
+            {visible.map((ind) => (
               <button
                 key={ind.slug}
                 onClick={() => navigate(`/industries/${ind.slug}`)}
-                className="group h-full w-full min-w-0 text-left rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all min-[420px]:w-[200px] sm:p-5"
+                className="group h-full w-full min-w-0 text-left rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all min-[420px]:w-[220px] sm:p-5"
               >
                 <div className="flex items-center gap-3 mb-3">
                   <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[#2e0562]/10 text-[#2e0562]">
-                    <Briefcase size={18} />
+                    <IndustryTileIcon industrySlug={ind.slug} size={20} />
                   </div>
-                  <h2 className="min-w-0 flex-1 font-semibold text-sm text-foreground group-hover:text-[#6d28d9] leading-tight transition-colors line-clamp-2">
+                  {/* hyphens-auto so any name still too long to fit breaks as "Telecommu-
+                      nications" rather than silently mid-word. Belt and braces alongside the
+                      wider cell — the taxonomy is fixed at 24 names, but the longest of them
+                      should not depend on a pixel measurement staying true. */}
+                  <h2
+                    lang="en"
+                    className="min-w-0 flex-1 font-semibold text-sm text-foreground group-hover:text-[#6d28d9] leading-tight transition-colors line-clamp-2 hyphens-auto"
+                  >
                     {ind.industry}
                   </h2>
                 </div>
@@ -139,6 +198,8 @@ export default function Industries() {
             ))}
           </div>
         )}
+          </div>
+        </div>
       </div>
     </Layout>
   );

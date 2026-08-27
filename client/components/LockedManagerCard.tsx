@@ -7,6 +7,7 @@ interface LockedManager {
   name: string;
   company?: string;
   title?: string;
+  industry?: string;
   companyLogoUrl?: string;
   approvalStatus?: string;
   overallRating?: number | null;
@@ -82,7 +83,7 @@ export default function LockedManagerCard({ boss, isLoggedIn: _isLoggedIn, narro
           </div>
         ) : blurTitle ? (
           <div className="flex items-center gap-2">
-            <CompanyLogoImg company={boss.company ?? ""} logoUrl={boss.companyLogoUrl} sizeClass="h-8 w-8" />
+            <CompanyLogoImg company={boss.company ?? ""} logoUrl={boss.companyLogoUrl} sizeClass="h-10 w-10" />
             <div className="min-w-0">
               <p className="text-sm font-semibold leading-tight truncate text-foreground">{boss.company}</p>
               <BlurPlaceholder width="w-24" />
@@ -92,6 +93,7 @@ export default function LockedManagerCard({ boss, isLoggedIn: _isLoggedIn, narro
           <CompanyRow
             company={boss.company}
             title={boss.title ?? ""}
+            industry={boss.industry}
             logoUrl={boss.companyLogoUrl}
           />
         )}

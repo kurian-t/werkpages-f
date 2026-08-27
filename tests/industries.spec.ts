@@ -19,13 +19,14 @@ test.describe("Industries browse page (/industries)", () => {
     await page.goto("/industries");
 
     await expect(page.getByRole("heading", { name: /compare workplace experiences by industry/i })).toBeVisible({ timeout: 10_000 });
-    // The industry count was removed from the header.
-    await expect(page.getByText(/\d+ industries/i)).not.toBeVisible();
+    // No count in the header — it lives beside the sidebar search instead.
+    await expect(page.locator("section").getByText(/\d+ industries/i)).not.toBeVisible();
 
     await expect(page.getByRole("heading", { name: "Technology" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Financial Services" })).toBeVisible();
-    // stats on a tile
-    await expect(page.getByText("12 companies")).toBeVisible();
+    // stats on a tile — scoped to the grid, since the sidebar also renders an "N companies"
+    // style count and an unscoped getByText would match both under strict mode.
+    await expect(page.locator("button").getByText("12 companies")).toBeVisible();
     await expect(page.getByText("40 managers")).toBeVisible();
   });
 
@@ -60,11 +61,36 @@ test.describe("Industries browse page (/industries)", () => {
     await expect(page.getByText(/no industries yet/i)).toBeVisible({ timeout: 10_000 });
   });
 
-  test("no industry count label is shown, even with exactly one industry", async ({ page }) => {
+  test("industry count sits beside the search, not in the header", async ({ page }) => {
     await mockIndustries(page, [MOCK_INDUSTRIES[0]]);
     await page.goto("/industries");
     await expect(page.getByRole("heading", { name: "Technology" })).toBeVisible({ timeout: 10_000 });
-    // The count label ("1 industry" / "N industries") was removed from the header.
-    await expect(page.getByText(/^\d+ industr(y|ies)$/i)).not.toBeVisible();
+    // Still absent from the hero header...
+    await expect(page.locator("section").getByText(/^\d+ industr(y|ies)$/i)).not.toBeVisible();
+    // ...and present in the search sidebar, singular for one result.
+    await expect(page.locator("aside").getByText("1 industry")).toBeVisible();
+  });
+
+  test("search filters the industry list and updates the count", async ({ page }) => {
+    await mockIndustries(page);
+    await page.goto("/industries");
+    await expect(page.getByRole("heading", { name: "Technology" })).toBeVisible({ timeout: 10_000 });
+
+    await page.getByPlaceholder(/search for an industry/i).fill("financ");
+
+    await expect(page.getByRole("heading", { name: "Financial Services" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Technology" })).not.toBeVisible();
+    await expect(page.locator("aside").getByText("1 industry")).toBeVisible();
+  });
+
+  test("search with no matches shows a no-results message", async ({ page }) => {
+    await mockIndustries(page);
+    await page.goto("/industries");
+    await expect(page.getByRole("heading", { name: "Technology" })).toBeVisible({ timeout: 10_000 });
+
+    await page.getByPlaceholder(/search for an industry/i).fill("zzzzz");
+
+    await expect(page.getByText(/no industries match/i)).toBeVisible();
+    await expect(page.locator("aside").getByText("0 industries")).toBeVisible();
   });
 });
