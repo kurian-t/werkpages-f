@@ -126,6 +126,9 @@ function GhostManagerCard({ index, company, logoUrl, isLoggedIn }: { index: numb
     </div>
   );
 }
+/** Matches ManagerCard, LockedManagerCard, Companies and Industries. */
+const TOP_RATED_THRESHOLD = 4.5;
+
 const SIDEBAR_INPUT =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]";
 export default function CompanyProfile() {
@@ -670,8 +673,14 @@ export default function CompanyProfile() {
                         <Link
                           key={boss.id}
                           to={data.slug && boss.slug ? managerPath(data.industrySlug, data.slug, boss.slug) : `/manager/${boss.id}`}
-                          className="group flex h-full w-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all min-[420px]:w-[200px] sm:p-5"
+                          className="group relative flex h-full w-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all min-[420px]:w-[200px] sm:p-5"
                         >
+                          {/* Same amber pill as the manager, company and industry cards. */}
+                          {Number(boss.overallRating) >= TOP_RATED_THRESHOLD && (
+                            <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                              <Star size={9} className="fill-amber-500 text-amber-500" /> Top rated
+                            </span>
+                          )}
                           <div className="flex items-center gap-3 mb-3">
                             <div className="flex-shrink-0"><ManagerAvatar name={boss.name} size="sm" /></div>
                             <p className="text-sm font-semibold text-foreground group-hover:text-[#6d28d9] transition-colors leading-tight truncate flex-1 min-w-0">{boss.name}</p>
@@ -796,8 +805,14 @@ export default function CompanyProfile() {
                   <Link
                     key={mgr.id}
                     to={data.slug && mgr.slug ? managerPath(data.industrySlug, data.slug, mgr.slug) : `/manager/${mgr.id}`}
-                    className="group flex h-full w-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all min-[420px]:w-[200px] sm:p-5"
+                    className="group relative flex h-full w-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all min-[420px]:w-[200px] sm:p-5"
                   >
+                    {/* Same amber pill as the manager, company and industry cards. */}
+                    {Number(mgr.overallRating) >= TOP_RATED_THRESHOLD && (
+                      <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                        <Star size={9} className="fill-amber-500 text-amber-500" /> Top rated
+                      </span>
+                    )}
                     <div className="flex items-center gap-3 mb-3">
                       <div className="flex-shrink-0"><ManagerAvatar name={mgr.name} size="sm" /></div>
                       <p className="text-sm font-semibold text-foreground group-hover:text-[#6d28d9] transition-colors leading-tight truncate flex-1 min-w-0">
