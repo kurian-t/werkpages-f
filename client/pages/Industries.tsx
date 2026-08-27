@@ -120,12 +120,17 @@ export default function Industries() {
                   ? <StarRating rating={ind.avgRating} />
                   : <p className="text-xs text-muted-foreground">No ratings yet</p>}
 
-                <div className="mt-3 flex flex-col items-start gap-1.5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:gap-3">
-                  <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
+                {/* flex-wrap + shrink-0, not min-w-0: min-w-0 let each stat shrink below its
+                    own content width, and whitespace-nowrap then pushed the text out of that
+                    shrunken box, so "13 companies" ran straight into the managers icon and the
+                    gap looked like it had vanished. Now each stat keeps its intrinsic width and
+                    the row wraps to a second line when the card is too narrow for both. */}
+                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span className="flex shrink-0 items-center gap-1 whitespace-nowrap">
                     <Building2 size={11} className="flex-shrink-0" />
                     {ind.companyCount} {ind.companyCount === 1 ? "company" : "companies"}
                   </span>
-                  <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
+                  <span className="flex shrink-0 items-center gap-1 whitespace-nowrap">
                     <Users size={11} className="flex-shrink-0" />
                     {ind.managerCount} {ind.managerCount === 1 ? "manager" : "managers"}
                   </span>
