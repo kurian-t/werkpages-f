@@ -1,6 +1,9 @@
-import { Lock } from "lucide-react";
+import { Lock, Star } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ManagerAvatar, CompanyRow, CompanyLogoImg } from "./ManagerCard";
+
+/** Matches ManagerCard, Companies and Industries — one threshold everywhere. */
+const TOP_RATED_THRESHOLD = 4.5;
 
 interface LockedManager {
   id: number;
@@ -60,11 +63,19 @@ export default function LockedManagerCard({ boss, isLoggedIn: _isLoggedIn, narro
 
   const inner = (
     <div className="group flex flex-col rounded-2xl border border-border bg-card p-5 shadow-sm relative overflow-hidden cursor-pointer hover:shadow-md hover:border-primary/30 transition-all">
-      {/* Badge */}
-      <div className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-500">
-        <Lock size={10} />
-        {narrowSearch ? "Narrow search" : "Rate to unlock"}
-      </div>
+      {/* Badge. Top rated wins when the rating is actually visible: a card showing 4.7 while
+          also saying "Rate to unlock" is contradictory, and this is the same amber pill the
+          company and manager cards use so the three read as one thing. */}
+      {!blurRating && (boss.overallRating ?? 0) >= TOP_RATED_THRESHOLD ? (
+        <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+          <Star size={9} className="fill-amber-500 text-amber-500" /> Top rated
+        </span>
+      ) : (
+        <div className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-500">
+          <Lock size={10} />
+          {narrowSearch ? "Narrow search" : "Rate to unlock"}
+        </div>
+      )}
 
       <ManagerAvatar name={boss.name} />
 

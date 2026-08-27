@@ -128,7 +128,11 @@ test.describe("No text wrapping on mobile (375px)", () => {
     });
     await page.goto("/directory");
 
-    const badge = page.getByText("★ Top Rated").first();
+    // Badge is now an amber pill at the card's top-right with a lucide Star icon,
+    // matching the company cards — the literal "★ Top Rated" text is gone.
+    // exact: the sort dropdown has an <option>Top Rated</option> that a loose
+    // match also picks up. The badge is lowercase "rated", the option is not.
+    const badge = page.getByText("Top rated", { exact: true }).first();
     await expect(badge).toBeVisible({ timeout: 5_000 });
     expect(await isSingleLine(page, badge)).toBe(true);
   });

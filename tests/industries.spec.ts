@@ -71,6 +71,27 @@ test.describe("Industries browse page (/industries)", () => {
     await expect(page.locator("aside").getByText("1 industry")).toBeVisible();
   });
 
+  test("industry rated at or above the threshold shows a Top rated badge", async ({ page }) => {
+    await mockIndustries(page, [{ ...MOCK_INDUSTRIES[0], industry: "Technology", avgRating: 4.7 }]);
+    await page.goto("/industries");
+    await expect(page.getByRole("heading", { name: "Technology" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/top rated/i)).toBeVisible();
+  });
+
+  test("industry below the threshold shows no Top rated badge", async ({ page }) => {
+    await mockIndustries(page, [{ ...MOCK_INDUSTRIES[0], industry: "Technology", avgRating: 4.4 }]);
+    await page.goto("/industries");
+    await expect(page.getByRole("heading", { name: "Technology" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/top rated/i)).not.toBeVisible();
+  });
+
+  test("industry with no rating shows no Top rated badge", async ({ page }) => {
+    await mockIndustries(page, [{ ...MOCK_INDUSTRIES[0], industry: "Technology", avgRating: null }]);
+    await page.goto("/industries");
+    await expect(page.getByRole("heading", { name: "Technology" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/top rated/i)).not.toBeVisible();
+  });
+
   test("search filters the industry list and updates the count", async ({ page }) => {
     await mockIndustries(page);
     await page.goto("/industries");

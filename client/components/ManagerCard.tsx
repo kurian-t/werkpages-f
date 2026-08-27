@@ -110,12 +110,19 @@ export default function ManagerCard({ boss, isPending = false }: ManagerCardProp
   return (
     <Link
       to={`/manager/${boss.id}`}
-      className={`group flex h-[210px] w-full min-w-0 flex-col rounded-2xl border bg-card p-4 shadow-sm transition-all hover:shadow-md min-[420px]:w-[200px] sm:p-5 ${
+      className={`group relative flex h-[210px] w-full min-w-0 flex-col rounded-2xl border bg-card p-4 shadow-sm transition-all hover:shadow-md min-[420px]:w-[200px] sm:p-5 ${
         isPending
           ? "border-amber-300 hover:border-amber-400 hover:shadow-amber-100"
           : "border-border hover:border-[#2e0562]/30 hover:shadow-[#2e0562]/5"
       }`}
     >
+      {/* Top rated — absolute top-right, matching the company cards exactly. */}
+      {!isPending && rating >= 4.5 && (
+        <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+          <Star size={9} className="fill-amber-500 text-amber-500" /> Top rated
+        </span>
+      )}
+
       {/* Row 1: avatar + name */}
       <div className="flex min-w-0 items-center gap-3 mb-3">
         <div className="flex-shrink-0">
@@ -129,11 +136,6 @@ export default function ManagerCard({ boss, isPending = false }: ManagerCardProp
             <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 whitespace-nowrap mt-0.5">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
               Pending
-            </span>
-          )}
-          {!isPending && rating >= 4.5 && (
-            <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 whitespace-nowrap mt-0.5">
-              ★ Top Rated
             </span>
           )}
         </div>
