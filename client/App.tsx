@@ -69,9 +69,14 @@ const App = () => (
           <PostHogRouteTracker />
           <Routes>
             <Route path="/" element={<Index />} />
-            {/* Legacy numeric-ID route — redirects to slug URL */}
+            {/* Canonical, industry-nested routes. The industry segment is descriptive — pages
+                resolve on the company and manager slugs alone, and redirect to the canonical
+                path when the segment is stale (e.g. after a company is reclassified). */}
+            <Route path="/industries/:industrySlug/companies/:companySlug" element={<CompanyProfile />} />
+            <Route path="/industries/:industrySlug/companies/:companySlug/managers/:managerSlug" element={<BossProfile />} />
+            {/* Legacy routes. Still resolve, then redirect to the canonical path above, so
+                existing links and everything already in Google's index keep working. */}
             <Route path="/manager/:id" element={<BossProfile />} />
-            {/* New SEO-friendly slug routes */}
             <Route path="/companies/:companySlug/managers/:managerSlug" element={<BossProfile />} />
             <Route path="/directory" element={<Directory />} />
             <Route path="/add" element={<AddBoss />} />

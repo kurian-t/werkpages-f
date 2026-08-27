@@ -6,6 +6,7 @@ import { Star, Building2, Users, MessageSquare, Lock, ChevronLeft, ChevronRight 
 import { useQuery } from "@tanstack/react-query";
 import { CompanyLogoImg } from "@/components/ManagerCard";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
+import { companyPath, companyPathByName } from "@/lib/urls";
 import { useAuth } from "@/hooks/useAuth";
 import axios from "axios";
 
@@ -82,10 +83,13 @@ export default function Companies() {
   const totalPages = Math.ceil(companies.length / PAGE_SIZE);
   const displayed = companies.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const goToCompany = (name: string, slug?: string) => {
+  // industrySlug is optional: the company cards know it, but the autocomplete only yields a
+  // name, and the industry cannot be known until the company is resolved. Without it we send
+  // the un-nested lookup URL, and CompanyProfile redirects to the canonical path on load.
+  const goToCompany = (name: string, slug?: string, industrySlug?: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    navigate(slug ? `/companies/${slug}` : `/companies/${encodeURIComponent(trimmed)}`);
+    navigate(slug ? companyPath(industrySlug, slug) : companyPathByName(trimmed));
   };
 
   return (
@@ -201,7 +205,7 @@ export default function Companies() {
               {displayed.map((co) => (
                 <button
                   key={co.name}
-                  onClick={() => goToCompany(co.name, co.slug)}
+                  onClick={() => goToCompany(co.name, co.slug, co.industrySlug)}
                   className="group relative h-full w-full min-w-0 text-left rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all min-[420px]:w-[200px] sm:p-5"
                 >
                   {!isLocked && co.avgRating != null && co.avgRating >= 4.5 && (

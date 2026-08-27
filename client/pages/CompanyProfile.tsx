@@ -5,6 +5,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Star, Building2, Users, MessageSquare, TrendingUp, TrendingDown, ChevronLeft, PlusCircle, Lock, Pencil } from "lucide-react";
 import { IndustryIcon } from "@/components/IndustryIcon";
+import { companyPath, managerPath } from "@/lib/urls";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
@@ -128,7 +129,7 @@ function GhostManagerCard({ index, company, logoUrl, isLoggedIn }: { index: numb
 const SIDEBAR_INPUT =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]";
 export default function CompanyProfile() {
-  const { companySlug } = useParams<{ companySlug: string }>();
+  const { industrySlug: industryParam, companySlug } = useParams<{ industrySlug?: string; companySlug: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -280,13 +281,17 @@ export default function CompanyProfile() {
     // background on every mount/focus — keeping them current for all users, not 5-min stale.
     retry: false,
   });
-  // Redirect legacy company-name URLs (e.g. /companies/Revolut) to the canonical slug URL.
-  // This collapses all historical URL variants into one canonical form for Google.
+  // Collapse every historical URL variant into the one canonical form for Google: legacy
+  // company-name URLs (/companies/Revolut), the flat slug URL (/companies/revolut), and any
+  // nested URL whose industry segment went stale after the company was reclassified.
+  // The industry segment is descriptive — the company slug alone resolves the page.
   useEffect(() => {
-    if (!isSlugParam && data?.slug) {
-      navigate(`/companies/${data.slug}`, { replace: true });
+    if (!data?.slug) return;
+    const canonical = companyPath(data.industrySlug, data.slug);
+    if (window.location.pathname !== canonical) {
+      navigate(canonical, { replace: true });
     }
-  }, [isSlugParam, data?.slug, navigate]);
+  }, [isSlugParam, industryParam, data?.slug, data?.industrySlug, navigate]);
   if (isLoading) {
     return (
       <Layout>
@@ -330,7 +335,7 @@ export default function CompanyProfile() {
   const hasAreas  = catEntries.length >= 3;
   // Whether to show unlocked tiles in the results column
   const resultsUnlocked = searchResults !== null ? searchHasContributed : !isLocked;
-  const canonicalUrl = `https://werkpages.com/companies/${data.slug ?? companySlug}`;
+  const canonicalUrl = `https://werkpages.com${companyPath(data.industrySlug, data.slug ?? companySlug)}`;
   // Thin pages (no reviews yet) are near-duplicate empty templates — keep them out of the index
   // until they have real content, so Google doesn't flag them as duplicates. "follow" preserves
   // link equity to the managers/pages that ARE worth indexing.
@@ -664,7 +669,7 @@ export default function CompanyProfile() {
                       resultsUnlocked ? (
                         <Link
                           key={boss.id}
-                          to={data.slug && boss.slug ? `/companies/${data.slug}/managers/${boss.slug}` : `/manager/${boss.id}`}
+                          to={data.slug && boss.slug ? managerPath(data.industrySlug, data.slug, boss.slug) : `/manager/${boss.id}`}
                           className="group flex h-full w-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all min-[420px]:w-[200px] sm:p-5"
                         >
                           <div className="flex items-center gap-3 mb-3">
@@ -790,7 +795,7 @@ export default function CompanyProfile() {
                 {data.managers.map((mgr) => (
                   <Link
                     key={mgr.id}
-                    to={data.slug && mgr.slug ? `/companies/${data.slug}/managers/${mgr.slug}` : `/manager/${mgr.id}`}
+                    to={data.slug && mgr.slug ? managerPath(data.industrySlug, data.slug, mgr.slug) : `/manager/${mgr.id}`}
                     className="group flex h-full w-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all min-[420px]:w-[200px] sm:p-5"
                   >
                     <div className="flex items-center gap-3 mb-3">

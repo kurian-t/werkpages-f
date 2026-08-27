@@ -4,6 +4,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Star, Building2, Users, MessageSquare, ArrowLeft, Lock } from "lucide-react";
 import { IndustryTileIcon } from "@/components/IndustryTileIcon";
+import { companyPath, companyPathByName } from "@/lib/urls";
 import { useQuery } from "@tanstack/react-query";
 import { CompanyLogoImg } from "@/components/ManagerCard";
 import { useAuth } from "@/hooks/useAuth";
@@ -207,7 +208,7 @@ export default function IndustryProfile() {
             {visible.map((co) => (
               <button
                 key={co.slug ?? co.name}
-                onClick={() => navigate(co.slug ? `/companies/${co.slug}` : `/companies/${encodeURIComponent(co.name)}`)}
+                onClick={() => navigate(co.slug ? companyPath(data?.slug, co.slug) : companyPathByName(co.name))}
                 className="group relative h-full w-full min-w-0 text-left rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all min-[420px]:w-[200px] sm:p-5"
               >
                 {!isLocked && co.avgRating != null && co.avgRating >= TOP_RATED_THRESHOLD && (

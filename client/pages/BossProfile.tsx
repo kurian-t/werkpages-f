@@ -5,6 +5,7 @@ import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom"
 import { Layout } from "@/components/Layout";
 import { Star, Edit2, X, Trash2, Flag, Check, ChevronDown, ArrowLeft } from "lucide-react";
 import { IndustryIcon } from "@/components/IndustryIcon";
+import { managerPath, companyPath } from "@/lib/urls";
 import { ManagerAvatar, CompanyLogoImg, getInitials, getAvatarColor } from "@/components/ManagerCard";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
@@ -150,8 +151,9 @@ function RuleList({ rules }: { rules: Rule[] }) {
 }
 
 export default function BossProfile() {
-  const { id, companySlug, managerSlug } = useParams<{
+  const { id, industrySlug: industryParam, companySlug, managerSlug } = useParams<{
     id?: string;
+    industrySlug?: string;
     companySlug?: string;
     managerSlug?: string;
   }>();
@@ -188,9 +190,21 @@ export default function BossProfile() {
   // Redirect legacy /manager/:id URLs to the canonical slug URL once data loads
   useEffect(() => {
     if (id && manager?.slug && manager?.companySlug) {
-      navigate(`/companies/${manager.companySlug}/managers/${manager.slug}`, { replace: true });
+      navigate(managerPath(manager.industrySlug, manager.companySlug, manager.slug), { replace: true });
     }
-  }, [id, manager?.slug, manager?.companySlug, navigate]);
+  }, [id, manager?.slug, manager?.companySlug, manager?.industrySlug, navigate]);
+
+  // Canonicalise the industry segment. It is descriptive rather than identifying, so a page
+  // reached via the old flat /companies/:c/managers/:m route — or via a segment that went stale
+  // when the company was reclassified — still resolves, then corrects the URL in place.
+  useEffect(() => {
+    if (id || !manager?.slug || !manager?.companySlug) return;
+    const canonical = managerPath(manager.industrySlug, manager.companySlug, manager.slug);
+    if (window.location.pathname !== canonical) {
+      queryClient.setQueryData(["manager-slug", manager.companySlug, manager.slug], manager);
+      navigate(canonical, { replace: true });
+    }
+  }, [id, industryParam, manager?.slug, manager?.companySlug, manager?.industrySlug, navigate, queryClient]);
 
   // If company changed and backend returned a canonical path, silently correct the URL.
   // Pre-populate the cache for the new key so the re-render doesn't trigger a second fetch.
@@ -1491,7 +1505,7 @@ export default function BossProfile() {
                   The logo is sized to the column — h-14 against three lines of text. */}
               <div className="mt-2 flex min-w-0 items-center gap-3">
                 <Link
-                  to={manager.companySlug ? `/companies/${manager.companySlug}` : `/companies/${encodeURIComponent(manager.company)}`}
+                  to={manager.companySlug ? companyPath(manager.industrySlug, manager.companySlug) : `/companies/${encodeURIComponent(manager.company)}`}
                   className="flex-shrink-0 hover:opacity-80 transition-opacity"
                   aria-label={`View ${manager.company}`}
                 >
@@ -1500,7 +1514,7 @@ export default function BossProfile() {
 
                 <div className="min-w-0 flex-1">
                   <Link
-                    to={manager.companySlug ? `/companies/${manager.companySlug}` : `/companies/${encodeURIComponent(manager.company)}`}
+                    to={manager.companySlug ? companyPath(manager.industrySlug, manager.companySlug) : `/companies/${encodeURIComponent(manager.company)}`}
                     className="group/company inline-flex items-center gap-1"
                   >
                     <span className="text-sm font-semibold leading-tight text-foreground group-hover/company:text-primary transition-colors break-words">

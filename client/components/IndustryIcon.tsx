@@ -199,6 +199,10 @@ const GLYPHS: Record<string, JSX.Element> = {
   ),
 };
 
+// NOTE: "mining-and-metals" and "consumer-services" have no hand-authored SVG in the
+// industry_svg_icons set, so they render the "other" glyph here. The Industries tab shows a
+// proper emoji for both. Drop matching SVGs into the set and regenerate to close the gap.
+
 /** Canonical fallback for an unclassified or unrecognised industry. */
 const FALLBACK = "other";
 

@@ -24,6 +24,8 @@ const TAXONOMY_SLUGS = [
   "hospitality-and-tourism",
   "insurance",
   "legal",
+  "mining-and-metals",
+  "consumer-services",
   "manufacturing",
   "media-and-entertainment",
   "nonprofit",
@@ -37,20 +39,24 @@ const TAXONOMY_SLUGS = [
   "transportation-and-logistics",
 ];
 
+// The SVG set has no glyph for these yet — they intentionally fall back to "other".
+const SVG_SET_GAPS = ["mining-and-metals", "consumer-services"];
+
 describe.each([
-  ["IndustryIcon (SVG set — manager/company profiles)", INDUSTRY_ICON_SLUGS, hasIndustryIcon],
-  ["IndustryTileIcon (lucide set — Industries tab)",    INDUSTRY_TILE_ICON_SLUGS, hasIndustryTileIcon],
-])("%s coverage", (_label, SLUGS, has) => {
-  it("has an icon for every industry in the taxonomy", () => {
-    expect(TAXONOMY_SLUGS.filter(slug => !has(slug))).toEqual([]);
+  ["IndustryIcon (SVG set — manager/company profiles)", INDUSTRY_ICON_SLUGS, hasIndustryIcon, SVG_SET_GAPS],
+  ["IndustryTileIcon (emoji set — Industries tab)",     INDUSTRY_TILE_ICON_SLUGS, hasIndustryTileIcon, []],
+])("%s coverage", (_label, SLUGS, has, gaps) => {
+  it("has an icon for every industry in the taxonomy, except known gaps", () => {
+    const missing = TAXONOMY_SLUGS.filter(slug => !has(slug));
+    expect(missing).toEqual(gaps);
   });
 
   it("defines no icons for slugs outside the taxonomy", () => {
     expect(SLUGS.filter(slug => !TAXONOMY_SLUGS.includes(slug))).toEqual([]);
   });
 
-  it("covers exactly the 24 taxonomy entries", () => {
-    expect(SLUGS).toHaveLength(TAXONOMY_SLUGS.length);
+  it("covers the taxonomy minus its known gaps", () => {
+    expect(SLUGS).toHaveLength(TAXONOMY_SLUGS.length - gaps.length);
   });
 
   it("reports unknown and empty slugs as having no icon", () => {

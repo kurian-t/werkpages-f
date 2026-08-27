@@ -22,6 +22,8 @@ const EMOJI: Record<string, string> = {
   "hospitality-and-tourism":      "🧳",
   "insurance":                    "🛡️",
   "legal":                        "⚖️",
+  "mining-and-metals":            "⛏️",
+  "consumer-services":            "🛎️",
   "manufacturing":                "🏭",
   "media-and-entertainment":      "🎬",
   "nonprofit":                    "🤝",
