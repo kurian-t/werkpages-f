@@ -10,7 +10,7 @@ interface TopRatedPillProps {
    * the same thing everywhere is the point.
    */
   variant?: "corner" | "inline";
-  /** Suppresses the pill regardless of rating — used where the rating itself is hidden. */
+  /** Suppresses the pill regardless of rating - used where the rating itself is hidden. */
   hidden?: boolean;
 }
 

@@ -23,7 +23,7 @@ const CATEGORY_AVERAGES: Record<string, number> = {
   "Overall Working Experience": 2,
 };
 
-/** Two-company career: Blackberry (1.1 — low rating, tick near scroll edge) then BGC Partners (1.7) */
+/** Two-company career: Blackberry (1.1 - low rating, tick near scroll edge) then BGC Partners (1.7) */
 const CAREER_SEGMENTS = [
   {
     company: "Blackberry",
@@ -63,7 +63,7 @@ const MANAGER_WITH_PAST_CAREER_ENTRY = {
   ],
 };
 
-/** Career-segments returned by the API — only IBM has reviews; Amazon has none. */
+/** Career-segments returned by the API - only IBM has reviews; Amazon has none. */
 const IBM_CAREER_SEGMENT = {
   company: "IBM",
   role: "Distinguished Engineer",
@@ -76,7 +76,7 @@ const IBM_CAREER_SEGMENT = {
 };
 
 async function setupTimelinePage(page: Page) {
-  // Set up all routes from scratch — avoids fixture route-ordering conflicts
+  // Set up all routes from scratch - avoids fixture route-ordering conflicts
   // Must be logged in: CareerTimeline is gated behind authentication in BossProfile
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({ json: { id: "test-user-1", username: "testuser", role: "user", isBanned: false, hasContributed: true } })
@@ -134,7 +134,7 @@ test.describe("CareerTimeline", () => {
     await setupTimelinePage(page);
     await page.getByText("Career Performance Trajectory").scrollIntoViewIfNeeded();
 
-    // The trailing card is off-screen to the right in the horizontal timeline — scroll it into view
+    // The trailing card is off-screen to the right in the horizontal timeline - scroll it into view
     const trailingText = page.getByText("Performance trajectory is tracked as additional roles and companies are added.");
     await trailingText.scrollIntoViewIfNeeded();
 
@@ -181,7 +181,7 @@ test.describe("CareerTimeline", () => {
     // IBM shows as a real card with a rating
     await expect(page.getByText("IBM", { exact: true })).toBeVisible({ timeout: 5_000 });
 
-    // Amazon is the next node to the right — scroll it into view then assert
+    // Amazon is the next node to the right - scroll it into view then assert
     const amazonText = page.getByText("Amazon", { exact: true });
     await amazonText.scrollIntoViewIfNeeded();
     await expect(amazonText).toBeVisible({ timeout: 5_000 });

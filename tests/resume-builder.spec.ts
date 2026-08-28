@@ -36,7 +36,7 @@ const MOCK_PREFILL = {
   ],
 };
 
-/** Creates an array of simple work entries — used to force multi-page layout. */
+/** Creates an array of simple work entries - used to force multi-page layout. */
 function buildManyWorkEntries(count: number) {
   return Array.from({ length: count }, (_, i) => ({
     id: `entry-overflow-${i}`,
@@ -129,12 +129,12 @@ test.describe("Resume Builder", () => {
     // with each section collapsed until its sidebar button is clicked.
     await expect(page.getByRole("heading", { name: /resume builder/i })).toBeVisible({ timeout: 15_000 });
     // With no saved resume the builder opens on ResumeFormatChooser, a modal with no dismiss
-    // control — its only exit is the continue button, so that is the path a real first-time
+    // control - its only exit is the continue button, so that is the path a real first-time
     // user takes. The Content tab is already selected afterwards and needs no click.
     await page.getByRole("button", { name: /(continue to|start with) content/i }).click();
     await page.getByRole("button", { name: /^experience/i }).first().click();
     // Prefilled entries render as collapsed summary rows ("StartupCo  Full Stack Developer · …"),
-    // not as open textboxes — the row appearing is what proves the prefill landed.
+    // not as open textboxes - the row appearing is what proves the prefill landed.
     await expect(page.getByRole("button", { name: /StartupCo/i }).first())
       .toBeVisible({ timeout: 15_000 });
   });
@@ -148,7 +148,7 @@ test.describe("Resume Builder", () => {
     await expect(page.getByRole("heading", { name: /resume builder/i })).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: /browse templates/i }).click();
     // Each template is a card: an <h3> with the name plus a generic "Use this template" button.
-    // Innermost div holding BOTH the name and the action — the heading and the button are
+    // Innermost div holding BOTH the name and the action - the heading and the button are
     // siblings at different depths, so filtering on one alone lands on the wrong element.
     const editorialCard = page
       .locator("div")
@@ -475,7 +475,7 @@ test.describe("Resume Builder", () => {
     expect(deltaY).toBeLessThan(120);
   });
 
-  test("work entry stays with section after heading drag — save includes flowDisplacementY", async ({ page }) => {
+  test("work entry stays with section after heading drag - save includes flowDisplacementY", async ({ page }) => {
     await setupContributorSession(page, true);
     const mock = {
       ...MOCK_RESUME,
@@ -604,7 +604,7 @@ test.describe("Resume Builder", () => {
   // ══════════════════════════════════════════════════════════════════════════
 
   test("name block with rotation in layoutOverrides renders with a CSS transform", async ({ page }) => {
-    // Tests that the canvas reads and applies rotation overrides — avoids flaky drag-to-save
+    // Tests that the canvas reads and applies rotation overrides - avoids flaky drag-to-save
     // by pre-loading the design with a known rotation value and asserting on the DOM.
     await setupContributorSession(page, true);
     const mock = {
@@ -626,7 +626,7 @@ test.describe("Resume Builder", () => {
     expect(transform).toBeTruthy();
     expect(transform).not.toBe("none");
     expect(transform).not.toBe("");
-    // Rotation is expressed as rotate() or an equivalent matrix — both contain digits
+    // Rotation is expressed as rotate() or an equivalent matrix - both contain digits
     expect(transform).toMatch(/rotate|matrix/i);
   });
 
@@ -765,7 +765,7 @@ test.describe("Resume Builder", () => {
   // GROUP ROTATION
   // ══════════════════════════════════════════════════════════════════════════
 
-  test("rotating EXPERIENCE heading rotates work entry — entry transform matches heading rotation", async ({ page }) => {
+  test("rotating EXPERIENCE heading rotates work entry - entry transform matches heading rotation", async ({ page }) => {
     await setupContributorSession(page, true);
     const mock = {
       ...MOCK_RESUME,
@@ -801,7 +801,7 @@ test.describe("Resume Builder", () => {
   test("group rotation orbit displaces entry X position relative to heading center", async ({ page }) => {
     // Guards the orbit formula: when work.heading has rotation=90, the entry center
     // must be offset from the heading center X (orbit displacement happened).
-    // Direction depends on fragment geometry and is not asserted here — only that
+    // Direction depends on fragment geometry and is not asserted here - only that
     // the orbit formula ran and produced a non-zero horizontal displacement.
     await setupContributorSession(page, true);
     const mock = {
@@ -1137,7 +1137,7 @@ test.describe("Resume Builder", () => {
     const pageBox = await page.locator('[data-resume-page="1"]').boundingBox();
     expect(nameBox).not.toBeNull();
     expect(pageBox).not.toBeNull();
-    // Name is in the left sidebar column — center must be in the left half
+    // Name is in the left sidebar column - center must be in the left half
     const relativeCx = (nameBox!.x + nameBox!.width / 2) - pageBox!.x;
     expect(relativeCx).toBeLessThan(pageBox!.width / 2);
   });

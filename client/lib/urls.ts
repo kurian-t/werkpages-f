@@ -6,7 +6,7 @@
  *
  * The industry segment is descriptive, not identifying: a company's industry can change when
  * the classifier reruns or an admin corrects it, and every route resolves on the company and
- * manager slugs alone. A stale or wrong industry segment therefore still finds the page — the
+ * manager slugs alone. A stale or wrong industry segment therefore still finds the page - the
  * profile pages redirect to the canonical path once the real industry is known.
  *
  * Older shapes (/companies/:c, /companies/:c/managers/:m, /manager/:id) remain routable and
@@ -36,7 +36,7 @@ export function managerPath(
 }
 
 /**
- * Company path when only the name is known (no slug yet) — the legacy lookup-by-name route.
+ * Company path when only the name is known (no slug yet) - the legacy lookup-by-name route.
  * Kept un-nested because the industry cannot be known without resolving the company first.
  */
 export function companyPathByName(name: string) {

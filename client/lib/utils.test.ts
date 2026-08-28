@@ -27,7 +27,7 @@ describe("companyLogoDomain", () => {
     expect(companyLogoDomain("Bank of America")).toBe("bankofamerica.com");
   });
 
-  // ── Company names that ARE domains — the bug that was fixed ──────────────────
+  // ── Company names that ARE domains - the bug that was fixed ──────────────────
   it("returns priceline.com as-is when company name is Priceline.com", () => {
     expect(companyLogoDomain("Priceline.com")).toBe("priceline.com");
   });

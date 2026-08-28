@@ -49,7 +49,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.setItem("authUser", JSON.stringify(u));
   }, []);
 
-  // Validate session on startup — refresh user data (including role) from the server
+  // Validate session on startup - refresh user data (including role) from the server
   useEffect(() => {
     if (!user) return;
     axios.get(`${API_BASE}/api/auth/me`).then((res) => {
@@ -65,7 +65,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Also clear the stale auth_token cookie server-side
         axios.post(`${API_BASE}/api/auth/signout`, {}).catch(() => {});
       }
-      // 502/503/504 = server still starting — keep cached user state, retry will happen naturally
+      // 502/503/504 = server still starting - keep cached user state, retry will happen naturally
     });
   }, []);
 
@@ -76,7 +76,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       { email: username, password },
       { headers: { "Content-Type": "application/json" } }
     );
-    // Token is now in an HttpOnly cookie — just store user display data
+    // Token is now in an HttpOnly cookie - just store user display data
     const { user: userData } = response.data;
     setUserState(userData);
     localStorage.setItem("authUser", JSON.stringify(userData));
@@ -90,7 +90,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       await axios.post(`${API_BASE}/api/auth/signout`, {});
     } catch {
-      // Best-effort — clear local state regardless
+      // Best-effort - clear local state regardless
     }
     setUserState(null);
     localStorage.removeItem("authUser");

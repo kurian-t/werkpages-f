@@ -38,7 +38,7 @@ test.describe("Smoke tests", () => {
 
     await page.goto("/directory");
     await expect(page.getByText("Jordan Smith")).toBeVisible({ timeout: 10_000 });
-    // Search/filter UI should exist — on desktop it's a visible textbox, on mobile it's the Filters button
+    // Search/filter UI should exist - on desktop it's a visible textbox, on mobile it's the Filters button
     await expect(
       page.getByRole("button", { name: /filters/i }).or(page.getByRole("textbox").first())
     ).toBeVisible();

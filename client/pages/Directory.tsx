@@ -107,7 +107,7 @@ export default function Directory() {
             const retry = await axios.get(`${API_BASE}/api/managers`, { params });
             return retry.data;
           } catch {
-            // Ghost creation failed — return empty results
+            // Ghost creation failed - return empty results
           }
         }
       }
@@ -381,7 +381,7 @@ export default function Directory() {
               <div className={`transition-opacity duration-150 ${fetching ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
                 {filteredBosses.length > 0 || submittedManagers.length > 0 ? (
                   <>
-                    {/* Pending submissions — only visible to the submitting user */}
+                    {/* Pending submissions - only visible to the submitting user */}
                     {submittedManagers.length > 0 && (
                       <div className="mb-8">
                         <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">

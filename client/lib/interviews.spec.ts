@@ -12,10 +12,13 @@ import {
   interviewErrorMessage,
   interviewYearOptions,
   isSmallSample,
+  isStepComplete,
   offerRate,
   outcomeBucket,
   outcomeGap,
   sortedCategories,
+  strongestAndWeakest,
+  confidenceLabel,
   toInterviewPayload,
   validateInterviewDraft,
   type InterviewDraft,
@@ -40,8 +43,26 @@ function draft(overrides: Partial<InterviewDraft> = {}): InterviewDraft {
     overallRating: 4,
     outcome: "offer",
     interviewYear: CURRENT_YEAR,
+    rounds: [],
     ...overrides,
   };
+}
+
+/** Every field on both steps answered - the state the form gates its buttons on. */
+function completeDraft(overrides: Partial<InterviewDraft> = {}): InterviewDraft {
+  return draft({
+    difficulty: 3,
+    processLength: "2_4_weeks",
+    rounds: ["phone", "panel"],
+    roleCategory: "Engineering",
+    country: "Canada",
+    communication: 4,
+    respectForTime: 4,
+    roleClarity: 4,
+    processFairness: 4,
+    nextStepTransparency: 4,
+    ...overrides,
+  });
 }
 
 describe("outcomeBucket", () => {
@@ -135,7 +156,7 @@ describe("sortedCategories", () => {
   });
 
   it("drops nulls rather than rendering them as zero", () => {
-    // A category nobody rated is absent, not terrible — showing it as 0.0 would be a lie.
+    // A category nobody rated is absent, not terrible - showing it as 0.0 would be a lie.
     expect(sortedCategories({ communication: 4, roleClarity: null })).toEqual([["communication", 4]]);
   });
 
@@ -145,6 +166,44 @@ describe("sortedCategories", () => {
 
   it("ignores NaN", () => {
     expect(sortedCategories({ communication: Number.NaN, roleClarity: 3 })).toEqual([["roleClarity", 3]]);
+  });
+});
+
+describe("strongestAndWeakest", () => {
+  it("splits five categories into disjoint columns", () => {
+    // A 3/3 split of five would repeat the middle one on both sides, which reads as a bug.
+    const { strongest, weakest } = strongestAndWeakest({
+      communication: 4.5, respectForTime: 4.2, roleClarity: 3.8,
+      processFairness: 3.1, nextStepTransparency: 2.4,
+    });
+    expect(strongest.map(([k]) => k)).toEqual(["communication", "respectForTime"]);
+    expect(weakest.map(([k]) => k)).toEqual(["nextStepTransparency", "processFairness"]);
+    expect(strongest.some(([k]) => weakest.some(([w]) => w === k))).toBe(false);
+  });
+
+  it("orders weakest worst-first", () => {
+    const { weakest } = strongestAndWeakest({
+      communication: 5, respectForTime: 4, roleClarity: 3, processFairness: 2,
+    });
+    expect(weakest[0][1]).toBeLessThan(weakest[1][1]);
+  });
+
+  it("handles too little data to split", () => {
+    expect(strongestAndWeakest({ communication: 4 })).toEqual({ strongest: [["communication", 4]], weakest: [] });
+    expect(strongestAndWeakest(null)).toEqual({ strongest: [], weakest: [] });
+  });
+});
+
+describe("confidenceLabel", () => {
+  it("calls a handful of self-selected reports low confidence", () => {
+    expect(confidenceLabel(0)).toBe("low");
+    expect(confidenceLabel(9)).toBe("low");
+  });
+
+  it("rises with the sample", () => {
+    expect(confidenceLabel(10)).toBe("moderate");
+    expect(confidenceLabel(29)).toBe("moderate");
+    expect(confidenceLabel(30)).toBe("high");
   });
 });
 
@@ -185,7 +244,7 @@ describe("describeCount and isSmallSample", () => {
     expect(isSmallSample(10)).toBe(false);
   });
 
-  it("does not caveat an empty company — there is nothing to caveat", () => {
+  it("does not caveat an empty company - there is nothing to caveat", () => {
     expect(isSmallSample(0)).toBe(false);
   });
 });
@@ -233,16 +292,17 @@ describe("validateInterviewDraft", () => {
     expect(validateInterviewDraft(draft({ interviewYear: CURRENT_YEAR - 9 }), CURRENT_YEAR)).toEqual({});
   });
 
-  it("bounds difficulty and rounds", () => {
+  it("bounds difficulty and the number of rounds", () => {
     expect(validateInterviewDraft(draft({ difficulty: 0 }), CURRENT_YEAR).difficulty).toBeDefined();
     expect(validateInterviewDraft(draft({ difficulty: 6 }), CURRENT_YEAR).difficulty).toBeDefined();
-    expect(validateInterviewDraft(draft({ rounds: 0 }), CURRENT_YEAR).rounds).toBeDefined();
-    expect(validateInterviewDraft(draft({ rounds: 11 }), CURRENT_YEAR).rounds).toBeDefined();
+    expect(
+      validateInterviewDraft(draft({ rounds: Array(11).fill("phone") }), CURRENT_YEAR).rounds,
+    ).toBeDefined();
   });
 
   it("treats omitted optional fields as valid", () => {
     expect(validateInterviewDraft(
-      draft({ difficulty: null, rounds: null, roleCategory: null }), CURRENT_YEAR,
+      draft({ difficulty: null, rounds: [], roleCategory: null }), CURRENT_YEAR,
     )).toEqual({});
   });
 
@@ -273,19 +333,32 @@ describe("toInterviewPayload", () => {
     const payload = toInterviewPayload(draft({
       communication: 5,
       difficulty: 3,
-      rounds: 4,
-      interviewType: "video",
+      rounds: ["phone", "panel", "executive"],
       processLength: "2_4_weeks",
       roleCategory: "Engineering",
     }));
     expect(payload).toMatchObject({
       communication: 5,
       difficulty: 3,
-      rounds: 4,
-      interviewType: "video",
+      rounds: ["phone", "panel", "executive"],
       processLength: "2_4_weeks",
       roleCategory: "Engineering",
     });
+  });
+
+  it("sends the rounds in the order they were entered", () => {
+    // Order is the data: a take-home before a phone screen is a different process.
+    const payload = toInterviewPayload(draft({ rounds: ["take_home", "phone"] }));
+    expect(payload.rounds).toEqual(["take_home", "phone"]);
+  });
+
+  it("omits an empty round list rather than sending one", () => {
+    expect(toInterviewPayload(draft({ rounds: [] }))).not.toHaveProperty("rounds");
+  });
+
+  it("sends the country of the position", () => {
+    expect(toInterviewPayload(draft({ country: "  Canada  " }))).toMatchObject({ country: "Canada" });
+    expect(toInterviewPayload(draft({ country: "   " }))).not.toHaveProperty("country");
   });
 
   it("omits a cleared role rather than sending an empty string", () => {
@@ -301,6 +374,56 @@ describe("toInterviewPayload", () => {
 
   it("keeps a zero rating, which is a real score rather than a blank", () => {
     expect(toInterviewPayload(draft({ communication: 0 }))).toMatchObject({ communication: 0 });
+  });
+});
+
+describe("isStepComplete", () => {
+  it("accepts a fully answered draft on both steps", () => {
+    expect(isStepComplete(completeDraft(), "process")).toBe(true);
+    expect(isStepComplete(completeDraft(), "ratings")).toBe(true);
+  });
+
+  it("holds the process step until every field is answered", () => {
+    for (const missing of [
+      { outcome: null },
+      { interviewYear: null },
+      { difficulty: null },
+      { processLength: null },
+      { roleCategory: null },
+      { roleCategory: "   " },
+      { country: null },
+      { country: "  " },
+    ] as Array<Partial<InterviewDraft>>) {
+      expect(isStepComplete(completeDraft(missing), "process")).toBe(false);
+    }
+  });
+
+  it("holds the ratings step until every category is rated", () => {
+    expect(isStepComplete(completeDraft({ overallRating: null }), "ratings")).toBe(false);
+    for (const category of INTERVIEW_CATEGORIES) {
+      expect(isStepComplete(completeDraft({ [category]: null }), "ratings")).toBe(false);
+    }
+  });
+
+  it("does not require the rounds - a half-remembered process should not be guessed at", () => {
+    expect(isStepComplete(completeDraft({ rounds: [] }), "process")).toBe(true);
+  });
+
+  it("requires a role", () => {
+    expect(isStepComplete(completeDraft({ roleCategory: null }), "process")).toBe(false);
+    expect(isStepComplete(completeDraft({ roleCategory: "  " }), "process")).toBe(false);
+    expect(isStepComplete(completeDraft({ roleCategory: "Engineering" }), "process")).toBe(true);
+  });
+
+  it("judges each step independently", () => {
+    // An unrated draft can still finish step one; that is what Next is for.
+    const ratingsMissing = completeDraft({ overallRating: null, communication: null });
+    expect(isStepComplete(ratingsMissing, "process")).toBe(true);
+    expect(isStepComplete(ratingsMissing, "ratings")).toBe(false);
+  });
+
+  it("counts a zero rating as answered", () => {
+    expect(isStepComplete(completeDraft({ communication: 0 }), "ratings")).toBe(true);
   });
 });
 

@@ -381,7 +381,7 @@ export function assessCustomDomainReadiness(
       status: "error",
       hostname,
       detail:
-        "Enter a hostname only, such as resume.example.com — no protocol, port or path.",
+        "Enter a hostname only, such as resume.example.com - no protocol, port or path.",
     };
   }
 

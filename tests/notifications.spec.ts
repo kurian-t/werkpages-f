@@ -5,7 +5,7 @@ import {
   mockNotificationsPage,
 } from "./fixtures";
 
-// The notifications page renders two NotificationList components — one for
+// The notifications page renders two NotificationList components - one for
 // mobile (sm:hidden) and one for desktop (hidden sm:flex). Only one is visible
 // at a time depending on viewport. Use `:visible` CSS extension to avoid
 // strict-mode failures from the hidden duplicate.

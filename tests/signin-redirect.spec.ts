@@ -11,7 +11,7 @@ async function mockAuthenticated(page: any) {
   }, MOCK_USER);
 }
 
-test.describe("Sign In / Sign Up redirect — authenticated users", () => {
+test.describe("Sign In / Sign Up redirect - authenticated users", () => {
   test("authenticated user visiting /signin is redirected, not shown a blank page", async ({
     page,
   }) => {
@@ -81,7 +81,7 @@ test.describe("Sign In / Sign Up redirect — authenticated users", () => {
 });
 
 test.describe("OAuth callback routing", () => {
-  // AuthCallback sends new users to /explore, not /find — Werkpages' landing surface differs
+  // AuthCallback sends new users to /explore, not /find - Werkpages' landing surface differs
   // from the RateMyManagers original this spec was forked from.
   test("new user (isNewUser=true) is redirected to /explore after OAuth callback", async ({
     page,
@@ -134,7 +134,7 @@ test.describe("OAuth callback routing", () => {
     await expect(page).toHaveURL(/\/directory/, { timeout: 10_000 });
   });
 
-  test("state mismatch does not show an error page — proceeds anyway", async ({
+  test("state mismatch does not show an error page - proceeds anyway", async ({
     page,
   }) => {
     await page.route("**/api/auth/me", (route) =>
@@ -148,7 +148,7 @@ test.describe("OAuth callback routing", () => {
       })
     );
 
-    // oauth_state does NOT match the state param — should warn but not error
+    // oauth_state does NOT match the state param - should warn but not error
     await page.goto("/");
     await page.evaluate(() => {
       sessionStorage.setItem("oauth_state", "different-state");

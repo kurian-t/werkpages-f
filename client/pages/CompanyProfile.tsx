@@ -2,7 +2,7 @@ import API_BASE from "@/lib/api";
 import { TopRatedPill } from "@/components/TopRatedPill";
 import { useState, useEffect } from "react";
 import { Helmet } from "react-helmet-async";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Star, Building2, Users, MessageSquare, TrendingUp, TrendingDown, ChevronLeft, PlusCircle, Lock, Pencil } from "lucide-react";
 import { IndustryIcon } from "@/components/IndustryIcon";
@@ -16,7 +16,6 @@ import LockedManagerCard from "@/components/LockedManagerCard";
 import { fetchGeo } from "@/lib/geo";
 import { InterviewPanel } from "@/components/InterviewPanel";
 import { useCompanyInterviews } from "@/hooks/useCompanyInterviews";
-import { InterviewReviewForm } from "@/components/InterviewReviewForm";
 const FAKE_NAME_PARTS = new Set([
   "test", "fake", "admin", "null", "undefined", "anonymous",
   "unknown", "none", "nope", "asdf", "qwerty", "aaaa", "xxxx", "blah", "lorem", "ipsum",
@@ -102,18 +101,18 @@ function GhostManagerCard({ index, company, logoUrl, isLoggedIn }: { index: numb
   const slot = GHOST_SLOTS[index % GHOST_SLOTS.length];
   return (
     <div className="flex flex-col rounded-2xl border border-border bg-background p-5 shadow-sm select-none pointer-events-none relative overflow-hidden">
-      {/* Badge — identical to LockedManagerCard */}
+      {/* Badge - identical to LockedManagerCard */}
       <div className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-500">
         <Lock size={10} />
         {"Rate to unlock"}
       </div>
-      {/* Avatar — same size as LockedManagerCard's default ManagerAvatar, blurred */}
+      {/* Avatar - same size as LockedManagerCard's default ManagerAvatar, blurred */}
       <div className={`h-16 w-16 rounded-2xl ${slot.color} flex items-center justify-center blur-sm`}>
         <span className="text-xl font-bold text-white">{slot.initials}</span>
       </div>
       {/* Blurred name */}
       <h3 className="mt-3 text-[15px] font-semibold text-foreground leading-tight blur-sm pr-16">{slot.name}</h3>
-      {/* Company row — logo + name visible, role blurred — matches CompanyRow layout */}
+      {/* Company row - logo + name visible, role blurred - matches CompanyRow layout */}
       <div className="mt-2 mb-auto flex items-center gap-2">
         <CompanyLogoImg company={company} logoUrl={logoUrl} sizeClass="h-8 w-8 rounded-md flex-shrink-0" />
         <div className="min-w-0">
@@ -135,6 +134,7 @@ const SIDEBAR_INPUT =
 export default function CompanyProfile() {
   const { industrySlug: industryParam, companySlug } = useParams<{ industrySlug?: string; companySlug: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   // Sidebar search state
@@ -230,7 +230,7 @@ export default function CompanyProfile() {
               localStorage.setItem(ghostKey, "true");
               ghostCreated = true;
             } catch {
-              // Ghost creation failed — leave results empty
+              // Ghost creation failed - leave results empty
             }
             if (ghostCreated) {
               queryClient.invalidateQueries({ queryKey: ["company-profile-slug", companySlug] });
@@ -266,9 +266,20 @@ export default function CompanyProfile() {
   const isLocked = !user?.hasContributed;
   // A company profile answers two different questions for two different readers: what it is
   // like to work here, and what it is like to try to get hired here. They share a company but
-  // nothing else — different reviewers, different ratings, different contribution gate.
-  const [activeTab, setActiveTab] = useState<"working" | "hiring">("working");
-  const [showInterviewForm, setShowInterviewForm] = useState(false);
+  // nothing else - different reviewers, different ratings, different contribution gate.
+  // The tab lives in the URL, not in component state. Without that, a refresh drops you back on
+  // the first tab, the link you share never opens where you were, and returning from the add
+  // form lands on the wrong half of the page.
+  const activeTab: "working" | "hiring" = searchParams.get("tab") === "hiring" ? "hiring" : "working";
+  const setActiveTab = (next: "working" | "hiring" | ((current: "working" | "hiring") => "working" | "hiring")) => {
+    const value = typeof next === "function" ? next(activeTab) : next;
+    const params = new URLSearchParams(searchParams);
+    // "working" is the default, so it stays out of the URL and the canonical link is unchanged.
+    if (value === "hiring") params.set("tab", "hiring");
+    else params.delete("tab");
+    // replace, not push: flipping a tab is not a navigation someone wants to press Back through.
+    setSearchParams(params, { replace: true });
+  };
   // Detect whether the URL param is a slug (lowercase, no spaces) or a legacy name.
   // Name-based navigation from the search form still works through the by-name fallback.
   const isSlugParam = !!companySlug && /^[a-z0-9-]+$/.test(companySlug);
@@ -287,7 +298,7 @@ export default function CompanyProfile() {
     },
     enabled: !!companySlug,
     // Inherit the global staleTime: 0 so the company's manager count / stats refresh in the
-    // background on every mount/focus — keeping them current for all users, not 5-min stale.
+    // background on every mount/focus - keeping them current for all users, not 5-min stale.
     retry: false,
   });
   // The tab strip shows how many interview experiences exist before you open the tab. This uses
@@ -299,12 +310,13 @@ export default function CompanyProfile() {
   // Collapse every historical URL variant into the one canonical form for Google: legacy
   // company-name URLs (/companies/Revolut), the flat slug URL (/companies/revolut), and any
   // nested URL whose industry segment went stale after the company was reclassified.
-  // The industry segment is descriptive — the company slug alone resolves the page.
+  // The industry segment is descriptive - the company slug alone resolves the page.
   useEffect(() => {
     if (!data?.slug) return;
     const canonical = companyPath(data.industrySlug, data.slug);
     if (window.location.pathname !== canonical) {
-      navigate(canonical, { replace: true });
+      // Carry the query string across, or the canonical redirect silently discards ?tab.
+      navigate(canonical + window.location.search, { replace: true });
     }
   }, [isSlugParam, industryParam, data?.slug, data?.industrySlug, navigate]);
   if (isLoading) {
@@ -351,7 +363,7 @@ export default function CompanyProfile() {
   // Whether to show unlocked tiles in the results column
   const resultsUnlocked = searchResults !== null ? searchHasContributed : !isLocked;
   const canonicalUrl = `https://werkpages.com${companyPath(data.industrySlug, data.slug ?? companySlug)}`;
-  // Thin pages (no reviews yet) are near-duplicate empty templates — keep them out of the index
+  // Thin pages (no reviews yet) are near-duplicate empty templates - keep them out of the index
   // until they have real content, so Google doesn't flag them as duplicates. "follow" preserves
   // link equity to the managers/pages that ARE worth indexing.
   const isThin = (data.totalReviews ?? 0) === 0;
@@ -452,11 +464,11 @@ export default function CompanyProfile() {
                 </div>
               )}
 
-              {/* Industry — under the company name, links through to the industry page.
+              {/* Industry - under the company name, links through to the industry page.
                   Absent until the AI classifier has run for this company. */}
               {data.industry && data.industrySlug && (
                 <div className="mt-1.5">
-                  {/* Plain text with the industry glyph, matching the manager profile —
+                  {/* Plain text with the industry glyph, matching the manager profile -
                       the pill treatment made the same information read as two different
                       things across the two pages. */}
                   <Link
@@ -532,7 +544,7 @@ export default function CompanyProfile() {
 
           Folder tabs rather than a floating control: the selected tab has no bottom border and
           sits one pixel over the panel's top edge, so tab and panel read as one physical surface.
-          That connection is what tells you the tab governs the content below it — a detached
+          That connection is what tells you the tab governs the content below it - a detached
           control leaves you guessing what it changes.
         */}
         <div
@@ -545,22 +557,22 @@ export default function CompanyProfile() {
             e.preventDefault();
             setActiveTab((current) => (current === "working" ? "hiring" : "working"));
           }}
-          className="flex max-w-3xl gap-1"
+          className="flex max-w-3xl items-stretch gap-1"
         >
           {([
             {
               id: "working",
               emoji: "\u{1F465}",
               title: `What it's like to work at ${decoded}`,
-              count: `${data.totalReviews} ${data.totalReviews === 1 ? "opinion" : "opinions"}`,
+              count: `${data.totalReviews} manager ${data.totalReviews === 1 ? "opinion" : "opinions"}`,
             },
             {
               id: "hiring",
-              emoji: "\u{1F4BC}",
+              emoji: "\u{1F4AC}",
               title: `What it's like to interview at ${decoded}`,
               count: interviewCount == null
                 ? "\u2014"
-                : `${interviewCount} ${interviewCount === 1 ? "experience" : "experiences"}`,
+                : `${interviewCount} candidate ${interviewCount === 1 ? "experience" : "experiences"}`,
             },
           ] as const).map((tab) => {
             const active = activeTab === tab.id;
@@ -574,7 +586,7 @@ export default function CompanyProfile() {
                 aria-controls={`panel-${tab.id}`}
                 tabIndex={active ? 0 : -1}
                 onClick={() => setActiveTab(tab.id)}
-                className={`group relative flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-t-xl border border-border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6d5091] ${
+                className={`group relative flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-t-xl border border-border px-2.5 py-2.5 text-left sm:gap-2.5 sm:px-4 sm:py-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6d5091] ${
                   active
                     ? // -mb-px pulls the tab down onto the panel's top edge and border-b-0 opens
                       // its floor, so tab and panel read as one continuous surface.
@@ -590,21 +602,30 @@ export default function CompanyProfile() {
                     className="pointer-events-none absolute inset-x-0 -bottom-px z-20 h-0.5 bg-card"
                   />
                 )}
+                {/*
+                  Circled like a browser tab's favicon. The circle keeps its own light fill and
+                  ring rather than inheriting the tab's, so it reads on both the white active tab
+                  and the recessed inactive one. The bottom padding offsets an emoji's asymmetric
+                  bearing - items-center centres the line box, but the visible glyph sits below
+                  its centreline, so without it the emoji looks low in the circle.
+                */}
                 <span
                   aria-hidden="true"
-                  className={`text-base transition-opacity ${active ? "opacity-100" : "opacity-50 group-hover:opacity-100"}`}
+                  className={`hidden h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-background pb-[3px] text-sm leading-none ring-1 ring-border transition-opacity min-[400px]:flex ${
+                    active ? "opacity-100" : "opacity-60 group-hover:opacity-100"
+                  }`}
                 >
                   {tab.emoji}
                 </span>
                 <span className="min-w-0">
                   <span
-                    className={`block truncate text-sm font-semibold transition-colors ${
+                    className={`block text-[13px] font-semibold leading-snug transition-colors sm:text-sm ${
                       active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
                     }`}
                   >
                     {tab.title}
                   </span>
-                  <span className="block truncate text-xs text-muted-foreground">
+                  <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
                     {tab.count}
                   </span>
                 </span>
@@ -615,7 +636,7 @@ export default function CompanyProfile() {
 
         {/*
           The page surface the tabs attach to. Without it the active tab is a shape floating over
-          the background and the connection it is trying to make has nothing to connect to — the
+          the background and the connection it is trying to make has nothing to connect to - the
           tab's open floor only reads as a folder when there is a panel edge for it to sit on.
         */}
         <div className="rounded-b-2xl border border-border bg-card p-5 sm:p-7">
@@ -624,7 +645,10 @@ export default function CompanyProfile() {
             <InterviewPanel
               companySlug={data.slug ?? companySlug ?? ""}
               companyName={decoded}
-              onAddInterview={() => setShowInterviewForm(true)}
+              onAddInterview={() => navigate(`/companies/${data.slug ?? companySlug}/add-interview`)}
+              onEditInterview={(reviewId) =>
+                navigate(`/companies/${data.slug ?? companySlug}/add-interview?edit=${reviewId}`)
+              }
             />
           </div>
         ) : (
@@ -719,15 +743,15 @@ export default function CompanyProfile() {
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
                   Based on {data.totalReviews} {data.totalReviews === 1 ? "review" : "reviews"} across {data.managerCount} {data.managerCount === 1 ? "manager" : "managers"}.
-                  {data.totalReviews < 10 && " Small sample size — treat as indicative only."}
+                  {data.totalReviews < 10 && " Small sample size - treat as indicative only."}
                 </p>
               </div>
             )}
           </div>
         )}
-        {/* Manager section — same two-column layout as Directory */}
+        {/* Manager section - same two-column layout as Directory */}
         <div className="flex flex-col gap-8 lg:flex-row">
-          {/* Left sidebar — Find a Manager */}
+          {/* Left sidebar - Find a Manager */}
           <aside className="lg:w-56 flex-shrink-0">
             <div className="space-y-6">
               <div>
@@ -777,7 +801,7 @@ export default function CompanyProfile() {
               </div>
             </div>
           </aside>
-          {/* Right — manager tiles */}
+          {/* Right - manager tiles */}
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground mb-4">
               Managers at {data.name}
@@ -961,17 +985,6 @@ export default function CompanyProfile() {
         </div>
       </div>
 
-      {showInterviewForm && (
-        <InterviewReviewForm
-          companySlug={data.slug ?? companySlug ?? ""}
-          companyName={decoded}
-          onClose={() => setShowInterviewForm(false)}
-          onSubmitted={() => {
-            setShowInterviewForm(false);
-            toast.success("Thanks — your interview experience is live.");
-          }}
-        />
-      )}
     </Layout>
     </>
   );

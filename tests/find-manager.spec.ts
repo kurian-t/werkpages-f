@@ -193,7 +193,7 @@ test.describe("FindYourManager page (/find)", () => {
 
     await page.goto("/find");
 
-    // Tiles should auto-search and show the unlocked full card — no "Rate to unlock" badge
+    // Tiles should auto-search and show the unlocked full card - no "Rate to unlock" badge
     await expect(page.getByText("Alex Johnson")).toBeVisible({ timeout: 8_000 });
     await expect(page.getByText("Acme Corp").first()).toBeVisible();
     await expect(page.getByText("Engineering Manager").first()).toBeVisible();
@@ -207,9 +207,9 @@ test.describe("FindYourManager page (/find)", () => {
 
   // ── Locked tile shape: logged-out user ───────────────────────────────────────
   // These tests lock in the exact visual contract of the locked result card.
-  // If ANY of these break, the tile design has changed — confirm with the team first.
+  // If ANY of these break, the tile design has changed - confirm with the team first.
 
-  test.describe("locked tile — logged-out user", () => {
+  test.describe("locked tile - logged-out user", () => {
     test.beforeEach(async ({ page }) => {
       await mockFindManagerPage(page, { loggedIn: false, searchResults: MOCK_MANAGERS_LIST });
       await page.goto("/find");
@@ -230,13 +230,13 @@ test.describe("FindYourManager page (/find)", () => {
     });
 
     test("does not show manager title as readable text", async ({ page }) => {
-      // Title is replaced by a blurred placeholder div — "Engineering Manager"
+      // Title is replaced by a blurred placeholder div - "Engineering Manager"
       // must never appear as readable text in the locked tile.
       await expect(page.getByText("Engineering Manager")).not.toBeVisible();
     });
 
     test("does not show the overall rating number", async ({ page }) => {
-      // Rating is replaced by blurred amber dots — the number "3.8" must not
+      // Rating is replaced by blurred amber dots - the number "3.8" must not
       // appear as readable text in the locked tile.
       await expect(page.getByText("3.8")).not.toBeVisible();
     });
@@ -251,7 +251,7 @@ test.describe("FindYourManager page (/find)", () => {
 
   // ── Locked tile shape: logged-in user who has NOT rated yet ──────────────────
 
-  test.describe("locked tile — logged-in user who has not rated", () => {
+  test.describe("locked tile - logged-in user who has not rated", () => {
     test.beforeEach(async ({ page }) => {
       await mockFindManagerPage(page, { loggedIn: true, hasContributed: false, searchResults: MOCK_MANAGERS_LIST });
       await page.goto("/find");
@@ -289,7 +289,7 @@ test.describe("FindYourManager page (/find)", () => {
 
   // ── Unlocked tile shape: logged-in contributor ───────────────────────────────
 
-  test.describe("unlocked tile — logged-in contributor", () => {
+  test.describe("unlocked tile - logged-in contributor", () => {
     test.beforeEach(async ({ page }) => {
       await mockFindManagerPage(page, { loggedIn: true, hasContributed: true, searchResults: MOCK_MANAGERS_LIST });
       await page.goto("/find");
@@ -331,7 +331,7 @@ test.describe("FindYourManager page (/find)", () => {
 // POST /api/managers/find-or-create must have title-cased names and
 // correctly-cased job titles regardless of what the user typed.
 
-test.describe("FindYourManager — name and title normalisation", () => {
+test.describe("FindYourManager - name and title normalisation", () => {
   async function captureAndSearch(
     page: Parameters<typeof mockFindManagerPage>[0],
     input: { firstName: string; lastName: string; title: string; company?: string }

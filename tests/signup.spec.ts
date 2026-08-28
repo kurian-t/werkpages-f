@@ -38,7 +38,7 @@ async function fillSignupForm(page: any) {
   await page.getByLabel("Last Name").fill("Doe");
   await page.locator("#emailOrPhone").fill("jane@example.com");
 
-  // Username field — type a value so the availability check fires
+  // Username field - type a value so the availability check fires
   await page.locator("#username").fill("janedoe99");
 
   // Wait for the availability check to resolve ("Username is available!")
@@ -48,7 +48,7 @@ async function fillSignupForm(page: any) {
   await page.locator("#confirmPassword").fill("Password1!");
 }
 
-test.describe("Sign Up page — /signup", () => {
+test.describe("Sign Up page - /signup", () => {
   test("renders all required form fields including Turnstile widget", async ({ page }) => {
     await mockSignupPage(page);
     await page.goto("/signup");
@@ -60,7 +60,7 @@ test.describe("Sign Up page — /signup", () => {
     await expect(page.locator("#password")).toBeVisible();
     await expect(page.locator("#confirmPassword")).toBeVisible();
 
-    // Turnstile widget must render — absence means siteKey is missing or CSP blocked it
+    // Turnstile widget must render - absence means siteKey is missing or CSP blocked it
     await expect(page.locator("#cf-turnstile")).toBeVisible({ timeout: 8_000 });
   });
 
@@ -108,7 +108,7 @@ test.describe("Sign Up page — /signup", () => {
     await fillSignupForm(page);
 
     // With VITE_TURNSTILE_SITE_KEY=1x00000000000000000000AA (CI test key), Turnstile
-    // auto-passes and onSuccess fires immediately — button should become enabled.
+    // auto-passes and onSuccess fires immediately - button should become enabled.
     const submitBtn = page.getByRole("button", { name: /create account/i });
     await expect(submitBtn).toBeEnabled({ timeout: 8_000 });
 

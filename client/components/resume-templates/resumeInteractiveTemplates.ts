@@ -971,7 +971,7 @@ function buildMinimalMotion(data: ResumeData): InteractiveSceneCollection {
     parallaxDepth: 0.45,
     motion: { preset: "bob", speed: 0.65, intensity: 15 },
   });
-  textObject(intro, "HELLO — THIS IS MY WORK", 120, 150, 620, 48, {
+  textObject(intro, "HELLO - THIS IS MY WORK", 120, 150, 620, 48, {
     appearance: appearance("plain", {
       textColor: "#7c3aed",
       accentColor: "#7c3aed",

@@ -3,7 +3,7 @@ import { test, expect } from "./base";
 /**
  * Cancelling "Add a manager" returns you where you came from.
  *
- * Most entry points — the header, the directory, a company page, a manager profile — link to
+ * Most entry points - the header, the directory, a company page, a manager profile - link to
  * /add with no ?returnTo, and the form used to send every one of those to /directory. People
  * landed somewhere they had never been and lost their place.
  *
@@ -22,7 +22,7 @@ const USER = { id: "u1", username: "tester", email: "t@test.com", hasContributed
 
 async function mockApi(page: any) {
   // The header's "Add Manager" link only renders for a signed-in user, and AuthProvider seeds
-  // itself from localStorage on first render — mocking /api/auth/me alone is a frame too late.
+  // itself from localStorage on first render - mocking /api/auth/me alone is a frame too late.
   await page.addInitScript((u: unknown) => {
     localStorage.setItem("authUser", JSON.stringify(u));
   }, USER);
@@ -33,7 +33,7 @@ async function mockApi(page: any) {
   await page.route("**/api/geo", (r: any) => r.fulfill({ json: {} }));
 }
 
-test.describe("Add a manager — cancel", () => {
+test.describe("Add a manager - cancel", () => {
   test("returns to the page you came from when no returnTo was given", async ({ page }) => {
     await mockApi(page);
     await page.goto("/companies");
@@ -67,7 +67,7 @@ test.describe("Add a manager — cancel", () => {
   });
 
   test("falls back to the directory when /add was opened directly", async ({ page }) => {
-    // No in-app history to go back to — going back here would leave the site entirely.
+    // No in-app history to go back to - going back here would leave the site entirely.
     await mockApi(page);
     await page.goto("/add");
 

@@ -249,7 +249,7 @@ export default function ResumeATSTwin({ data }: { data: ResumeData }) {
           <Section title="Education">
             {projected.education.map((entry, index) => {
               const years = formatEduYears(entry.startYear, entry.endYear, entry.current);
-              const credential = [entry.degree?.trim(), entry.field?.trim()].filter(Boolean).join(" — ");
+              const credential = [entry.degree?.trim(), entry.field?.trim()].filter(Boolean).join(" - ");
               const meta = [credential, years].filter(Boolean).join(" · ");
               return (
                 <div key={entry.id ?? index} style={{ marginTop: index === 0 ? 0 : 14 }}>

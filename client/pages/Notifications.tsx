@@ -34,7 +34,7 @@ export default function Notifications() {
   }, [user, navigate]);
 
   // When already on this page and user clicks a notification in the bell dropdown,
-  // the URL updates but the component doesn't remount — sync selectedId from searchParams.
+  // the URL updates but the component doesn't remount - sync selectedId from searchParams.
   useEffect(() => {
     const id = searchParams.get("selected");
     if (id) {

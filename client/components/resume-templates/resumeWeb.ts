@@ -434,7 +434,7 @@ export function projectResumeToWeb(
     education: (data.education ?? []).map((entry, index) => ({
       id: entry.id ?? `education-${index}`,
       school: entry.school?.trim() ?? "",
-      credential: [entry.degree?.trim(), entry.field?.trim()].filter(Boolean).join(" — "),
+      credential: [entry.degree?.trim(), entry.field?.trim()].filter(Boolean).join(" - "),
       years: formatEduYears(entry.startYear, entry.endYear, entry.current),
     })),
     skills: (data.skills ?? []).map(skill => skill.trim()).filter(Boolean),
@@ -773,7 +773,7 @@ export function buildStandaloneResumeWebHtml(data: ResumeData): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${escapeHtml(p.fullName)} — Resume</title>
+<title>${escapeHtml(p.fullName)} - Resume</title>
 <meta name="description" content="${escapeAttribute(p.summary.slice(0, 155) || `${p.fullName} resume`)}" />
 <meta name="theme-color" content="${escapeAttribute(lightPalette.accent)}" />
 <script type="application/ld+json">${safeJsonForScript(schema)}</script>

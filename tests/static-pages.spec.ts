@@ -1,6 +1,6 @@
 import { test, expect } from "./base";
 
-// Static/informational pages — no auth or API mocking needed.
+// Static/informational pages - no auth or API mocking needed.
 
 test.describe("Static pages", () => {
   test("homepage loads with hero content", async ({ page }) => {

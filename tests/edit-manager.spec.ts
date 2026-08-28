@@ -254,7 +254,7 @@ test.describe("Edit Manager Details", () => {
 // Whatever the user types for title in the "Edit Manager Details" form,
 // the payload sent to the API must use correct job-title casing.
 
-test.describe("Edit Manager — title normalisation", () => {
+test.describe("Edit Manager - title normalisation", () => {
   async function captureEditPayload(
     page: Parameters<typeof setupEditManagerMocks>[0],
     titleInput: string

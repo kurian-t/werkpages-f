@@ -69,9 +69,9 @@ const MOCK_CAREER_SEGMENTS = [
   },
 ];
 
-// ─── Companies.tsx — error state + pagination ─────────────────────────────────
+// ─── Companies.tsx - error state + pagination ─────────────────────────────────
 
-test.describe("Companies tab — additional coverage", () => {
+test.describe("Companies tab - additional coverage", () => {
   test("error state shows when API fails", async ({ page }) => {
     await mockAuthenticated(page, { ...MOCK_USER, hasContributed: true });
     await page.route("**/api/companies/listing", (route: any) =>
@@ -133,9 +133,9 @@ test.describe("Companies tab — additional coverage", () => {
   });
 });
 
-// ─── CompanyProfile.tsx — error state + sidebar search ───────────────────────
+// ─── CompanyProfile.tsx - error state + sidebar search ───────────────────────
 
-test.describe("CompanyProfile — additional coverage", () => {
+test.describe("CompanyProfile - additional coverage", () => {
   async function mockCompanyProfilePage(page: any, opts: { loggedIn?: boolean; apiError?: boolean; hasContributed?: boolean } = {}) {
     const { loggedIn = false, apiError = false, hasContributed = false } = opts;
     if (loggedIn) {
@@ -195,9 +195,9 @@ test.describe("CompanyProfile — additional coverage", () => {
   });
 });
 
-// ─── Directory.tsx — search, sort, filter ────────────────────────────────────
+// ─── Directory.tsx - search, sort, filter ────────────────────────────────────
 
-test.describe("Directory — additional coverage", () => {
+test.describe("Directory - additional coverage", () => {
   async function mockDirectoryPage(page: any, opts: { loggedIn?: boolean; results?: any[] } = {}) {
     const { loggedIn = false, results = [MOCK_MANAGER] } = opts;
     if (loggedIn) {
@@ -270,14 +270,14 @@ test.describe("Directory — additional coverage", () => {
       route.fulfill({ json: { data: [] } })
     );
     await page.goto("/directory");
-    // react-query retries 3x before isError settles — use longer timeout
+    // react-query retries 3x before isError settles - use longer timeout
     await expect(page.getByText(/something went wrong/i).first()).toBeVisible({ timeout: 15000 });
   });
 });
 
-// ─── Admin.tsx — tabs and actions ────────────────────────────────────────────
+// ─── Admin.tsx - tabs and actions ────────────────────────────────────────────
 
-test.describe("Admin — tabs and actions", () => {
+test.describe("Admin - tabs and actions", () => {
   const ADMIN = { ...MOCK_ADMIN_USER, hasContributed: true };
 
   const MOCK_PENDING_MANAGER = {
@@ -494,9 +494,9 @@ test.describe("Admin — tabs and actions", () => {
   });
 });
 
-// ─── BossProfile.tsx — review interactions ───────────────────────────────────
+// ─── BossProfile.tsx - review interactions ───────────────────────────────────
 
-test.describe("BossProfile — review interactions and states", () => {
+test.describe("BossProfile - review interactions and states", () => {
   async function mockBossProfilePage(page: any, opts: {
     loggedIn?: boolean;
     hasContributed?: boolean;
@@ -583,9 +583,9 @@ test.describe("BossProfile — review interactions and states", () => {
   });
 });
 
-// ─── AddBoss.tsx — multi-step form flow ───────────────────────────────────────
+// ─── AddBoss.tsx - multi-step form flow ───────────────────────────────────────
 
-test.describe("AddBoss — multi-step form flow", () => {
+test.describe("AddBoss - multi-step form flow", () => {
   async function mockAddBossPage(page: any, loggedIn = true) {
     if (loggedIn) {
       await mockAuthenticated(page, MOCK_USER);
@@ -671,9 +671,9 @@ test.describe("AddBoss — multi-step form flow", () => {
   });
 });
 
-// ─── SignUp.tsx — form flows ──────────────────────────────────────────────────
+// ─── SignUp.tsx - form flows ──────────────────────────────────────────────────
 
-test.describe("SignUp — form coverage", () => {
+test.describe("SignUp - form coverage", () => {
   async function setupSignUp(page: any) {
     await mockUnauthenticated(page);
     await mockTurnstile(page);
@@ -701,7 +701,7 @@ test.describe("SignUp — form coverage", () => {
       password = "Passw0rd!",
       confirmPassword = "Passw0rd!",
     } = opts;
-    // Use id selectors — labels like "Confirm Password" contain "password"
+    // Use id selectors - labels like "Confirm Password" contain "password"
     // so getByLabel would be ambiguous
     await page.locator("#firstName").fill(firstName);
     await page.locator("#lastName").fill(lastName);

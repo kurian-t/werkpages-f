@@ -20,7 +20,7 @@ export default function AuthCallback() {
     const errorParam = params.get("error");
 
     if (errorParam) {
-      // Auth0's error_description names connections, API identifiers, and grant configuration —
+      // Auth0's error_description names connections, API identifiers, and grant configuration -
       // never put it in front of an end user. Dev builds log it for debugging; the log is
       // stripped from production bundles, and the user always sees the same generic message.
       if (import.meta.env.DEV) {
@@ -45,9 +45,9 @@ export default function AuthCallback() {
     }
 
     // State mismatch can happen if sessionStorage was cleared (private browsing, etc.)
-    // Don't hard-fail — just warn and proceed with the safe returnTo.
+    // Don't hard-fail - just warn and proceed with the safe returnTo.
     if (state !== savedState) {
-      console.warn("[AuthCallback] state mismatch — proceeding anyway");
+      console.warn("[AuthCallback] state mismatch - proceeding anyway");
     }
 
     axios.post(`${API_BASE}/api/auth/callback`, {

@@ -60,7 +60,7 @@ describe("cardCenterY", () => {
 
 // ── tickTopY ──────────────────────────────────────────────────────────────────
 
-describe("tickTopY — tick lands on x-axis for high-rated cards", () => {
+describe("tickTopY - tick lands on x-axis for high-rated cards", () => {
   it("5-star collapsed card: tick is on X_AXIS_Y (card is far above axis)", () => {
     expect(tickTopY(5, CARD_H)).toBe(X_AXIS_Y);
   });
@@ -78,7 +78,7 @@ describe("tickTopY — tick lands on x-axis for high-rated cards", () => {
   });
 });
 
-describe("tickTopY — tick hangs off card bottom when card overlaps x-axis", () => {
+describe("tickTopY - tick hangs off card bottom when card overlaps x-axis", () => {
   it("1-star collapsed card: tick is below the card bottom, not on X_AXIS_Y", () => {
     const result = tickTopY(1, CARD_H);
     const cardBottom = cardTopY(1) + CARD_H;
@@ -87,7 +87,7 @@ describe("tickTopY — tick hangs off card bottom when card overlaps x-axis", ()
   });
 });
 
-describe("tickTopY — follows card height changes (expand/collapse)", () => {
+describe("tickTopY - follows card height changes (expand/collapse)", () => {
   it("expanding a 1-star card pushes the tick further down", () => {
     const collapsed = tickTopY(1, CARD_H);
     const expanded  = tickTopY(1, CARD_H + 120);

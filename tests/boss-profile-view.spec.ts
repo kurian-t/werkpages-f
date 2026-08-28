@@ -10,7 +10,7 @@ import {
   mockManagerPage,
 } from "./fixtures";
 
-test.describe("BossProfile — view states", () => {
+test.describe("BossProfile - view states", () => {
   test.describe("Anonymous user", () => {
     test.beforeEach(async ({ page }) => {
       await mockManagerPage(page);
@@ -51,7 +51,7 @@ test.describe("BossProfile — view states", () => {
     });
   });
 
-  test.describe("Logged-in user — no existing review", () => {
+  test.describe("Logged-in user - no existing review", () => {
     test.beforeEach(async ({ page }) => {
       await mockManagerPage(page, { loggedIn: true });
     });
@@ -75,7 +75,7 @@ test.describe("BossProfile — view states", () => {
     });
   });
 
-  test.describe("Logged-in user — has existing review", () => {
+  test.describe("Logged-in user - has existing review", () => {
     test.beforeEach(async ({ page }) => {
       await mockManagerPage(page, {
         loggedIn: true,
@@ -107,7 +107,7 @@ test.describe("BossProfile — view states", () => {
     });
   });
 
-  test.describe("Pending manager — non-submitter access", () => {
+  test.describe("Pending manager - non-submitter access", () => {
     // The backend returns 404 for any user who is not the original submitter.
     // Pending profiles are completely private until an admin approves them.
 
@@ -152,7 +152,7 @@ test.describe("BossProfile — view states", () => {
     });
   });
 
-  test.describe("Pending manager — submitter view", () => {
+  test.describe("Pending manager - submitter view", () => {
     // Only the original submitter can see their pending profile.
     test.beforeEach(async ({ page }) => {
       await mockManagerPage(page, {
@@ -310,7 +310,7 @@ test.describe("BossProfile — view states", () => {
   });
 });
 
-test.describe("BossProfile — admin edit", () => {
+test.describe("BossProfile - admin edit", () => {
   test("admin sees Edit button next to manager name", async ({ page }) => {
     await mockManagerPage(page, { loggedIn: true, user: MOCK_ADMIN_USER });
     await page.goto(`/manager/${TEST_MANAGER_ID}`);
@@ -364,7 +364,7 @@ test.describe("BossProfile — admin edit", () => {
   });
 
   test("Save changes calls PUT /api/admin/managers/:id and shows success toast", async ({ page }) => {
-    // Register admin PUT route before mockManagerPage (LIFO — fires first)
+    // Register admin PUT route before mockManagerPage (LIFO - fires first)
     await page.route(/\/api\/admin\/managers\/[^/]+$/, (route) => {
       if (route.request().method() === "PUT") {
         route.fulfill({ status: 200, json: { success: true, name: "Alex Johnson", title: "Principal EM", company: "Acme Corp" } });
@@ -390,7 +390,7 @@ test.describe("BossProfile — admin edit", () => {
   });
 });
 
-test.describe("BossProfile — locked 'Rate a manager' buttons", () => {
+test.describe("BossProfile - locked 'Rate a manager' buttons", () => {
   test("clicking 'Rate a manager' in locked Performance Breakdown navigates to /add", async ({ page }) => {
     await mockManagerPage(page, { loggedIn: true, hasContributed: false });
     await page.goto(`/manager/${TEST_MANAGER_ID}`);
@@ -433,7 +433,7 @@ test.describe("BossProfile — locked 'Rate a manager' buttons", () => {
     await breakdownHelperText.scrollIntoViewIfNeeded();
     await expect(breakdownHelperText).toBeAttached({ timeout: 5_000 });
 
-    // Category names are inside the blur-sm div — they are in the DOM but must not be
+    // Category names are inside the blur-sm div - they are in the DOM but must not be
     // interactable (pointer-events-none). A contributor sees them clearly (tested below).
     await expect(page.locator('[class*="blur-sm"]').getByText("Communication Style")).toBeAttached();
   });

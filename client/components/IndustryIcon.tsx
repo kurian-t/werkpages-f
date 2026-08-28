@@ -1,9 +1,9 @@
 // Generated from the industry_svg_icons set. One 24x24 glyph per taxonomy slug.
 //
 // Used on the manager and company profiles, where the industry sits inline with text.
-// The Industries tab uses a separate lucide-based set — see IndustryTileIcon.tsx.
+// The Industries tab uses a separate lucide-based set - see IndustryTileIcon.tsx.
 //
-// Inlined rather than served from /public as <img> so the glyph inherits currentColor —
+// Inlined rather than served from /public as <img> so the glyph inherits currentColor -
 // these sit inside links and muted text that change colour on hover, which an <img> cannot
 // follow. Root attributes (stroke, width, linecaps) live on the wrapper below, so each entry
 // here is just the shapes.
@@ -234,7 +234,7 @@ export function IndustryIcon({
   );
 }
 
-/** Every slug this component can draw — used by the coverage test. */
+/** Every slug this component can draw - used by the coverage test. */
 export const INDUSTRY_ICON_SLUGS = Object.keys(GLYPHS);
 
 /** True when a real glyph exists for this slug (i.e. not falling back to "other"). */

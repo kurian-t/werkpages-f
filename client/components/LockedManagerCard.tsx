@@ -4,7 +4,7 @@ import { TopRatedPill } from "@/components/TopRatedPill";
 import { Link } from "react-router-dom";
 import { ManagerAvatar, CompanyRow, CompanyLogoImg } from "./ManagerCard";
 
-/** Matches ManagerCard, Companies and Industries — one threshold everywhere. */
+/** Matches ManagerCard, Companies and Industries - one threshold everywhere. */
 interface LockedManager {
   id: number;
   name: string;

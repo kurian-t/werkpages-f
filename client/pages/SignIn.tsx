@@ -14,7 +14,7 @@ export default function SignIn() {
   const { setUser, isAuthenticated } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  // Social login failures redirect here with the reason in navigation state — Auth0's
+  // Social login failures redirect here with the reason in navigation state - Auth0's
   // error_description, or "this email already has a password account". Seeding the banner with
   // it means the redirect explains itself instead of looking like an unexplained page refresh.
   const [error, setError] = useState<string>(

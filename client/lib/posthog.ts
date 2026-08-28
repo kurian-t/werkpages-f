@@ -17,7 +17,7 @@ if (key && host) {
     },
 
     // sessionStorage: persists within a tab but cleared when the tab closes.
-    // No cross-session tracking — each new browser session is anonymous.
+    // No cross-session tracking - each new browser session is anonymous.
     persistence: "sessionStorage",
 
     // Don't capture IP address

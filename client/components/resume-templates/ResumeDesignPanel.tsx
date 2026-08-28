@@ -1,5 +1,5 @@
 /**
- * PDF design panel — structural/page settings only.
+ * PDF design panel - structural/page settings only.
  *
  * Per-element typography (font, size, color, spacing) belongs to the canvas
  * contextual toolbar/popover. This panel intentionally avoids duplicating
@@ -36,8 +36,8 @@ const TOGGLE =
 
 const LAYOUTS: { value: LayoutType; label: string }[] = [
   { value: "single", label: "Single column" },
-  { value: "sidebar-left", label: "Sidebar — left" },
-  { value: "sidebar-right", label: "Sidebar — right" },
+  { value: "sidebar-left", label: "Sidebar - left" },
+  { value: "sidebar-right", label: "Sidebar - right" },
   { value: "two-column", label: "Two column" },
   { value: "label", label: "Label column" },
 ];

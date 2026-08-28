@@ -45,7 +45,7 @@ async function injectPendingDraft(page: any) {
   }, { managerId: TEST_MANAGER_ID, ratings: FULL_RATINGS });
 }
 
-test.describe("Duplicate review — conflict UI after auth", () => {
+test.describe("Duplicate review - conflict UI after auth", () => {
   /**
    * Simulates returning from OAuth with a pending draft that matches an existing
    * review. The draft-restore effect detects the authenticated user + draft,
@@ -302,7 +302,7 @@ test.describe("Duplicate review — conflict UI after auth", () => {
     // Advance to the dates step
     await page.getByRole("button", { name: /^next$/i }).click();
 
-    // Dates are pre-filled from the existing review — warning must NOT appear
+    // Dates are pre-filled from the existing review - warning must NOT appear
     await expect(
       page.getByText(/possible company mismatch/i)
     ).not.toBeVisible({ timeout: 3_000 });
@@ -376,7 +376,7 @@ test.describe("Duplicate review — conflict UI after auth", () => {
   test("duplicate title+company blocks Next on ratings step even when all stars are filled", async ({
     page,
   }) => {
-    // The existing review is for "Engineering Manager" at "Acme Corp" — same as
+    // The existing review is for "Engineering Manager" at "Acme Corp" - same as
     // the manager's default title/company. Opening "Add Another Role" pre-fills
     // that same title+company, so isDuplicateTitle is true from the start.
     // Next must be disabled even after all stars are rated.

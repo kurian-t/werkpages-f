@@ -234,7 +234,7 @@ export default function ATSResumeTemplate({ data }: { data: ResumeData }) {
             <Text style={styles.sectionTitle}>Education</Text>
             {projected.education.map((entry, index) => {
               const years = formatEduYears(entry.startYear, entry.endYear, entry.current);
-              const credential = [entry.degree?.trim(), entry.field?.trim()].filter(Boolean).join(" — ");
+              const credential = [entry.degree?.trim(), entry.field?.trim()].filter(Boolean).join(" - ");
               const meta = [credential, years].filter(Boolean).join(" · ");
               return (
                 <View key={entry.id ?? index} style={styles.entry}>

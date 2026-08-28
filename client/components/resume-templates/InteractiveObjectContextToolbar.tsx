@@ -511,8 +511,8 @@ export default function InteractiveObjectContextToolbar({
               }`}
               title={
                 sharedContentStatus === "shared"
-                  ? "Shared content — changes update the resume anywhere this content is used"
-                  : "Local content — changes apply only to this Interactive page"
+                  ? "Shared content - changes update the resume anywhere this content is used"
+                  : "Local content - changes apply only to this Interactive page"
               }
             >
               {sharedContentStatus === "shared" ? <Link2 size={13} /> : <Unlink2 size={13} />}

@@ -118,7 +118,7 @@ async function mockCompanyProfile(
     route.fulfill({ json: { data: [] } })
   );
 
-  // Geo needed for sidebar search form submit — not called on page load, but
+  // Geo needed for sidebar search form submit - not called on page load, but
   // intercept it defensively so any accidental call doesn't reach the real server.
   await page.route(/\/api\/geo/, (route) =>
     route.fulfill({ json: { country: "United States", state: "California", city: "San Francisco" } })
@@ -149,7 +149,7 @@ async function fillAndSubmitSearch(
 // DIRECTORY
 // ═════════════════════════════════════════════════════════════════════════════
 
-test.describe("Directory — rating visibility", () => {
+test.describe("Directory - rating visibility", () => {
   // ── logged out ──────────────────────────────────────────────────────────────
 
   test("logged-out: numeric ratings are NOT shown", async ({ page }) => {
@@ -157,7 +157,7 @@ test.describe("Directory — rating visibility", () => {
     await page.goto("/directory");
 
     await expect(page.getByText("Alex Johnson")).toBeVisible({ timeout: 10_000 });
-    // MOCK_MANAGERS_LIST has Alex=3.8, Sarah=4.5 — neither must appear as text
+    // MOCK_MANAGERS_LIST has Alex=3.8, Sarah=4.5 - neither must appear as text
     await expect(page.getByText("3.8")).not.toBeVisible();
     await expect(page.getByText("4.5")).not.toBeVisible();
   });
@@ -239,10 +239,10 @@ test.describe("Directory — rating visibility", () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// COMPANY PROFILE — LOCKED STATE
+// COMPANY PROFILE - LOCKED STATE
 // ═════════════════════════════════════════════════════════════════════════════
 
-test.describe("CompanyProfile — locked state (≤3 real managers)", () => {
+test.describe("CompanyProfile - locked state (≤3 real managers)", () => {
   // MOCK_COMPANY_PROFILE has 2 managers: Alex Johnson (4.3) and Sam Lee (3.9)
   // With 2 managers < 3 threshold: both show real ratings (teaser)
   // Remaining 7 ghost cards show fake ratings 4.3, 3.8, 4.7 cycling
@@ -261,7 +261,7 @@ test.describe("CompanyProfile — locked state (≤3 real managers)", () => {
     await page.goto(`/companies/${TEST_COMPANY_SLUG}`);
 
     await expect(page.getByText("Alex Johnson")).toBeVisible({ timeout: 10_000 });
-    // "4.3" appears on Alex's card AND in ghost slot 0 AND in the fake insight bar —
+    // "4.3" appears on Alex's card AND in ghost slot 0 AND in the fake insight bar -
     // .first() avoids strict-mode violation while still proving the rating IS shown.
     await expect(page.getByText("4.3").first()).toBeVisible(); // Alex Johnson's rating
     await expect(page.getByText("3.9").first()).toBeVisible(); // Sam Lee's rating
@@ -280,16 +280,16 @@ test.describe("CompanyProfile — locked state (≤3 real managers)", () => {
   });
 
   test("ghost padding cards show fake visible ratings (3.8 only appears on ghost cards)", async ({ page }) => {
-    // 3.8 is GHOST_SLOTS[1].rating — it does NOT appear in MOCK_COMPANY_PROFILE's real managers
+    // 3.8 is GHOST_SLOTS[1].rating - it does NOT appear in MOCK_COMPANY_PROFILE's real managers
     // (Alex=4.3, Sam=3.9) so seeing 3.8 proves a ghost card rendered it
     await mockCompanyProfile(page, { loggedIn: false, hasContributed: false });
     await page.goto(`/companies/${TEST_COMPANY_SLUG}`);
 
     await expect(page.getByText("Alex Johnson")).toBeVisible({ timeout: 10_000 });
     // With 7 ghost cards cycling [4.3, 3.8, 4.7], "3.8" appears at positions 1 and 4
-    // and "4.7" appears at positions 2 and 5 — .first() avoids strict-mode.
+    // and "4.7" appears at positions 2 and 5 - .first() avoids strict-mode.
     await expect(page.getByText("3.8").first()).toBeVisible();
-    // 4.7 is GHOST_SLOTS[2].rating — also only on ghost cards
+    // 4.7 is GHOST_SLOTS[2].rating - also only on ghost cards
     await expect(page.getByText("4.7").first()).toBeVisible();
   });
 
@@ -326,7 +326,7 @@ test.describe("CompanyProfile — locked state (≤3 real managers)", () => {
     await page.goto(`/companies/${TEST_COMPANY_SLUG}`);
 
     await expect(page.getByText("Alex Johnson")).toBeVisible({ timeout: 10_000 });
-    // "2 managers" text should not appear — it's replaced by a blur placeholder span
+    // "2 managers" text should not appear - it's replaced by a blur placeholder span
     await expect(page.getByText(/\b2 managers\b/)).not.toBeVisible();
   });
 
@@ -356,7 +356,7 @@ test.describe("CompanyProfile — locked state (≤3 real managers)", () => {
   });
 });
 
-test.describe("CompanyProfile — locked state (4+ real managers: top-3 teaser rule)", () => {
+test.describe("CompanyProfile - locked state (4+ real managers: top-3 teaser rule)", () => {
   // MOCK_COMPANY_PROFILE_MANY_MANAGERS has 4 managers:
   //   pos 1: Lena Torres  (4.1) → visible
   //   pos 2: Omar Hassan  (3.6) → visible
@@ -401,7 +401,7 @@ test.describe("CompanyProfile — locked state (4+ real managers: top-3 teaser r
     await page.goto(`/companies/${TEST_COMPANY_SLUG}`);
 
     await expect(page.getByText("Lena Torres")).toBeVisible({ timeout: 10_000 });
-    // Ben Castro's rating (2.2) must not appear — blurred via blurRating prop
+    // Ben Castro's rating (2.2) must not appear - blurred via blurRating prop
     await expect(page.getByText("2.2")).not.toBeVisible();
   });
 
@@ -415,11 +415,11 @@ test.describe("CompanyProfile — locked state (4+ real managers: top-3 teaser r
     await page.goto(`/companies/${TEST_COMPANY_SLUG}`);
 
     await expect(page.getByText("Lena Torres")).toBeVisible({ timeout: 10_000 });
-    // "4.3" appears in ghost[0], ghost[3], AND fake insight bar — .first() avoids strict-mode.
+    // "4.3" appears in ghost[0], ghost[3], AND fake insight bar - .first() avoids strict-mode.
     await expect(page.getByText("4.3").first()).toBeVisible(); // ghost slot fake rating
-    // "3.8" appears in ghost[1] and ghost[4] — .first() avoids strict-mode.
+    // "3.8" appears in ghost[1] and ghost[4] - .first() avoids strict-mode.
     await expect(page.getByText("3.8").first()).toBeVisible(); // ghost slot fake rating
-    // "4.7" appears only in ghost[2] (5 ghost cards cycle [4.3,3.8,4.7,4.3,3.8]) — unique.
+    // "4.7" appears only in ghost[2] (5 ghost cards cycle [4.3,3.8,4.7,4.3,3.8]) - unique.
     await expect(page.getByText("4.7")).toBeVisible(); // ghost slot fake rating
   });
 
@@ -436,10 +436,10 @@ test.describe("CompanyProfile — locked state (4+ real managers: top-3 teaser r
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// COMPANY PROFILE — UNLOCKED STATE
+// COMPANY PROFILE - UNLOCKED STATE
 // ═════════════════════════════════════════════════════════════════════════════
 
-test.describe("CompanyProfile — unlocked state (contributed)", () => {
+test.describe("CompanyProfile - unlocked state (contributed)", () => {
   test("all real manager ratings visible when unlocked (2-manager profile)", async ({ page }) => {
     await mockCompanyProfile(page, { loggedIn: true, hasContributed: true });
     await page.goto(`/companies/${TEST_COMPANY_SLUG}`);
@@ -459,7 +459,7 @@ test.describe("CompanyProfile — unlocked state (contributed)", () => {
     await page.goto(`/companies/${TEST_COMPANY_SLUG}`);
 
     await expect(page.getByText("Lena Torres")).toBeVisible({ timeout: 10_000 });
-    // No blurring in unlocked state — ALL four ratings must be visible.
+    // No blurring in unlocked state - ALL four ratings must be visible.
     // "4.1" also appears in hero avgRating and "Organization and Planning Style" category bar.
     await expect(page.getByText("4.1").first()).toBeVisible();
     await expect(page.getByText("3.6")).toBeVisible();
@@ -532,11 +532,11 @@ test.describe("CompanyProfile — unlocked state (contributed)", () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// COMPANY PROFILE — ghost manager rating visibility
+// COMPANY PROFILE - ghost manager rating visibility
 // ═════════════════════════════════════════════════════════════════════════════
 
-test.describe("CompanyProfile — ghost manager ratings hidden for non-contributors", () => {
-  // Ghost managers have a fake seed rating. Non-contributors must never see it —
+test.describe("CompanyProfile - ghost manager ratings hidden for non-contributors", () => {
+  // Ghost managers have a fake seed rating. Non-contributors must never see it -
   // they should see the manager's name but not the rating number.
 
   test("non-contributor (logged-out): ghost manager name visible but rating hidden", async ({ page }) => {
@@ -544,7 +544,7 @@ test.describe("CompanyProfile — ghost manager ratings hidden for non-contribut
     await page.goto(`/companies/${TEST_COMPANY_SLUG}`);
 
     await expect(page.getByText("Bob Burgers")).toBeVisible({ timeout: 10_000 });
-    // "3.6" is the ghost seed rating — it must NOT be visible to non-contributors
+    // "3.6" is the ghost seed rating - it must NOT be visible to non-contributors
     await expect(page.getByText("3.6")).not.toBeVisible();
   });
 
@@ -561,7 +561,7 @@ test.describe("CompanyProfile — ghost manager ratings hidden for non-contribut
     await page.goto(`/companies/${TEST_COMPANY_SLUG}`);
 
     await expect(page.getByText("Bob Burgers")).toBeVisible({ timeout: 10_000 });
-    // Contributor sees everything — ghost rating visible
+    // Contributor sees everything - ghost rating visible
     await expect(page.getByText("3.6").first()).toBeVisible();
   });
 
@@ -570,7 +570,7 @@ test.describe("CompanyProfile — ghost manager ratings hidden for non-contribut
     await page.goto(`/companies/${TEST_COMPANY_SLUG}`);
 
     await expect(page.getByText("Lena Torres")).toBeVisible({ timeout: 10_000 });
-    // Lena Torres is approved with a real rating (4.1) — visible in top-3 teaser slot
+    // Lena Torres is approved with a real rating (4.1) - visible in top-3 teaser slot
     await expect(page.getByText("4.1")).toBeVisible();
   });
 });
@@ -579,10 +579,10 @@ test.describe("CompanyProfile — ghost manager ratings hidden for non-contribut
 // FIND MANAGER FORM (/find)
 // ═════════════════════════════════════════════════════════════════════════════
 
-test.describe("FindManagerForm (/find) — rating visibility", () => {
+test.describe("FindManagerForm (/find) - rating visibility", () => {
   // ── non-contributor results ────────────────────────────────────────────────
 
-  test("non-contributor (logged-in): results show name only — no title", async ({ page }) => {
+  test("non-contributor (logged-in): results show name only - no title", async ({ page }) => {
     await mockFindManagerPage(page, {
       loggedIn: true,
       hasContributed: false,
@@ -597,7 +597,7 @@ test.describe("FindManagerForm (/find) — rating visibility", () => {
     await expect(page.getByText("Engineering Manager")).not.toBeVisible();
   });
 
-  test("non-contributor (logged-in): results show name only — no numeric rating", async ({ page }) => {
+  test("non-contributor (logged-in): results show name only - no numeric rating", async ({ page }) => {
     await mockFindManagerPage(page, {
       loggedIn: true,
       hasContributed: false,
@@ -613,7 +613,7 @@ test.describe("FindManagerForm (/find) — rating visibility", () => {
     await expect(page.getByText("4.5")).not.toBeVisible();
   });
 
-  test("non-contributor (logged-out): results show name only — no title", async ({ page }) => {
+  test("non-contributor (logged-out): results show name only - no title", async ({ page }) => {
     await mockFindManagerPage(page, {
       loggedIn: false,
       searchResults: MOCK_MANAGERS_LIST,
@@ -651,7 +651,7 @@ test.describe("FindManagerForm (/find) — rating visibility", () => {
     await fillAndSubmitSearch(page);
     await expect(page.getByText("Alex Johnson")).toBeVisible({ timeout: 5_000 });
 
-    // Tile is now a link — non-contributor can click through to the locked profile
+    // Tile is now a link - non-contributor can click through to the locked profile
     await expect(
       page.getByRole("link", { name: /alex johnson/i }).first()
     ).toHaveAttribute("href", new RegExp(`/manager/${TEST_MANAGER_ID}`));
@@ -670,7 +670,7 @@ test.describe("FindManagerForm (/find) — rating visibility", () => {
     await fillAndSubmitSearch(page);
     await expect(page.getByText("Alex Johnson")).toBeVisible({ timeout: 5_000 });
 
-    // ManagerCard renders the title — confirms full card is shown
+    // ManagerCard renders the title - confirms full card is shown
     await expect(page.getByText("Engineering Manager")).toBeVisible();
   });
 
@@ -718,7 +718,7 @@ test.describe("FindManagerForm (/find) — rating visibility", () => {
 
   // ── fake-name validation ───────────────────────────────────────────────────
 
-  test("fake first name ('Test') triggers 'No manager found' — not 'Something went wrong'", async ({ page }) => {
+  test("fake first name ('Test') triggers 'No manager found' - not 'Something went wrong'", async ({ page }) => {
     // Client-side name validation intercepts FAKE_NAME_PARTS before any API call
     await mockFindManagerPage(page, { loggedIn: false });
     await page.goto("/find");
@@ -729,7 +729,7 @@ test.describe("FindManagerForm (/find) — rating visibility", () => {
     await expect(page.getByText(/something went wrong/i)).not.toBeVisible();
   });
 
-  test("'john doe' (fake full name) triggers 'No manager found' — not an error", async ({ page }) => {
+  test("'john doe' (fake full name) triggers 'No manager found' - not an error", async ({ page }) => {
     await mockFindManagerPage(page, { loggedIn: false });
     await page.goto("/find");
 

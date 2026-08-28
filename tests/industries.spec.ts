@@ -19,12 +19,12 @@ test.describe("Industries browse page (/industries)", () => {
     await page.goto("/industries");
 
     await expect(page.getByRole("heading", { name: /compare workplace experiences by industry/i })).toBeVisible({ timeout: 10_000 });
-    // No count in the header — it lives beside the sidebar search instead.
+    // No count in the header - it lives beside the sidebar search instead.
     await expect(page.locator("section").getByText(/\d+ industries/i)).not.toBeVisible();
 
     await expect(page.getByRole("heading", { name: "Technology" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Financial Services" })).toBeVisible();
-    // stats on a tile — scoped to the grid, since the sidebar also renders an "N companies"
+    // stats on a tile - scoped to the grid, since the sidebar also renders an "N companies"
     // style count and an unscoped getByText would match both under strict mode.
     await expect(page.locator("button").getByText("12 companies")).toBeVisible();
     await expect(page.getByText("40 managers")).toBeVisible();

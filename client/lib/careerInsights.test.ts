@@ -316,7 +316,7 @@ describe("generateCareerInsights", () => {
   });
 
   it("adds internal-role-change decline interpretation (same_company_new_role worst drop)", () => {
-    // same company, different role, rating drops > 0.75 — exercises the 'else' branch in worst-drop logic
+    // same company, different role, rating drops > 0.75 - exercises the 'else' branch in worst-drop logic
     const segs = [seg("Acme", "Manager", 5), seg("Acme", "Director", 4)];
     const result = generateCareerInsights(segs);
     expect(result).not.toBeNull();
@@ -327,7 +327,7 @@ describe("generateCareerInsights", () => {
   });
 
   it("adds internal-role-change improvement interpretation (same_company_new_role best gain)", () => {
-    // same company, different role, rating improves > 0.75 — exercises the 'same_company_new_role' branch in best-gain logic
+    // same company, different role, rating improves > 0.75 - exercises the 'same_company_new_role' branch in best-gain logic
     const segs = [seg("Acme", "Manager", 3), seg("Acme", "Director", 4.5)];
     const result = generateCareerInsights(segs);
     expect(result).not.toBeNull();

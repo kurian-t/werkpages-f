@@ -187,7 +187,7 @@ function mobileObjectGeometry(
  *
  * Tablet preserves the composition proportionally. Mobile intentionally
  * reflows content objects into a single readable column while decorative
- * shapes keep proportional art direction. It is only a starting point —
+ * shapes keep proportional art direction. It is only a starting point -
  * everything remains directly draggable/resizable afterward.
  */
 export function seedInteractiveSceneBreakpointLayout(

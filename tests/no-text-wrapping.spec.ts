@@ -1,7 +1,7 @@
 /**
  * Regression tests: ensure buttons, badges, and labels never wrap onto multiple lines.
  *
- * Each test simulates a narrow mobile viewport (375px — iPhone SE) and checks that
+ * Each test simulates a narrow mobile viewport (375px - iPhone SE) and checks that
  * critical UI elements have a clientHeight consistent with a single line of text.
  * If text wraps, the element grows taller and the assertion fails.
  */
@@ -36,7 +36,7 @@ test.describe("No text wrapping on mobile (375px)", () => {
     await mockDirectoryPage(page, { managers: [] });
     await page.goto("/directory");
 
-    // On mobile, sidebar is hidden — open it via the Filters button first
+    // On mobile, sidebar is hidden - open it via the Filters button first
     const filtersBtn = page.getByRole("button", { name: /filters/i });
     await expect(filtersBtn).toBeVisible({ timeout: 5_000 });
     await filtersBtn.click();
@@ -56,7 +56,7 @@ test.describe("No text wrapping on mobile (375px)", () => {
     await mockDirectoryPage(page);
     await page.goto("/directory");
 
-    // On mobile, sidebar is hidden — open it via the Filters button first
+    // On mobile, sidebar is hidden - open it via the Filters button first
     const filtersBtn = page.getByRole("button", { name: /filters/i });
     await filtersBtn.click();
 
@@ -129,7 +129,7 @@ test.describe("No text wrapping on mobile (375px)", () => {
     await page.goto("/directory");
 
     // Badge is now an amber pill at the card's top-right with a lucide Star icon,
-    // matching the company cards — the literal "★ Top Rated" text is gone.
+    // matching the company cards - the literal "★ Top Rated" text is gone.
     // exact: the sort dropdown has an <option>Top Rated</option> that a loose
     // match also picks up. The badge is lowercase "rated", the option is not.
     const badge = page.getByText("Top rated", { exact: true }).first();

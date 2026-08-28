@@ -187,7 +187,7 @@ export function getInteractiveBindingOptions(
       options.push(
         option(
           "Experience",
-          `${descriptor || `Role ${index + 1}`} — ${label}`,
+          `${descriptor || `Role ${index + 1}`} - ${label}`,
           detail || undefined,
           binding("work", field, id),
         ),
@@ -219,7 +219,7 @@ export function getInteractiveBindingOptions(
       options.push(
         option(
           "Projects",
-          `${descriptor} — ${label}`,
+          `${descriptor} - ${label}`,
           detail || undefined,
           binding("project", field, id),
         ),
@@ -255,7 +255,7 @@ export function getInteractiveBindingOptions(
       options.push(
         option(
           "Education",
-          `${descriptor} — ${label}`,
+          `${descriptor} - ${label}`,
           detail || undefined,
           binding("education", field, id),
         ),

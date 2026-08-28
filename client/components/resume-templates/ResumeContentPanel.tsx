@@ -530,7 +530,7 @@ function WorkEditor({
         <RichTextEditor
           value={entry.body ?? ""}
           onChange={html => onChange({ ...entry, body: html || undefined })}
-          placeholder="Describe this role — use bullet points, bold, italic and alignment to format."
+          placeholder="Describe this role - use bullet points, bold, italic and alignment to format."
           minHeight={120}
         />
         <input
@@ -694,7 +694,7 @@ function ProjectEditor({
         />
         <input
           value={project.techStack}
-          placeholder="Tech stack — e.g. React, TypeScript, PostgreSQL"
+          placeholder="Tech stack - e.g. React, TypeScript, PostgreSQL"
           onChange={event =>
             onChange({ ...project, techStack: event.target.value })
           }

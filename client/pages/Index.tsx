@@ -41,14 +41,14 @@ function HeroImage({ className, imgClass }: { className?: string; imgClass?: str
         fetchPriority="high"
         decoding="async"
       />
-      {/* Twinkling stars — placed over the drawn stars in the upper-left of the image */}
+      {/* Twinkling stars - placed over the drawn stars in the upper-left of the image */}
       <span className="hero-star hero-star-1" style={{ top: "6%",  left: "11%" }}>✦</span>
       <span className="hero-star hero-star-2" style={{ top: "3%",  left: "19%" }}>✦</span>
       <span className="hero-star hero-star-3" style={{ top: "14%", left: "6%"  }}>✦</span>
       <span className="hero-star hero-star-4" style={{ top: "10%", left: "18%" }}>✦</span>
       <span className="hero-star hero-star-5" style={{ top: "17%", left: "12%" }}>✦</span>
       <span className="hero-star hero-star-6" style={{ top: "7%",  left: "24%" }}>✦</span>
-      {/* Rocket sparks — scattered around the exhaust nozzle */}
+      {/* Rocket sparks - scattered around the exhaust nozzle */}
       <span className="hero-spark hero-spark-1" style={{ top: "85%", left: "66%" }}>✦</span>
       <span className="hero-spark hero-spark-2" style={{ top: "89%", left: "71%" }}>✦</span>
       <span className="hero-spark hero-spark-3" style={{ top: "93%", left: "68%" }}>✦</span>
@@ -56,7 +56,7 @@ function HeroImage({ className, imgClass }: { className?: string; imgClass?: str
       <span className="hero-spark hero-spark-5" style={{ top: "91%", left: "64%" }}>✦</span>
       <span className="hero-spark hero-spark-6" style={{ top: "87%", left: "75%" }}>✦</span>
       <span className="hero-spark hero-spark-7" style={{ top: "95%", left: "70%" }}>✦</span>
-      {/* Telescope projection bubbles — pop and disappear */}
+      {/* Telescope projection bubbles - pop and disappear */}
       <div className="hero-bubble hero-bubble-main" style={{ top: "62%", left: "12%" }} />
       <div className="hero-bubble hero-bubble-2"    style={{ top: "53%", left: "7%"  }} />
       <div className="hero-bubble hero-bubble-3"    style={{ top: "68%", left: "16%" }} />

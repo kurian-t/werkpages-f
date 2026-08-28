@@ -23,7 +23,7 @@ test.describe("Admin Panel", () => {
     });
 
     test("unauthenticated user sees Access Denied", async ({ page }) => {
-      // No auth mock — user is not logged in
+      // No auth mock - user is not logged in
       await page.route("**/api/auth/me", (route) =>
         route.fulfill({ status: 401, json: { error: "Unauthorized" } })
       );
@@ -366,7 +366,7 @@ test.describe("Admin Panel", () => {
         page.getByRole("heading", { name: /merge companies\?/i })
       ).toBeVisible({ timeout: 3_000 });
 
-      // Confirm in dialog — use the dialog's confirm button (last match)
+      // Confirm in dialog - use the dialog's confirm button (last match)
       await page.getByRole("button", { name: /^merge companies$/i }).last().click();
 
       await expect(
@@ -376,7 +376,7 @@ test.describe("Admin Panel", () => {
 
   });
 
-  test.describe("Pending managers — auto-created badge and inline edit", () => {
+  test.describe("Pending managers - auto-created badge and inline edit", () => {
     test("auto-created manager shows auto-created badge", async ({ page }) => {
       await mockAdminPage(page, {
         pendingManagers: [MOCK_AUTO_CREATED_ADMIN_MANAGER],

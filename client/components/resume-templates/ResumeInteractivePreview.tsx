@@ -2400,7 +2400,7 @@ function AdvancedMotionEditor({
 
       {!embedded && (
         <div className="mt-2 rounded-md bg-background/80 px-2 py-1.5 text-[12px] leading-relaxed text-muted-foreground">
-          Quick motion and triggered animation can stack. X/Y tracks are visual offsets only — they never change the saved canvas position.
+          Quick motion and triggered animation can stack. X/Y tracks are visual offsets only - they never change the saved canvas position.
         </div>
       )}
 

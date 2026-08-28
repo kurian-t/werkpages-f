@@ -159,7 +159,7 @@ test.describe("Account Settings", () => {
       await page.getByRole("button", { name: /delete/i }).first().click();
       await page.getByRole("button", { name: /yes, delete/i }).click();
 
-      // Review removed — empty state appears
+      // Review removed - empty state appears
       await expect(
         page.getByText(/you haven't written any reviews yet/i)
       ).toBeVisible({ timeout: 5_000 });

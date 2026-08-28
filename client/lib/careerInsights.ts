@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Career-timeline insight engine
-// All insights are deterministic — no AI, everything traceable to review data.
+// All insights are deterministic - no AI, everything traceable to review data.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type ConsistencyProfile =
@@ -426,9 +426,9 @@ export function computeConsistencyScore(
 
   const hrInterpretations: Record<ConsistencyProfile, string> = {
     stable_performer:   "Safe hire. Predictable and process-driven. Well-suited for scaling teams or roles where reliability matters more than upside.",
-    context_dependent:  "Performance depends on team maturity, company stage, and reporting structure. Great if placed correctly — risky if not.",
+    context_dependent:  "Performance depends on team maturity, company stage, and reporting structure. Great if placed correctly - risky if not.",
     volatile_performer: "Significant variation across contexts makes outcomes difficult to predict. Environment, team fit, and role scope appear to be material factors in performance.",
-    improver:           "Strong potential. Coachable and trajectory-focused. Worth betting on — particularly if recent performance is strong.",
+    improver:           "Strong potential. Coachable and trajectory-focused. Worth betting on - particularly if recent performance is strong.",
     decliner:           "Red flag for senior or expanding roles. May not scale. Possible leadership fatigue or mismatch with increasing complexity.",
   };
 

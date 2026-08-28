@@ -10,7 +10,7 @@ import {
 } from "./fixtures";
 
 test.describe("Access Control", () => {
-  test.describe("/admin route — direct URL access", () => {
+  test.describe("/admin route - direct URL access", () => {
     // The Admin Panel link is hidden from the header nav for non-admins.
     // These tests verify that if someone manually navigates to /admin,
     // they still see "Access Denied" rather than a blank page or crash.
@@ -65,7 +65,7 @@ test.describe("Access Control", () => {
     });
   });
 
-  test.describe("Pending manager — other users cannot access", () => {
+  test.describe("Pending manager - other users cannot access", () => {
     // The API returns 404 for any user who is not the submitter.
     // Pending profiles must not be visible or accessible to anyone else.
 

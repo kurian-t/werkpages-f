@@ -8,7 +8,7 @@ import {
 
 /**
  * These builders define the canonical URL shape in one place. The backend's SitemapService
- * builds the same strings independently, so the two must agree — a mismatch would advertise
+ * builds the same strings independently, so the two must agree - a mismatch would advertise
  * URLs to Google that immediately redirect, costing crawl budget and splitting page signals.
  */
 describe("canonical URL builders", () => {
@@ -22,7 +22,7 @@ describe("canonical URL builders", () => {
   });
 
   it("falls back to 'other' when the company has no industry yet", () => {
-    // industry is nullable — classification runs asynchronously after a company is created,
+    // industry is nullable - classification runs asynchronously after a company is created,
     // so unclassified companies still need a resolvable canonical URL.
     expect(companyPath(null, "new-co")).toBe("/industries/other/companies/new-co");
     expect(companyPath(undefined, "new-co")).toBe("/industries/other/companies/new-co");

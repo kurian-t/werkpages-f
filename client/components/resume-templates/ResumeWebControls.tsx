@@ -269,7 +269,7 @@ export default function ResumeWebControls({
                   onChange={event =>
                     updateFeaturedLink(link.id, { label: event.target.value })
                   }
-                  placeholder="Label — e.g. Portfolio"
+                  placeholder="Label - e.g. Portfolio"
                 />
                 <input
                   className={inputCls}

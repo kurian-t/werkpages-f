@@ -97,7 +97,7 @@ export default function IndustryProfile() {
   const companies = data?.companies ?? [];
 
   // Filters the companies already loaded for this industry, rather than searching all
-  // companies — searching inside Technology should not surface a bank.
+  // companies - searching inside Technology should not surface a bank.
   const query = search.trim().toLowerCase();
   const visible = query
     ? companies.filter(co => co.name.toLowerCase().includes(query))
@@ -144,7 +144,7 @@ export default function IndustryProfile() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col gap-8 lg:flex-row">
 
-          {/* Sidebar — mirrors the /companies layout */}
+          {/* Sidebar - mirrors the /companies layout */}
           <aside className="lg:w-56 flex-shrink-0">
             <div className="space-y-6">
               <div>

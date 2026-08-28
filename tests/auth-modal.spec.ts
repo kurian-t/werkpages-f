@@ -8,7 +8,7 @@ import {
   attestFirstHandExperience,
 } from "./fixtures";
 
-test.describe("Auth modal — social-first flow", () => {
+test.describe("Auth modal - social-first flow", () => {
   test.beforeEach(async ({ page }) => {
     await mockManagerPage(page);
   });
@@ -131,7 +131,7 @@ test.describe("Auth modal — social-first flow", () => {
   test("can switch between sign up and sign in views", async ({ page }) => {
     await openAuthModal(page);
 
-    // Auth modal is open — confirm it with the Google button
+    // Auth modal is open - confirm it with the Google button
     await expect(
       page.getByRole("button", { name: /continue with google/i })
     ).toBeVisible({ timeout: 5_000 });

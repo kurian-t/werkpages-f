@@ -128,7 +128,7 @@ export default function Companies() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col gap-8 lg:flex-row">
 
-          {/* Sidebar — mirrors /directory layout */}
+          {/* Sidebar - mirrors /directory layout */}
           <aside className="lg:w-56 flex-shrink-0">
             <div className="space-y-6">
               <div>

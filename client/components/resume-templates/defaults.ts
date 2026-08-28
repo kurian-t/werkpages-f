@@ -1,6 +1,6 @@
 import type { ResumeDesign, TextStyle } from "./types";
 
-// ── Base text style — every field required so the PDF renderer never hits undefined ──
+// ── Base text style - every field required so the PDF renderer never hits undefined ──
 
 function text(overrides: Partial<TextStyle> & { fontFamily: TextStyle["fontFamily"]; fontSize: number; color: string }): TextStyle {
   return {
@@ -77,7 +77,7 @@ export const CLASSIC: ResumeDesign = {
 
 // ── Starting point: Editorial ──────────────────────────────────────────────────
 // Single column, Times-Roman (serif), generous margins, no section rules.
-// Refined and academic — great for senior roles.
+// Refined and academic - great for senior roles.
 
 export const EDITORIAL: ResumeDesign = {
   pageSize: "LETTER",
@@ -94,7 +94,7 @@ export const EDITORIAL: ResumeDesign = {
   sidebarSections: ["skills", "links"],
 
   name: text({ fontFamily: "Times-Bold", fontSize: 26, color: "#111111", marginBottom: 5 }),
-  contact: { ...text({ fontFamily: "Times-Roman", fontSize: 9, color: "#666666", letterSpacing: 0.3, marginBottom: 2 }), separator: "  —  " },
+  contact: { ...text({ fontFamily: "Times-Roman", fontSize: 9, color: "#666666", letterSpacing: 0.3, marginBottom: 2 }), separator: "  -  " },
 
   sectionHeading: text({ fontFamily: "Times-Bold", fontSize: 11, color: "#111111", textTransform: "uppercase", letterSpacing: 2, marginTop: 20, marginBottom: 6 }),
   sectionRuleShow: false,
@@ -107,7 +107,7 @@ export const EDITORIAL: ResumeDesign = {
   entryOrg: text({ fontFamily: "Times-Italic", fontSize: 9.5, color: "#555555", marginBottom: 4 }),
   entryDate: { ...text({ fontFamily: "Times-Roman", fontSize: 9, color: "#888888" }), position: "right" },
   entryBullet: text({ fontFamily: "Times-Roman", fontSize: 10, color: "#333333", lineHeight: 1.5, marginLeft: 12 }),
-  bulletMarkerChar: "—",
+  bulletMarkerChar: "-",
   bulletMarkerColor: "#aaaaaa",
   bulletMarkerWidth: 16,
   entrySpacing: 12,
@@ -175,7 +175,7 @@ export const SIDEBAR: ResumeDesign = {
 };
 
 // ── Starting point: Minimal ────────────────────────────────────────────────────
-// Label layout — narrow uppercase label column, wide content column.
+// Label layout - narrow uppercase label column, wide content column.
 // Extreme whitespace, no rules, elegant contrast.
 
 export const MINIMAL: ResumeDesign = {

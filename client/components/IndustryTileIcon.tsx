@@ -64,7 +64,7 @@ export function IndustryTileIcon({
   );
 }
 
-/** Every slug this component can draw — used by the coverage test. */
+/** Every slug this component can draw - used by the coverage test. */
 export const INDUSTRY_TILE_ICON_SLUGS = Object.keys(EMOJI);
 
 /** True when a real glyph exists for this slug (i.e. not falling back to "other"). */

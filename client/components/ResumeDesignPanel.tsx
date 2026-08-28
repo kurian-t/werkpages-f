@@ -1,5 +1,5 @@
 /**
- * Design panel — page-level and structural settings only.
+ * Design panel - page-level and structural settings only.
  * Per-element typography (font, size, color, spacing) lives in the canvas
  * click-to-style popover, so we don't duplicate it here.
  */
@@ -18,8 +18,8 @@ const TOGGLE  = "relative inline-flex h-5 w-9 items-center rounded-full transiti
 
 const LAYOUTS: { value: LayoutType; label: string }[] = [
   { value: "single",        label: "Single column" },
-  { value: "sidebar-left",  label: "Sidebar — left" },
-  { value: "sidebar-right", label: "Sidebar — right" },
+  { value: "sidebar-left",  label: "Sidebar - left" },
+  { value: "sidebar-right", label: "Sidebar - right" },
   { value: "two-column",    label: "Two column" },
   { value: "label",         label: "Label column" },
 ];

@@ -35,7 +35,7 @@ export default function EmailVerified() {
       }
     } catch {}
 
-    // Nothing pending — just go home
+    // Nothing pending - just go home
     navigate("/", { replace: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

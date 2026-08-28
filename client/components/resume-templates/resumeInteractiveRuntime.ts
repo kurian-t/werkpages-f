@@ -98,7 +98,7 @@ export function buildInteractiveVisitorProjection(
     .join(" ");
 
   return {
-    title: fullName ? `${fullName} — Interactive Resume` : "Interactive Resume",
+    title: fullName ? `${fullName} - Interactive Resume` : "Interactive Resume",
     description:
       asText(data.summary).trim() ||
       "Interactive resume experience",

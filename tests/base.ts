@@ -1,5 +1,5 @@
 /**
- * Base Playwright fixtures — all spec files import { test, expect } from here.
+ * Base Playwright fixtures - all spec files import { test, expect } from here.
  *
  * When PLAYWRIGHT_COVERAGE=true, the `page` fixture is extended to collect
  * window.__coverage__ (populated by vite-plugin-istanbul) after each test and
@@ -31,7 +31,7 @@ export const test = base.extend<{ autoCaptureCoverage: void }>({
           );
         }
       } catch {
-        // Page may be closed — coverage not critical, swallow silently
+        // Page may be closed - coverage not critical, swallow silently
       }
     },
     { auto: true },

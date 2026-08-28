@@ -276,7 +276,7 @@
 .resume-body-html ol { list-style-type: decimal; }
 .resume-body-html li { margin-bottom: 0.1em; display: list-item; }
 .resume-body-html li:last-child { margin-bottom: 0; }
-/* Tiptap wraps list item content in <p> — strip its margin */
+/* Tiptap wraps list item content in <p> - strip its margin */
 .resume-body-html li > p { margin: 0; font-size: inherit; }
 .resume-body-html strong { font-weight: bold; }
 .resume-body-html em     { font-style: italic; }

@@ -78,7 +78,7 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCle
         setOpen(results.length > 0);
         setActiveIndex(-1);
       } catch {
-        // suggest unavailable — free-text still works
+        // suggest unavailable - free-text still works
       }
     }, 300);
 

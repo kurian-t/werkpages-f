@@ -402,7 +402,7 @@ function TemplateGallery({
 
           <div className="mt-5 rounded-xl border border-border bg-muted/20 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
             Applying a shared template updates the Designed PDF and gives Responsive Web a responsive adaptation of
-            the same visual structure — including sidebar direction, accent treatment and timeline styling where the
+            the same visual structure - including sidebar direction, accent treatment and timeline styling where the
             template uses them. Web-only content and your breakpoint-specific edits stay intact. Existing Web typography
             overrides are re-linked so the selected template is visibly shared across both formats.
           </div>
@@ -412,7 +412,7 @@ function TemplateGallery({
   );
 }
 
-// ── Projects — shared resume content ─────────────────────────────────────────
+// ── Projects - shared resume content ─────────────────────────────────────────
 
 
 // ── Web-only video content ───────────────────────────────────────────────────
@@ -475,7 +475,7 @@ function VideoTab({
       />
       <input
         value={video.title}
-        placeholder="Section title — e.g. Video introduction"
+        placeholder="Section title - e.g. Video introduction"
         onChange={event => patchVideo({ title: event.target.value })}
         className={inputCls}
       />
@@ -895,7 +895,7 @@ export default function ResumeBuilder() {
         "unknown";
 
       console.error(
-        `[Resume] save failed: HTTP ${status ?? "network error"} —`,
+        `[Resume] save failed: HTTP ${status ?? "network error"} -`,
         message,
         body ?? error,
       );

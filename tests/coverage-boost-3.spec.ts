@@ -46,10 +46,10 @@ async function mockGeo(page: any) {
   );
 }
 
-// ─── BossProfile.tsx — edit review flow ──────────────────────────────────────
+// ─── BossProfile.tsx - edit review flow ──────────────────────────────────────
 // Covers: showReviewDropdown, cachedUserReviews, edit modal, delete inline confirm
 
-test.describe("BossProfile — edit and delete review flows", () => {
+test.describe("BossProfile - edit and delete review flows", () => {
   test("user with existing review sees 'Edit Your Review' and chevron", async ({ page }) => {
     await mockManagerPage(page, {
       loggedIn: true,
@@ -167,9 +167,9 @@ test.describe("BossProfile — edit and delete review flows", () => {
   });
 });
 
-// ─── Admin.tsx — ban/unban flows and inline edit ──────────────────────────────
+// ─── Admin.tsx - ban/unban flows and inline edit ──────────────────────────────
 
-test.describe("Admin — ban, unban, and inline edit flows", () => {
+test.describe("Admin - ban, unban, and inline edit flows", () => {
   const ADMIN = { ...MOCK_ADMIN_USER, hasContributed: true };
 
   const MOCK_USER_TO_BAN = {
@@ -353,15 +353,15 @@ test.describe("Admin — ban, unban, and inline edit flows", () => {
       // Editable name input should appear
       await expect(page.getByRole("textbox").filter({ hasValue: "Jane Doe" }).first()).toBeVisible({ timeout: 3000 });
     } else {
-      // May not be visible — check admin panel still up
+      // May not be visible - check admin panel still up
       await expect(page.getByText(/admin panel/i)).toBeVisible({ timeout: 3000 });
     }
   });
 });
 
-// ─── AccountSettings.tsx — review management flows ───────────────────────────
+// ─── AccountSettings.tsx - review management flows ───────────────────────────
 
-test.describe("AccountSettings — review and account flows", () => {
+test.describe("AccountSettings - review and account flows", () => {
   test("page loads and displays user reviews", async ({ page }) => {
     await mockAccountSettingsPage(page, {
       reviews: [MOCK_MY_REVIEW],
@@ -390,7 +390,7 @@ test.describe("AccountSettings — review and account flows", () => {
     const editBtn = page.getByRole("button", { name: /edit/i }).first();
     if (await editBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await editBtn.click();
-      // Edit modal should open — expect rating sliders or "Save" button
+      // Edit modal should open - expect rating sliders or "Save" button
       await expect(
         page.getByRole("button", { name: /save|update|next/i }).first()
       ).toBeVisible({ timeout: 5000 });
@@ -433,9 +433,9 @@ test.describe("AccountSettings — review and account flows", () => {
   });
 });
 
-// ─── Companies.tsx — locked state and pagination ──────────────────────────────
+// ─── Companies.tsx - locked state and pagination ──────────────────────────────
 
-test.describe("Companies — locked gate button and pagination", () => {
+test.describe("Companies - locked gate button and pagination", () => {
   async function setupCompanies(page: any, opts: { isLocked?: boolean; companies?: any[] } = {}) {
     const { isLocked = false, companies = MOCK_COMPANY_LISTING } = opts;
     if (isLocked) {
@@ -505,7 +505,7 @@ test.describe("Companies — locked gate button and pagination", () => {
         if (!await prevBtn.isDisabled()) {
           await prevBtn.click();
           await page.waitForTimeout(500);
-          // Verify we're back on page 1 — companies grid should still be visible
+          // Verify we're back on page 1 - companies grid should still be visible
           await expect(page.locator("main, [role='main'], .grid").first()).toBeVisible({ timeout: 3000 });
         }
       }
@@ -513,9 +513,9 @@ test.describe("Companies — locked gate button and pagination", () => {
   });
 });
 
-// ─── Directory.tsx — filters and sort ────────────────────────────────────────
+// ─── Directory.tsx - filters and sort ────────────────────────────────────────
 
-test.describe("Directory — filter and sort interactions", () => {
+test.describe("Directory - filter and sort interactions", () => {
   async function setupDirectory(page: any) {
     await mockUnauthenticated(page);
     await mockGeo(page);
@@ -618,9 +618,9 @@ test.describe("Directory — filter and sort interactions", () => {
   });
 });
 
-// ─── AddBoss.tsx — step 3 Regenerate button and location edit ────────────────
+// ─── AddBoss.tsx - step 3 Regenerate button and location edit ────────────────
 
-test.describe("AddBoss — Regenerate button and location editing", () => {
+test.describe("AddBoss - Regenerate button and location editing", () => {
   async function setupAddBoss(page: any, loggedIn = true) {
     if (loggedIn) {
       await mockAuthenticated(page, MOCK_USER);
@@ -710,7 +710,7 @@ test.describe("AddBoss — Regenerate button and location editing", () => {
     await setupAddBoss(page);
     await page.goto("/add");
     await expect(page.getByText(/who is this manager/i)).toBeVisible({ timeout: 8000 });
-    // Geo pre-fills location — "Edit location" button should appear
+    // Geo pre-fills location - "Edit location" button should appear
     const editLocBtn = page.getByRole("button", { name: /edit location/i });
     if (await editLocBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await editLocBtn.click();
@@ -738,9 +738,9 @@ test.describe("AddBoss — Regenerate button and location editing", () => {
   });
 });
 
-// ─── SignUp.tsx — phone number validation path ────────────────────────────────
+// ─── SignUp.tsx - phone number validation path ────────────────────────────────
 
-test.describe("SignUp — phone number and edge cases", () => {
+test.describe("SignUp - phone number and edge cases", () => {
   async function setupSignUp(page: any) {
     await mockUnauthenticated(page);
     await mockTurnstile(page);
@@ -802,9 +802,9 @@ test.describe("SignUp — phone number and edge cases", () => {
   });
 });
 
-// ─── AuthContext.tsx — session expiry (401) clears user state ─────────────────
+// ─── AuthContext.tsx - session expiry (401) clears user state ─────────────────
 
-test.describe("AuthContext — session validation", () => {
+test.describe("AuthContext - session validation", () => {
   test("stored user with 401 from /api/auth/me clears localStorage and user state", async ({ page }) => {
     // Put user in localStorage first
     await page.addInitScript((u: any) => {
@@ -822,7 +822,7 @@ test.describe("AuthContext — session validation", () => {
     );
     await page.goto("/directory");
     await page.waitForTimeout(2000);
-    // User should be logged out — authUser removed from localStorage
+    // User should be logged out - authUser removed from localStorage
     const authUser = await page.evaluate(() => localStorage.getItem("authUser"));
     expect(authUser).toBeNull();
   });
@@ -847,7 +847,7 @@ test.describe("AuthContext — session validation", () => {
     await page.addInitScript((u: any) => {
       localStorage.setItem("authUser", JSON.stringify(u));
     }, MOCK_USER);
-    // 502 = server starting — should NOT clear user state
+    // 502 = server starting - should NOT clear user state
     await page.route("**/api/auth/me", (route: any) =>
       route.fulfill({ status: 502, json: { error: "Bad Gateway" } })
     );
@@ -862,9 +862,9 @@ test.describe("AuthContext — session validation", () => {
   });
 });
 
-// ─── auth.ts — startSocialLogin via SocialLoginButtons ───────────────────────
+// ─── auth.ts - startSocialLogin via SocialLoginButtons ───────────────────────
 
-test.describe("auth.ts — social login button navigation", () => {
+test.describe("auth.ts - social login button navigation", () => {
   test("clicking Continue with Google redirects to Auth0 authorize URL", async ({ page }) => {
     await mockUnauthenticated(page);
     await mockTurnstile(page);
@@ -879,9 +879,9 @@ test.describe("auth.ts — social login button navigation", () => {
         page.waitForURL(/authorize|auth0/, { timeout: 2000 }),
       ]).catch(() => {});
     }
-    // Either navigated or button was clicked — verify session storage was set
+    // Either navigated or button was clicked - verify session storage was set
     const oauthState = await page.evaluate(() => sessionStorage.getItem("oauth_state")).catch(() => null);
-    // oauth_state may or may not persist after navigation attempt — just verify no crash
+    // oauth_state may or may not persist after navigation attempt - just verify no crash
     await expect(page.locator("body")).toBeVisible({ timeout: 2000 });
   });
 
@@ -914,14 +914,14 @@ test.describe("auth.ts — social login button navigation", () => {
     ]).catch(() => {});
     // Verify the page attempted navigation (sessionStorage.oauth_state set)
     const oauthState = await page.evaluate(() => sessionStorage.getItem("oauth_state")).catch(() => null);
-    // oauth_state may or may not be set depending on timing — just verify no crash
+    // oauth_state may or may not be set depending on timing - just verify no crash
     await expect(page.locator("body")).toBeVisible({ timeout: 2000 });
   });
 });
 
-// ─── careerInsights.ts — coverage via BossProfile career timeline ─────────────
+// ─── careerInsights.ts - coverage via BossProfile career timeline ─────────────
 
-test.describe("careerInsights.ts — insight generation via BossProfile", () => {
+test.describe("careerInsights.ts - insight generation via BossProfile", () => {
   const MULTI_SEGMENT_REVIEWS = [
     {
       id: "rev-1",
@@ -1045,9 +1045,9 @@ test.describe("careerInsights.ts — insight generation via BossProfile", () => 
   });
 });
 
-// ─── countries.ts — getCountryFlag via AddBoss location rendering ─────────────
+// ─── countries.ts - getCountryFlag via AddBoss location rendering ─────────────
 
-test.describe("countries.ts — getCountryFlag coverage", () => {
+test.describe("countries.ts - getCountryFlag coverage", () => {
   test("AddBoss renders country flag from geo-prefilled location", async ({ page }) => {
     await mockAuthenticated(page, MOCK_USER);
     // Mock geo to return "Canada" so the COUNTRIES lookup runs

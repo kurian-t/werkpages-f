@@ -53,7 +53,7 @@ const MONTHS = [
 const currentYear = new Date().getFullYear();
 const currentMonth = new Date().getMonth() + 1; // 1-12
 const YEARS = Array.from({ length: 21 }, (_, i) => String(currentYear - i));
-// Always show all months — validation catches future dates
+// Always show all months - validation catches future dates
 const availableMonths = (_selectedYear: string) => MONTHS;
 
 const toYearMonth = (month: string, year: string) =>
@@ -159,7 +159,7 @@ export default function AccountSettings() {
       setReviewsOffset((prev) => prev + next.length);
       setReviewsTotal(res.data.total ?? reviewsTotal);
     } catch {
-      // silently ignore — user can scroll up/down to retry naturally
+      // silently ignore - user can scroll up/down to retry naturally
     } finally {
       setReviewsLoadingMore(false);
     }
@@ -725,7 +725,7 @@ export default function AccountSettings() {
         </div>
       )}
 
-      {/* Edit Review — Full-Screen Stepped Form */}
+      {/* Edit Review - Full-Screen Stepped Form */}
       {editReviewStep && selectedReview && (() => {
         const steps = ["ratings", "dates"] as const;
         const stepIdx = steps.indexOf(editReviewStep) + 1;
@@ -798,7 +798,7 @@ export default function AccountSettings() {
                       <p className="mt-1 text-sm text-muted-foreground">Takes just a minute. Your honest experience helps other job seekers make smarter career decisions.</p>
                     </div>
 
-                    {/* Manager role context — read-only with inline edit toggle */}
+                    {/* Manager role context - read-only with inline edit toggle */}
                     <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
                       {!editingEditRoleInline ? (
                         <div className="flex items-start justify-between gap-3">

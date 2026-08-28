@@ -45,7 +45,7 @@ test.describe("Explore landing page (/explore)", () => {
 
   test("defaults to Manager mode showing the /find search form", async ({ page }) => {
     await page.goto("/explore");
-    // FindManagerForm — the exact same component as /find
+    // FindManagerForm - the exact same component as /find
     await expect(page.getByPlaceholder("First name")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByPlaceholder("Last name")).toBeVisible();
     await expect(page.getByPlaceholder(/job title/i)).toBeVisible();

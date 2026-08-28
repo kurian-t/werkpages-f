@@ -30,7 +30,7 @@ test.describe("Authenticated review actions", () => {
     await page.getByRole("checkbox", { name: /current/i }).check();
     await page.getByRole("button", { name: /^next$/i }).click();
 
-    // Step 3: identity — shows anonymous posting card
+    // Step 3: identity - shows anonymous posting card
     await expect(page.getByText(/posting anonymously/i)).toBeVisible({ timeout: 3_000 });
     await attestFirstHandExperience(page);
     await expect(
@@ -212,7 +212,7 @@ test.describe("Authenticated review actions", () => {
 // These tests verify the frontend sends the right fields so the backend can
 // make that determination, and that the success flow completes correctly.
 
-test.describe("Manager profile auto-update — review submission fields", () => {
+test.describe("Manager profile auto-update - review submission fields", () => {
   async function submitReviewAndCapture(
     page: any,
     opts: { currently: boolean }
@@ -253,7 +253,7 @@ test.describe("Manager profile auto-update — review submission fields", () => 
     if (opts.currently) {
       await page.getByRole("checkbox", { name: /current/i }).check();
     } else {
-      // Past role — fill in a To date
+      // Past role - fill in a To date
       await page.getByLabel("Until month").selectOption("06");
       await page.getByLabel("Until year").selectOption("2024");
     }
@@ -307,7 +307,7 @@ test.describe("Manager profile auto-update — review submission fields", () => 
     const body = await submitReviewAndCapture(page, { currently: false });
 
     expect(body).not.toBeNull();
-    // workedUntil must be a date string — backend will NOT update the profile
+    // workedUntil must be a date string - backend will NOT update the profile
     // unless this review is the most current across all reviews
     expect(body.workedUntil).not.toBeNull();
     expect(body.workedUntil).toMatch(/^\d{4}-\d{2}$/);
@@ -347,7 +347,7 @@ test.describe("Manager profile auto-update — review submission fields", () => 
       }
     );
 
-    // Reviews endpoint — POST succeeds, GET returns empty list
+    // Reviews endpoint - POST succeeds, GET returns empty list
     await page.route(
       new RegExp(`/api/managers/${TEST_MANAGER_ID}/reviews`),
       (route: any) => {

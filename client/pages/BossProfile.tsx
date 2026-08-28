@@ -73,7 +73,7 @@ const MONTHS = [
 const currentYear = new Date().getFullYear();
 const currentMonth = new Date().getMonth() + 1; // 1-12
 const YEARS = Array.from({ length: 47 }, (_, i) => String(currentYear - i));
-// Always show all months — validation catches future dates
+// Always show all months - validation catches future dates
 const availableMonths = (_selectedYear: string) => MONTHS;
 
 const toYearMonth = (month: string, year: string) =>
@@ -166,7 +166,7 @@ export default function BossProfile() {
 
   const queryClient = useQueryClient();
 
-  // Fetch manager — cached so returning to this page shows data instantly.
+  // Fetch manager - cached so returning to this page shows data instantly.
   // Supports both legacy numeric-ID route (/manager/:id) and slug route (/companies/:c/managers/:m).
   const managerQueryKey = id
     ? ["manager", id]
@@ -196,8 +196,8 @@ export default function BossProfile() {
   }, [id, manager?.slug, manager?.companySlug, manager?.industrySlug, navigate]);
 
   // Canonicalise the industry segment. It is descriptive rather than identifying, so a page
-  // reached via the old flat /companies/:c/managers/:m route — or via a segment that went stale
-  // when the company was reclassified — still resolves, then corrects the URL in place.
+  // reached via the old flat /companies/:c/managers/:m route - or via a segment that went stale
+  // when the company was reclassified - still resolves, then corrects the URL in place.
   useEffect(() => {
     if (id || !manager?.slug || !manager?.companySlug) return;
     const canonical = managerPath(manager.industrySlug, manager.companySlug, manager.slug);
@@ -216,7 +216,7 @@ export default function BossProfile() {
     }
   }, [manager?.canonicalPath, manager?.companySlug, managerSlug, navigate, queryClient, id]);
 
-  // Fetch reviews — cached so revisiting shows reviews instantly
+  // Fetch reviews - cached so revisiting shows reviews instantly
   const { data: reviewsData } = useQuery({
     queryKey: ["manager-reviews", manager?.id],
     queryFn: async () => {
@@ -228,7 +228,7 @@ export default function BossProfile() {
 
   const contextReviews: any[] = reviewsData ?? [];
 
-  // Fetch pre-aggregated career segments — all reviews grouped server-side, never paginated
+  // Fetch pre-aggregated career segments - all reviews grouped server-side, never paginated
   const { data: careerSegments = [] } = useQuery({
     queryKey: ["manager-career-segments", manager?.id],
     queryFn: async () => {
@@ -271,12 +271,12 @@ export default function BossProfile() {
     };
 
     if (careerSegments.length === 0) {
-      // No reviews at all — show ghost nodes from career history so the timeline isn't empty
+      // No reviews at all - show ghost nodes from career history so the timeline isn't empty
       if (history.length > 0) return [...history].reverse().map(toGhost);
       return [toGhost({ company: manager.company, title: manager.title, startDate: null, endDate: null })];
     }
 
-    // Reviews exist — include ghosts for any career_history entry (active or past) whose
+    // Reviews exist - include ghosts for any career_history entry (active or past) whose
     // company isn't already covered by a reviewed segment.
     const reviewedCompanies = new Set(
       careerSegments.map((s: any) => s.company.toLowerCase().trim())
@@ -318,10 +318,10 @@ export default function BossProfile() {
   }, [careerSegments, manager]);
 
   // Contribution gate: hasContributed is loaded as part of the /api/auth/me session
-  // response and stored in user state — no separate network request needed.
+  // response and stored in user state - no separate network request needed.
   const isLocked = !user?.hasContributed;
 
-  // Fetch internal DB user UUID — cached so it's instant on revisit
+  // Fetch internal DB user UUID - cached so it's instant on revisit
   const { data: dbUserId } = useQuery({
     queryKey: ["auth-me"],
     queryFn: async () => {
@@ -331,7 +331,7 @@ export default function BossProfile() {
     enabled: !!user,
   });
 
-  // Fetch the calling user's own pending edit — only visible to them, not public
+  // Fetch the calling user's own pending edit - only visible to them, not public
   const { data: pendingEditsData } = useQuery({
     queryKey: ["manager-pending-edits", manager?.id],
     queryFn: async () => {
@@ -736,7 +736,7 @@ export default function BossProfile() {
 
   // Post-auth auto-submit: wait until cachedUserReviews has loaded, then validate
   // using the reactive computed values and either show errors or submit.
-  // This avoids all async race conditions — the button stays disabled (!!pendingAutoSubmit)
+  // This avoids all async race conditions - the button stays disabled (!!pendingAutoSubmit)
   // until we're ready, and validation uses the already-correct reactive state.
   useEffect(() => {
     if (!pendingAutoSubmit || !userReviewsFetched) return;
@@ -758,7 +758,7 @@ export default function BossProfile() {
       setReviewStep("identity");
       return;
     }
-    // All checks passed — submit. user is set in auth context, no overrideUser needed.
+    // All checks passed - submit. user is set in auth context, no overrideUser needed.
     handleSubmitReview();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAutoSubmit, userReviewsFetched]);
@@ -800,7 +800,7 @@ export default function BossProfile() {
               if (data.emailVerified) setFromVerified(true);
               setAuthFlowStep(data.emailVerified ? "signin" : "verify_email");
             } else if (user) {
-              // Returning from social OAuth — user is already authenticated, reopen form and validate
+              // Returning from social OAuth - user is already authenticated, reopen form and validate
               setReviewStep("identity");
               setPendingAutoSubmit(user);
             }
@@ -817,7 +817,7 @@ export default function BossProfile() {
   // Continuously persist review data while review form is open so any navigation away preserves it
   useEffect(() => {
     if (!reviewStep) return;
-    if (isSubmittingReview) return; // don't re-persist while submitting — submit clears the draft
+    if (isSubmittingReview) return; // don't re-persist while submitting - submit clears the draft
     const hasData = Object.values(modalRatings).every(r => r > 0);
     if (!hasData) return;
     localStorage.setItem("rmm_pending_review", JSON.stringify({
@@ -1078,7 +1078,7 @@ export default function BossProfile() {
     setModalRatings(initializeRatings());
   };
 
-  // Finds the user's existing review that conflicts with the current draft —
+  // Finds the user's existing review that conflicts with the current draft -
   // first by exact title+company match, then by date overlap as a fallback.
   const findConflictingReview = () => {
     const byRole = cachedUserReviews.find((r: any) =>
@@ -1292,7 +1292,7 @@ export default function BossProfile() {
       return;
     }
 
-    // 2. Refresh manager and reviews in cache — await to ensure trajectory is up-to-date before closing
+    // 2. Refresh manager and reviews in cache - await to ensure trajectory is up-to-date before closing
     await Promise.all([
       queryClient.refetchQueries({ queryKey: ["manager", id] }),
       queryClient.refetchQueries({ queryKey: ["manager-reviews", manager.id] }),
@@ -1503,7 +1503,7 @@ export default function BossProfile() {
                   three lines. Laid out here rather than via <CompanyRow> because the company name
                   and the industry link to different pages: one <Link> around the whole row would
                   make the industry navigate to the company, and nesting anchors is invalid HTML.
-                  The logo is sized to the column — h-14 against three lines of text. */}
+                  The logo is sized to the column - h-14 against three lines of text. */}
               <div className="mt-2 flex min-w-0 items-center gap-3">
                 <Link
                   to={manager.companySlug ? companyPath(manager.industrySlug, manager.companySlug) : `/companies/${encodeURIComponent(manager.company)}`}
@@ -1582,7 +1582,7 @@ export default function BossProfile() {
                     ? Number(managerCategoryAverages.overallRating).toFixed(1)
                     : manager.overallRating
                       ? Number(manager.overallRating).toFixed(1)
-                      : "—"}
+                      : "-"}
                 </span>
                 <div>
                   <div
@@ -1613,7 +1613,7 @@ export default function BossProfile() {
                 </div>
               </div>
 
-              {/* Primary CTA — Write / Edit review */}
+              {/* Primary CTA - Write / Edit review */}
               <div ref={reviewDropdownRef} className="relative">
                   <div className={`flex rounded-lg overflow-hidden ${isBanned || atReviewLimit ? "opacity-50" : ""}`}>
                     {/* Primary action */}
@@ -1643,7 +1643,7 @@ export default function BossProfile() {
                     >
                       {atReviewLimit ? "Review Limit Reached" : userHasReviewedState ? "Edit Your Review" : "Write a Review"}
                     </button>
-                    {/* Chevron — shown whenever user has reviews (to select which one to edit) */}
+                    {/* Chevron - shown whenever user has reviews (to select which one to edit) */}
                     {userHasReviewedState && !isBanned && (
                       <button
                         onClick={() => { setShowReviewDropdown(v => !v); setPendingDeleteReviewId(null); }}
@@ -1683,7 +1683,7 @@ export default function BossProfile() {
                       ) : (
                         <>
                           <p className="px-4 pt-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            Your Reviews — select to edit
+                            Your Reviews - select to edit
                           </p>
                           {cachedUserReviews.map((review: any) => (
                             <div
@@ -1772,7 +1772,7 @@ export default function BossProfile() {
                   )}
               </div>
 
-              {/* Secondary actions — edit manager profile + report */}
+              {/* Secondary actions - edit manager profile + report */}
               <div className="flex items-center justify-between gap-2">
                 <button
                   onClick={() => {
@@ -1791,7 +1791,7 @@ export default function BossProfile() {
                       if (!hasReported && !isBanned) setIsReportModalOpen(true); // report stays as single full-screen
                     }}
                     disabled={isBanned || hasReported}
-                    aria-label={isBanned ? "Your account has been suspended" : hasReported ? "Profile flagged — under review" : "Report this profile"}
+                    aria-label={isBanned ? "Your account has been suspended" : hasReported ? "Profile flagged - under review" : "Report this profile"}
                     className={`flex items-center gap-1 text-xs transition-colors ${
                       hasReported
                         ? "text-orange-500 cursor-default"
@@ -1814,7 +1814,7 @@ export default function BossProfile() {
         <section className="border-b border-amber-200 bg-amber-50/60 py-6">
           <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm font-semibold text-amber-800">Admin Edit — changes cascade to reviews and career history</p>
+              <p className="text-sm font-semibold text-amber-800">Admin Edit - changes cascade to reviews and career history</p>
               <button type="button" onClick={() => setAdminEditing(false)} className="text-muted-foreground hover:text-foreground">
                 <X size={16} />
               </button>
@@ -2034,7 +2034,7 @@ export default function BossProfile() {
         </div>
       )}
 
-      {/* System notices — between hero and content */}
+      {/* System notices - between hero and content */}
       {(manager.approvalStatus === "pending_approval" || pendingEdits.length > 0 || (hasReported && manager.approvalStatus !== "pending_approval")) && (
         <section className="bg-background py-3">
           <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 space-y-2">
@@ -2133,7 +2133,7 @@ export default function BossProfile() {
                     {[1, 2, 3].map(i => (
                       <div key={i} className="flex items-center justify-between py-2.5 border-b border-border/50 last:border-0">
                         <div className="h-3 rounded bg-muted" style={{ width: `${55 + i * 12}%` }} />
-                        <span className="text-sm font-semibold text-muted-foreground/40 tabular-nums ml-4 flex-shrink-0">—</span>
+                        <span className="text-sm font-semibold text-muted-foreground/40 tabular-nums ml-4 flex-shrink-0">-</span>
                       </div>
                     ))}
                   </div>
@@ -2218,7 +2218,7 @@ export default function BossProfile() {
         );
       })()}
 
-      {/* Category Averages — bar chart */}
+      {/* Category Averages - bar chart */}
       <section className="border-b border-border py-10">
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
           <div className="mb-6">
@@ -2234,7 +2234,7 @@ export default function BossProfile() {
                     <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
                       <div className="h-full rounded-full bg-[#6d5091]" style={{ width: `${Math.random() * 60 + 20}%` }} />
                     </div>
-                    <span className="w-7 flex-shrink-0 text-right text-xs font-semibold text-foreground tabular-nums">—</span>
+                    <span className="w-7 flex-shrink-0 text-right text-xs font-semibold text-foreground tabular-nums">-</span>
                   </div>
                 ))}
               </div>
@@ -2261,7 +2261,7 @@ export default function BossProfile() {
                       <div className="h-full rounded-full bg-[#6d5091] transition-all duration-500" style={{ width: `${pct}%` }} />
                     </div>
                     <span className="w-7 flex-shrink-0 text-right text-xs font-semibold text-foreground tabular-nums">
-                      {avg > 0 ? avg.toFixed(1) : "—"}
+                      {avg > 0 ? avg.toFixed(1) : "-"}
                     </span>
                   </div>
                 );
@@ -2273,7 +2273,7 @@ export default function BossProfile() {
                 <div key={category} className="flex items-center gap-3">
                   <span className="w-44 flex-shrink-0 text-xs text-muted-foreground leading-tight">{category}</span>
                   <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden" />
-                  <span className="w-7 flex-shrink-0 text-right text-xs font-semibold text-muted-foreground tabular-nums">—</span>
+                  <span className="w-7 flex-shrink-0 text-right text-xs font-semibold text-muted-foreground tabular-nums">-</span>
                 </div>
               ))}
             </div>
@@ -2281,7 +2281,7 @@ export default function BossProfile() {
         </div>
       </section>
 
-      {/* Career Performance Timeline — gated for non-contributors and signed-out users */}
+      {/* Career Performance Timeline - gated for non-contributors and signed-out users */}
       {!isLocked && user ? (
         <div
           style={{
@@ -2393,7 +2393,7 @@ export default function BossProfile() {
                   key={review.id}
                   className="rounded-xl border border-border bg-card p-5 shadow-sm"
                 >
-                  {/* Role context — most important signal for readers */}
+                  {/* Role context - most important signal for readers */}
                   <div className="mb-3">
                     <p className="text-[13px] font-semibold text-foreground">
                       {review.managerTitle} at {review.managerCompany}
@@ -2500,7 +2500,7 @@ export default function BossProfile() {
         </div>
       </section>
 
-      {/* CTA Section — only shown to users who haven't reviewed yet */}
+      {/* CTA Section - only shown to users who haven't reviewed yet */}
       {!userHasReviewedState && (
         <section className="border-t border-border bg-muted/30 py-10">
           <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 text-center">
@@ -2528,7 +2528,7 @@ export default function BossProfile() {
         </section>
       )}
 
-      {/* Write Review — Full-Screen Stepped Form */}
+      {/* Write Review - Full-Screen Stepped Form */}
       {reviewStep && (() => {
         const steps = ["ratings", "dates", "identity"] as const;
         const stepIdx = steps.indexOf(reviewStep) + 1;
@@ -2613,7 +2613,7 @@ export default function BossProfile() {
                       <p className="text-xs text-muted-foreground">This name is randomly generated and cannot be linked back to you.</p>
                     </div>
 
-                    {/* First-hand-experience attestation — required before the review can be submitted */}
+                    {/* First-hand-experience attestation - required before the review can be submitted */}
                     <div className="rounded-xl border border-border p-5">
                       <label className="flex items-start gap-3 cursor-pointer text-sm text-foreground">
                         <input
@@ -2720,7 +2720,7 @@ export default function BossProfile() {
                       <p className="mt-1 text-sm text-muted-foreground">Takes just a minute. Your firsthand experience helps other job seekers make more informed decisions.</p>
                     </div>
 
-                    {/* Role selector — lets reviewer pick which role they're reviewing */}
+                    {/* Role selector - lets reviewer pick which role they're reviewing */}
                     {manager.careerHistory && manager.careerHistory.length > 1 && (
                       <div>
                         <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
@@ -2769,7 +2769,7 @@ export default function BossProfile() {
                       </div>
                     )}
 
-                    {/* Manager role context — read-only with inline edit toggle */}
+                    {/* Manager role context - read-only with inline edit toggle */}
                     <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
                       {!editingRoleInline ? (
                         <div className="flex items-start justify-between gap-3">
@@ -3027,7 +3027,7 @@ export default function BossProfile() {
         );
       })()}
 
-      {/* Edit Manager Details — Full-Screen Form */}
+      {/* Edit Manager Details - Full-Screen Form */}
       {editManagerStep && (() => {
         const editStartVal = toYMVal(editStartDate.month, editStartDate.year);
         const editEndVal   = toYMVal(editEndDate.month,   editEndDate.year);
@@ -3189,7 +3189,7 @@ export default function BossProfile() {
         );
       })()}
 
-      {/* Edit Review — Full-Screen Stepped Form */}
+      {/* Edit Review - Full-Screen Stepped Form */}
       {editReviewStep && user && (() => {
         const steps = ["ratings", "dates", "identity"] as const;
         const stepIdx = steps.indexOf(editReviewStep) + 1;
@@ -3242,7 +3242,7 @@ export default function BossProfile() {
                       <p className="mt-1 text-sm text-muted-foreground">Takes just a minute. Your firsthand experience helps other job seekers make more informed decisions.</p>
                     </div>
 
-                    {/* Manager role context — read-only with inline edit toggle */}
+                    {/* Manager role context - read-only with inline edit toggle */}
                     <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
                       {!editingEditRoleInline ? (
                         <div className="flex items-start justify-between gap-3">
@@ -3471,7 +3471,7 @@ export default function BossProfile() {
         );
       })()}
 
-      {/* Report Profile — Full-Screen Form */}
+      {/* Report Profile - Full-Screen Form */}
       {isReportModalOpen && (
         <div className="fixed inset-0 z-50 flex flex-col bg-background">
           {/* Header */}

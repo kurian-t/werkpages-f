@@ -31,7 +31,7 @@ describe("Auth0 build-time config", () => {
 
   beforeEach(() => {
     hrefSetter = vi.fn();
-    // The suite runs in the node environment — provide only what lib/auth touches.
+    // The suite runs in the node environment - provide only what lib/auth touches.
     const store = new Map<string, string>();
     vi.stubGlobal("sessionStorage", {
       getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
@@ -99,11 +99,11 @@ describe("Auth0 build-time config", () => {
 
     const url = hrefSetter.mock.calls[0][0] as string;
     expect(new URL(url).searchParams.get("audience")).toBe("https://api.werkpages.com/");
-    // openid must survive alongside the audience — handleCallback calls /userinfo with this token.
+    // openid must survive alongside the audience - handleCallback calls /userinfo with this token.
     expect(new URL(url).searchParams.get("scope")).toBe("openid profile email");
   });
 
-  it("requests the Werkpages API, not RateMyManagers — the two share a tenant", async () => {
+  it("requests the Werkpages API, not RateMyManagers - the two share a tenant", async () => {
     const auth = await loadAuth(CONFIGURED);
     auth.startSocialLogin("google-oauth2");
 

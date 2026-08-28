@@ -16,6 +16,7 @@ import Index from "./pages/Index";
 import BossProfile from "./pages/BossProfile";
 import Directory from "./pages/Directory";
 import AddBoss from "./pages/AddBoss";
+import AddInterview from "./pages/AddInterview";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import AccountSettings from "./pages/AccountSettings";
@@ -69,7 +70,7 @@ const App = () => (
           <PostHogRouteTracker />
           <Routes>
             <Route path="/" element={<Index />} />
-            {/* Canonical, industry-nested routes. The industry segment is descriptive — pages
+            {/* Canonical, industry-nested routes. The industry segment is descriptive - pages
                 resolve on the company and manager slugs alone, and redirect to the canonical
                 path when the segment is stale (e.g. after a company is reclassified). */}
             <Route path="/industries/:industrySlug/companies/:companySlug" element={<CompanyProfile />} />
@@ -97,6 +98,7 @@ const App = () => (
             <Route path="/industries/:slug" element={<IndustryProfile />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/companies" element={<Companies />} />
+            <Route path="/companies/:companySlug/add-interview" element={<AddInterview />} />
             <Route path="/companies/:companySlug" element={<CompanyProfile />} />
             <Route path="/resume" element={<AdminOnly><ResumeBuilder /></AdminOnly>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-// No baseURL override — it was pinned to localhost:5175, a port nothing serves.
+// No baseURL override - it was pinned to localhost:5175, a port nothing serves.
 // Inherit playwright.config.ts so this runs against the same preview as every other spec.
 
 test("debug drag", async ({ page }) => {

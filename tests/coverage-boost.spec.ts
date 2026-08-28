@@ -70,7 +70,7 @@ test.describe("EmailVerified page", () => {
   });
 });
 
-// ─── SignIn.tsx — handleSubmit paths (lines 29–63, 120–134) ──────────────────
+// ─── SignIn.tsx - handleSubmit paths (lines 29–63, 120–134) ──────────────────
 
 test.describe("SignIn form submission", () => {
   test("successful signin navigates away", async ({ page }) => {
@@ -132,14 +132,14 @@ test.describe("SignIn form submission", () => {
 
   test("emailVerified state banner shown when navigated with emailVerified=true", async ({ page }) => {
     await mockUnauthenticated(page);
-    // Navigate with location.state — simulate by directly going to the page
+    // Navigate with location.state - simulate by directly going to the page
     // then verifying the form is shown (emailVerified banner path)
     await page.goto("/signin");
     await expect(page.getByText(/welcome back/i)).toBeVisible({ timeout: 5000 });
   });
 });
 
-// ─── Index.tsx — useEffect email-callback paths (lines 39–61) ─────────────────
+// ─── Index.tsx - useEffect email-callback paths (lines 39–61) ─────────────────
 
 test.describe("Index page email callback redirect", () => {
   test("?code=success&success=true with pending review redirects to returnTo", async ({ page }) => {
@@ -184,7 +184,7 @@ test.describe("Index page email callback redirect", () => {
   });
 });
 
-// ─── Notifications.tsx — redirect + empty + timestamp paths ──────────────────
+// ─── Notifications.tsx - redirect + empty + timestamp paths ──────────────────
 
 test.describe("Notifications page", () => {
   test("unauthenticated user redirected to signin", async ({ page }) => {
@@ -255,7 +255,7 @@ test.describe("Notifications page", () => {
   });
 });
 
-// ─── Companies.tsx — locked gate + pagination (lines 181, 232, 252) ──────────
+// ─── Companies.tsx - locked gate + pagination (lines 181, 232, 252) ──────────
 
 test.describe("Companies tab extra coverage", () => {
   async function mockCompaniesPage(page: any, loggedIn = false, hasContributed = false) {
@@ -314,7 +314,7 @@ test.describe("Companies tab extra coverage", () => {
   });
 });
 
-// ─── CompanyProfile.tsx — error + locked paths ───────────────────────────────
+// ─── CompanyProfile.tsx - error + locked paths ───────────────────────────────
 
 test.describe("CompanyProfile extra coverage", () => {
   test("API error shows 'Something went wrong' with browse button", async ({ page }) => {
@@ -352,7 +352,7 @@ test.describe("CompanyProfile extra coverage", () => {
   });
 });
 
-// ─── AuthCallback.tsx — error paths (lines 34–35, 53–60, 66–74) ─────────────
+// ─── AuthCallback.tsx - error paths (lines 34–35, 53–60, 66–74) ─────────────
 // Generic errors show an error message on-page (no redirect); email_already_registered redirects.
 
 test.describe("AuthCallback error paths", () => {
@@ -383,7 +383,7 @@ test.describe("AuthCallback error paths", () => {
   });
 });
 
-// ─── Header.tsx — additional interaction paths ────────────────────────────────
+// ─── Header.tsx - additional interaction paths ────────────────────────────────
 
 test.describe("Header extra coverage", () => {
   test("authenticated user sees avatar/menu in header", async ({ page }) => {
@@ -400,7 +400,7 @@ test.describe("Header extra coverage", () => {
     await mockUnauthenticated(page);
     await page.route("**/api/**", (route) => route.fulfill({ status: 200, json: {} }));
     await page.goto("/about");
-    // Try the logo link — may use img alt, aria-label, or text depending on implementation
+    // Try the logo link - may use img alt, aria-label, or text depending on implementation
     const logo = page.locator("header a").first();
     if (await logo.isVisible({ timeout: 3000 }).catch(() => false)) {
       await logo.click();
@@ -409,7 +409,7 @@ test.describe("Header extra coverage", () => {
   });
 });
 
-// ─── Directory.tsx — empty state + filter paths ───────────────────────────────
+// ─── Directory.tsx - empty state + filter paths ───────────────────────────────
 
 test.describe("Directory extra coverage", () => {
   async function mockDirectory(page: any, opts: { empty?: boolean; loggedIn?: boolean } = {}) {
@@ -449,7 +449,7 @@ test.describe("Directory extra coverage", () => {
   });
 });
 
-// ─── BossProfile.tsx — additional paths ──────────────────────────────────────
+// ─── BossProfile.tsx - additional paths ──────────────────────────────────────
 
 test.describe("BossProfile extra coverage", () => {
   async function mockBossPage(page: any, opts: { loggedIn?: boolean; hasContributed?: boolean } = {}) {
@@ -511,7 +511,7 @@ test.describe("BossProfile extra coverage", () => {
   });
 });
 
-// ─── AccountSettings.tsx — more paths ────────────────────────────────────────
+// ─── AccountSettings.tsx - more paths ────────────────────────────────────────
 
 test.describe("AccountSettings extra coverage", () => {
   async function mockSettings(page: any, opts: { reviews?: any[] } = {}) {
@@ -566,7 +566,7 @@ test.describe("AccountSettings extra coverage", () => {
   });
 });
 
-// ─── Admin.tsx — additional admin action paths ────────────────────────────────
+// ─── Admin.tsx - additional admin action paths ────────────────────────────────
 
 test.describe("Admin extra coverage", () => {
   async function mockAdminFull(page: any) {
@@ -611,7 +611,7 @@ test.describe("Admin extra coverage", () => {
   });
 });
 
-// ─── AddBoss.tsx — additional paths ──────────────────────────────────────────
+// ─── AddBoss.tsx - additional paths ──────────────────────────────────────────
 
 test.describe("AddBoss extra coverage", () => {
   async function mockAddBoss(page: any, loggedIn = false) {
@@ -655,7 +655,7 @@ test.describe("AddBoss extra coverage", () => {
   });
 });
 
-// ─── SignUp.tsx — additional paths ───────────────────────────────────────────
+// ─── SignUp.tsx - additional paths ───────────────────────────────────────────
 
 test.describe("SignUp extra coverage", () => {
   test("signup form shows with all fields", async ({ page }) => {

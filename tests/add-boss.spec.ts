@@ -2,7 +2,7 @@ import { test, expect } from "./base";
 import { mockAddBossPage, rateAllFiveStars, attestFirstHandExperience, MOCK_USER } from "./fixtures";
 
 // Helper: fill Step 1 (manager info) using name attributes since inputs have no htmlFor.
-// Country is omitted — the geo mock pre-fills "United States", so the chip view shows.
+// Country is omitted - the geo mock pre-fills "United States", so the chip view shows.
 async function fillStep1(page: any) {
   await page.locator('input[name="firstName"]').fill("Jordan");
   await page.locator('input[name="lastName"]').fill("Smith");
@@ -17,7 +17,7 @@ async function fillStep2(page: any) {
   await page.getByRole("checkbox", { name: /^current$/i }).check();
 }
 
-test.describe("AddBoss — 3-step flow", () => {
+test.describe("AddBoss - 3-step flow", () => {
   test("page loads at step 1 showing manager info fields", async ({ page }) => {
     await mockAddBossPage(page);
     await page.goto("/add");
@@ -61,7 +61,7 @@ test.describe("AddBoss — 3-step flow", () => {
     await mockAddBossPage(page);
     await page.goto("/add");
 
-    // Manager tenure was removed — must not exist anywhere on step 1
+    // Manager tenure was removed - must not exist anywhere on step 1
     await expect(page.getByText(/manager.*tenure/i)).not.toBeVisible({ timeout: 5_000 });
   });
 
@@ -136,7 +136,7 @@ test.describe("AddBoss — 3-step flow", () => {
       page.getByText(/i confirm that i have personally worked with or for this manager/i)
     ).toBeVisible();
 
-    // All 10 ratings filled but not attested — Submit must stay disabled.
+    // All 10 ratings filled but not attested - Submit must stay disabled.
     await expect(page.getByRole("button", { name: /submit review/i })).toBeDisabled({ timeout: 3_000 });
 
     await attestation.check();
@@ -205,7 +205,7 @@ test.describe("AddBoss — 3-step flow", () => {
   test("REGRESSION: add + rate flips hasContributed so the ratings lock lifts (no reload needed)", async ({
     page,
   }) => {
-    // Start as a logged-in user who has NOT contributed yet — the ratings lock is on.
+    // Start as a logged-in user who has NOT contributed yet - the ratings lock is on.
     await mockAddBossPage(page, { loggedIn: true, user: { ...MOCK_USER, hasContributed: false } });
     await page.goto("/add");
 
@@ -321,7 +321,7 @@ test.describe("AddBoss — 3-step flow", () => {
 
     await page.goto("/add");
 
-    // Draft is restored — the previously filled fields are pre-populated
+    // Draft is restored - the previously filled fields are pre-populated
     await expect(
       page.locator('input[name="firstName"]')
     ).toHaveValue("Drafted", { timeout: 5_000 });

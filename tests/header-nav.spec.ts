@@ -40,7 +40,7 @@ async function setupAuthPage(
   }
 }
 
-test.describe("Header — logo and brand", () => {
+test.describe("Header - logo and brand", () => {
   test("clicking the logo navigates to the homepage", async ({ page }) => {
     await setupAuthPage(page, { loggedIn: false });
     await page.goto("/directory");
@@ -51,8 +51,8 @@ test.describe("Header — logo and brand", () => {
   });
 });
 
-test.describe("Header — desktop navigation links", () => {
-  test.skip(({ isMobile }) => isMobile, "Desktop nav is hidden on mobile — covered by 'mobile menu' tests");
+test.describe("Header - desktop navigation links", () => {
+  test.skip(({ isMobile }) => isMobile, "Desktop nav is hidden on mobile - covered by 'mobile menu' tests");
 
   // The "Search" → /find nav link was replaced by "Explore" → /explore.
   test("'Explore' nav link navigates to /explore", async ({ page }) => {
@@ -151,8 +151,8 @@ test.describe("Header — desktop navigation links", () => {
   });
 });
 
-test.describe("Header — auth buttons (logged out)", () => {
-  test.skip(({ isMobile }) => isMobile, "Desktop header auth buttons hidden on mobile — covered by 'mobile menu' tests");
+test.describe("Header - auth buttons (logged out)", () => {
+  test.skip(({ isMobile }) => isMobile, "Desktop header auth buttons hidden on mobile - covered by 'mobile menu' tests");
 
   test("'Sign In' and 'Sign Up' buttons visible when logged out", async ({
     page,
@@ -174,7 +174,7 @@ test.describe("Header — auth buttons (logged out)", () => {
 
     await page.getByRole("button", { name: /^sign in$/i }).first().click();
 
-    // Auth modal opens — Google button appears
+    // Auth modal opens - Google button appears
     await expect(
       page.getByRole("button", { name: /continue with google/i })
     ).toBeVisible({ timeout: 5_000 });
@@ -194,8 +194,8 @@ test.describe("Header — auth buttons (logged out)", () => {
   });
 });
 
-test.describe("Header — user menu (logged in)", () => {
-  test.skip(({ isMobile }) => isMobile, "Desktop user menu hidden on mobile — accessed via hamburger menu");
+test.describe("Header - user menu (logged in)", () => {
+  test.skip(({ isMobile }) => isMobile, "Desktop user menu hidden on mobile - accessed via hamburger menu");
 
   test("user menu button shows username", async ({ page }) => {
     await setupAuthPage(page, { loggedIn: true });
@@ -286,7 +286,7 @@ test.describe("Header — user menu (logged in)", () => {
   });
 });
 
-test.describe("Header — notifications bell", () => {
+test.describe("Header - notifications bell", () => {
   test("notifications bell is visible only for logged-in users", async ({
     page,
   }) => {
@@ -374,7 +374,7 @@ test.describe("Header — notifications bell", () => {
   });
 });
 
-test.describe("Header — mobile menu", () => {
+test.describe("Header - mobile menu", () => {
   // Helper: click the hamburger menu button (visible only on small viewports)
   async function openMobileMenu(page: any) {
     // The mobile toggle button has aria-label or contains a Menu SVG icon and is the last button in the header

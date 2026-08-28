@@ -124,7 +124,7 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
               localStorage.setItem(ghostKey, "true");
               ghostCreated = true;
             } catch {
-              // Ghost creation failed — leave results empty
+              // Ghost creation failed - leave results empty
             }
             if (ghostCreated) {
               try {
@@ -146,7 +146,7 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
               setResults([]);
             }
           } else {
-            // Ghost slot already used — silently forward to admin queue and show nothing
+            // Ghost slot already used - silently forward to admin queue and show nothing
             axios.post(`${API_BASE}/api/managers/anonymous-capture`, {
               name: `${fn} ${ln}`,
               company: c,
@@ -194,7 +194,7 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
       setTitle(p.title);
       setCompany(p.company);
       doSearch(p.firstName, p.lastName, p.title, p.company);
-    } catch { /* corrupted sessionStorage — ignore */ }
+    } catch { /* corrupted sessionStorage - ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

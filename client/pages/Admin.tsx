@@ -381,23 +381,23 @@ export default function Admin() {
           {/* Site stats */}
           <div className="mb-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div className="rounded-xl border border-border bg-card p-4 text-center">
-              <p className="text-2xl font-semibold">{stats?.realManagers?.toLocaleString() ?? "—"}</p>
+              <p className="text-2xl font-semibold">{stats?.realManagers?.toLocaleString() ?? "-"}</p>
               <p className="text-xs text-muted-foreground mt-0.5">User Submitted</p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4 text-center">
-              <p className="text-2xl font-semibold">{stats?.realReviews?.toLocaleString() ?? "—"}</p>
+              <p className="text-2xl font-semibold">{stats?.realReviews?.toLocaleString() ?? "-"}</p>
               <p className="text-xs text-muted-foreground mt-0.5">Opinions Shared</p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4 text-center">
-              <p className="text-2xl font-semibold">{stats?.weightedOpinions?.toLocaleString() ?? "—"}</p>
+              <p className="text-2xl font-semibold">{stats?.weightedOpinions?.toLocaleString() ?? "-"}</p>
               <p className="text-xs text-muted-foreground mt-0.5">Weighted Opinions</p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4 text-center">
-              <p className="text-2xl font-semibold">{stats?.scrapedManagers?.toLocaleString() ?? "—"}</p>
+              <p className="text-2xl font-semibold">{stats?.scrapedManagers?.toLocaleString() ?? "-"}</p>
               <p className="text-xs text-muted-foreground mt-0.5">Scraped Profiles</p>
             </div>
             <div className={`rounded-xl border p-4 text-center ${stats?.seededManagers != null && stats.seededManagers <= 10 ? "border-amber-400 bg-amber-50 dark:bg-amber-950/20" : "border-border bg-card"}`}>
-              <p className="text-2xl font-semibold">{stats?.seededManagers?.toLocaleString() ?? "—"}</p>
+              <p className="text-2xl font-semibold">{stats?.seededManagers?.toLocaleString() ?? "-"}</p>
               <p className="text-xs text-muted-foreground mt-0.5">Fake Profiles Left</p>
               {stats?.seededManagers != null && stats.seededManagers <= 10 && (
                 <p className="text-xs text-amber-600 font-medium mt-1">Ready to retire</p>
@@ -897,7 +897,7 @@ export default function Admin() {
                     >
                       <option value="">Choose a user...</option>
                       {availableUsersForBan.map((u) => (
-                        <option key={u.id} value={u.id}>@{u.username} — {u.firstName} {u.lastName}</option>
+                        <option key={u.id} value={u.id}>@{u.username} - {u.firstName} {u.lastName}</option>
                       ))}
                     </select>
                     {!bansLoading && availableUsersForBan.length === 0 && (
@@ -1034,11 +1034,11 @@ export default function Admin() {
                     <p className="text-xs font-semibold text-muted-foreground uppercase">Selected</p>
                     <div className="flex items-center gap-2 text-sm">
                       <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">Keep</span>
-                      <span className="text-foreground">{keepManager ? `${keepManager.name} — ${keepManager.company}` : <span className="text-muted-foreground">Not selected</span>}</span>
+                      <span className="text-foreground">{keepManager ? `${keepManager.name} - ${keepManager.company}` : <span className="text-muted-foreground">Not selected</span>}</span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
                       <span className="rounded-full bg-red-100 text-red-600 px-2 py-0.5 text-xs font-medium">Remove</span>
-                      <span className="text-foreground">{mergeManager ? `${mergeManager.name} — ${mergeManager.company}` : <span className="text-muted-foreground">Not selected</span>}</span>
+                      <span className="text-foreground">{mergeManager ? `${mergeManager.name} - ${mergeManager.company}` : <span className="text-muted-foreground">Not selected</span>}</span>
                     </div>
                   </div>
                 )}
@@ -1256,7 +1256,7 @@ export default function Admin() {
               {confirmAction.type === "unban" && `@${confirmAction.label} will be unbanned and able to use the platform again.`}
               {confirmAction.type === "merge" && mergeManager && `All reviews from "${mergeManager.name}" will be moved to "${keepManager?.name}" and the duplicate will be permanently deleted. This cannot be undone.`}
               {confirmAction.type === "merge-company" && coMerge && `All managers from "${coMerge.name}" will be moved to "${coKeep?.name}" and the duplicate company will be permanently deleted. This cannot be undone.`}
-              {confirmAction.type === "ai-merge" && `${confirmAction.label} — all reviews will be moved to the kept profile and the duplicate will be permanently deleted. This cannot be undone.`}
+              {confirmAction.type === "ai-merge" && `${confirmAction.label} - all reviews will be moved to the kept profile and the duplicate will be permanently deleted. This cannot be undone.`}
             </p>
 
             {confirmAction.type === "reject-manager" && (

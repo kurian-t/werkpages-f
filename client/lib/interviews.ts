@@ -1,5 +1,5 @@
 /**
- * Interview experience reviews — shared types and pure display logic.
+ * Interview experience reviews - shared types and pure display logic.
  *
  * Everything here is deliberately free of React and network calls so the rules that shape what a
  * reader sees can be tested directly. Two of those rules carry most of the weight:
@@ -14,8 +14,18 @@
 export const INTERVIEW_OUTCOMES = ["offer", "no_offer", "withdrew", "pending"] as const;
 export type InterviewOutcome = (typeof INTERVIEW_OUTCOMES)[number];
 
-export const INTERVIEW_TYPES = ["phone", "video", "onsite", "technical", "panel"] as const;
-export type InterviewType = (typeof INTERVIEW_TYPES)[number];
+/**
+ * Formats a single round can take. A process is an ordered list of these - "phone screen, then a
+ * panel, then a VP conversation" - which a single format field could never express.
+ */
+export const ROUND_TYPES = [
+  "recruiter_screen", "phone", "video", "hiring_manager",
+  "technical", "take_home", "pair_programming", "case_study",
+  "panel", "onsite", "executive",
+] as const;
+export type RoundType = (typeof ROUND_TYPES)[number];
+
+export const MAX_ROUNDS = 10;
 
 export const PROCESS_LENGTHS = ["under_1_week", "1_2_weeks", "2_4_weeks", "over_1_month"] as const;
 export type ProcessLength = (typeof PROCESS_LENGTHS)[number];
@@ -53,12 +63,18 @@ export const CATEGORY_LABELS: Record<InterviewCategory, string> = {
   nextStepTransparency: "Transparency about next steps",
 };
 
-export const INTERVIEW_TYPE_LABELS: Record<InterviewType, string> = {
-  phone: "Phone screen",
-  video: "Video call",
+export const ROUND_TYPE_LABELS: Record<RoundType, string> = {
+  recruiter_screen: "Recruiter screen",
+  phone: "Phone interview",
+  video: "Video interview",
+  hiring_manager: "Hiring manager",
+  technical: "Technical interview",
+  take_home: "Take-home exercise",
+  pair_programming: "Pair programming",
+  case_study: "Case study",
+  panel: "Panel interview",
   onsite: "On-site",
-  technical: "Technical",
-  panel: "Panel",
+  executive: "Executive",
 };
 
 export const PROCESS_LENGTH_LABELS: Record<ProcessLength, string> = {
@@ -87,6 +103,37 @@ export const OUTCOME_FILTERS: ReadonlyArray<{ value: InterviewOutcome | null; la
   { value: "no_offer", label: "No offer" },
 ];
 
+/** One population's ratings. A series nobody falls into still appears, with null averages. */
+export interface CategorySeries {
+  count: number;
+  overallRating: number | null;
+  communication: number | null;
+  respectForTime: number | null;
+  roleClarity: number | null;
+  processFairness: number | null;
+  nextStepTransparency: number | null;
+}
+
+export interface CategoryComparison {
+  overall: CategorySeries;
+  offer: CategorySeries;
+  noOffer: CategorySeries;
+}
+
+/** The three series, in the order the chart stacks them. */
+export const COMPARISON_SERIES = [
+  // One family, not a traffic light. "No offer" is a cool slate rather than a red: a rejection is
+  // a different population, not a bad score, and colouring it as a warning would editorialise the
+  // very comparison the chart exists to present neutrally.
+  { key: "overall", label: "Overall",   color: "#67458F" },
+  { key: "offer",   label: "Got offer", color: "#8C73B2" },
+  { key: "noOffer", label: "No offer",  color: "#7F8798" },
+] as const;
+
+/** Shared bar track. Soft enough that the filled portion carries the reading. */
+export const COMPARISON_TRACK_COLOR = "#E8E9ED";
+export type ComparisonSeriesKey = (typeof COMPARISON_SERIES)[number]["key"];
+
 export interface OutcomeBucket {
   count: number;
   avgRating: number | null;
@@ -98,15 +145,38 @@ export interface CompanyInterviewStats {
   avgDifficulty: number | null;
   medianRounds: number | null;
   outcomeSplit: Record<string, OutcomeBucket>;
-  roleCategories: Array<{ role: string; count: number }>;
-  filteredCount: number;
-  filteredOverall?: number | null;
-  filteredDifficulty?: number | null;
-  filteredMedianRounds?: number | null;
+  roleCategories?: Array<{ role: string; count: number }>;
+  typicalRounds?: Array<{ round: number; type: RoundType; reportedBy: number }>;
+  /** The role and country the comparison was narrowed to, or null for all. */
+  role?: string | null;
+  country?: string | null;
+  countries?: Array<{ country: string; count: number }>;
+  /** The caller's own review here, if signed in and they have one. */
+  myInterview?: InterviewReview | null;
+  categoryComparison: CategoryComparison | null;
   categoryAverages: Partial<Record<InterviewCategory, number | null>> | null;
   hasContributed: boolean;
   gated: boolean;
   belowThreshold?: boolean;
+}
+
+/** A stored review, as the API echoes it back. */
+export interface InterviewReview {
+  id: string;
+  overallRating: number | null;
+  communication: number | null;
+  respectForTime: number | null;
+  roleClarity: number | null;
+  processFairness: number | null;
+  nextStepTransparency: number | null;
+  difficulty: number | null;
+  outcome: InterviewOutcome;
+  rounds: number | null;
+  processLength: ProcessLength | null;
+  roleCategory: string | null;
+  country: string | null;
+  city: string | null;
+  interviewYear: number;
 }
 
 export interface InterviewDraft {
@@ -118,10 +188,13 @@ export interface InterviewDraft {
   nextStepTransparency?: number | null;
   difficulty?: number | null;
   outcome: InterviewOutcome | null;
-  interviewType?: InterviewType | null;
-  rounds?: number | null;
+  rounds: RoundType[];
   processLength?: ProcessLength | null;
   roleCategory?: string | null;
+  /** Country of the POSITION, not where the candidate lives. */
+  country?: string | null;
+  /** Inferred alongside the country, never asked for. Cleared if the country is changed. */
+  city?: string | null;
   interviewYear: number | null;
 }
 
@@ -177,13 +250,63 @@ export function sortedCategories(
   }).sort((a, b) => b[1] - a[1]);
 }
 
+/**
+ * Splits category averages into strongest and weakest, the way the Working tab does.
+ *
+ * <p>With five categories a 3/3 split would repeat the middle one in both columns, which reads as
+ * a mistake. Halving keeps the two columns disjoint.
+ */
+export function strongestAndWeakest(
+  averages: CompanyInterviewStats["categoryAverages"],
+): { strongest: Array<[InterviewCategory, number]>; weakest: Array<[InterviewCategory, number]> } {
+  const sorted = sortedCategories(averages);
+  if (sorted.length < 2) return { strongest: sorted, weakest: [] };
+  const take = Math.min(3, Math.floor(sorted.length / 2));
+  return { strongest: sorted.slice(0, take), weakest: sorted.slice(-take).reverse() };
+}
+
+/**
+ * How much weight the numbers can bear, in the reader's terms.
+ *
+ * <p>Self-selected reviews in single digits move a lot with each new one. Saying so is more use
+ * than a decimal place that implies precision the sample cannot support.
+ */
+/**
+ * The category where the two outcomes disagree most.
+ *
+ * <p>The single most useful line the comparison can produce: it names the part of the process
+ * that people experience completely differently depending on how it ended, which is usually where
+ * a company's real problem is. Null unless both series have something to compare.
+ */
+export function biggestOutcomeGap(
+  comparison: CategoryComparison | null,
+): { category: InterviewCategory; gap: number } | null {
+  if (!comparison) return null;
+
+  let best: { category: InterviewCategory; gap: number } | null = null;
+  for (const category of INTERVIEW_CATEGORIES) {
+    const offer = comparison.offer[category];
+    const noOffer = comparison.noOffer[category];
+    if (offer == null || noOffer == null) continue;
+    const gap = Math.round((offer - noOffer) * 10) / 10;
+    if (best == null || Math.abs(gap) > Math.abs(best.gap)) best = { category, gap };
+  }
+  return best != null && best.gap !== 0 ? best : null;
+}
+
+export function confidenceLabel(count: number): "low" | "moderate" | "high" {
+  if (count < 10) return "low";
+  if (count < 30) return "moderate";
+  return "high";
+}
+
 export function difficultyLabel(value: number | null | undefined): string | null {
   if (value == null || Number.isNaN(value)) return null;
   const rounded = Math.min(5, Math.max(1, Math.round(value)));
   return DIFFICULTY_LABELS[rounded] ?? null;
 }
 
-/** "12 interviews" / "1 interview" — the unit people actually use for this. */
+/** "12 interviews" / "1 interview" - the unit people actually use for this. */
 export function describeCount(count: number): string {
   return `${count} ${count === 1 ? "interview" : "interviews"}`;
 }
@@ -208,7 +331,7 @@ export type InterviewDraftErrors = Partial<Record<keyof InterviewDraft, string>>
 /**
  * Client-side mirror of the server's rules, so a mistake is caught before the round trip.
  *
- * The server revalidates everything — this is a courtesy to the person filling the form, never
+ * The server revalidates everything - this is a courtesy to the person filling the form, never
  * the enforcement point.
  */
 export function validateInterviewDraft(
@@ -224,7 +347,7 @@ export function validateInterviewDraft(
   }
 
   if (!draft.outcome) {
-    errors.outcome = "Let people know how it ended — it changes how the ratings read.";
+    errors.outcome = "Let people know how it ended - it changes how the ratings read.";
   }
 
   if (draft.interviewYear == null) {
@@ -239,8 +362,8 @@ export function validateInterviewDraft(
     errors.difficulty = "Difficulty runs from 1 to 5.";
   }
 
-  if (draft.rounds != null && (draft.rounds < 1 || draft.rounds > 10)) {
-    errors.rounds = "Rounds must be between 1 and 10.";
+  if (draft.rounds.length > MAX_ROUNDS) {
+    errors.rounds = `A process can have at most ${MAX_ROUNDS} rounds.`;
   }
 
   if (draft.roleCategory != null && draft.roleCategory.trim().length > 100) {
@@ -257,6 +380,35 @@ export function validateInterviewDraft(
   return errors;
 }
 
+/**
+ * Whether every field on a step has been answered.
+ *
+ * <p>The form gates Next and Share on this rather than only on what the server strictly requires.
+ * It costs the contributor more effort, and it buys comparability: a corpus where most reviews
+ * skipped difficulty and half the categories cannot be sliced usefully, which is the whole point
+ * of collecting it. Partial submissions are still valid to the API - this is a rule about what
+ * the form asks for, not about what the data model permits.
+ */
+export function isStepComplete(draft: InterviewDraft, step: "process" | "ratings"): boolean {
+  if (step === "process") {
+    return (
+      draft.outcome != null &&
+      draft.interviewYear != null &&
+      draft.difficulty != null &&
+      draft.processLength != null &&
+      (draft.country ?? "").trim().length > 0 &&
+      // Rounds are deliberately not required. Someone recalling a process from last year may
+      // genuinely not remember its shape, and forcing a guess would put invented structure into
+      // the one field where ordering is the whole value.
+      (draft.roleCategory ?? "").trim().length > 0
+    );
+  }
+  return (
+    draft.overallRating != null &&
+    INTERVIEW_CATEGORIES.every((category) => draft[category] != null)
+  );
+}
+
 /** Strips blanks so optional fields arrive absent rather than as empty strings or NaN. */
 export function toInterviewPayload(draft: InterviewDraft): Record<string, unknown> {
   const payload: Record<string, unknown> = {
@@ -271,12 +423,17 @@ export function toInterviewPayload(draft: InterviewDraft): Record<string, unknow
   }
 
   if (draft.difficulty != null) payload.difficulty = draft.difficulty;
-  if (draft.rounds != null) payload.rounds = draft.rounds;
-  if (draft.interviewType) payload.interviewType = draft.interviewType;
+  if (draft.rounds.length > 0) payload.rounds = draft.rounds;
   if (draft.processLength) payload.processLength = draft.processLength;
 
   const role = draft.roleCategory?.trim();
   if (role) payload.roleCategory = role;
+
+  const country = draft.country?.trim();
+  if (country) payload.country = country;
+
+  const city = draft.city?.trim();
+  if (city) payload.city = city;
 
   return payload;
 }

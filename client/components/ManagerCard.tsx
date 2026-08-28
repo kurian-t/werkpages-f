@@ -83,7 +83,7 @@ export function CompanyLogoImg({ company, logoUrl, sizeClass }: { company: strin
 export function CompanyRow({ company, title, industry, logoUrl, logoSize = "md", wrapTitle = false, companyClassName }: { company: string; title: string; industry?: string; logoUrl?: string; logoSize?: "md" | "lg"; wrapTitle?: boolean; companyClassName?: string }) {
   // Bumped a step (md 8→10, lg 10→12): with the industry as a third line, the old sizes
   // left the logo visually undersized against the text column beside it.
-  // Changing "lg" changes the indent the manager profile uses to align its industry line —
+  // Changing "lg" changes the indent the manager profile uses to align its industry line -
   // see the ml-14 in BossProfile.
   const sizeClass = logoSize === "lg" ? "h-12 w-12" : "h-10 w-10";
   return (
@@ -92,7 +92,7 @@ export function CompanyRow({ company, title, industry, logoUrl, logoSize = "md",
       <div className="min-w-0 flex-1">
         <p className={`text-sm font-semibold leading-tight truncate ${companyClassName ?? "text-foreground"}`}>{company}</p>
         <p className={`text-xs text-muted-foreground ${wrapTitle ? "break-words" : "truncate"}`}>{title}</p>
-        {/* Third line: the company's industry. Optional — callers that are already scoped to
+        {/* Third line: the company's industry. Optional - callers that are already scoped to
             one industry (the industry profile page) leave it off, and it is null until the
             company has been classified. */}
         {industry && (
@@ -116,7 +116,7 @@ export default function ManagerCard({ boss, isPending = false }: ManagerCardProp
           : "border-border hover:border-[#2e0562]/30 hover:shadow-[#2e0562]/5"
       }`}
     >
-      {/* Top rated — absolute top-right, matching the company cards exactly. */}
+      {/* Top rated - absolute top-right, matching the company cards exactly. */}
       {!isPending && rating >= 4.5 && (
         <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
           <Star size={9} className="fill-amber-500 text-amber-500" /> Top rated

@@ -131,7 +131,7 @@ export default function AddBoss() {
 
   // After a successful submission the user has contributed a review, which lifts the
   // ratings lock site-wide. The gate reads user.hasContributed (sourced from /api/auth/me,
-  // only refreshed on app mount), so we must optimistically flip it here — otherwise the
+  // only refreshed on app mount), so we must optimistically flip it here - otherwise the
   // manager they just rated stays blurred until a full page reload.
   const markContributed = () => {
     if (user && !user.hasContributed) setUser({ ...user, hasContributed: true });
@@ -144,13 +144,13 @@ export default function AddBoss() {
    * Where cancelling should land you.
    *
    * An explicit ?returnTo wins, because a caller that knows exactly where you came from (the
-   * company profile passes its own slug) can say so. Most entry points don't — the header, the
-   * directory, a manager profile and half a dozen others just link to /add — and defaulting all
+   * company profile passes its own slug) can say so. Most entry points don't - the header, the
+   * directory, a manager profile and half a dozen others just link to /add - and defaulting all
    * of those to /directory dumped people somewhere they had never been.
    *
    * So the fallback is genuine history. React Router stamps the first entry of a session with
    * location.key "default", which is how we tell "you navigated here from somewhere in the app"
-   * apart from "you opened this URL directly" — going back from a direct load would leave the
+   * apart from "you opened this URL directly" - going back from a direct load would leave the
    * site entirely.
    */
   const explicitReturnTo = searchParams.get("returnTo");
@@ -166,7 +166,7 @@ export default function AddBoss() {
   const [pendingEmailVerified, setPendingEmailVerified] = useState(false);
 
   const [step, setStep] = useState<AddBossStep>("info");
-  // First-hand-experience attestation. Required before any review is persisted — including the
+  // First-hand-experience attestation. Required before any review is persisted - including the
   // silent auto-save below, which would otherwise store a review the user never attested to.
   const [attested, setAttested] = useState(false);
 
@@ -315,7 +315,7 @@ export default function AddBoss() {
             if (data.emailVerified) setFromVerified(true);
             setAuthFlowStep(data.emailVerified ? "signin" : "verify_email");
           } else if (user) {
-            // OAuth redirect remount — user already logged in, go straight to ready state
+            // OAuth redirect remount - user already logged in, go straight to ready state
             const allRated = data.ratings && Object.keys(data.ratings).length > 0 && Object.values(data.ratings as Record<string, number>).every(r => r >= 1);
             if (allRated) setShowReadyBanner(true);
           } else {
@@ -522,7 +522,7 @@ export default function AddBoss() {
       return;
     }
 
-    // Auto-save already captured the review — skip the re-submit and navigate directly
+    // Auto-save already captured the review - skip the re-submit and navigate directly
     if (autoSubmitStatusRef.current === "success" && autoSavedManagerIdRef.current != null) {
       markContributed();
       localStorage.removeItem("rmm_pending_manager");
@@ -738,7 +738,7 @@ export default function AddBoss() {
                     {/*
                       Suggesting spellings other people already used is what stops "Sr. Mgr" and
                       "Snr Manager" being invented in the first place. Free text still goes through
-                      — plenty of real titles are company-specific.
+                      - plenty of real titles are company-specific.
                     */}
                     <RoleAutocomplete
                       name="title"
@@ -763,7 +763,7 @@ export default function AddBoss() {
                   </div>
                 </div>
 
-                {/* Country + State — read-only chip when pre-filled, editable on request */}
+                {/* Country + State - read-only chip when pre-filled, editable on request */}
                 <div className="space-y-4">
                   {formData.country && !editingLocation ? (
                     <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
@@ -967,7 +967,7 @@ export default function AddBoss() {
                   ))}
                 </div>
 
-                {/* First-hand-experience attestation — required before the review can be submitted */}
+                {/* First-hand-experience attestation - required before the review can be submitted */}
                 <div className="rounded-xl border border-border p-5">
                   <label className="flex items-start gap-3 cursor-pointer text-sm text-foreground">
                     <input

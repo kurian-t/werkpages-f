@@ -13,7 +13,7 @@ type Mode = "manager" | "company" | "industry";
 interface IndustryEntry { industry: string; slug: string; companyCount: number; managerCount: number; }
 
 /**
- * Company search — the EXACT same autocomplete used on the Companies tab (logo suggestions as you
+ * Company search - the EXACT same autocomplete used on the Companies tab (logo suggestions as you
  * type, via CompanyAutocomplete). Selecting a suggestion navigates to that company's profile.
  */
 function CompanySearchBox() {
@@ -42,7 +42,7 @@ function CompanySearchBox() {
   );
 }
 
-/** Industry search — a proper combobox that only opens on focus. Selecting navigates to the profile. */
+/** Industry search - a proper combobox that only opens on focus. Selecting navigates to the profile. */
 function IndustrySearchBox() {
   const navigate = useNavigate();
   const [q, setQ] = useState("");

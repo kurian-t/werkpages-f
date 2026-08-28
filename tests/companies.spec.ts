@@ -282,7 +282,7 @@ test.describe("Company profile page", () => {
     await page.getByText("Acme Corp").first().click();
     await expect(page).toHaveURL(/\/companies\/acme-corp/, { timeout: 5_000 });
 
-    // Back button uses navigate(-1) — should return to /companies
+    // Back button uses navigate(-1) - should return to /companies
     await page.getByRole("button", { name: /all companies/i }).click();
 
     await expect(page).toHaveURL(/\/companies$/, { timeout: 5_000 });
@@ -306,7 +306,7 @@ test.describe("Company profile page", () => {
     await expect(
       page.getByRole("heading", { name: "UnknownCorp", exact: true })
     ).toBeVisible({ timeout: 10_000 });
-    // Sidebar search form shown — does not reveal that the company is empty
+    // Sidebar search form shown - does not reveal that the company is empty
     await expect(page.getByText(/find a manager/i)).toBeVisible();
     await expect(page.getByText(/no managers listed yet/i)).not.toBeVisible();
   });
@@ -461,7 +461,7 @@ test.describe("Company profile page", () => {
   });
 });
 
-test.describe("Company profile page — admin rename", () => {
+test.describe("Company profile page - admin rename", () => {
   async function mockAdminCompanyProfile(page: any) {
     await page.route("**/api/auth/me", (route: any) =>
       route.fulfill({ json: { ...MOCK_ADMIN_USER, hasContributed: true } })
@@ -511,7 +511,7 @@ test.describe("Company profile page — admin rename", () => {
     await page.getByRole("button", { name: /rename company/i }).click();
     const input = page.getByRole("textbox").first();
     await input.fill("Acme Corporation");
-    // Use Enter to submit — avoids mobile sticky-header click interception
+    // Use Enter to submit - avoids mobile sticky-header click interception
     await input.press("Enter");
 
     await expect(page).toHaveURL(/\/companies$/, { timeout: 5_000 });
@@ -542,7 +542,7 @@ test.describe("Company profile page — admin rename", () => {
   });
 });
 
-test.describe("Header — Companies nav tab", () => {
+test.describe("Header - Companies nav tab", () => {
   test("Companies tab is visible for all users including logged-out", async ({ page }) => {
     await page.route("**/api/auth/me", (route) =>
       route.fulfill({ status: 401, json: { error: "Unauthorized" } })

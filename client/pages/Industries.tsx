@@ -17,7 +17,7 @@ interface IndustryEntry {
   avgRating?: number;
 }
 
-/** Matches Companies.tsx and IndustryProfile.tsx — one threshold across every card type. */
+/** Matches Companies.tsx and IndustryProfile.tsx - one threshold across every card type. */
 function StarRating({ rating }: { rating: number }) {
   return (
     <div className="flex max-w-full flex-nowrap items-center gap-0.5 whitespace-nowrap">
@@ -100,7 +100,7 @@ export default function Industries() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col gap-8 lg:flex-row">
 
-          {/* Sidebar — mirrors the /companies layout */}
+          {/* Sidebar - mirrors the /companies layout */}
           <aside className="lg:w-56 flex-shrink-0">
             <div className="space-y-6">
               <div>
@@ -171,7 +171,7 @@ export default function Industries() {
                   </div>
                   {/* hyphens-auto so any name still too long to fit breaks as "Telecommu-
                       nications" rather than silently mid-word. Belt and braces alongside the
-                      wider cell — the taxonomy is fixed at 24 names, but the longest of them
+                      wider cell - the taxonomy is fixed at 24 names, but the longest of them
                       should not depend on a pixel measurement staying true. */}
                   <h2
                     lang="en"

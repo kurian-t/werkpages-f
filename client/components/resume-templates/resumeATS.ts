@@ -39,7 +39,7 @@ const NAMED_ENTITIES: Record<string, string> = {
   bull: "•",
   middot: "·",
   ndash: "–",
-  mdash: "—",
+  mdash: "-",
 };
 
 export function decodeHtmlEntities(value: string): string {

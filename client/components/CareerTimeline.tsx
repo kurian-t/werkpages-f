@@ -25,7 +25,7 @@ export const TOP_PAD     = 24;
 export const VERT_RANGE  = 220;   // pixel span from 5.0 centre to 1.0 centre
 const AXIS_W      = 38;
 
-// X-axis sits one grid interval below the 1.0 line — same rhythm as all other intervals
+// X-axis sits one grid interval below the 1.0 line - same rhythm as all other intervals
 export const GRID_INTERVAL   = VERT_RANGE / 4;                                          // 55px
 export const X_AXIS_Y        = Math.round(TOP_PAD + VERT_RANGE + CARD_H / 2 + GRID_INTERVAL); // ~384
 
@@ -180,7 +180,7 @@ function roleConfidence(reviewCount: number): string {
   return "Low";
 }
 
-// ── Role item — independent collapsible card inside a company card ────────────
+// ── Role item - independent collapsible card inside a company card ────────────
 function RoleItem({ role, companyAvg }: { role: CareerSegment; companyAvg: number }) {
   const [expanded, setExpanded] = useState(false);
   const delta    = role.averageRating - companyAvg;
@@ -212,7 +212,7 @@ function RoleItem({ role, companyAvg }: { role: CareerSegment; companyAvg: numbe
               <span className="text-xs font-semibold text-slate-800 leading-snug">
                 {role.role}
               </span>
-              <span className="text-xs text-slate-400">—</span>
+              <span className="text-xs text-slate-400">-</span>
               <span className="text-xs font-bold text-slate-700 tabular-nums">
                 {role.averageRating.toFixed(1)}
               </span>
@@ -282,7 +282,7 @@ function CompanyCard({
   const year    = node.startDate?.slice(0, 4);
 
   // Track actual card height with a ResizeObserver so the tick always hangs off the
-  // real card bottom — including after roles expand or collapse.
+  // real card bottom - including after roles expand or collapse.
   const cardRef  = useRef<HTMLDivElement>(null);
   const [cardHeight, setCardHeight] = useState(CARD_H);
   useLayoutEffect(() => {
@@ -414,7 +414,7 @@ function CompanyCard({
         style={{ top: centerY - 6, right: -6 }}
       />
 
-      {/* Year tick — tracks real card bottom via ResizeObserver, follows expand/collapse */}
+      {/* Year tick - tracks real card bottom via ResizeObserver, follows expand/collapse */}
       {year && (
         <div
           style={{
@@ -610,7 +610,7 @@ function ConsistencyPanel({
   );
 }
 
-// ── Ghost panels — shown when there is only one segment ───────────────────────
+// ── Ghost panels - shown when there is only one segment ───────────────────────
 function GhostInsightPanel() {
   return (
     <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-white overflow-hidden">
@@ -716,7 +716,7 @@ export function CareerTimeline({
   onEditCareerEntry?: (entry: { entryId: number; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
   onDeleteCareerEntry?: (entryId: number) => void;
 }) {
-  // Only include real reviewed segments in insight/consistency calculations — ghost segments (reviewCount 0) have no rating data
+  // Only include real reviewed segments in insight/consistency calculations - ghost segments (reviewCount 0) have no rating data
   const reviewedSegments = useMemo(() => segments.filter(s => s.reviewCount > 0), [segments]);
   const insights    = useMemo(() => generateCareerInsights(reviewedSegments), [reviewedSegments]);
   const consistency = useMemo(() => computeConsistencyScore(reviewedSegments), [reviewedSegments]);
@@ -761,7 +761,7 @@ export function CareerTimeline({
       const totalReviews = group.reduce((s, seg) => s + seg.reviewCount, 0);
       const weightedSum  = group.reduce((s, seg) => s + seg.averageRating * seg.reviewCount, 0);
       const isGhost      = totalReviews === 0;
-      // Ghost nodes have no rating — position them at the previous company's rating so they
+      // Ghost nodes have no rating - position them at the previous company's rating so they
       // appear at the same level rather than jumping to a neutral midpoint.
       const prevAvg      = nodes.length > 0 ? (nodes[nodes.length - 1] as any).avg : 3.0;
       const avg          = isGhost ? prevAvg : Math.round((weightedSum / totalReviews) * 10) / 10;
@@ -827,7 +827,7 @@ export function CareerTimeline({
         </div>
 
         <div className="relative">
-          {/* Gradient overlay — only when content overflows */}
+          {/* Gradient overlay - only when content overflows */}
           {scrollRatio < 1 && (
             <div
               className="absolute inset-y-0 right-0 w-24 pointer-events-none"
@@ -866,7 +866,7 @@ export function CareerTimeline({
               paddingRight: 32,
             }}
           >
-            {/* Background grid — fixed height, grid lines stay within TRACK_H */}
+            {/* Background grid - fixed height, grid lines stay within TRACK_H */}
             <svg
               style={{ position: "absolute", top: 0, left: 0, width: "100%", pointerEvents: "none" }}
               height={TRACK_H}
@@ -913,7 +913,7 @@ export function CareerTimeline({
 
             {/* Year ticks are rendered inside each CompanyCard, anchored to the measured collapsed height */}
 
-            {/* Flow layer — grows naturally with expanded card content */}
+            {/* Flow layer - grows naturally with expanded card content */}
             <div
               className="flex items-start"
               style={{

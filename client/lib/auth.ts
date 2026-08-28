@@ -14,7 +14,7 @@ export const isSocialLoginConfigured = () =>
   !!AUTH0_DOMAIN && !!AUTH0_CLIENT_ID && !!AUTH0_AUDIENCE;
 
 export function startSocialLogin(connection: SocialConnection, returnTo?: string) {
-  // A build missing the Auth0 config must not navigate to "https://undefined/authorize" — that
+  // A build missing the Auth0 config must not navigate to "https://undefined/authorize" - that
   // dead-ends the user on an error page with no way back.
   if (!isSocialLoginConfigured()) {
     console.error(

@@ -4,7 +4,7 @@ import { INDUSTRY_TILE_ICON_SLUGS, hasIndustryTileIcon } from "./IndustryTileIco
 
 /**
  * The icon map is keyed by IndustryTaxonomy.slug() values produced on the backend. A slug with
- * no entry does not throw — it silently renders the "other" glyph — so a typo or a new industry
+ * no entry does not throw - it silently renders the "other" glyph - so a typo or a new industry
  * added to the Java taxonomy would show up as a wrong icon in production rather than a failure.
  * These tests pin the mapping instead.
  *
@@ -39,12 +39,12 @@ const TAXONOMY_SLUGS = [
   "transportation-and-logistics",
 ];
 
-// The SVG set has no glyph for these yet — they intentionally fall back to "other".
+// The SVG set has no glyph for these yet - they intentionally fall back to "other".
 const SVG_SET_GAPS = ["mining-and-metals", "consumer-services"];
 
 describe.each([
-  ["IndustryIcon (SVG set — manager/company profiles)", INDUSTRY_ICON_SLUGS, hasIndustryIcon, SVG_SET_GAPS],
-  ["IndustryTileIcon (emoji set — Industries tab)",     INDUSTRY_TILE_ICON_SLUGS, hasIndustryTileIcon, []],
+  ["IndustryIcon (SVG set - manager/company profiles)", INDUSTRY_ICON_SLUGS, hasIndustryIcon, SVG_SET_GAPS],
+  ["IndustryTileIcon (emoji set - Industries tab)",     INDUSTRY_TILE_ICON_SLUGS, hasIndustryTileIcon, []],
 ])("%s coverage", (_label, SLUGS, has, gaps) => {
   it("has an icon for every industry in the taxonomy, except known gaps", () => {
     const missing = TAXONOMY_SLUGS.filter(slug => !has(slug));

@@ -104,7 +104,7 @@ export default function ResumeFormatChooser({
                 </div>
                 <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
                   Profile, experience, projects, education, skills, summary and
-                  links—the source of truth every output reads from.
+                  links-the source of truth every output reads from.
                 </p>
               </div>
               <span className="hidden rounded-full bg-[#2e0562]/10 px-2.5 py-1 text-[10px] font-semibold text-[#2e0562] sm:inline-flex">

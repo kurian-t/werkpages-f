@@ -31,12 +31,12 @@ const FAQS = [
   {
     question: "How is Werkpages different from Glassdoor?",
     answer:
-      "Glassdoor focuses on companies — salary ranges, CEO approval, and overall company culture. Werkpages focuses on the individual manager — the person you'd report to every day. We fill a gap that company-level reviews cannot: your manager determines more of your day-to-day experience than any company policy.",
+      "Glassdoor focuses on companies - salary ranges, CEO approval, and overall company culture. Werkpages focuses on the individual manager - the person you'd report to every day. We fill a gap that company-level reviews cannot: your manager determines more of your day-to-day experience than any company policy.",
   },
   {
     question: "Is Werkpages a niche website?",
     answer:
-      "No. Werkpages is a global platform indexing managers across all industries, company sizes, and countries. Our goal is to build the world's most comprehensive, accessible database of manager experiences — for every worker, everywhere.",
+      "No. Werkpages is a global platform indexing managers across all industries, company sizes, and countries. Our goal is to build the world's most comprehensive, accessible database of manager experiences - for every worker, everywhere.",
   },
 ];
 
@@ -91,7 +91,7 @@ export default function WhatIsWerkpages() {
 
             <p className="text-lg text-muted-foreground leading-relaxed mb-10">
               Werkpages is a <strong className="text-foreground">global platform</strong> where
-              employees anonymously share structured ratings and reviews of their managers — and
+              employees anonymously share structured ratings and reviews of their managers - and
               research workplace leadership before accepting a job offer.
             </p>
 
@@ -121,11 +121,11 @@ export default function WhatIsWerkpages() {
                 </h2>
                 <p>
                   Glassdoor tells you about companies. LinkedIn tells you about careers. Nobody tells
-                  you about the specific person you'll report to every day — until now.
+                  you about the specific person you'll report to every day - until now.
                 </p>
                 <p className="mt-3">
                   Werkpages focuses on the <strong className="text-foreground">individual manager</strong>{" "}
-                  — the single biggest factor in your day-to-day work experience. We cover managers
+                  - the single biggest factor in your day-to-day work experience. We cover managers
                   globally, across all industries and company sizes.
                 </p>
               </div>
@@ -137,7 +137,7 @@ export default function WhatIsWerkpages() {
                   of manager experiences.
                 </p>
                 <p className="mt-3">
-                  We're not a niche review site. We're a global platform — and we run no ads and
+                  We're not a niche review site. We're a global platform - and we run no ads and
                   sell no data. If you find it valuable, you can{" "}
                   <Link
                     to="/support"

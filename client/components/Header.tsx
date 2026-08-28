@@ -21,7 +21,7 @@ export function Header() {
   const isBanned = user?.isBanned === true;
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  // Nested canonical URLs mean the first segment is not the section — a manager page
+  // Nested canonical URLs mean the first segment is not the section - a manager page
   // lives under /industries/.../companies/.../managers/... See activeNavSection.
   const navSection = activeNavSection(pathname);
 

@@ -56,9 +56,9 @@ async function mockCompanyProfileRoutes(
   );
 }
 
-// ─── BossProfile — Admin-only sections ───────────────────────────────────────
+// ─── BossProfile - Admin-only sections ───────────────────────────────────────
 
-test.describe("BossProfile — admin edit section", () => {
+test.describe("BossProfile - admin edit section", () => {
   test("admin user sees Edit and Delete buttons on profile", async ({ page }) => {
     await mockManagerPage(page, {
       loggedIn: true,
@@ -154,9 +154,9 @@ test.describe("BossProfile — admin edit section", () => {
   });
 });
 
-// ─── BossProfile — Report Profile modal ──────────────────────────────────────
+// ─── BossProfile - Report Profile modal ──────────────────────────────────────
 
-test.describe("BossProfile — report profile modal", () => {
+test.describe("BossProfile - report profile modal", () => {
   test("clicking Report opens the report modal", async ({ page }) => {
     await mockManagerPage(page, { loggedIn: true, hasContributed: true });
     await page.route(/\/api\/managers\/.*\/report/, (route: any) =>
@@ -219,9 +219,9 @@ test.describe("BossProfile — report profile modal", () => {
   });
 });
 
-// ─── BossProfile — Complete edit review (ratings → dates → identity) ─────────
+// ─── BossProfile - Complete edit review (ratings → dates → identity) ─────────
 
-test.describe("BossProfile — complete edit review all steps", () => {
+test.describe("BossProfile - complete edit review all steps", () => {
   test("edit review: navigate through all 3 steps and save", async ({ page }) => {
     await mockManagerPage(page, {
       loggedIn: true,
@@ -253,9 +253,9 @@ test.describe("BossProfile — complete edit review all steps", () => {
   });
 });
 
-// ─── Admin — Merge Duplicates tab ────────────────────────────────────────────
+// ─── Admin - Merge Duplicates tab ────────────────────────────────────────────
 
-test.describe("Admin — merge duplicates tab", () => {
+test.describe("Admin - merge duplicates tab", () => {
   test("Merge Duplicates tab appears and search shows results", async ({ page }) => {
     await mockAdminPage(page);
     await page.goto("/admin");
@@ -333,9 +333,9 @@ test.describe("Admin — merge duplicates tab", () => {
   });
 });
 
-// ─── Admin — AI Suggestions tab ──────────────────────────────────────────────
+// ─── Admin - AI Suggestions tab ──────────────────────────────────────────────
 
-test.describe("Admin — AI suggestions tab", () => {
+test.describe("Admin - AI suggestions tab", () => {
   const MOCK_MERGE_SUGGESTION = {
     id: "sugg-1",
     confidence: "SAME",
@@ -346,7 +346,7 @@ test.describe("Admin — AI suggestions tab", () => {
 
   test("AI suggestions tab shows suggestions", async ({ page }) => {
     await mockAdminPage(page);
-    // Override merge-suggestions endpoint to return data (LIFO — registered after mockAdminPage)
+    // Override merge-suggestions endpoint to return data (LIFO - registered after mockAdminPage)
     await page.route(/\/api\/admin\/merge-suggestions$/, (route: any) => {
       if (route.request().method() === "GET") {
         route.fulfill({ json: { data: [MOCK_MERGE_SUGGESTION], total: 1 } });
@@ -412,9 +412,9 @@ test.describe("Admin — AI suggestions tab", () => {
   });
 });
 
-// ─── Admin — Live Profiles (Ghost Managers) tab ───────────────────────────────
+// ─── Admin - Live Profiles (Ghost Managers) tab ───────────────────────────────
 
-test.describe("Admin — live profiles tab", () => {
+test.describe("Admin - live profiles tab", () => {
   const MOCK_GHOST_MANAGER = {
     id: "ghost-1",
     name: "Ghost Manager",
@@ -440,9 +440,9 @@ test.describe("Admin — live profiles tab", () => {
   });
 });
 
-// ─── Admin — Companies tab ────────────────────────────────────────────────────
+// ─── Admin - Companies tab ────────────────────────────────────────────────────
 
-test.describe("Admin — companies tab merge", () => {
+test.describe("Admin - companies tab merge", () => {
   test("Companies tab search shows results and Keep/Remove work", async ({ page }) => {
     await mockAdminPage(page, {
       companies: [
@@ -492,9 +492,9 @@ test.describe("Admin — companies tab merge", () => {
   });
 });
 
-// ─── Admin — Reject pending manager with reason ───────────────────────────────
+// ─── Admin - Reject pending manager with reason ───────────────────────────────
 
-test.describe("Admin — reject pending manager with reason", () => {
+test.describe("Admin - reject pending manager with reason", () => {
   test("reject confirm dialog shows textarea for reason", async ({ page }) => {
     await mockAdminPage(page, {
       pendingManagers: [MOCK_PENDING_ADMIN_MANAGER],
@@ -520,7 +520,7 @@ test.describe("Admin — reject pending manager with reason", () => {
     await page.getByRole("button", { name: /^Reject$/ }).first().click();
     await expect(page.getByRole("dialog")).toBeVisible({ timeout: 5000 });
     // Type a rejection reason
-    await page.getByPlaceholder(/provide a reason/i).fill("Duplicate profile — already exists as admin-pm-2");
+    await page.getByPlaceholder(/provide a reason/i).fill("Duplicate profile - already exists as admin-pm-2");
     // Click Reject in dialog
     await page.getByRole("dialog").getByRole("button", { name: /^Reject$/ }).click();
     // Dialog closes after success
@@ -528,9 +528,9 @@ test.describe("Admin — reject pending manager with reason", () => {
   });
 });
 
-// ─── Directory — Pagination ───────────────────────────────────────────────────
+// ─── Directory - Pagination ───────────────────────────────────────────────────
 
-test.describe("Directory — pagination", () => {
+test.describe("Directory - pagination", () => {
   // Create 21 mock managers to trigger 2-page pagination (PAGE_SIZE = 20)
   const MANY_MANAGERS = Array.from({ length: 21 }, (_, i) => ({
     id: `manager-${i}`,
@@ -568,7 +568,7 @@ test.describe("Directory — pagination", () => {
     );
     await page.goto("/directory");
     await expect(page.getByText("Manager 1", { exact: true })).toBeVisible({ timeout: 10000 });
-    // Pagination should be visible — page 2 button appears (totalPages = ceil(21/20) = 2)
+    // Pagination should be visible - page 2 button appears (totalPages = ceil(21/20) = 2)
     await expect(page.getByRole("button", { name: "2", exact: true })).toBeVisible({ timeout: 5000 });
     // Page 1 button is visible and active (styled differently)
     await expect(page.getByRole("button", { name: "1", exact: true })).toBeVisible({ timeout: 3000 });
@@ -641,9 +641,9 @@ test.describe("Directory — pagination", () => {
   });
 });
 
-// ─── CompanyProfile — search with invalid name triggers error ─────────────────
+// ─── CompanyProfile - search with invalid name triggers error ─────────────────
 
-test.describe("CompanyProfile — search validation error", () => {
+test.describe("CompanyProfile - search validation error", () => {
   test("invalid name with numbers shows validation error", async ({ page }) => {
     await mockCompanyProfileRoutes(page, { loggedIn: false });
     await page.route(/\/api\/managers\?/, (route: any) =>
@@ -662,9 +662,9 @@ test.describe("CompanyProfile — search validation error", () => {
   });
 });
 
-// ─── CompanyProfile — anonymous ghost creation flow ───────────────────────────
+// ─── CompanyProfile - anonymous ghost creation flow ───────────────────────────
 
-test.describe("CompanyProfile — anonymous ghost creation", () => {
+test.describe("CompanyProfile - anonymous ghost creation", () => {
   test("anonymous search with empty results triggers ghost creation and shows Manager added", async ({ page }) => {
     await mockCompanyProfileRoutes(page, { loggedIn: false });
 
@@ -694,14 +694,14 @@ test.describe("CompanyProfile — anonymous ghost creation", () => {
     await page.locator('input[placeholder="Job title"]').fill("Engineering Manager");
     // Submit
     await page.getByRole("button", { name: /^Search$/ }).click();
-    // Wait for ghost creation flow to complete — shows "Manager added!"
+    // Wait for ghost creation flow to complete - shows "Manager added!"
     await expect(page.getByText(/manager added/i)).toBeVisible({ timeout: 10000 });
   });
 });
 
-// ─── Companies — search suggestion select ─────────────────────────────────────
+// ─── Companies - search suggestion select ─────────────────────────────────────
 
-test.describe("Companies — search autocomplete suggestion select", () => {
+test.describe("Companies - search autocomplete suggestion select", () => {
   test("selecting a suggestion from autocomplete navigates to company", async ({ page }) => {
     await page.route("**/api/auth/me", (route: any) =>
       route.fulfill({ status: 401, json: { error: "Unauthorized" } })
@@ -732,9 +732,9 @@ test.describe("Companies — search autocomplete suggestion select", () => {
   });
 });
 
-// ─── Admin — Live Profiles tab: edit ghost manager inline ─────────────────────
+// ─── Admin - Live Profiles tab: edit ghost manager inline ─────────────────────
 
-test.describe("Admin — live profiles tab: ghost manager editing", () => {
+test.describe("Admin - live profiles tab: ghost manager editing", () => {
   const MOCK_GHOST_MANAGER = {
     id: "ghost-edit-1",
     name: "Ghost Edit Manager",

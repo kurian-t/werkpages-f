@@ -12,7 +12,7 @@ export const TOP_RATED_THRESHOLD = 4.5;
 /**
  * How many reviews it takes before the badge means anything.
  *
- * Without this, one five-star review earns "Top rated" — which is a credibility problem rather
+ * Without this, one five-star review earns "Top rated" - which is a credibility problem rather
  * than a rounding one, especially on a profile page where the badge is the headline and gets
  * screenshotted. It matches the caution applied elsewhere: interview category averages are hidden
  * below three reports, and small samples carry an explicit warning.
@@ -26,7 +26,7 @@ export const TOP_RATED_MIN_REVIEWS = 3;
  * industry" sounds smarter but means the same manager carries the badge on one page and loses it
  * on another, which reads as a bug rather than as nuance.
  *
- * Missing or unparseable input fails closed — an unknown review count is not evidence of quality.
+ * Missing or unparseable input fails closed - an unknown review count is not evidence of quality.
  */
 export function isTopRated(
   rating: number | string | null | undefined,

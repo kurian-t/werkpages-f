@@ -16,6 +16,6 @@ export default async function globalTeardown() {
   try {
     execSync("npx nyc report --reporter=text", { stdio: "inherit" });
   } catch {
-    // Non-zero exit (e.g. thresholds) — don't fail the test run
+    // Non-zero exit (e.g. thresholds) - don't fail the test run
   }
 }

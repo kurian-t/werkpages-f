@@ -224,7 +224,7 @@ export function AuthFlowModal({
 
         <div className="p-6">
 
-          {/* ── Step: Sign Up — social picker ──────────────────────────────── */}
+          {/* ── Step: Sign Up - social picker ──────────────────────────────── */}
           {step === "signup" && !emailMode && (
             <>
               {autoSubmit && (
@@ -254,7 +254,7 @@ export function AuthFlowModal({
             </>
           )}
 
-          {/* ── Step: Sign Up — email form ──────────────────────────────────── */}
+          {/* ── Step: Sign Up - email form ──────────────────────────────────── */}
           {step === "signup" && emailMode && (
             <>
               <button
@@ -419,7 +419,7 @@ export function AuthFlowModal({
             </div>
           )}
 
-          {/* ── Step: Sign In — social picker ──────────────────────────────── */}
+          {/* ── Step: Sign In - social picker ──────────────────────────────── */}
           {step === "signin" && !emailMode && (
             <>
               {autoSubmit && (
@@ -449,7 +449,7 @@ export function AuthFlowModal({
             </>
           )}
 
-          {/* ── Step: Sign In — email form ──────────────────────────────────── */}
+          {/* ── Step: Sign In - email form ──────────────────────────────────── */}
           {step === "signin" && emailMode && (
             <>
               <button

@@ -24,7 +24,7 @@ async function searchDirectory(
   await page.getByRole("button", { name: /^search$/i }).click();
 }
 
-test.describe("Directory — search, filters, and pending submissions", () => {
+test.describe("Directory - search, filters, and pending submissions", () => {
   test("loads manager cards on initial visit", async ({ page }) => {
     await mockDirectoryPage(page);
     await page.goto("/directory");
@@ -178,7 +178,7 @@ test.describe("Directory — search, filters, and pending submissions", () => {
     ).toBeVisible({ timeout: 5_000 });
   });
 
-  test.describe("Back button — page number preserved in URL", () => {
+  test.describe("Back button - page number preserved in URL", () => {
     test("visiting /directory?page=2 sends offset=20 to the API", async ({ page }) => {
       let capturedOffset: string | null = null;
 
@@ -248,7 +248,7 @@ test.describe("Directory — search, filters, and pending submissions", () => {
 
       await searchDirectory(page);
 
-      // The chip used "·" to separate name from title — this should not appear in any chip
+      // The chip used "·" to separate name from title - this should not appear in any chip
       const chipWithSeparator = page.locator('span[class*="rounded-full"]').filter({ hasText: "·" });
       await expect(chipWithSeparator).not.toBeVisible({ timeout: 3_000 });
     });
@@ -260,7 +260,7 @@ test.describe("Directory — search, filters, and pending submissions", () => {
 
       await searchDirectory(page);
 
-      // After a search, "Clear all" must be visible — this is the primary active-filter indicator
+      // After a search, "Clear all" must be visible - this is the primary active-filter indicator
       await expect(page.getByText("Clear all")).toBeVisible({ timeout: 3_000 });
       // No grey rounded-full chip containing the searched name should appear (it was removed)
       const greyChip = page.locator('span[class*="rounded-full"]').filter({ hasText: "Alex Johnson" });

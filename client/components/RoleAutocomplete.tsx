@@ -5,10 +5,12 @@ import API_BASE from "@/lib/api";
 interface RoleSuggestion {
   title: string;
   normalized: string;
-  managerCount: number;
+  usageCount: number;
 }
 
 interface Props {
+  /** Lets a caller's <label htmlFor> actually point at the input. */
+  id?: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -22,23 +24,24 @@ interface Props {
  *
  * <p>This is the half of role normalization that actually stops the problem. Backfilling history
  * is a one-off; offering the spelling other people already used means the next person picks
- * "Senior Manager" instead of inventing "Snr. Mgr". Free text is still accepted — plenty of real
- * titles are company-specific and won't be in the list — so this nudges rather than constrains.
+ * "Senior Manager" instead of inventing "Snr. Mgr". Free text is still accepted - plenty of real
+ * titles are company-specific and won't be in the list - so this nudges rather than constrains.
  *
  * <p>Suggestions arrive already ordered by how many people use each spelling, so the most common
- * one is simply first. The count itself is not shown — the ordering carries it.
+ * one is simply first. The count itself is not shown - the ordering carries it.
  */
-export function RoleAutocomplete({ value, onChange, placeholder, className, name, maxLength }: Props) {
+export function RoleAutocomplete({ id, value, onChange, placeholder, className, name, maxLength }: Props) {
   const [suggestions, setSuggestions] = useState<RoleSuggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLUListElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const justSelectedRef = useRef(false);
 
   // Position the dropdown from the input's viewport rect so it escapes any overflow:hidden
-  // ancestor — the add-manager form is inside a scrolling card.
+  // ancestor - the add-manager form is inside a scrolling card.
   useEffect(() => {
     if (!open || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -80,7 +83,7 @@ export function RoleAutocomplete({ value, onChange, placeholder, className, name
         setOpen(useful.length > 0);
         setActiveIndex(-1);
       } catch {
-        // Suggestions are a convenience — a failure here must never block typing a title.
+        // Suggestions are a convenience - a failure here must never block typing a title.
         setSuggestions([]);
         setOpen(false);
       }
@@ -93,7 +96,12 @@ export function RoleAutocomplete({ value, onChange, placeholder, className, name
 
   useEffect(() => {
     const onDocumentClick = (event: MouseEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      // The list is portalled to document.body, so it is NOT inside containerRef. Without
+      // checking it too, clicking a suggestion closed the list on mousedown and unmounted the
+      // button before its click could fire - the dropdown looked unselectable.
+      if (containerRef.current?.contains(target) || dropdownRef.current?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", onDocumentClick);
     return () => document.removeEventListener("mousedown", onDocumentClick);
@@ -126,6 +134,7 @@ export function RoleAutocomplete({ value, onChange, placeholder, className, name
   return (
     <div ref={containerRef} className="relative">
       <input
+        id={id}
         type="text"
         name={name}
         value={value}
@@ -145,6 +154,7 @@ export function RoleAutocomplete({ value, onChange, placeholder, className, name
         suggestions.length > 0 &&
         createPortal(
           <ul
+            ref={dropdownRef}
             id="role-suggestions"
             role="listbox"
             style={dropdownStyle}

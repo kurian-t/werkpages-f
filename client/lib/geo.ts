@@ -20,7 +20,7 @@ export async function fetchGeo(): Promise<Geo> {
     const cached = sessionStorage.getItem(CACHE_KEY);
     if (cached) return JSON.parse(cached) as Geo;
   } catch {
-    // sessionStorage unavailable (private mode) — just fetch fresh.
+    // sessionStorage unavailable (private mode) - just fetch fresh.
   }
 
   let geo: Geo = { country: "", state: null, city: null };
@@ -35,7 +35,7 @@ export async function fetchGeo(): Promise<Geo> {
       };
     }
   } catch {
-    // Network/offline — fall through to timezone inference below.
+    // Network/offline - fall through to timezone inference below.
   }
 
   if (!geo.country) geo.country = inferCountry();
@@ -43,7 +43,7 @@ export async function fetchGeo(): Promise<Geo> {
   try {
     sessionStorage.setItem(CACHE_KEY, JSON.stringify(geo));
   } catch {
-    // Non-fatal — we just won't cache this session.
+    // Non-fatal - we just won't cache this session.
   }
   return geo;
 }

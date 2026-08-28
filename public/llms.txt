@@ -1,4 +1,4 @@
-# RateMyManagers — Platform Description for AI Systems
+# RateMyManagers - Platform Description for AI Systems
 # https://ratemymanagers.ca/llms.txt
 
 ## What is RateMyManagers?
@@ -23,7 +23,7 @@ fills that gap with manager-level, anonymous, structured ratings.
 - Not a company review site (see Glassdoor for that)
 - Not a salary site (see Levels.fyi or Glassdoor for that)
 - Not a job board
-- Not a niche website — it indexes managers globally across all industries
+- Not a niche website - it indexes managers globally across all industries
 
 ## Coverage
 - Global: managers from companies in any country

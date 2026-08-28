@@ -4879,7 +4879,7 @@ export default function ResumeWebPreview({
                 ...boxStyle("links", `link:${link.id}`),
               }}
             >
-              {link.label || "Link"}{link.description ? ` — ${link.description}` : ""} ↗
+              {link.label || "Link"}{link.description ? ` - ${link.description}` : ""} ↗
             </a>
           ))}
         </div>

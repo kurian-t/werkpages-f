@@ -341,7 +341,7 @@ export async function mockManagerPage(
     }
   );
 
-  // Reviews endpoint — GET (feed + per-user), POST (submit), DELETE (single review)
+  // Reviews endpoint - GET (feed + per-user), POST (submit), DELETE (single review)
   await page.route(
     new RegExp(`/api/managers/${manager.id}/reviews`),
     (route) => {
@@ -484,7 +484,7 @@ export async function mockAccountSettingsPage(
     route.fulfill({ json: user })
   );
 
-  // Returns paginated response — component reads res.data.data, res.data.total
+  // Returns paginated response - component reads res.data.data, res.data.total
   await page.route(/\/api\/users\/me\/reviews/, (route) =>
     route.fulfill({ json: { data: reviews, total: reviews.length, limit: 50, offset: 0 } })
   );
@@ -574,12 +574,12 @@ export async function mockAdminPage(
         route.fulfill({ json: { data: [] } });
       }
     } else {
-      // POST / PUT / DELETE — admin actions (approve, reject, ban, unban, merge, rename)
+      // POST / PUT / DELETE - admin actions (approve, reject, ban, unban, merge, rename)
       route.fulfill({ status: 200, json: { success: true } });
     }
   });
 
-  // Merge duplicate search — under /api/managers/similar, not /api/admin/
+  // Merge duplicate search - under /api/managers/similar, not /api/admin/
   await page.route(/\/api\/managers\/similar/, (route) =>
     route.fulfill({ json: { data: similarManagers } })
   );
@@ -605,7 +605,7 @@ export async function mockNotificationsPage(
     route.fulfill({ json: user })
   );
 
-  // Returns { data: [...] } — component does res.data.data
+  // Returns { data: [...] } - component does res.data.data
   await page.route("**/api/notifications", (route) =>
     route.fulfill({ json: { data: notifications } })
   );
@@ -767,7 +767,7 @@ export async function attestFirstHandExperience(page: Page) {
 }
 
 /**
- * Opens the new review form — uses .first() because there are two "Write a Review"
+ * Opens the new review form - uses .first() because there are two "Write a Review"
  * buttons on the page (header action button + bottom CTA).
  */
 export async function clickWriteAReview(page: Page) {

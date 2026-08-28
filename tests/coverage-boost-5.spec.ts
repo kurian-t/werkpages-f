@@ -28,9 +28,9 @@ import {
   mockAddBossPage,
 } from "./fixtures";
 
-// ─── Companies — clear autocomplete ──────────────────────────────────────────
+// ─── Companies - clear autocomplete ──────────────────────────────────────────
 
-test.describe("Companies — clear autocomplete (onClear)", () => {
+test.describe("Companies - clear autocomplete (onClear)", () => {
   test("typing then clearing search resets the input", async ({ page }) => {
     await page.route("**/api/auth/me", (route: any) =>
       route.fulfill({ status: 401, json: { error: "Unauthorized" } })
@@ -54,9 +54,9 @@ test.describe("Companies — clear autocomplete (onClear)", () => {
   });
 });
 
-// ─── CompanyProfile — error loading company ───────────────────────────────────
+// ─── CompanyProfile - error loading company ───────────────────────────────────
 
-test.describe("CompanyProfile — error state", () => {
+test.describe("CompanyProfile - error state", () => {
   test("API error shows error state with Browse all companies button", async ({ page }) => {
     await page.route("**/api/auth/me", (route: any) =>
       route.fulfill({ status: 401, json: { error: "Unauthorized" } })
@@ -82,9 +82,9 @@ test.describe("CompanyProfile — error state", () => {
   });
 });
 
-// ─── CompanyProfile — fake name validation ────────────────────────────────────
+// ─── CompanyProfile - fake name validation ────────────────────────────────────
 
-test.describe("CompanyProfile — fake name validation", () => {
+test.describe("CompanyProfile - fake name validation", () => {
   test("fake name part (test) triggers validation error", async ({ page }) => {
     await page.route("**/api/auth/me", (route: any) =>
       route.fulfill({ status: 401, json: { error: "Unauthorized" } })
@@ -106,7 +106,7 @@ test.describe("CompanyProfile — fake name validation", () => {
     );
     await page.goto("/companies/acme-corp");
     await expect(page.getByText(/acme corp/i).first()).toBeVisible({ timeout: 10000 });
-    // Use a fake name part ("test") — triggers FAKE_NAME_PARTS check (line 35-36)
+    // Use a fake name part ("test") - triggers FAKE_NAME_PARTS check (line 35-36)
     await page.locator('input[placeholder="First name"]').fill("Test");
     await page.locator('input[placeholder="Last name"]').fill("Person");
     await page.locator('input[placeholder="Job title"]').fill("Engineer");
@@ -144,9 +144,9 @@ test.describe("CompanyProfile — fake name validation", () => {
   });
 });
 
-// ─── CompanyProfile — anonymous search returns results ────────────────────────
+// ─── CompanyProfile - anonymous search returns results ────────────────────────
 
-test.describe("CompanyProfile — anonymous search with results", () => {
+test.describe("CompanyProfile - anonymous search with results", () => {
   test("anonymous user search returns managers and shows them", async ({ page }) => {
     await page.route("**/api/auth/me", (route: any) =>
       route.fulfill({ status: 401, json: { error: "Unauthorized" } })
@@ -186,9 +186,9 @@ test.describe("CompanyProfile — anonymous search with results", () => {
   });
 });
 
-// ─── CompanyProfile — ghost creation retry returns results ────────────────────
+// ─── CompanyProfile - ghost creation retry returns results ────────────────────
 
-test.describe("CompanyProfile — ghost creation retry returns results", () => {
+test.describe("CompanyProfile - ghost creation retry returns results", () => {
   test("ghost creation succeeds and retry GET returns a manager", async ({ page }) => {
     await page.route("**/api/auth/me", (route: any) =>
       route.fulfill({ status: 401, json: { error: "Unauthorized" } })
@@ -281,9 +281,9 @@ test.describe("CompanyProfile — ghost creation retry returns results", () => {
   });
 });
 
-// ─── CompanyProfile — "Rate a manager" locked buttons ─────────────────────────
+// ─── CompanyProfile - "Rate a manager" locked buttons ─────────────────────────
 
-test.describe("CompanyProfile — locked insights buttons", () => {
+test.describe("CompanyProfile - locked insights buttons", () => {
   test("logged-in user without contribution sees Rate a manager to unlock button", async ({ page }) => {
     // Logged in but hasContributed=false
     await page.route("**/api/auth/me", (route: any) =>
@@ -311,15 +311,15 @@ test.describe("CompanyProfile — locked insights buttons", () => {
     await expect(page.getByText(/acme corp/i).first()).toBeVisible({ timeout: 10000 });
     // The "Rate a manager to unlock" button should appear (lines 549, 771)
     await expect(page.getByText(/rate a manager to unlock/i).first()).toBeVisible({ timeout: 5000 });
-    // Click the button — navigates to /add
+    // Click the button - navigates to /add
     await page.getByRole("button", { name: /rate a manager to unlock/i }).first().click();
     await expect(page).toHaveURL(/\/add/, { timeout: 5000 });
   });
 });
 
-// ─── CompanyProfile — ghost added "Sign in to rate" button ────────────────────
+// ─── CompanyProfile - ghost added "Sign in to rate" button ────────────────────
 
-test.describe("CompanyProfile — ghost added sign in button", () => {
+test.describe("CompanyProfile - ghost added sign in button", () => {
   test("after ghost creation with no retry results shows Manager added and Sign in to rate", async ({ page }) => {
     await page.route("**/api/auth/me", (route: any) =>
       route.fulfill({ status: 401, json: { error: "Unauthorized" } })
@@ -365,9 +365,9 @@ test.describe("CompanyProfile — ghost added sign in button", () => {
   });
 });
 
-// ─── Directory — sort and filters ────────────────────────────────────────────
+// ─── Directory - sort and filters ────────────────────────────────────────────
 
-test.describe("Directory — sort and filter interactions", () => {
+test.describe("Directory - sort and filter interactions", () => {
   const MOCK_MANAGERS_10 = Array.from({ length: 5 }, (_, i) => ({
     id: `mgr-${i}`,
     name: `Manager ${i + 1}`,
@@ -412,7 +412,7 @@ test.describe("Directory — sort and filter interactions", () => {
     await setupDirectory(page);
     await page.goto("/directory");
     await expect(page.getByText("Manager 1", { exact: true })).toBeVisible({ timeout: 10000 });
-    // Change sort (line 334 — setSortBy; line 151 — return filtered)
+    // Change sort (line 334 - setSortBy; line 151 - return filtered)
     await page.selectOption('select', 'rating');
     // Directors still show (sorted differently)
     await expect(page.getByText("Manager 1", { exact: true })).toBeVisible({ timeout: 3000 });
@@ -481,9 +481,9 @@ test.describe("Directory — sort and filter interactions", () => {
   });
 });
 
-// ─── Directory — pagination with chevron buttons ──────────────────────────────
+// ─── Directory - pagination with chevron buttons ──────────────────────────────
 
-test.describe("Directory — chevron pagination buttons", () => {
+test.describe("Directory - chevron pagination buttons", () => {
   const MANY_MANAGERS = Array.from({ length: 21 }, (_, i) => ({
     id: `manager-${i}`,
     name: `Manager ${i + 1}`,
@@ -523,7 +523,7 @@ test.describe("Directory — chevron pagination buttons", () => {
     await setupPagination(page);
     await page.goto("/directory");
     await expect(page.getByText("Manager 1", { exact: true })).toBeVisible({ timeout: 10000 });
-    // Click ChevronRight (next page, line 457) — last button in pagination container
+    // Click ChevronRight (next page, line 457) - last button in pagination container
     await page.locator('div.mt-10.flex button').last().click();
     await expect(page.getByText(/manager 21/i)).toBeVisible({ timeout: 8000 });
   });
@@ -535,15 +535,15 @@ test.describe("Directory — chevron pagination buttons", () => {
     // Go to page 2 via numbered button
     await page.getByRole("button", { name: "2", exact: true }).click();
     await expect(page.getByText(/manager 21/i)).toBeVisible({ timeout: 8000 });
-    // Go back via ChevronLeft (line 424) — first button in pagination container
+    // Go back via ChevronLeft (line 424) - first button in pagination container
     await page.locator('div.mt-10.flex button').first().click();
     await expect(page.getByText("Manager 1", { exact: true })).toBeVisible({ timeout: 8000 });
   });
 });
 
-// ─── Admin — access denied for non-admin ─────────────────────────────────────
+// ─── Admin - access denied for non-admin ─────────────────────────────────────
 
-test.describe("Admin — access denied", () => {
+test.describe("Admin - access denied", () => {
   test("non-admin user sees access denied page with Return to Home button", async ({ page }) => {
     await page.route("**/api/auth/me", (route: any) =>
       route.fulfill({ json: MOCK_USER }) // MOCK_USER is not admin (role: "user")
@@ -560,9 +560,9 @@ test.describe("Admin — access denied", () => {
   });
 });
 
-// ─── Admin — toggle manager reviews ──────────────────────────────────────────
+// ─── Admin - toggle manager reviews ──────────────────────────────────────────
 
-test.describe("Admin — toggle manager reviews", () => {
+test.describe("Admin - toggle manager reviews", () => {
   test("clicking See reviews loads and shows reviews for a pending manager", async ({ page }) => {
     await mockAdminPage(page);
     // Mock reviews endpoint for the pending manager
@@ -584,7 +584,7 @@ test.describe("Admin — toggle manager reviews", () => {
     );
     await page.goto("/admin");
     await expect(page.getByText(/john doe/i)).toBeVisible({ timeout: 10000 });
-    // Click "See reviews" button (line 590, calls toggleManagerReviews — lines 71-84)
+    // Click "See reviews" button (line 590, calls toggleManagerReviews - lines 71-84)
     await page.getByRole("button", { name: /see reviews/i }).first().click();
     // Reviews section expands
     await expect(page.getByText(/anonymous reviewer/i)).toBeVisible({ timeout: 8000 });
@@ -595,9 +595,9 @@ test.describe("Admin — toggle manager reviews", () => {
   });
 });
 
-// ─── Admin — approve and reject pending edit requests ────────────────────────
+// ─── Admin - approve and reject pending edit requests ────────────────────────
 
-test.describe("Admin — pending edit requests", () => {
+test.describe("Admin - pending edit requests", () => {
   test("clicking Edit Requests tab shows pending edits", async ({ page }) => {
     await mockAdminPage(page);
     await page.goto("/admin");
@@ -616,7 +616,7 @@ test.describe("Admin — pending edit requests", () => {
     // Click Approve (lines 810-816)
     await page.getByRole("button", { name: /^Approve$/ }).first().click();
     await expect(page.getByRole("dialog")).toBeVisible({ timeout: 5000 });
-    // Confirm the approval (calls handleApprove — lines 240-249)
+    // Confirm the approval (calls handleApprove - lines 240-249)
     await page.getByRole("dialog").getByRole("button", { name: /^Approve$/ }).click();
     await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: 5000 });
   });
@@ -629,15 +629,15 @@ test.describe("Admin — pending edit requests", () => {
     // Click Reject (line 818)
     await page.getByRole("button", { name: /^Reject$/ }).first().click();
     await expect(page.getByRole("dialog")).toBeVisible({ timeout: 5000 });
-    // Confirm the rejection (calls handleReject — lines 251-260)
+    // Confirm the rejection (calls handleReject - lines 251-260)
     await page.getByRole("dialog").getByRole("button", { name: /^Reject$/ }).click();
     await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: 5000 });
   });
 });
 
-// ─── Admin — ban and unban users ─────────────────────────────────────────────
+// ─── Admin - ban and unban users ─────────────────────────────────────────────
 
-test.describe("Admin — ban and unban users", () => {
+test.describe("Admin - ban and unban users", () => {
   test("selecting user and filling reason enables Ban User and opens confirm", async ({ page }) => {
     await mockAdminPage(page);
     await page.goto("/admin");
@@ -652,7 +652,7 @@ test.describe("Admin — ban and unban users", () => {
     // Click Ban User (opens confirm dialog, lines 870-873)
     await page.getByRole("button", { name: /^Ban User$/ }).click();
     await expect(page.getByRole("dialog")).toBeVisible({ timeout: 5000 });
-    // Confirm the ban (calls handleBanUser — lines 262-277)
+    // Confirm the ban (calls handleBanUser - lines 262-277)
     await page.getByRole("dialog").getByRole("button", { name: /^Ban User$/ }).click();
     await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: 5000 });
   });
@@ -665,15 +665,15 @@ test.describe("Admin — ban and unban users", () => {
     // Click Unban on the existing banned user (line 918-921, setConfirmAction unban)
     await page.getByRole("button", { name: /^Unban$/ }).first().click();
     await expect(page.getByRole("dialog")).toBeVisible({ timeout: 5000 });
-    // Confirm unban (calls handleUnbanUser — lines 279-288)
+    // Confirm unban (calls handleUnbanUser - lines 279-288)
     await page.getByRole("dialog").getByRole("button", { name: /^Unban$/ }).click();
     await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: 5000 });
   });
 });
 
-// ─── Admin — dialog close actions ────────────────────────────────────────────
+// ─── Admin - dialog close actions ────────────────────────────────────────────
 
-test.describe("Admin — dialog close interactions", () => {
+test.describe("Admin - dialog close interactions", () => {
   test("clicking outside confirm dialog closes it (overlay click, lines 1172-1173)", async ({ page }) => {
     await mockAdminPage(page);
     await page.goto("/admin");
@@ -711,9 +711,9 @@ test.describe("Admin — dialog close interactions", () => {
   });
 });
 
-// ─── BossProfile — review sort and date select ────────────────────────────────
+// ─── BossProfile - review sort and date select ────────────────────────────────
 
-test.describe("BossProfile — review sort and date interactions", () => {
+test.describe("BossProfile - review sort and date interactions", () => {
   const REVIEW_WITH_EDIT = {
     ...MOCK_EXISTING_REVIEW,
     id: "review-edited-1",
@@ -800,7 +800,7 @@ test.describe("BossProfile — review sort and date interactions", () => {
     await expect(page.getByRole("button", { name: /^Next$/ })).toBeVisible({ timeout: 8000 });
     // Go to dates step
     await page.getByRole("button", { name: /^Next$/ }).click();
-    // Dates step: change the "From month" select (line 96 — onChange)
+    // Dates step: change the "From month" select (line 96 - onChange)
     await expect(page.locator('select[aria-label="From month"]')).toBeVisible({ timeout: 5000 });
     await page.locator('select[aria-label="From month"]').selectOption("01");
     // Change the "From year" select (lines 109-114)
@@ -808,9 +808,9 @@ test.describe("BossProfile — review sort and date interactions", () => {
   });
 });
 
-// ─── AddBoss — draft restore and interactions ─────────────────────────────────
+// ─── AddBoss - draft restore and interactions ─────────────────────────────────
 
-test.describe("AddBoss — draft restore and form interactions", () => {
+test.describe("AddBoss - draft restore and form interactions", () => {
   test("draft banner appears for anonymous user and clicking Start fresh clears it", async ({ page }) => {
     await mockAddBossPage(page, { loggedIn: false });
     // Pre-populate draft in localStorage (triggers showDraftBanner: true for anon user)
@@ -826,7 +826,7 @@ test.describe("AddBoss — draft restore and form interactions", () => {
     await page.goto("/add");
     // Draft banner should appear (lines 240-252 clearDraft)
     await expect(page.getByText(/draft restored/i)).toBeVisible({ timeout: 10000 });
-    // Click "Start fresh" (clearDraft — lines 241-253)
+    // Click "Start fresh" (clearDraft - lines 241-253)
     await page.getByRole("button", { name: /start fresh/i }).click();
     await expect(page.getByText(/draft restored/i)).not.toBeVisible({ timeout: 3000 });
     // Form should be cleared (firstName input empty)
@@ -837,9 +837,9 @@ test.describe("AddBoss — draft restore and form interactions", () => {
     await mockAddBossPage(page, { loggedIn: false });
     await page.goto("/add");
     await expect(page.getByText(/who is this manager/i)).toBeVisible({ timeout: 10000 });
-    // Select the "Retired" radio option (handleStatusChange — line 780+393)
+    // Select the "Retired" radio option (handleStatusChange - line 780+393)
     await page.locator('input[type="radio"][value="retired"]').click();
-    // UI reflects retired state — "Currently Active" is no longer selected
+    // UI reflects retired state - "Currently Active" is no longer selected
     await expect(page.locator('input[type="radio"][value="retired"]')).toBeChecked({ timeout: 3000 });
   });
 
@@ -852,7 +852,7 @@ test.describe("AddBoss — draft restore and form interactions", () => {
     await page.getByPlaceholder(/e.g., Nadella/i).fill("Doe");
     await page.getByPlaceholder(/e.g., Engineering Manager/i).fill("Engineer");
     await page.getByPlaceholder(/e.g., Microsoft/i).fill("Acme Corp");
-    // Geo pre-fills country as a chip — click "Edit location" to reveal the select (line 742)
+    // Geo pre-fills country as a chip - click "Edit location" to reveal the select (line 742)
     await page.getByRole("button", { name: /edit location/i }).click();
     await expect(page.locator('select[name="country"]')).toBeVisible({ timeout: 5000 });
     await page.selectOption('select[name="country"]', 'Canada');
@@ -863,16 +863,16 @@ test.describe("AddBoss — draft restore and form interactions", () => {
     await mockAddBossPage(page, { loggedIn: false });
     await page.goto("/add");
     await expect(page.getByText(/who is this manager/i)).toBeVisible({ timeout: 10000 });
-    // Fill step 1 and advance (geo pre-fills country chip — country is already valid)
+    // Fill step 1 and advance (geo pre-fills country chip - country is already valid)
     await page.getByPlaceholder(/e.g., Satya/i).fill("Jane");
     await page.getByPlaceholder(/e.g., Nadella/i).fill("Doe");
     await page.getByPlaceholder(/e.g., Engineering Manager/i).fill("Engineer");
     await page.getByPlaceholder(/e.g., Microsoft/i).fill("Acme Corp");
-    // Country is pre-filled from geo — no need to change it
+    // Country is pre-filled from geo - no need to change it
     await page.getByRole("button", { name: /next/i }).click();
     // Now on timeline step
     await expect(page.getByRole("heading", { name: /work timeline/i })).toBeVisible({ timeout: 5000 });
-    // Click Back (handleBack — line 581: setStep("info"))
+    // Click Back (handleBack - line 581: setStep("info"))
     await page.getByRole("button", { name: /back/i }).click();
     await expect(page.getByText(/who is this manager/i)).toBeVisible({ timeout: 3000 });
   });
@@ -900,7 +900,7 @@ test.describe("AddBoss — draft restore and form interactions", () => {
     const currentCheckbox = page.locator('input[type="checkbox"]').first();
     if (await currentCheckbox.isVisible({ timeout: 2000 }).catch(() => false)) await currentCheckbox.check();
     await page.getByRole("button", { name: /next/i }).click();
-    // Fill step 3 (ratings) — step heading is "Rate Jane" (formData.firstName)
+    // Fill step 3 (ratings) - step heading is "Rate Jane" (formData.firstName)
     await expect(page.getByRole("heading", { name: /rate jane/i })).toBeVisible({ timeout: 5000 });
     // Click "Rate 4 stars" for all 10 categories
     const fourStarButtons = page.getByRole("button", { name: "Rate 4 stars" });
@@ -916,9 +916,9 @@ test.describe("AddBoss — draft restore and form interactions", () => {
   });
 });
 
-// ─── SignUp — username check failure ─────────────────────────────────────────
+// ─── SignUp - username check failure ─────────────────────────────────────────
 
-test.describe("SignUp — username check failure and retry", () => {
+test.describe("SignUp - username check failure and retry", () => {
   test("failed username availability check shows Try again button (line 289)", async ({ page }) => {
     await page.route("**/api/auth/me", (route: any) =>
       route.fulfill({ status: 401, json: { error: "Unauthorized" } })

@@ -11,20 +11,20 @@ export function genId(): string {
 }
 
 export interface WorkEntry {
-  id: string;             // stable — never changes after creation; used as layout override key
+  id: string;             // stable - never changes after creation; used as layout override key
   company: string;
   title: string;
   startDate: string | null;   // "YYYY-MM"
   endDate: string | null;     // "YYYY-MM" or null
   current: boolean;
   body?: string;              // HTML from Tiptap rich-text editor (prose + bullets unified)
-  bullets?: BulletPoint[];    // legacy — migrated to body on load; no longer written
+  bullets?: BulletPoint[];    // legacy - migrated to body on load; no longer written
   managerId?: number;
   logoUrl?: string;
 }
 
 export interface EducationEntry {
-  id: string;             // stable — never changes after creation
+  id: string;             // stable - never changes after creation
   school: string;
   degree: string;
   field: string;
@@ -94,7 +94,7 @@ export interface TextStyle {
 // ── Layout override (canvas drag model) ───────────────────────────────────────
 
 export interface LayoutOverride {
-  // Vertical: participates in flow cascade — shifts this block and all subsequent
+  // Vertical: participates in flow cascade - shifts this block and all subsequent
   // siblings within the same flow region by this many document points.
   flowDisplacementY?: number;
   // Horizontal: visual-only transform, does not cascade to adjacent blocks.
@@ -178,8 +178,8 @@ export interface ResumeDesign {
   //   "skills.heading", "skills"
   //   "links.heading",  "links"
   // Two kinds of override:
-  //   flowDisplacementY — vertical, cascades to subsequent siblings in same flow region
-  //   visualDx          — horizontal, visual-only, no cascade
+  //   flowDisplacementY - vertical, cascades to subsequent siblings in same flow region
+  //   visualDx          - horizontal, visual-only, no cascade
   // Width overrides cause text reflow → height change → automatic cascade.
   // Height is always intrinsic (never stored for text/semantic blocks).
   layoutOverrides?: Record<string, LayoutOverride>;

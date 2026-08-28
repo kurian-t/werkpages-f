@@ -1,7 +1,7 @@
 /**
  * Which top-level nav item a URL belongs to.
  *
- * Canonical URLs nest — `/industries/technology/companies/red-hat/managers/jane-doe` — so a naive
+ * Canonical URLs nest - `/industries/technology/companies/red-hat/managers/jane-doe` - so a naive
  * `pathname.startsWith("/industries")` lights up "Industries" for every company and manager page
  * beneath it. Drilling Companies → a manager would highlight Industries, which reads as the site
  * losing track of where you are.

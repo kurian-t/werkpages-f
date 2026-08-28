@@ -1,5 +1,5 @@
 /**
- * ResumeCanvas — interactive DOM-rendered resume.\n * Phase 13D: Web animation editing is contextual inside the Web preview; PDF canvas geometry is unchanged.\n * Phase 13C: Web Animation Studio remains separate from PDF geometry.
+ * ResumeCanvas - interactive DOM-rendered resume.\n * Phase 13D: Web animation editing is contextual inside the Web preview; PDF canvas geometry is unchanged.\n * Phase 13C: Web Animation Studio remains separate from PDF geometry.
  * Phase 13B: web-only video/projects/GitHub/animations remain outside PDF geometry.
  * Phase 13: web superpowers remain a separate responsive projection; PDF canvas interaction model preserved.
  * Phase 12: responsive web resume is a separate projection; canvas geometry stays PDF-focused.
@@ -9,7 +9,7 @@
  * Double-click → contenteditable in-place text editing.
  *
  * contenteditable is used instead of <input> because inputs inside a CSS
- * transform:scale() container have broken keyboard routing in Chromium —
+ * transform:scale() container have broken keyboard routing in Chromium -
  * the space key gets swallowed. contenteditable uses the browser's native
  * editing engine which works correctly inside any container.
  */
@@ -164,7 +164,7 @@ function CanvasLogo({ company, logoUrl }: { company: string; logoUrl?: string })
 
   if (failed || !company.trim()) return null;
   return (
-    // width:"100%" fills the SubDrag wrapper — default is 20px (from defaultWidth={20}),
+    // width:"100%" fills the SubDrag wrapper - default is 20px (from defaultWidth={20}),
     // grows when the user drags the resize handle to save a larger override.
     <img
       src={src}
@@ -204,7 +204,7 @@ function snapRotation(r: number): number {
   return r;
 }
 
-// SubDrag — wraps an individual sub-element within a section block.
+// SubDrag - wraps an individual sub-element within a section block.
 // Independently moveable (visualDx/visualDy), resizable (width), and rotatable.
 // Movement is clamped to the section bounds. All overrides are visual-only (no cascade).
 //
@@ -422,7 +422,7 @@ function SubDrag({
   }
 
   // Update rendered linked peers while the pointer is moving so the relationship is
-  // obvious immediately — peers do not wait until mouse-up to snap into place.
+  // obvious immediately - peers do not wait until mouse-up to snap into place.
   function forEachRenderedLinkedPeer(fn: (el: HTMLDivElement) => void) {
     const current = ctxRef.current;
     if (!current || !isLinked) return;
@@ -749,7 +749,7 @@ function SubDrag({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => { if (!operationRef.current) setIsHovered(false); }}
     >
-      {/* Content wrapper — carries transform + rotation handle + resize handles */}
+      {/* Content wrapper - carries transform + rotation handle + resize handles */}
       <div
         ref={elRef}
         data-subdrag-content
@@ -1087,20 +1087,20 @@ function sectionHasContent(id: SectionId, data: ResumeData): boolean {
 // regions are independent.
 //
 // Block ID scheme (dot-separated, stable):
-//   "name"             — full name
-//   "contact"          — contact line
-//   "work.heading"     — Experience section heading
-//   "work.<entryId>"   — individual work entry (stable entry.id, NOT array index)
-//   "projects.heading" — Projects section heading
-//   "projects.<entryId>" — individual shared project entry
-//   "edu.heading"      — Education section heading
-//   "edu.<entryId>"    — individual education entry
-//   "bio.heading"      — Summary heading
-//   "bio"              — summary body
-//   "skills.heading"   — Skills heading
-//   "skills"           — skills body
-//   "links.heading"    — Links heading
-//   "links"            — links body
+//   "name"             - full name
+//   "contact"          - contact line
+//   "work.heading"     - Experience section heading
+//   "work.<entryId>"   - individual work entry (stable entry.id, NOT array index)
+//   "projects.heading" - Projects section heading
+//   "projects.<entryId>" - individual shared project entry
+//   "edu.heading"      - Education section heading
+//   "edu.<entryId>"    - individual education entry
+//   "bio.heading"      - Summary heading
+//   "bio"              - summary body
+//   "skills.heading"   - Skills heading
+//   "skills"           - skills body
+//   "links.heading"    - Links heading
+//   "links"            - links body
 
 interface FlowRegion {
   id: string;
@@ -1155,7 +1155,7 @@ function buildFlowRegions(data: ResumeData, d: ResumeDesign, pageW: number): Flo
     }
 
     case "label": {
-      // Narrow label column left, content right — content is the single flow column.
+      // Narrow label column left, content right - content is the single flow column.
       const labelW = d.sidebarWidth;  // stored as pts for label layout
       const mainW  = contentW - labelW - d.columnGap;
       const allIds = [...headerIds, ...sections.flatMap(s => buildSectionBlockIds(s, data))];
@@ -1201,7 +1201,7 @@ function buildFlowRegions(data: ResumeData, d: ResumeDesign, pageW: number): Flo
 // Given pass-1 natural positions and user overrides, compute final render positions.
 //
 // Cascade rule: for each block in a region, accumulate ALL flowDisplacementY values
-// from blocks at or before it — including blocks whose nat entry is missing (e.g. a
+// from blocks at or before it - including blocks whose nat entry is missing (e.g. a
 // block that has a displacement override but wasn't measured in the last pass-1).
 // Skipping displacement accumulation when nat is missing was the prior bug: if
 // "name" happened to be absent from naturalPos, its flowDisplacementY=200 would
@@ -1211,7 +1211,7 @@ function buildFlowRegions(data: ResumeData, d: ResumeDesign, pageW: number): Flo
 // The next block in reading order should start at effectiveBottom(prev) + natural_gap,
 // which the cascade already achieves because nat.y encodes those gaps from pass-1.
 //
-// visualDx is added to x only — never cascades.
+// visualDx is added to x only - never cascades.
 // Width override is pre-applied during pass-1 measurement, so it's already
 // encoded in the natural positions of subsequent blocks.
 function computeBlockPositions(
@@ -1224,7 +1224,7 @@ function computeBlockPositions(
     let cumulativeY = 0;
     for (const bid of region.blockIds) {
       const ov = overrides[bid] ?? {};
-      // Role blocks (work/edu entries, not headings) are independently positioned —
+      // Role blocks (work/edu entries, not headings) are independently positioned -
       // their flowDisplacementY does NOT cascade to subsequent blocks. It only offsets
       // the role itself (treated like visualDy). This prevents one role's drag from
       // shifting all roles below it. Old data with flowDisplacementY on roles is
@@ -1340,7 +1340,7 @@ function BulletEditor({ bullets, onChange, d, ctx, entryKey }: {
     return () => document.removeEventListener("mousedown", handler);
   }, [editingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Explicit focus after every editingId change — runs after React commits the DOM,
+  // Explicit focus after every editingId change - runs after React commits the DOM,
   // so the EditingBullet element is guaranteed to exist in bulletRefs by the time
   // the animation frame fires.
   useEffect(() => {
@@ -1380,7 +1380,7 @@ function BulletEditor({ bullets, onChange, d, ctx, entryKey }: {
       if (el.innerText.replace(/\n+$/, "") === "") {
         e.preventDefault();
         if (bullets.length === 1) {
-          // Last bullet deleted — clear the list and exit editing mode (shows placeholder).
+          // Last bullet deleted - clear the list and exit editing mode (shows placeholder).
           onChange([]);
           setEditingId(null);
           return;
@@ -1457,7 +1457,7 @@ function BulletEditor({ bullets, onChange, d, ctx, entryKey }: {
                     bulletRef={el => { bulletRefs.current.set(b.id, el); }}
                     style={editSt}
                   />
-                : <span style={textSt}>{b.text || <em style={{ opacity: 0.35 }}>—</em>}</span>
+                : <span style={textSt}>{b.text || <em style={{ opacity: 0.35 }}>-</em>}</span>
               }
             </div>
           ))
@@ -1497,7 +1497,7 @@ function EntryBody({ body, d }: { body?: string; d: ResumeDesign }) {
         wordBreak: "break-word",
         boxSizing: "border-box",
       }}>
-        Describe this role — use the editor on the left to add text and bullet points.
+        Describe this role - use the editor on the left to add text and bullet points.
       </div>
     );
   }
@@ -2812,7 +2812,7 @@ function DraggableBlock({ id, computedPos, override, scale, design, onDesignChan
           // heading's flowDisplacementY when entries' visualDx is also updated.
           onDragEndRef.current(dx, dy);
         } else if (isRoleBlock) {
-          // Independent vertical offset — does not cascade to other roles.
+          // Independent vertical offset - does not cascade to other roles.
           saveOverride({
             visualDx: startVisualDx + dx,
             visualDy: startVisualDy + dy,
@@ -2974,7 +2974,7 @@ function DraggableBlock({ id, computedPos, override, scale, design, onDesignChan
   return (
     <SectionBoundsCtx.Provider value={{ containerRef: innerRef, design, onDesignChange, scale }}>
       {/* Outer zone: extends ABOVE_PAD px above the content so mouse can reach the rotation handle.
-          Hover events live on the inner content div — NOT here — so the hover zone matches the
+          Hover events live on the inner content div - NOT here - so the hover zone matches the
           visible block, not the invisible pad zone above it. */}
       <div
         ref={outerDivRef}
@@ -2993,7 +2993,7 @@ function DraggableBlock({ id, computedPos, override, scale, design, onDesignChan
       >
         {/* (rotation handle is now inside the inner div so it rotates with the content) */}
 
-        {/* Inner content div — carries the outline, rotation, and resize handles */}
+        {/* Inner content div - carries the outline, rotation, and resize handles */}
         <div
           ref={innerRef}
           onMouseEnter={() => { setHover(true);  onHoverBlock(id); }}
@@ -4355,7 +4355,7 @@ function FreeFormLayout({
 }: FreeFormProps) {
   const sp: SectionProps = { data, d, ctx, setData };
 
-  // ── Bullet editing state — lifted here so it survives pass-1 ↔ pass-2 remounts ──
+  // ── Bullet editing state - lifted here so it survives pass-1 ↔ pass-2 remounts ──
   const [bulletEditKey, setBulletEditKey] = useState<string | null>(null);
   const bulletEditCtxValue = useMemo(() => ({ key: bulletEditKey, set: setBulletEditKey }), [bulletEditKey]);
 
@@ -4540,7 +4540,7 @@ function FreeFormLayout({
   });
 
   if (naturalPositions === null) {
-    // ── Pass 1 — invisible continuous flow used only for measurement.
+    // ── Pass 1 - invisible continuous flow used only for measurement.
     // Render it inside a visible blank first-page shell so remeasurement never makes
     // the entire canvas collapse. Overflow stays visible here because content may be
     // taller than one page and still needs a measurable DOM rect.
@@ -4592,7 +4592,7 @@ function FreeFormLayout({
     );
   }
 
-  // ── Pass 2 — paginate the measured flow, then render draggable blocks ───────
+  // ── Pass 2 - paginate the measured flow, then render draggable blocks ───────
   const overrides = d.layoutOverrides ?? {};
   // Keep the existing single-page computation as the source of truth for horizontal
   // position and width; pagination only remaps the vertical flow onto physical pages.
@@ -6947,7 +6947,7 @@ function MultiDesignObjectToolbar({
 
 export default function ResumeCanvas({ data, onDesignChange, onDataChange, containerWidth, remeasureKey = 0 }: ResumeCanvasProps) {
   // Merge with DEFAULT_DESIGN so partial design objects (e.g. only layoutOverrides set)
-  // don't break the canvas — any missing field falls back to the default.
+  // don't break the canvas - any missing field falls back to the default.
   const d = data.design ? { ...DEFAULT_DESIGN, ...data.design } : DEFAULT_DESIGN;
   const [PAGE_W, PAGE_H] = d.pageSize === "A4" ? [595, 842] : [612, 792];
   const [canvasZoom, setCanvasZoom] = useState(readInitialPdfCanvasZoom);
@@ -8165,7 +8165,7 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
         userSelect: "none",
       }}>
           {hovered
-          ? `${ELEMENT_LABELS[hovered]} — click · right-click for more · double-click to edit`
+          ? `${ELEMENT_LABELS[hovered]} - click · right-click for more · double-click to edit`
           : <>
               Drag · click to format · right-click for more · double-click to edit
               {d.layoutOverrides && Object.keys(d.layoutOverrides).length > 0 && (
@@ -8620,7 +8620,7 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
             )}
           </div>
 
-          {/* Editor zoom — intentionally separate from PDF design/export state. */}
+          {/* Editor zoom - intentionally separate from PDF design/export state. */}
           <div
             style={{
               height: 31,
@@ -8633,7 +8633,7 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
               overflow: "hidden",
               flexShrink: 0,
             }}
-            title="PDF canvas zoom — editor only"
+            title="PDF canvas zoom - editor only"
           >
             <button
               type="button"
@@ -8811,7 +8811,7 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
         </span>
       </div>
 
-      {/* Paginated resume pages — FreeFormLayout owns the physical page shells so
+      {/* Paginated resume pages - FreeFormLayout owns the physical page shells so
           it can add page 2/3/etc. as soon as measured flow exceeds the current page. */}
       <div
         style={{
@@ -8843,7 +8843,7 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
         />
       </div>
 
-      {/* Multi-selection toolbar — align/distribute/group without touching resume flow. */}
+      {/* Multi-selection toolbar - align/distribute/group without touching resume flow. */}
       {selectedDesignObjectIds.length > 1 && designObjectAnchorRect && createPortal(
         <MultiDesignObjectToolbar
           count={selectedDesignObjectIds.length}
@@ -8865,7 +8865,7 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
         document.body
       )}
 
-      {/* Design-object toolbar — shapes/images stay isolated from resume text styling. */}
+      {/* Design-object toolbar - shapes/images stay isolated from resume text styling. */}
       {selectedDesignObject && selectedDesignObjectIds.length === 1 && designObjectAnchorRect && createPortal(
         <DesignObjectToolbar
           object={selectedDesignObject}
@@ -8891,7 +8891,7 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
         document.body
       )}
 
-      {/* Context toolbar — single click */}
+      {/* Context toolbar - single click */}
       {selected && anchorRect && createPortal(
         <ContextToolbar
           elementKey={selected}
@@ -8907,7 +8907,7 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
         document.body
       )}
 
-      {/* Block action bar — click on an entry section */}
+      {/* Block action bar - click on an entry section */}
       {blockActionId && blockActionRect && (() => {
         const isEntry = blockActionId.startsWith("work.") || blockActionId.startsWith("edu.");
         const prefix  = blockActionId + ".";
@@ -8923,7 +8923,7 @@ export default function ResumeCanvas({ data, onDesignChange, onDataChange, conta
         );
       })()}
 
-      {/* Full style popover — right-click or ⋯ */}
+      {/* Full style popover - right-click or ⋯ */}
       {rightKey && rightAnchor && createPortal(
         <StylePopover
           elementKey={rightKey}

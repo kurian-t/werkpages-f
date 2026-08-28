@@ -1,5 +1,5 @@
 /**
- * Wave 6 coverage boost — targets:
+ * Wave 6 coverage boost - targets:
  * - BossProfile: review submission form (all 3 steps), report manager, admin edit/delete,
  *   rating breakdown toggle, overview headlines, edit review flow
  * - AddBoss: expired draft, malformed JSON, LinkedIn URL validation, anonymous submit → auth modal
@@ -49,9 +49,9 @@ async function fillDatesStep(page: Page, month = "01", year = "2023") {
   }
 }
 
-// ─── BossProfile — Write a Review form ───────────────────────────────────────
+// ─── BossProfile - Write a Review form ───────────────────────────────────────
 
-test.describe("BossProfile — write review modal", () => {
+test.describe("BossProfile - write review modal", () => {
   test("clicking Write a Review opens ratings step (lines 2224-2226)", async ({ page }) => {
     await mockManagerPage(page, { loggedIn: false, hasContributed: false });
     await page.goto(`/companies/${TEST_COMPANY_SLUG}/managers/${TEST_MANAGER_SLUG}`);
@@ -191,9 +191,9 @@ test.describe("BossProfile — write review modal", () => {
   });
 });
 
-// ─── BossProfile — Rating breakdown toggle ───────────────────────────────────
+// ─── BossProfile - Rating breakdown toggle ───────────────────────────────────
 
-test.describe("BossProfile — rating breakdown toggle", () => {
+test.describe("BossProfile - rating breakdown toggle", () => {
   const REVIEW_WITH_RATINGS = {
     ...MOCK_EXISTING_REVIEW,
     id: "review-breakdown-1",
@@ -225,9 +225,9 @@ test.describe("BossProfile — rating breakdown toggle", () => {
   });
 });
 
-// ─── BossProfile — Overview headlines ────────────────────────────────────────
+// ─── BossProfile - Overview headlines ────────────────────────────────────────
 
-test.describe("BossProfile — overview headline variants", () => {
+test.describe("BossProfile - overview headline variants", () => {
   function makeOverviewReview(overallRating: number) {
     return {
       ...MOCK_EXISTING_REVIEW,
@@ -269,9 +269,9 @@ test.describe("BossProfile — overview headline variants", () => {
   });
 });
 
-// ─── BossProfile — Report manager ────────────────────────────────────────────
+// ─── BossProfile - Report manager ────────────────────────────────────────────
 
-test.describe("BossProfile — report manager flow", () => {
+test.describe("BossProfile - report manager flow", () => {
   test("open report modal, select reason, submit (lines 833-864)", async ({ page }) => {
     await mockManagerPage(page, { loggedIn: true, hasContributed: true });
     await page.route(
@@ -296,9 +296,9 @@ test.describe("BossProfile — report manager flow", () => {
   });
 });
 
-// ─── BossProfile — Admin controls ────────────────────────────────────────────
+// ─── BossProfile - Admin controls ────────────────────────────────────────────
 
-test.describe("BossProfile — admin inline controls", () => {
+test.describe("BossProfile - admin inline controls", () => {
   test("admin Edit opens inline form (lines 1347-1358, 1671-1759)", async ({ page }) => {
     await mockManagerPage(page, { loggedIn: true, hasContributed: true, user: MOCK_ADMIN_USER });
     await page.route(/\/api\/companies\/suggest/, (route: any) => route.fulfill({ json: [] }));
@@ -363,9 +363,9 @@ test.describe("BossProfile — admin inline controls", () => {
   });
 });
 
-// ─── BossProfile — Edit review flow ──────────────────────────────────────────
+// ─── BossProfile - Edit review flow ──────────────────────────────────────────
 
-test.describe("BossProfile — edit review flow", () => {
+test.describe("BossProfile - edit review flow", () => {
   test("show review options dropdown → click review → edit modal opens (lines 1505-1575)", async ({ page }) => {
     await mockManagerPage(page, {
       loggedIn: true,
@@ -434,9 +434,9 @@ test.describe("BossProfile — edit review flow", () => {
   });
 });
 
-// ─── AddBoss — draft lifecycle edge cases ─────────────────────────────────────
+// ─── AddBoss - draft lifecycle edge cases ─────────────────────────────────────
 
-test.describe("AddBoss — draft lifecycle", () => {
+test.describe("AddBoss - draft lifecycle", () => {
   test("expired draft (>12h) is silently discarded (line 262)", async ({ page }) => {
     await mockAddBossPage(page, { loggedIn: false });
     await page.addInitScript(() => {
@@ -453,7 +453,7 @@ test.describe("AddBoss — draft lifecycle", () => {
     });
     await page.goto("/add");
     await expect(page.getByText(/who is this manager/i)).toBeVisible({ timeout: 10000 });
-    // Expired draft discarded — firstName input should be empty
+    // Expired draft discarded - firstName input should be empty
     await expect(page.getByPlaceholder(/e.g., Satya/i)).toHaveValue("", { timeout: 3000 });
     // No draft banner (draft was not restored)
     await expect(page.getByText(/draft restored/i)).not.toBeVisible({ timeout: 2000 });
@@ -465,7 +465,7 @@ test.describe("AddBoss — draft lifecycle", () => {
       localStorage.setItem("rmm_pending_manager", "{ not valid json: !!!}}}");
     });
     await page.goto("/add");
-    // Catch block at line 294 swallows the parse error — page loads normally
+    // Catch block at line 294 swallows the parse error - page loads normally
     await expect(page.getByText(/who is this manager/i)).toBeVisible({ timeout: 10000 });
     await expect(page.getByPlaceholder(/e.g., Satya/i)).toHaveValue("", { timeout: 3000 });
   });
@@ -486,7 +486,7 @@ test.describe("AddBoss — draft lifecycle", () => {
       // validateProfileUrl error (line 427-428: errors.push("Please enter a valid URL"))
       await expect(page.getByText(/valid url|invalid/i)).toBeVisible({ timeout: 5000 });
     } else {
-      // No LinkedIn field — navigate to step 2 normally
+      // No LinkedIn field - navigate to step 2 normally
       await page.getByRole("button", { name: /^next$/i }).click();
       await expect(page.getByRole("heading", { name: /work timeline/i })).toBeVisible({ timeout: 5000 });
     }
@@ -519,16 +519,16 @@ test.describe("AddBoss — draft lifecycle", () => {
       await btn.click();
     }
     await page.locator('input[name="attestation"]').check();
-    // "Continue to Sign In" shown for anonymous (AddBoss.tsx line 942 — submit button text)
+    // "Continue to Sign In" shown for anonymous (AddBoss.tsx line 942 - submit button text)
     await page.getByRole("button", { name: /continue to sign in/i }).click();
     // Auth modal (line 480: setAuthFlowStep("signup"))
     await expect(page.getByText(/create account|sign up/i).first()).toBeVisible({ timeout: 10000 });
   });
 });
 
-// ─── AccountSettings — with review data ──────────────────────────────────────
+// ─── AccountSettings - with review data ──────────────────────────────────────
 
-test.describe("AccountSettings — review management", () => {
+test.describe("AccountSettings - review management", () => {
   test("loads page and shows review list (lines 109-160)", async ({ page }) => {
     await mockAccountSettingsPage(page, { reviews: [MOCK_MY_REVIEW] });
     await page.goto("/settings");
@@ -568,9 +568,9 @@ test.describe("AccountSettings — review management", () => {
 
 });
 
-// ─── SignUp — Try again button (corrected selector) ───────────────────────────
+// ─── SignUp - Try again button (corrected selector) ───────────────────────────
 
-test.describe("SignUp — username check failure flow", () => {
+test.describe("SignUp - username check failure flow", () => {
   test("failed username check shows Try again button and clicking it re-fires check (line 289)", async ({ page }) => {
     await page.route("**/api/auth/me", (route: any) =>
       route.fulfill({ status: 401, json: { error: "Unauthorized" } })
@@ -590,7 +590,7 @@ test.describe("SignUp — username check failure flow", () => {
     await usernameInput.fill("testusername123");
     // Wait for debounced check to fail → "Try again" button (line 286-290)
     await expect(page.getByRole("button", { name: /try again/i })).toBeVisible({ timeout: 10000 });
-    // Click "Try again" — calls handleUsernameChange again (line 289)
+    // Click "Try again" - calls handleUsernameChange again (line 289)
     await page.getByRole("button", { name: /try again/i }).click();
     // Still fails → button remains visible
     await expect(page.getByRole("button", { name: /try again/i })).toBeVisible({ timeout: 8000 });

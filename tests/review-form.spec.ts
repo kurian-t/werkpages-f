@@ -7,7 +7,7 @@ import {
   attestFirstHandExperience,
 } from "./fixtures";
 
-test.describe("Review form — multi-step flow", () => {
+test.describe("Review form - multi-step flow", () => {
   test.beforeEach(async ({ page }) => {
     await mockManagerPage(page);
   });
@@ -100,7 +100,7 @@ test.describe("Review form — multi-step flow", () => {
     await page.getByRole("checkbox", { name: /current/i }).check();
     await page.getByRole("button", { name: /^next$/i }).click();
 
-    // Step 3 — anonymous posting card
+    // Step 3 - anonymous posting card
     await expect(page.getByText(/posting anonymously/i)).toBeVisible({ timeout: 3_000 });
     await expect(page.getByText(/step 3 of 3/i)).toBeVisible();
     await expect(page.getByText(/randomly generated/i)).toBeVisible();

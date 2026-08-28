@@ -97,7 +97,7 @@ export default function InteractiveTemplateOverlay({
 
         <footer className="flex flex-none flex-wrap items-center justify-between gap-2 border-t border-border bg-muted/15 px-4 py-2.5 text-[12px] leading-relaxed text-muted-foreground sm:px-5">
           <span>
-            Templates reference the same Work, Projects, Education, Skills and Links data — they never duplicate or replace those facts.
+            Templates reference the same Work, Projects, Education, Skills and Links data - they never duplicate or replace those facts.
           </span>
           {mode === "editor" && (
             <span className="font-semibold text-foreground/70">
