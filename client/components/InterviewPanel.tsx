@@ -72,11 +72,21 @@ export function InterviewPanel({ companySlug, companyName, onAddInterview, onEdi
     );
   }
 
-  if (data.reviewCount === 0) {
+  // Order matters. "Nobody has described interviewing here yet" is an invitation, and it only
+  // makes sense to someone who could act on it knowingly - a contributor. Showing it to a visitor
+  // who has not contributed both tells them there is nothing here and skips the ask, so the gate
+  // is checked first and they get the same locked teaser every other company shows.
+  if (data.reviewCount === 0 && !data.gated) {
     return <EmptyState companyName={companyName} onAddInterview={onAddInterview} />;
   }
 
   const mine = data.myInterview ?? null;
+
+  // A company with nothing yet still has to look like it has something behind the lock: blurring
+  // a row of dashes tells a visitor there is no data and gives them no reason to contribute.
+  // Same device the manager profile uses with its ghost cards.
+  const empty = data.reviewCount === 0;
+  const placeholder = { rating: "4.2", difficulty: "Average", rounds: "3 rounds", offerRate: "62%" };
 
   const rate = offerRate(data);
   const gap = outcomeGap(data);
@@ -140,17 +150,17 @@ export function InterviewPanel({ companySlug, companyName, onAddInterview, onEdi
           data.gated ? "pointer-events-none blur-sm" : ""
         }`}>
           <Metric
-            value={data.avgRating != null ? data.avgRating.toFixed(1) : "-"}
-            suffix={data.avgRating != null ? "/ 5" : undefined}
-            stars={data.avgRating}
-            detail={`${data.reviewCount} ${data.reviewCount === 1 ? "experience" : "experiences"}`}
+            value={empty ? placeholder.rating : data.avgRating != null ? data.avgRating.toFixed(1) : "-"}
+            suffix={empty || data.avgRating != null ? "/ 5" : undefined}
+            stars={empty ? 4 : data.avgRating}
+            detail={empty ? "12 experiences" : `${data.reviewCount} ${data.reviewCount === 1 ? "experience" : "experiences"}`}
           />
-          <Metric value={difficulty ?? "-"} label="Difficulty" />
+          <Metric value={empty ? placeholder.difficulty : difficulty ?? "-"} label="Difficulty" />
           <Metric
-            value={data.medianRounds != null ? `${data.medianRounds} rounds` : "-"}
+            value={empty ? placeholder.rounds : data.medianRounds != null ? `${data.medianRounds} rounds` : "-"}
             label="Typical"
           />
-          <Metric value={rate != null ? `${rate}%` : "-"} label="Offer rate" />
+          <Metric value={empty ? placeholder.offerRate : rate != null ? `${rate}%` : "-"} label="Offer rate" />
         </div>
 
         {/* The shape of the process, which a bare count cannot convey. */}

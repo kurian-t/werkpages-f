@@ -1,5 +1,5 @@
 import { Lock, Star } from "lucide-react";
-import { isTopRated } from "@/lib/topRated";
+import { isTopRated, topRatedTitleClearance } from "@/lib/topRated";
 import { TopRatedPill } from "@/components/TopRatedPill";
 import { Link } from "react-router-dom";
 import { ManagerAvatar, CompanyRow, CompanyLogoImg } from "./ManagerCard";
@@ -79,7 +79,7 @@ export default function LockedManagerCard({ boss, isLoggedIn: _isLoggedIn, narro
 
       <ManagerAvatar name={boss.name} />
 
-      <h3 className="mt-3 text-[15px] font-semibold text-foreground leading-tight">
+      <h3 className={`mt-3 text-[15px] font-semibold text-foreground leading-tight ${topRatedTitleClearance(boss.overallRating, boss.reviewsCount)}`}>
         {boss.name}
       </h3>
 

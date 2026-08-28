@@ -1,4 +1,5 @@
 import API_BASE from "@/lib/api";
+import { topRatedTitleClearance } from "@/lib/topRated";
 import { TopRatedPill } from "@/components/TopRatedPill";
 import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
@@ -134,6 +135,9 @@ export default function IndustryProfile() {
                   {data.avgRating != null && (
                     <span className="flex items-center gap-1"><Star size={13} className="fill-amber-400 text-amber-400" /> {Number(data.avgRating).toFixed(1)} avg</span>
                   )}
+                  {/* After the score here, rather than above it: this header is a single line of
+                      stats, and the badge reads as one more fact on that line. */}
+                  <TopRatedPill rating={data.avgRating} reviewCount={data.totalReviews} variant="inline" />
                 </div>
               </div>
             </div>
@@ -213,7 +217,7 @@ export default function IndustryProfile() {
                 <TopRatedPill rating={co.avgRating} reviewCount={co.totalReviews} hidden={isLocked} />
                 <div className="flex items-center gap-3 mb-3">
                   <CompanyLogoImg company={co.name} logoUrl={co.logoUrl} sizeClass="h-12 w-12" />
-                  <h2 className="min-w-0 flex-1 font-semibold text-sm text-foreground group-hover:text-[#6d28d9] leading-tight transition-colors line-clamp-2">
+                  <h2 className={`min-w-0 flex-1 font-semibold text-sm text-foreground group-hover:text-[#6d28d9] leading-tight transition-colors line-clamp-2 ${isLocked ? "" : topRatedTitleClearance(co.avgRating, co.totalReviews)}`}>
                     {co.name}
                   </h2>
                 </div>

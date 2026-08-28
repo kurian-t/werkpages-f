@@ -218,7 +218,24 @@ test.describe("Getting hired tab", () => {
     await expect(page.getByText("Hard", { exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
-  test("a company nobody has interviewed at invites the first report", async ({ page }) => {
+  test("a company nobody has interviewed at shows a locked teaser to a non-contributor", async ({ page }) => {
+    // Telling a visitor there is nothing here AND skipping the ask is the worst of both. They get
+    // the same locked treatment every other company shows.
+    await mockCompany(page, interviewStats({
+      reviewCount: 0, avgRating: null, avgDifficulty: null, medianRounds: null,
+      outcomeSplit: { offer: { count: 0, avgRating: null }, noOffer: { count: 0, avgRating: null },
+                      withdrew: { count: 0, avgRating: null }, pending: { count: 0, avgRating: null } },
+      roleCategories: [], countries: [], typicalRounds: [],
+      categoryAverages: null, categoryComparison: null, hasContributed: false, gated: true,
+    }));
+    await openHiringTab(page);
+
+    await expect(page.getByText("Interview insights are locked")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("interview-panel-empty")).toHaveCount(0);
+    await expect(page.getByText(/Nobody has described interviewing/)).toHaveCount(0);
+  });
+
+  test("a contributor is invited to be the first when there is genuinely nothing", async ({ page }) => {
     await mockCompany(page, interviewStats({
       reviewCount: 0,
       avgRating: null,
@@ -231,10 +248,13 @@ test.describe("Getting hired tab", () => {
         pending: { count: 0, avgRating: null },
       },
       roleCategories: [],
+      countries: [],
+      typicalRounds: [],
       categoryAverages: null,
       categoryComparison: null,
-      hasContributed: false,
-      gated: true,
+      // Contributed elsewhere, so the invitation is one they can act on knowingly.
+      hasContributed: true,
+      gated: false,
     }));
     await openHiringTab(page);
 

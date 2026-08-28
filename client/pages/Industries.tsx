@@ -1,4 +1,5 @@
 import API_BASE from "@/lib/api";
+import { topRatedTitleClearance } from "@/lib/topRated";
 import { TopRatedPill } from "@/components/TopRatedPill";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -165,21 +166,21 @@ export default function Industries() {
                 {/* Same badge as the company cards. No isLocked gate here: industry averages
                     are aggregate figures, not a specific manager's rating, so they are public. */}
                 <TopRatedPill rating={ind.avgRating} reviewCount={ind.totalReviews} />
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[#2e0562]/10 text-[#2e0562]">
-                    <IndustryTileIcon industrySlug={ind.slug} size={20} />
-                  </div>
-                  {/* hyphens-auto so any name still too long to fit breaks as "Telecommu-
-                      nications" rather than silently mid-word. Belt and braces alongside the
-                      wider cell - the taxonomy is fixed at 24 names, but the longest of them
-                      should not depend on a pixel measurement staying true. */}
-                  <h2
-                    lang="en"
-                    className="min-w-0 flex-1 font-semibold text-sm text-foreground group-hover:text-[#6d28d9] leading-tight transition-colors line-clamp-2 hyphens-auto"
-                  >
-                    {ind.industry}
-                  </h2>
+                {/*
+                  The name gets its own line rather than sharing one with the icon. Beside a 40px
+                  icon it had about 128px to work with, which "Telecommunications" cannot fit on
+                  one line - and hyphens-auto did not engage, so it broke mid-word into
+                  "Telecommunicatio / ns". Full tile width fits every name in the taxonomy.
+                */}
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[#2e0562]/10 text-[#2e0562]">
+                  <IndustryTileIcon industrySlug={ind.slug} size={20} />
                 </div>
+                <h2
+                  lang="en"
+                  className={`mb-3 font-semibold text-sm text-foreground group-hover:text-[#6d28d9] leading-tight transition-colors line-clamp-2 hyphens-auto ${topRatedTitleClearance(ind.avgRating, ind.totalReviews)}`}
+                >
+                  {ind.industry}
+                </h2>
 
                 {ind.avgRating != null
                   ? <StarRating rating={ind.avgRating} />

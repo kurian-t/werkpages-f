@@ -481,6 +481,15 @@ export default function CompanyProfile() {
                 </div>
               )}
 
+              {/* Above the score it is a statement about: you read "Top rated", then the number
+                  that earned it. Hidden while the rating itself is hidden. */}
+              <TopRatedPill
+                rating={data.avgRating}
+                reviewCount={data.totalReviews}
+                variant="inline"
+                hidden={isLocked}
+              />
+
               {data.avgRating != null && (
                 <div className="mt-1.5 flex items-center gap-2">
                   {isLocked ? (

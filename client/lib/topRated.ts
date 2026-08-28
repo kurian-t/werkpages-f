@@ -38,6 +38,20 @@ export function isTopRated(
   return value >= TOP_RATED_THRESHOLD && reviews >= TOP_RATED_MIN_REVIEWS;
 }
 
+/**
+ * Right padding a card title needs so a wrapped line clears the corner badge.
+ *
+ * The badge is absolutely positioned in the top-right, which is fine for a one-line title and
+ * clips the ascenders of a two-line one. Reserving the space only when the badge is actually
+ * there keeps every other card at full width.
+ */
+export function topRatedTitleClearance(
+  rating: number | string | null | undefined,
+  reviewCount: number | string | null | undefined,
+): string {
+  return isTopRated(rating, reviewCount) ? "pr-16" : "";
+}
+
 function toNumber(input: number | string | null | undefined): number | null {
   if (input == null || input === "") return null;
   const value = typeof input === "number" ? input : Number(input);
