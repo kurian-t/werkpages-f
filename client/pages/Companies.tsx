@@ -98,7 +98,7 @@ export default function Companies() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           {/* Small/medium: image above text */}
           <div className="flex flex-col items-center lg:hidden py-6 gap-3">
-            <img src="/company-insights-v1.png" alt="" className="max-h-[220px] w-auto" />
+            <img src="/company-insights-v1.webp" alt="" width="900" height="600" decoding="async" className="max-h-[220px] w-auto" />
             <div className="text-center">
               <h1 className="text-[22px] font-semibold leading-snug tracking-tight text-foreground">
                 See the culture behind the company
@@ -111,7 +111,7 @@ export default function Companies() {
           {/* Large: image left, text right */}
           <div className="hidden lg:flex items-center gap-12 py-10">
             <div className="flex-shrink-0">
-              <img src="/company-insights-v1.png" alt="" className="h-[300px] w-auto" />
+              <img src="/company-insights-v1.webp" alt="" width="900" height="600" decoding="async" className="h-[300px] w-auto" />
             </div>
             <div>
               <h1 className="text-[32px] font-semibold leading-snug tracking-tight text-foreground">

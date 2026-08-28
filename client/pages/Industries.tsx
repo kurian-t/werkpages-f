@@ -38,7 +38,8 @@ function StarRating({ rating }: { rating: number }) {
 function IndustryHeroImage({ imgClass }: { imgClass: string }) {
   return (
     <div className="w-fit">
-      <img src="/industry-insights-v1.png" alt="" className={imgClass} />
+      <img src="/industry-insights-v1.webp" alt="" width="900" height="931"
+           className={imgClass} fetchPriority="high" decoding="async" />
     </div>
   );
 }

@@ -6,7 +6,11 @@
 
     <title>Werkpages – Anonymous Manager Reviews & Ratings</title>
 
-    <link rel="preload" href="/manager-insights-v5.png" as="image" />
+    <!-- No hero preload here. index.html is shared by every route in this SPA, so preloading
+         one page's illustration downloads it for visitors who never see that page — this
+         previously pulled a 2.3 MB PNG on every single route, for an image no page renders
+         any more. The heroes carry fetchPriority="high" instead, which gets the LCP benefit
+         on the route that actually needs it. -->
 
     <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=7" />
     <link rel="icon" type="image/png" sizes="512x512" href="/logo-icon-512.png?v=7" />
