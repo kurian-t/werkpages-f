@@ -85,7 +85,7 @@ test.describe("Getting hired tab", () => {
   test("a company profile opens on Working here, not the interview tab", async ({ page }) => {
     await mockCompany(page, interviewStats());
     await page.goto(COMPANY_URL);
-    await expect(page.getByRole("tab", { name: "What it's like to work here" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "What it's like to work at Red Hat" })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByTestId("interview-panel")).toHaveCount(0);
   });
 

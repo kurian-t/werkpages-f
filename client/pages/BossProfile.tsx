@@ -1,4 +1,5 @@
 import API_BASE from "@/lib/api";
+import { TopRatedPill } from "@/components/TopRatedPill";
 import { companyLogoDomain, toNameCase, toJobTitleCase } from "@/lib/utils";
 import { Helmet } from "react-helmet-async";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -1434,7 +1435,7 @@ export default function BossProfile() {
           <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
               <ManagerAvatar name={manager.name} size="lg" />
-              <div className="mt-4 flex items-center gap-2">
+              <div className="mt-4 flex flex-wrap items-center gap-2">
                 <h1 className="text-2xl font-bold text-foreground">{manager.name}</h1>
                 {user?.role === "admin" && !adminEditing && (
                   <div className="flex items-center gap-3">
@@ -1559,9 +1560,21 @@ export default function BossProfile() {
                   {manager.status === "active" ? "Currently Active" : "Retired"}
                 </span>
               </div>
+
             </div>
 
             <div className="flex flex-col gap-3 flex-shrink-0 w-[200px] overflow-visible">
+              {/*
+                Above the score it is a statement about: you read "Top rated", then the number
+                that earned it. Rendering nothing when it does not qualify means the column simply
+                starts at the rating instead of leaving a gap.
+              */}
+              <TopRatedPill
+                rating={managerCategoryAverages.overallRating || manager.overallRating}
+                reviewCount={managerReviewCount}
+                variant="inline"
+              />
+
               {/* Compact rating strip */}
               <div className={`flex items-center gap-3 ${isLocked ? "select-none" : ""}`}>
                 <span className={`text-2xl font-bold text-[#6d5091] tabular-nums leading-none whitespace-nowrap ${isLocked ? "blur-sm" : ""}`}>

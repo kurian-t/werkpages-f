@@ -1,4 +1,5 @@
 import API_BASE from "@/lib/api";
+import { TopRatedPill } from "@/components/TopRatedPill";
 import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Layout } from "@/components/Layout";
@@ -29,8 +30,6 @@ interface IndustryProfileData {
   categoryAverages: Record<string, number>;
   companies: CompanyEntry[];
 }
-
-const TOP_RATED_THRESHOLD = 4.5;
 
 function CategoryBreakdown({ categoryAverages }: { categoryAverages: Record<string, number> }) {
   const entries = Object.entries(categoryAverages)
@@ -211,11 +210,7 @@ export default function IndustryProfile() {
                 onClick={() => navigate(co.slug ? companyPath(data?.slug, co.slug) : companyPathByName(co.name))}
                 className="group relative h-full w-full min-w-0 text-left rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all min-[420px]:w-[200px] sm:p-5"
               >
-                {!isLocked && co.avgRating != null && co.avgRating >= TOP_RATED_THRESHOLD && (
-                  <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                    <Star size={9} className="fill-amber-500 text-amber-500" /> Top rated
-                  </span>
-                )}
+                <TopRatedPill rating={co.avgRating} reviewCount={co.totalReviews} hidden={isLocked} />
                 <div className="flex items-center gap-3 mb-3">
                   <CompanyLogoImg company={co.name} logoUrl={co.logoUrl} sizeClass="h-12 w-12" />
                   <h2 className="min-w-0 flex-1 font-semibold text-sm text-foreground group-hover:text-[#6d28d9] leading-tight transition-colors line-clamp-2">

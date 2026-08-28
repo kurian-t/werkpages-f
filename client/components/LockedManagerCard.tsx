@@ -1,10 +1,10 @@
 import { Lock, Star } from "lucide-react";
+import { isTopRated } from "@/lib/topRated";
+import { TopRatedPill } from "@/components/TopRatedPill";
 import { Link } from "react-router-dom";
 import { ManagerAvatar, CompanyRow, CompanyLogoImg } from "./ManagerCard";
 
 /** Matches ManagerCard, Companies and Industries — one threshold everywhere. */
-const TOP_RATED_THRESHOLD = 4.5;
-
 interface LockedManager {
   id: number;
   name: string;
@@ -14,6 +14,8 @@ interface LockedManager {
   companyLogoUrl?: string;
   approvalStatus?: string;
   overallRating?: number | null;
+  /** Needed for the Top rated badge: a high average off one review does not earn it. */
+  reviewsCount?: number | null;
 }
 
 interface LockedManagerCardProps {
@@ -66,10 +68,8 @@ export default function LockedManagerCard({ boss, isLoggedIn: _isLoggedIn, narro
       {/* Badge. Top rated wins when the rating is actually visible: a card showing 4.7 while
           also saying "Rate to unlock" is contradictory, and this is the same amber pill the
           company and manager cards use so the three read as one thing. */}
-      {!blurRating && (boss.overallRating ?? 0) >= TOP_RATED_THRESHOLD ? (
-        <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-          <Star size={9} className="fill-amber-500 text-amber-500" /> Top rated
-        </span>
+      {!blurRating && isTopRated(boss.overallRating, boss.reviewsCount) ? (
+        <TopRatedPill rating={boss.overallRating} reviewCount={boss.reviewsCount} />
       ) : (
         <div className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-500">
           <Lock size={10} />

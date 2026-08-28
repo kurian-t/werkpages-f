@@ -1,4 +1,5 @@
 import API_BASE from "@/lib/api";
+import { activeNavSection } from "@/lib/nav";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Menu, X, LogOut, User, Settings, Shield, Bell } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -20,6 +21,9 @@ export function Header() {
   const isBanned = user?.isBanned === true;
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  // Nested canonical URLs mean the first segment is not the section — a manager page
+  // lives under /industries/.../companies/.../managers/... See activeNavSection.
+  const navSection = activeNavSection(pathname);
 
   const POLL_INTERVAL_MS = 30_000;
 
@@ -112,19 +116,19 @@ export function Header() {
             </Link>
             <Link
               to="/industries"
-              className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${pathname.startsWith("/industries") ? "text-[#6d28d9]" : "text-foreground"}`}
+              className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${navSection === "industries" ? "text-[#6d28d9]" : "text-foreground"}`}
             >
               Industries
             </Link>
             <Link
               to="/companies"
-              className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${pathname.startsWith("/companies") ? "text-[#6d28d9]" : "text-foreground"}`}
+              className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${navSection === "companies" ? "text-[#6d28d9]" : "text-foreground"}`}
             >
               Companies
             </Link>
             <Link
               to="/directory"
-              className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${pathname.startsWith("/directory") ? "text-[#6d28d9]" : "text-foreground"}`}
+              className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${navSection === "managers" ? "text-[#6d28d9]" : "text-foreground"}`}
             >
               Managers
             </Link>
@@ -329,21 +333,21 @@ export function Header() {
               </Link>
               <Link
                 to="/industries"
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${pathname.startsWith("/industries") ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${navSection === "industries" ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}
                 onClick={() => setIsMenuOpen(false)}
               >
                 Industries
               </Link>
               <Link
                 to="/companies"
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${pathname.startsWith("/companies") ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${navSection === "companies" ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}
                 onClick={() => setIsMenuOpen(false)}
               >
                 Companies
               </Link>
               <Link
                 to="/directory"
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${pathname.startsWith("/directory") ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${navSection === "managers" ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}
                 onClick={() => setIsMenuOpen(false)}
               >
                 Managers

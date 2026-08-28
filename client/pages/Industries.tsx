@@ -1,4 +1,5 @@
 import API_BASE from "@/lib/api";
+import { TopRatedPill } from "@/components/TopRatedPill";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
@@ -17,8 +18,6 @@ interface IndustryEntry {
 }
 
 /** Matches Companies.tsx and IndustryProfile.tsx — one threshold across every card type. */
-const TOP_RATED_THRESHOLD = 4.5;
-
 function StarRating({ rating }: { rating: number }) {
   return (
     <div className="flex max-w-full flex-nowrap items-center gap-0.5 whitespace-nowrap">
@@ -165,11 +164,7 @@ export default function Industries() {
               >
                 {/* Same badge as the company cards. No isLocked gate here: industry averages
                     are aggregate figures, not a specific manager's rating, so they are public. */}
-                {ind.avgRating != null && ind.avgRating >= TOP_RATED_THRESHOLD && (
-                  <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                    <Star size={9} className="fill-amber-500 text-amber-500" /> Top rated
-                  </span>
-                )}
+                <TopRatedPill rating={ind.avgRating} reviewCount={ind.totalReviews} />
                 <div className="flex items-center gap-3 mb-3">
                   <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[#2e0562]/10 text-[#2e0562]">
                     <IndustryTileIcon industrySlug={ind.slug} size={20} />

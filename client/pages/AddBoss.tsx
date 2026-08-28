@@ -1,6 +1,6 @@
 import API_BASE from "@/lib/api";
 import { useState, useEffect, useRef } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { StarRating } from "@/components/StarRating";
 import { AlertCircle, Check, X, ArrowLeft } from "lucide-react";
@@ -13,6 +13,7 @@ import { COUNTRIES } from "@/lib/countries";
 import { fetchGeo } from "@/lib/geo";
 import { AuthFlowModal } from "@/components/AuthFlowModal";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
+import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import type { AuthFlowStep } from "@/components/AuthFlowModal";
 import type { User } from "@/contexts/AuthContext";
 
@@ -138,7 +139,27 @@ export default function AddBoss() {
   const queryClient = useQueryClient();
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const returnTo = searchParams.get("returnTo") ?? "/directory";
+  const location = useLocation();
+  /**
+   * Where cancelling should land you.
+   *
+   * An explicit ?returnTo wins, because a caller that knows exactly where you came from (the
+   * company profile passes its own slug) can say so. Most entry points don't — the header, the
+   * directory, a manager profile and half a dozen others just link to /add — and defaulting all
+   * of those to /directory dumped people somewhere they had never been.
+   *
+   * So the fallback is genuine history. React Router stamps the first entry of a session with
+   * location.key "default", which is how we tell "you navigated here from somewhere in the app"
+   * apart from "you opened this URL directly" — going back from a direct load would leave the
+   * site entirely.
+   */
+  const explicitReturnTo = searchParams.get("returnTo");
+  const canGoBack = location.key !== "default";
+  const leaveForm = () => {
+    if (explicitReturnTo) navigate(explicitReturnTo);
+    else if (canGoBack) navigate(-1);
+    else navigate("/directory");
+  };
   const [authFlowStep, setAuthFlowStep] = useState<AuthFlowStep | null>(null);
   const [authFlowEmail, setAuthFlowEmail] = useState("");
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
@@ -601,12 +622,12 @@ export default function AddBoss() {
     setErrors([]);
     if (step === "ratings") setStep("timeline");
     else if (step === "timeline") setStep("info");
-    else navigate(returnTo);
+    else leaveForm();
   };
 
   const handleClose = () => {
     localStorage.removeItem("rmm_pending_manager");
-    navigate(returnTo);
+    leaveForm();
   };
 
   const isLastStep = step === "ratings";
@@ -714,8 +735,17 @@ export default function AddBoss() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <label className="block text-sm font-semibold text-foreground mb-2">Title *</label>
-                    <input type="text" name="title" value={formData.title} onChange={handleInputChange}
-                      placeholder="e.g., Engineering Manager" maxLength={100}
+                    {/*
+                      Suggesting spellings other people already used is what stops "Sr. Mgr" and
+                      "Snr Manager" being invented in the first place. Free text still goes through
+                      — plenty of real titles are company-specific.
+                    */}
+                    <RoleAutocomplete
+                      name="title"
+                      value={formData.title}
+                      onChange={val => { touch(); setFormData(prev => ({ ...prev, title: val })); if (errors.length > 0) setErrors([]); }}
+                      placeholder="e.g., Engineering Manager"
+                      maxLength={100}
                       className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]" />
                   </div>
                   <div>

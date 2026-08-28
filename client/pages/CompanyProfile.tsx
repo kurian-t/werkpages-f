@@ -1,4 +1,5 @@
 import API_BASE from "@/lib/api";
+import { TopRatedPill } from "@/components/TopRatedPill";
 import { useState, useEffect } from "react";
 import { Helmet } from "react-helmet-async";
 import { useParams, useNavigate, Link } from "react-router-dom";
@@ -129,9 +130,6 @@ function GhostManagerCard({ index, company, logoUrl, isLoggedIn }: { index: numb
     </div>
   );
 }
-/** Matches ManagerCard, LockedManagerCard, Companies and Industries. */
-const TOP_RATED_THRESHOLD = 4.5;
-
 const SIDEBAR_INPUT =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]";
 export default function CompanyProfile() {
@@ -547,19 +545,19 @@ export default function CompanyProfile() {
             e.preventDefault();
             setActiveTab((current) => (current === "working" ? "hiring" : "working"));
           }}
-          className="flex flex-wrap gap-1"
+          className="flex max-w-3xl gap-1"
         >
           {([
             {
               id: "working",
               emoji: "\u{1F465}",
-              title: "What it's like to work here",
+              title: `What it's like to work at ${decoded}`,
               count: `${data.totalReviews} ${data.totalReviews === 1 ? "opinion" : "opinions"}`,
             },
             {
               id: "hiring",
               emoji: "\u{1F4BC}",
-              title: "What it's like to interview",
+              title: `What it's like to interview at ${decoded}`,
               count: interviewCount == null
                 ? "\u2014"
                 : `${interviewCount} ${interviewCount === 1 ? "experience" : "experiences"}`,
@@ -576,7 +574,7 @@ export default function CompanyProfile() {
                 aria-controls={`panel-${tab.id}`}
                 tabIndex={active ? 0 : -1}
                 onClick={() => setActiveTab(tab.id)}
-                className={`group relative flex flex-shrink-0 cursor-pointer items-center gap-2.5 rounded-t-xl border border-border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6d5091] ${
+                className={`group relative flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-t-xl border border-border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6d5091] ${
                   active
                     ? // -mb-px pulls the tab down onto the panel's top edge and border-b-0 opens
                       // its floor, so tab and panel read as one continuous surface.
@@ -600,13 +598,13 @@ export default function CompanyProfile() {
                 </span>
                 <span className="min-w-0">
                   <span
-                    className={`block whitespace-nowrap text-sm font-semibold transition-colors ${
+                    className={`block truncate text-sm font-semibold transition-colors ${
                       active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
                     }`}
                   >
                     {tab.title}
                   </span>
-                  <span className="block whitespace-nowrap text-xs text-muted-foreground">
+                  <span className="block truncate text-xs text-muted-foreground">
                     {tab.count}
                   </span>
                 </span>
@@ -800,11 +798,7 @@ export default function CompanyProfile() {
                           className="group relative flex h-full w-full min-w-0 flex-col rounded-2xl border border-border bg-background p-4 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all min-[420px]:w-[200px] sm:p-5"
                         >
                           {/* Same amber pill as the manager, company and industry cards. */}
-                          {Number(boss.overallRating) >= TOP_RATED_THRESHOLD && (
-                            <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                              <Star size={9} className="fill-amber-500 text-amber-500" /> Top rated
-                            </span>
-                          )}
+                          <TopRatedPill rating={boss.overallRating} reviewCount={boss.reviewsCount} />
                           <div className="flex items-center gap-3 mb-3">
                             <div className="flex-shrink-0"><ManagerAvatar name={boss.name} size="sm" /></div>
                             <p className="text-sm font-semibold text-foreground group-hover:text-[#6d28d9] transition-colors leading-tight truncate flex-1 min-w-0">{boss.name}</p>
@@ -932,11 +926,7 @@ export default function CompanyProfile() {
                     className="group relative flex h-full w-full min-w-0 flex-col rounded-2xl border border-border bg-background p-4 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all min-[420px]:w-[200px] sm:p-5"
                   >
                     {/* Same amber pill as the manager, company and industry cards. */}
-                    {Number(mgr.overallRating) >= TOP_RATED_THRESHOLD && (
-                      <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                        <Star size={9} className="fill-amber-500 text-amber-500" /> Top rated
-                      </span>
-                    )}
+                    <TopRatedPill rating={mgr.overallRating} reviewCount={mgr.reviewsCount} />
                     <div className="flex items-center gap-3 mb-3">
                       <div className="flex-shrink-0"><ManagerAvatar name={mgr.name} size="sm" /></div>
                       <p className="text-sm font-semibold text-foreground group-hover:text-[#6d28d9] transition-colors leading-tight truncate flex-1 min-w-0">
