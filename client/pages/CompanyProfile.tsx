@@ -13,6 +13,9 @@ import { ManagerAvatar, CompanyLogoImg, CompanyRow } from "@/components/ManagerC
 import { useAuth } from "@/hooks/useAuth";
 import LockedManagerCard from "@/components/LockedManagerCard";
 import { fetchGeo } from "@/lib/geo";
+import { InterviewPanel } from "@/components/InterviewPanel";
+import { useCompanyInterviews } from "@/hooks/useCompanyInterviews";
+import { InterviewReviewForm } from "@/components/InterviewReviewForm";
 const FAKE_NAME_PARTS = new Set([
   "test", "fake", "admin", "null", "undefined", "anonymous",
   "unknown", "none", "nope", "asdf", "qwerty", "aaaa", "xxxx", "blah", "lorem", "ipsum",
@@ -97,7 +100,7 @@ const GHOST_SLOTS = [
 function GhostManagerCard({ index, company, logoUrl, isLoggedIn }: { index: number; company: string; logoUrl?: string; isLoggedIn: boolean }) {
   const slot = GHOST_SLOTS[index % GHOST_SLOTS.length];
   return (
-    <div className="flex flex-col rounded-2xl border border-border bg-card p-5 shadow-sm select-none pointer-events-none relative overflow-hidden">
+    <div className="flex flex-col rounded-2xl border border-border bg-background p-5 shadow-sm select-none pointer-events-none relative overflow-hidden">
       {/* Badge — identical to LockedManagerCard */}
       <div className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-500">
         <Lock size={10} />
@@ -263,6 +266,11 @@ export default function CompanyProfile() {
     }
   };
   const isLocked = !user?.hasContributed;
+  // A company profile answers two different questions for two different readers: what it is
+  // like to work here, and what it is like to try to get hired here. They share a company but
+  // nothing else — different reviewers, different ratings, different contribution gate.
+  const [activeTab, setActiveTab] = useState<"working" | "hiring">("working");
+  const [showInterviewForm, setShowInterviewForm] = useState(false);
   // Detect whether the URL param is a slug (lowercase, no spaces) or a legacy name.
   // Name-based navigation from the search form still works through the by-name fallback.
   const isSlugParam = !!companySlug && /^[a-z0-9-]+$/.test(companySlug);
@@ -284,6 +292,12 @@ export default function CompanyProfile() {
     // background on every mount/focus — keeping them current for all users, not 5-min stale.
     retry: false,
   });
+  // The tab strip shows how many interview experiences exist before you open the tab. This uses
+  // the same query key the panel uses with no filters applied, so React Query serves both from
+  // one request rather than fetching twice.
+  const { data: interviewStats } = useCompanyInterviews(data?.slug ?? "");
+  const interviewCount = interviewStats?.reviewCount ?? null;
+  const totalContributions = (data?.totalReviews ?? 0) + (interviewCount ?? 0);
   // Collapse every historical URL variant into the one canonical form for Google: legacy
   // company-name URLs (/companies/Revolut), the flat slug URL (/companies/revolut), and any
   // nested URL whose industry segment went stale after the company was reclassified.
@@ -495,9 +509,14 @@ export default function CompanyProfile() {
                       <Users size={14} />
                       {data.managerCount} {data.managerCount === 1 ? "manager" : "managers"}
                     </span>
+                    {/*
+                      Everything people have contributed about this company, both tabs combined:
+                      opinions about working here plus experiences of interviewing here. The header
+                      is the summary of the whole page, so counting only one tab understates it.
+                    */}
                     <span className="flex items-center gap-1.5">
                       <MessageSquare size={14} />
-                      {data.totalReviews} {data.totalReviews === 1 ? "review" : "reviews"}
+                      {totalContributions} {totalContributions === 1 ? "review" : "reviews"}
                     </span>
                   </>
                 )}
@@ -507,6 +526,111 @@ export default function CompanyProfile() {
         </div>
       </section>
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+        {/*
+          Two tabs, not one merged page. Manager ratings come from people who worked here for
+          months; interview ratings come from people who spent three afternoons here and may never
+          have been hired. Blending them into one score would flatter or damn a company for the
+          wrong reason.
+
+          Folder tabs rather than a floating control: the selected tab has no bottom border and
+          sits one pixel over the panel's top edge, so tab and panel read as one physical surface.
+          That connection is what tells you the tab governs the content below it — a detached
+          control leaves you guessing what it changes.
+        */}
+        <div
+          role="tablist"
+          aria-label="Company sections"
+          onKeyDown={(e) => {
+            // Arrow keys move between tabs, as a keyboard or screen-reader user expects from a
+            // tablist; Tab alone should jump past the whole control into the panel.
+            if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+            e.preventDefault();
+            setActiveTab((current) => (current === "working" ? "hiring" : "working"));
+          }}
+          className="flex flex-wrap gap-1"
+        >
+          {([
+            {
+              id: "working",
+              emoji: "\u{1F465}",
+              title: "What it's like to work here",
+              count: `${data.totalReviews} ${data.totalReviews === 1 ? "opinion" : "opinions"}`,
+            },
+            {
+              id: "hiring",
+              emoji: "\u{1F4BC}",
+              title: "What it's like to interview",
+              count: interviewCount == null
+                ? "\u2014"
+                : `${interviewCount} ${interviewCount === 1 ? "experience" : "experiences"}`,
+            },
+          ] as const).map((tab) => {
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                id={`tab-${tab.id}`}
+                aria-selected={active}
+                aria-controls={`panel-${tab.id}`}
+                tabIndex={active ? 0 : -1}
+                onClick={() => setActiveTab(tab.id)}
+                className={`group relative flex flex-shrink-0 cursor-pointer items-center gap-2.5 rounded-t-xl border border-border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6d5091] ${
+                  active
+                    ? // -mb-px pulls the tab down onto the panel's top edge and border-b-0 opens
+                      // its floor, so tab and panel read as one continuous surface.
+                      "-mb-px z-10 border-b-0 bg-card"
+                    : // Unselected tabs keep their outline so both read as tabs, and sit on a
+                      // recessed fill so the selected one is clearly the raised, active page.
+                      "bg-muted/50 hover:bg-muted"
+                }`}
+              >
+                {active && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-0 -bottom-px z-20 h-0.5 bg-card"
+                  />
+                )}
+                <span
+                  aria-hidden="true"
+                  className={`text-base transition-opacity ${active ? "opacity-100" : "opacity-50 group-hover:opacity-100"}`}
+                >
+                  {tab.emoji}
+                </span>
+                <span className="min-w-0">
+                  <span
+                    className={`block whitespace-nowrap text-sm font-semibold transition-colors ${
+                      active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
+                    }`}
+                  >
+                    {tab.title}
+                  </span>
+                  <span className="block whitespace-nowrap text-xs text-muted-foreground">
+                    {tab.count}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/*
+          The page surface the tabs attach to. Without it the active tab is a shape floating over
+          the background and the connection it is trying to make has nothing to connect to — the
+          tab's open floor only reads as a folder when there is a panel edge for it to sit on.
+        */}
+        <div className="rounded-b-2xl border border-border bg-card p-5 sm:p-7">
+        {activeTab === "hiring" ? (
+          <div role="tabpanel" id="panel-hiring" aria-labelledby="tab-hiring">
+            <InterviewPanel
+              companySlug={data.slug ?? companySlug ?? ""}
+              companyName={decoded}
+              onAddInterview={() => setShowInterviewForm(true)}
+            />
+          </div>
+        ) : (
+        <div role="tabpanel" id="panel-working" aria-labelledby="tab-working">
         {/* Strongest / Weakest areas */}
         {(isLocked || hasAreas) && (
           <div className="mb-10">
@@ -515,7 +639,7 @@ export default function CompanyProfile() {
                 <div className="relative">
                 <div className="grid gap-6 sm:grid-cols-2 blur-sm select-none pointer-events-none">
                   {[{ label: "Strongest Areas", icon: <TrendingUp size={16} className="text-green-600" />, vals: [4.8, 4.6, 4.3] }, { label: "Weakest Areas", icon: <TrendingDown size={16} className="text-amber-500" />, vals: [2.9, 2.7, 2.4] }].map(({ label, icon, vals }) => (
-                    <div key={label} className="rounded-2xl border border-border bg-card p-5">
+                    <div key={label} className="rounded-2xl border border-border bg-background p-5">
                       <div className="flex items-center gap-2 mb-4">
                         {icon}
                         <h2 className="text-sm font-semibold text-foreground">{label}</h2>
@@ -548,7 +672,7 @@ export default function CompanyProfile() {
                   </button>
                 </div>
                 </div>
-                <div className="mt-4 rounded-xl border border-border bg-card p-8 text-center">
+                <div className="mt-4 rounded-xl border border-border bg-background p-8 text-center">
                   <p className="text-sm font-semibold text-foreground">Company insights are locked</p>
                   <p className="mt-1 text-xs text-muted-foreground">Rate any manager to see strongest and weakest areas.</p>
                   <button
@@ -562,7 +686,7 @@ export default function CompanyProfile() {
             ) : (
               <div>
                 <div className="grid gap-6 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-border bg-card p-5">
+                  <div className="rounded-2xl border border-border bg-background p-5">
                     <div className="flex items-center gap-2 mb-4">
                       <TrendingUp size={16} className="text-green-600" />
                       <h2 className="text-sm font-semibold text-foreground">Strongest Areas</h2>
@@ -578,7 +702,7 @@ export default function CompanyProfile() {
                       ))}
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-border bg-card p-5">
+                  <div className="rounded-2xl border border-border bg-background p-5">
                     <div className="flex items-center gap-2 mb-4">
                       <TrendingDown size={16} className="text-amber-500" />
                       <h2 className="text-sm font-semibold text-foreground">Weakest Areas</h2>
@@ -673,7 +797,7 @@ export default function CompanyProfile() {
                         <Link
                           key={boss.id}
                           to={data.slug && boss.slug ? managerPath(data.industrySlug, data.slug, boss.slug) : `/manager/${boss.id}`}
-                          className="group relative flex h-full w-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all min-[420px]:w-[200px] sm:p-5"
+                          className="group relative flex h-full w-full min-w-0 flex-col rounded-2xl border border-border bg-background p-4 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all min-[420px]:w-[200px] sm:p-5"
                         >
                           {/* Same amber pill as the manager, company and industry cards. */}
                           {Number(boss.overallRating) >= TOP_RATED_THRESHOLD && (
@@ -716,7 +840,7 @@ export default function CompanyProfile() {
                     )}
                   </div>
                   {!resultsUnlocked && (
-                    <div className="mt-6 rounded-xl border border-border bg-card p-5 text-center">
+                    <div className="mt-6 rounded-xl border border-border bg-background p-5 text-center">
                       <p className="text-sm font-semibold text-foreground">Rate a manager to unlock ratings</p>
                       <p className="mt-1 text-xs text-muted-foreground">It's anonymous and takes 2 minutes.</p>
                       <button
@@ -729,7 +853,7 @@ export default function CompanyProfile() {
                   )}
                 </>
               ) : ghostAdded ? (
-                <div className="rounded-xl border border-border bg-card p-6 text-center">
+                <div className="rounded-xl border border-border bg-background p-6 text-center">
                   <p className="text-sm font-semibold text-foreground">Manager added!</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Your manager was added to the database. Search again to see their profile.
@@ -775,7 +899,7 @@ export default function CompanyProfile() {
                     <GhostManagerCard key={`ghost-${i}`} index={i} company={decoded} logoUrl={data.logoUrl} isLoggedIn={!!user} />
                   ))}
                 </div>
-                <div className="mt-6 rounded-xl border border-border bg-card p-5 text-center">
+                <div className="mt-6 rounded-xl border border-border bg-background p-5 text-center">
                   <p className="text-sm font-semibold text-foreground">Rate a manager to unlock ratings</p>
                   <p className="mt-1 text-xs text-muted-foreground">It's anonymous and takes 2 minutes.</p>
                   <button
@@ -805,7 +929,7 @@ export default function CompanyProfile() {
                   <Link
                     key={mgr.id}
                     to={data.slug && mgr.slug ? managerPath(data.industrySlug, data.slug, mgr.slug) : `/manager/${mgr.id}`}
-                    className="group relative flex h-full w-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all min-[420px]:w-[200px] sm:p-5"
+                    className="group relative flex h-full w-full min-w-0 flex-col rounded-2xl border border-border bg-background p-4 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all min-[420px]:w-[200px] sm:p-5"
                   >
                     {/* Same amber pill as the manager, company and industry cards. */}
                     {Number(mgr.overallRating) >= TOP_RATED_THRESHOLD && (
@@ -842,7 +966,22 @@ export default function CompanyProfile() {
             )}
           </div>
         </div>
+        </div>
+        )}
+        </div>
       </div>
+
+      {showInterviewForm && (
+        <InterviewReviewForm
+          companySlug={data.slug ?? companySlug ?? ""}
+          companyName={decoded}
+          onClose={() => setShowInterviewForm(false)}
+          onSubmitted={() => {
+            setShowInterviewForm(false);
+            toast.success("Thanks — your interview experience is live.");
+          }}
+        />
+      )}
     </Layout>
     </>
   );

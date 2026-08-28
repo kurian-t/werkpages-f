@@ -103,19 +103,19 @@ clients:
     allowed_clients: []
     allowed_logout_urls:
       - http://localhost:8080
-      - https://werkpages.ca
-      - https://www.werkpages.ca
-      - https://werkpages.ca/signin
+      - https://werkpages.com
+      - https://www.werkpages.com
+      - https://werkpages.com/signin
       - http://localhost:8080/signin
     app_type: regular_web
     callbacks:
       - http://localhost:8080
-      - https://werkpages.ca
-      - https://www.werkpages.ca
-      - https://werkpages.ca/signin
+      - https://werkpages.com
+      - https://www.werkpages.com
+      - https://werkpages.com/signin
       - http://localhost:8080/signin
       - http://localhost:8080/auth/callback
-      - https://werkpages.ca/auth/callback
+      - https://werkpages.com/auth/callback
     client_aliases: []
     cross_origin_authentication: false
     custom_login_page_on: true
@@ -150,8 +150,8 @@ clients:
     token_endpoint_auth_method: client_secret_post
     web_origins:
       - http://localhost:8080
-      - https://werkpages.ca
-      - https://www.werkpages.ca
+      - https://werkpages.com
+      - https://www.werkpages.com
       - http://localhost:8080/signin
   - name: auth
     allowed_clients: []
@@ -247,7 +247,7 @@ tenant:
     disable_clickjack_protection_headers: false
   oidc_logout:
     rp_logout_end_session_endpoint_discovery: true
-  picture_url: https://werkpages.ca/logo.png
+  picture_url: https://werkpages.com/logo.png
   resource_parameter_profile: audience
   sandbox_version: '22'
   universal_login:
@@ -261,7 +261,7 @@ emailProvider:
     smtp_port: 587
     smtp_user: '##SMTP_USER##'
     smtp_pass: '##SMTP_PASS##'
-  default_from_address: noreply@werkpages.ca
+  default_from_address: noreply@werkpages.com
   enabled: true
 branding:
   templates: []
