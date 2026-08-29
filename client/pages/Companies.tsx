@@ -6,6 +6,8 @@ import { Star, Building2, Users, MessageSquare, Lock, ChevronLeft, ChevronRight 
 import { useQuery } from "@tanstack/react-query";
 import { CompanyLogoImg } from "@/components/ManagerCard";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
+import { TopRatedPill } from "@/components/TopRatedPill";
+
 import { companyPath, companyPathByName } from "@/lib/urls";
 import { useAuth } from "@/hooks/useAuth";
 import axios from "axios";
@@ -208,11 +210,24 @@ export default function Companies() {
                   onClick={() => goToCompany(co.name, co.slug, co.industrySlug)}
                   className="group relative h-full w-full min-w-0 text-left rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all min-[420px]:w-[200px] sm:p-5"
                 >
-                  {!isLocked && co.avgRating != null && co.avgRating >= 4.5 && (
-                    <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                      <Star size={9} className="fill-amber-500 text-amber-500" /> Top rated
-                    </span>
-                  )}
+                  {/*
+                    The badge gets its own row instead of the top-right corner. This card puts the
+                    name beside a 48px logo, so a corner badge leaves the first line about 44px on
+                    a 200px card - too narrow to clear by padding (it truncates the name to
+                    "Ciel Lu...") and too narrow to flow around (the name breaks mid-word). Out of
+                    the title's line there is no collision to solve.
+
+                    The row is reserved on every card, not only the ones that earned a badge, so
+                    logos and names line up across a grid where some tiles have it and some do not.
+                  */}
+                  <div className="mb-1.5 flex h-[18px] items-start justify-end">
+                    <TopRatedPill
+                      rating={co.avgRating}
+                      reviewCount={co.totalReviews}
+                      hidden={isLocked}
+                      variant="inline"
+                    />
+                  </div>
                   <div className="flex items-center gap-3 mb-3">
                     <CompanyLogoImg
                       company={co.name}
@@ -220,6 +235,7 @@ export default function Companies() {
                       sizeClass="h-12 w-12"
                     />
                     <div className="min-w-0 flex-1">
+                      {/* Full width: nothing overlaps this line any more. */}
                       <h2 className="font-semibold text-sm text-foreground group-hover:text-[#6d28d9] leading-tight transition-colors line-clamp-2">
                         {co.name}
                       </h2>

@@ -587,3 +587,53 @@ test.describe("Header - Companies nav tab", () => {
     ).not.toBeVisible();
   });
 });
+
+test.describe("Top rated badge on company tiles", () => {
+  const LONG_NAME = "Ciel Luxury Apartments";
+  const listing = [
+    { name: LONG_NAME, slug: "ciel-luxury-apartments", industry: "Real Estate",
+      managerCount: 2, totalReviews: 4, avgRating: 4.8 },
+    { name: "One Review Wonder", slug: "one-review-wonder", industry: "Real Estate",
+      managerCount: 1, totalReviews: 1, avgRating: 5.0 },
+  ];
+
+  async function mockListing(page: any) {
+    await page.route("**/api/auth/me", (r: any) => r.fulfill({ json: { ...MOCK_USER, hasContributed: true } }));
+    await page.addInitScript((u: any) => localStorage.setItem("authUser", JSON.stringify(u)),
+      { ...MOCK_USER, hasContributed: true });
+    await page.route("**/api/companies/listing", (r: any) => r.fulfill({ json: { data: listing } }));
+    await page.route("**/api/companies/suggest**", (r: any) => r.fulfill({ json: [] }));
+  }
+
+  // This tile kept a hand-rolled copy of the badge markup, so it missed the clearance that keeps
+  // a wrapped name clear of the corner badge - the amber pill sat over the first line and cut
+  // the tops off the letters. Measured as an overlap, which is what was actually wrong.
+  test("a two-line company name does not run under the badge", async ({ page }) => {
+    await mockListing(page);
+    await page.goto("/companies");
+
+    const title = page.getByRole("heading", { name: LONG_NAME });
+    await expect(title).toBeVisible({ timeout: 10_000 });
+    const badge = page.getByText("Top rated").first();
+    await expect(badge).toBeVisible();
+
+    const t = (await title.boundingBox())!;
+    const b = (await badge.boundingBox())!;
+    const overlaps = t.x < b.x + b.width && b.x < t.x + t.width
+                  && t.y < b.y + b.height && b.y < t.y + t.height;
+    expect(overlaps).toBe(false);
+    // And the name really did wrap - otherwise this passes for the wrong reason.
+    expect(t.height).toBeGreaterThan(20);
+  });
+
+  // Same file also skipped the review floor, so it was the one surface that would award the
+  // badge off a single five-star review.
+  test("a perfect score off one review earns no badge here either", async ({ page }) => {
+    await mockListing(page);
+    await page.goto("/companies");
+
+    await expect(page.getByRole("heading", { name: "One Review Wonder" })).toBeVisible({ timeout: 10_000 });
+    // Exactly one badge on the page: the 4.8 with four reviews, not the 5.0 with one.
+    await expect(page.getByText("Top rated")).toHaveCount(1);
+  });
+});

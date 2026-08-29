@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Star } from "lucide-react";
 import { companyLogoDomain } from "@/lib/utils";
+import { TopRatedPill } from "@/components/TopRatedPill";
 
 interface Manager {
   id: number;
@@ -116,12 +117,10 @@ export default function ManagerCard({ boss, isPending = false }: ManagerCardProp
           : "border-border hover:border-[#2e0562]/30 hover:shadow-[#2e0562]/5"
       }`}
     >
-      {/* Top rated - absolute top-right, matching the company cards exactly. */}
-      {!isPending && rating >= 4.5 && (
-        <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-          <Star size={9} className="fill-amber-500 text-amber-500" /> Top rated
-        </span>
-      )}
+      {/* Top rated - absolute top-right, matching the company cards exactly. The shared component
+          rather than a local copy of the markup: this file kept its own, which is how it ended up
+          being the one surface that awarded the badge off a single five-star review. */}
+      <TopRatedPill rating={rating} reviewCount={boss.reviews} hidden={isPending} />
 
       {/* Row 1: avatar + name */}
       <div className="flex min-w-0 items-center gap-3 mb-3">
