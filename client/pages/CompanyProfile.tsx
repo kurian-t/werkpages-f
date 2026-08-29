@@ -562,7 +562,13 @@ export default function CompanyProfile() {
           sits one pixel over the panel's top edge, so tab and panel read as one physical surface.
           That connection is what tells you the tab governs the content below it - a detached
           control leaves you guessing what it changes.
+
+          None of that applies to a single tab. A lone folder tab is a control that switches
+          nothing, and the notch it cuts out of the panel's top edge reads as a rendering fault
+          rather than as structure. Until the interview tab is earned this is one plain card with
+          a heading, and the tab chrome appears at the moment there is a second place to go.
         */}
+        {canSeeInterviewTab && (
         <div
           role="tablist"
           aria-label="Company sections"
@@ -649,13 +655,21 @@ export default function CompanyProfile() {
             );
           })}
         </div>
+        )}
 
         {/*
           The page surface the tabs attach to. Without it the active tab is a shape floating over
           the background and the connection it is trying to make has nothing to connect to - the
           tab's open floor only reads as a folder when there is a panel edge for it to sit on.
+
+          Rounded on all four corners when it stands alone: the flat top edge exists to meet a
+          tab, and with no tab above it the square corners look like a card that lost its lid.
         */}
-        <div className="rounded-b-2xl border border-border bg-card p-5 sm:p-7">
+        <div
+          className={`border border-border bg-card p-5 sm:p-7 ${
+            canSeeInterviewTab ? "rounded-b-2xl" : "rounded-2xl"
+          }`}
+        >
         {activeTab === "hiring" ? (
           <div role="tabpanel" id="panel-hiring" aria-labelledby="tab-hiring">
             <InterviewPanel
@@ -668,7 +682,47 @@ export default function CompanyProfile() {
             />
           </div>
         ) : (
-        <div role="tabpanel" id="panel-working" aria-labelledby="tab-working">
+        // Only a tabpanel while a tablist exists. Standing alone it is just the page, and
+        // aria-labelledby would point at a tab id that is not in the document - a dangling
+        // reference leaves a screen reader announcing the region with no name at all.
+        <div {...(canSeeInterviewTab
+          ? { role: "tabpanel", id: "panel-working", "aria-labelledby": "tab-working" }
+          : {})}>
+        {/*
+          The tab carried this heading and its count. Without the tab the card would open on
+          "Strongest Areas" with nothing saying whose strengths they are or how many people are
+          behind them, so the heading moves inside.
+        */}
+        {!canSeeInterviewTab && (
+          <div className="mb-6 flex items-center gap-2.5">
+            <span
+              aria-hidden="true"
+              className="hidden h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-background pb-[3px] text-sm leading-none ring-1 ring-border min-[400px]:flex"
+            >
+              {"\u{1F465}"}
+            </span>
+            <span className="min-w-0">
+              <h2 className="text-[13px] font-semibold leading-snug text-foreground sm:text-sm">
+                What it's like to work at {decoded}
+              </h2>
+              {/*
+                Blurred like every other figure on a locked page. The heading still says what
+                this card holds; how much of it is one more thing rating a manager reveals.
+                aria-hidden with an sr-only note, so the number is gated rather than merely
+                out of focus - a blur a screen reader reads straight out is not a lock.
+              */}
+              <span
+                aria-hidden="true"
+                className="mt-0.5 block select-none text-xs leading-snug text-muted-foreground blur-[3px]"
+              >
+                {data.totalReviews} manager {data.totalReviews === 1 ? "opinion" : "opinions"}
+              </span>
+              <span className="sr-only">
+                Manager opinion count hidden until you rate a manager
+              </span>
+            </span>
+          </div>
+        )}
         {/* Strongest / Weakest areas */}
         {(isLocked || hasAreas) && (
           <div className="mb-10">

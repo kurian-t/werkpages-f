@@ -138,9 +138,30 @@ test.describe("Getting hired tab", () => {
     await mockCompany(page, interviewStats(), false);
     await page.goto(COMPANY_URL);
 
-    await expect(page.getByRole("tab", { name: "What it's like to work at Red Hat" }))
+    // No tab chrome at all with only one destination: a lone folder tab is a control that
+    // switches nothing, and it cuts a notch out of the panel edge that reads as a broken border.
+    // The heading it carried moves inside the plain card.
+    await expect(page.getByRole("heading", { name: "What it's like to work at Red Hat" }))
       .toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole("tab", { name: /What it's like to interview/ })).toHaveCount(0);
+    await expect(page.getByRole("tablist")).toHaveCount(0);
+    await expect(page.getByRole("tab")).toHaveCount(0);
+    await expect(page.getByText(/What it's like to interview/)).toHaveCount(0);
+  });
+
+  test("the count under the heading is blurred while the page is locked", async ({ page }) => {
+    // Same treatment as every other figure behind the gate: the heading says what the card
+    // holds, the number of opinions is part of what rating a manager reveals.
+    await mockCompany(page, interviewStats(), false);
+    await page.goto(COMPANY_URL);
+
+    await expect(page.getByRole("heading", { name: "What it's like to work at Red Hat" }))
+      .toBeVisible({ timeout: 10_000 });
+
+    const count = page.getByText("3 manager opinions");
+    await expect(count).toHaveCSS("filter", /blur/);
+    // Gated for a screen reader too, rather than only visually out of focus.
+    await expect(count).toHaveAttribute("aria-hidden", "true");
+    await expect(page.getByText(/count hidden until you rate a manager/i)).toBeAttached();
   });
 
   test("a hiring URL falls back to the manager tab for someone who has not rated one", async ({ page }) => {
@@ -148,9 +169,10 @@ test.describe("Getting hired tab", () => {
     await mockCompany(page, interviewStats(), false);
     await page.goto(`${COMPANY_URL}?tab=hiring`);
 
-    await expect(page.getByRole("tab", { name: "What it's like to work at Red Hat" }))
-      .toHaveAttribute("aria-selected", "true", { timeout: 10_000 });
+    await expect(page.getByRole("heading", { name: "What it's like to work at Red Hat" }))
+      .toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId("interview-panel")).toHaveCount(0);
+    await expect(page.getByRole("tablist")).toHaveCount(0);
   });
 
   test("once a manager is rated the tab appears, still locked", async ({ page }) => {
@@ -162,6 +184,9 @@ test.describe("Getting hired tab", () => {
     await expect(page.getByTestId("interview-panel")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Interview insights are locked")).toBeVisible();
     await expect(page.getByText("Share an interview experience to unlock them")).toBeVisible();
+    // The tab chrome arrives with the second destination, not before it.
+    await expect(page.getByRole("tablist")).toBeVisible();
+    await expect(page.getByRole("tab")).toHaveCount(2);
   });
 
   test("the tab still says how much is behind the lock", async ({ page }) => {
