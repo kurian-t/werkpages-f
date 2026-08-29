@@ -110,6 +110,27 @@ test.describe("Industries browse page (/industries)", () => {
     await expect(page.getByText(/top rated/i)).toBeVisible();
   });
 
+  // Wrapping made each tile decide its own shape from the width of its own digits, so a grid
+  // held some tiles with the stats side by side and others with them stacked. Two tiles at
+  // opposite ends of that range, asserted to agree.
+  test("every tile stacks its stats the same way, whatever the counts", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await mockIndustries(page, [
+      { industry: "Agriculture",     slug: "agriculture",     companyCount: 9, managerCount: 31, totalReviews: 40, avgRating: 4.6 },
+      { industry: "Mining & Metals", slug: "mining-and-metals", companyCount: 1, managerCount: 7,  totalReviews: 0,  avgRating: null },
+    ]);
+    await page.goto("/industries");
+    await expect(page.getByRole("heading", { name: "Agriculture" })).toBeVisible({ timeout: 10_000 });
+
+    // Stacked means the managers line sits below the companies line, not beside it.
+    for (const [companies, managers] of [["9 companies", "31 managers"], ["1 company", "7 managers"]]) {
+      const c = (await page.getByText(companies).boundingBox())!;
+      const m = (await page.getByText(managers).boundingBox())!;
+      expect(m.y).toBeGreaterThan(c.y + c.height - 1);
+      expect(Math.abs(m.x - c.x)).toBeLessThan(2);
+    }
+  });
+
   // A fixed row height was a ceiling as well as a floor: a two-line name plus a stats row that
   // wraps ran past the bottom border, and nothing on the card clips, so the text sat outside
   // the tile. Measured rather than screenshotted so it fails on the geometry, not on pixels.

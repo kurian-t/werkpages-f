@@ -191,12 +191,15 @@ export default function Industries() {
                   ? <StarRating rating={ind.avgRating} />
                   : <p className="text-xs text-muted-foreground">No ratings yet</p>}
 
-                {/* flex-wrap + shrink-0, not min-w-0: min-w-0 let each stat shrink below its
-                    own content width, and whitespace-nowrap then pushed the text out of that
-                    shrunken box, so "13 companies" ran straight into the managers icon and the
-                    gap looked like it had vanished. Now each stat keeps its intrinsic width and
-                    the row wraps to a second line when the card is too narrow for both. */}
-                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                {/* Always stacked, never wrapped. shrink-0 keeps each stat at its intrinsic width
+                    (min-w-0 let them shrink below it, and whitespace-nowrap then pushed the text
+                    out of the shrunken box, so "13 companies" ran into the managers icon). But
+                    leaving the row to wrap made the layout depend on how wide the digits were:
+                    "1 company / 7 managers" fit on one line while "9 companies / 31 managers"
+                    did not, so tiles in the same grid disagreed about their own shape. A tile
+                    220px wide cannot hold both stats at the counts this list actually reaches,
+                    so the row that only sometimes appeared is now the row that always does. */}
+                <div className="mt-3 flex flex-col items-start gap-1.5 text-xs text-muted-foreground">
                   <span className="flex shrink-0 items-center gap-1 whitespace-nowrap">
                     <Building2 size={11} className="flex-shrink-0" />
                     {ind.companyCount} {ind.companyCount === 1 ? "company" : "companies"}
