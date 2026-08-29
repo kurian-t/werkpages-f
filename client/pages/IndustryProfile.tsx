@@ -207,7 +207,7 @@ export default function IndustryProfile() {
         )}
 
         {visible.length > 0 && (
-          <div className="grid grid-cols-2 auto-rows-[180px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
+          <div className="grid grid-cols-2 auto-rows-[minmax(180px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
             {visible.map((co) => (
               <button
                 key={co.slug ?? co.name}

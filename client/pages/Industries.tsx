@@ -152,11 +152,16 @@ export default function Industries() {
         )}
 
         {!isLoading && !isError && visible.length > 0 && (
+          // minmax(180px,auto), not a flat 180px: a fixed row height is a ceiling as well as a
+          // floor, and "Government & Public Sector" needs two title lines while the stats row
+          // wraps onto two of its own, which together run past the bottom border. Nothing here
+          // clips, so the text simply escaped the tile. The minimum keeps short tiles uniform.
+          //
           // 220px, not 200px: after 32px padding and the 40px icon plus its 12px gap, a 200px
           // cell left ~116px for the name, and "Telecommunications" needs ~126px at text-sm.
           // global.css applies `overflow-wrap: anywhere` to headings, so it broke mid-word
           // ("Telecommunic / ations") rather than overflowing.
-          <div className="grid grid-cols-2 auto-rows-[180px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,220px)] min-[420px]:gap-4">
+          <div className="grid grid-cols-2 auto-rows-[minmax(180px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,220px)] min-[420px]:gap-4">
             {visible.map((ind) => (
               <button
                 key={ind.slug}

@@ -357,7 +357,7 @@ export default function Directory() {
             )}
 
             {!error && isLoading && (
-              <div className="grid grid-cols-2 auto-rows-[210px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
+              <div className="grid grid-cols-2 auto-rows-[minmax(210px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="h-full w-full rounded-2xl border border-border bg-card p-4 shadow-sm min-[420px]:w-[200px] sm:p-5">
                     <div className="flex items-center gap-3 mb-3">
@@ -387,7 +387,7 @@ export default function Directory() {
                         <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
                           Your Pending Submissions
                         </p>
-                        <div className="grid grid-cols-2 auto-rows-[210px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
+                        <div className="grid grid-cols-2 auto-rows-[minmax(210px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                           {submittedManagers.map((boss: any) => (
                             <ManagerCard key={`pending-${boss.id}`} boss={boss} isPending />
                           ))}
@@ -397,7 +397,7 @@ export default function Directory() {
                     )}
 
                     {filteredBosses.length > 0 && (
-                      <div className="grid grid-cols-2 auto-rows-[210px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
+                      <div className="grid grid-cols-2 auto-rows-[minmax(210px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                         {filteredBosses.map((boss: any) =>
                           hasContributed ? (
                             <ManagerCard key={boss.id} boss={boss} />

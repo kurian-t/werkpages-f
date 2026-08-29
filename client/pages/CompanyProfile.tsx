@@ -270,7 +270,14 @@ export default function CompanyProfile() {
   // The tab lives in the URL, not in component state. Without that, a refresh drops you back on
   // the first tab, the link you share never opens where you were, and returning from the add
   // form lands on the wrong half of the page.
-  const activeTab: "working" | "hiring" = searchParams.get("tab") === "hiring" ? "hiring" : "working";
+  // The interview tab is not shown until someone has rated a manager. Manager ratings are the
+  // primary data this site collects, and a second contribution surface offered alongside them
+  // competes for the same attention. Once that first review exists the product expands: the tab
+  // appears, still locked, and an interview experience is what opens it.
+  const canSeeInterviewTab = !isLocked;
+  const requestedTab = searchParams.get("tab");
+  const activeTab: "working" | "hiring" =
+    requestedTab === "hiring" && canSeeInterviewTab ? "hiring" : "working";
   const setActiveTab = (next: "working" | "hiring" | ((current: "working" | "hiring") => "working" | "hiring")) => {
     const value = typeof next === "function" ? next(activeTab) : next;
     const params = new URLSearchParams(searchParams);
@@ -568,7 +575,7 @@ export default function CompanyProfile() {
           }}
           className="flex max-w-3xl items-stretch gap-1"
         >
-          {([
+          {(([
             {
               id: "working",
               emoji: "\u{1F465}",
@@ -583,7 +590,7 @@ export default function CompanyProfile() {
                 ? "\u2014"
                 : `${interviewCount} candidate ${interviewCount === 1 ? "experience" : "experiences"}`,
             },
-          ] as const).map((tab) => {
+          ] as const).filter((tab) => tab.id === "working" || canSeeInterviewTab)).map((tab) => {
             const active = activeTab === tab.id;
             return (
               <button
@@ -822,7 +829,7 @@ export default function CompanyProfile() {
                 </div>
               ) : searchResults.length > 0 ? (
                 <>
-                  <div className="grid grid-cols-2 auto-rows-[210px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
+                  <div className="grid grid-cols-2 auto-rows-[minmax(210px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                     {searchResults.map((boss: any) =>
                       resultsUnlocked ? (
                         <Link
@@ -908,7 +915,7 @@ export default function CompanyProfile() {
               )
             ) : isLocked ? (
               <>
-                <div className="grid grid-cols-2 auto-rows-[210px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
+                <div className="grid grid-cols-2 auto-rows-[minmax(210px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                   {data.managers.slice(0, 3).map((mgr) => (
                     <LockedManagerCard
                       key={mgr.id}
@@ -951,7 +958,7 @@ export default function CompanyProfile() {
                 </Link>
               </div>
             ) : (
-              <div className="grid grid-cols-2 auto-rows-[210px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
+              <div className="grid grid-cols-2 auto-rows-[minmax(210px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                 {data.managers.map((mgr) => (
                   <Link
                     key={mgr.id}

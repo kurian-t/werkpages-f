@@ -73,7 +73,7 @@ function interviewStats(overrides: Record<string, unknown> = {}) {
 
 const USER = { id: "u1", username: "tester", email: "t@test.com", hasContributed: true, role: "user" };
 
-async function mockCompany(page: any, stats: Record<string, unknown>, signedIn = false) {
+async function mockCompany(page: any, stats: Record<string, unknown>, signedIn = true) {
   // AuthProvider seeds itself from localStorage on first render, so mocking /api/auth/me alone
   // is a frame too late for a page that redirects signed-out visitors.
   if (signedIn) {
@@ -132,9 +132,30 @@ test.describe("Getting hired tab", () => {
     await expect(page.getByTestId("interview-panel")).toHaveCount(0);
   });
 
-  test("the whole summary is locked for a signed-out visitor", async ({ page }) => {
-    // The interview figures are the payoff for contributing an interview experience, exactly as
-    // the manager figures are the payoff for rating a manager. The two gates are separate.
+  test("the interview tab is not offered until a manager has been rated", async ({ page }) => {
+    // Manager ratings are the primary data. A second contribution surface offered alongside them
+    // competes for the same attention, so the tab does not exist yet.
+    await mockCompany(page, interviewStats(), false);
+    await page.goto(COMPANY_URL);
+
+    await expect(page.getByRole("tab", { name: "What it's like to work at Red Hat" }))
+      .toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("tab", { name: /What it's like to interview/ })).toHaveCount(0);
+  });
+
+  test("a hiring URL falls back to the manager tab for someone who has not rated one", async ({ page }) => {
+    // Otherwise a shared link would open a tab that is not on the page.
+    await mockCompany(page, interviewStats(), false);
+    await page.goto(`${COMPANY_URL}?tab=hiring`);
+
+    await expect(page.getByRole("tab", { name: "What it's like to work at Red Hat" }))
+      .toHaveAttribute("aria-selected", "true", { timeout: 10_000 });
+    await expect(page.getByTestId("interview-panel")).toHaveCount(0);
+  });
+
+  test("once a manager is rated the tab appears, still locked", async ({ page }) => {
+    // The product expands in two stages: rate a manager to see it exists, share an interview
+    // experience to open it. The two gates stay separate.
     await mockCompany(page, interviewStats({ gated: true, hasContributed: false, categoryAverages: null, categoryComparison: null }));
     await openHiringTab(page);
 
@@ -193,7 +214,11 @@ test.describe("Getting hired tab", () => {
 
   test("the role filter re-requests only that slice, and never sends an outcome", async ({ page }) => {
     const requested: string[] = [];
-    await page.route("**/api/auth/me", (r: any) => r.fulfill({ status: 401, json: {} }));
+    // Seeing the tab requires a manager rating, so this user has one.
+    await page.addInitScript((u: unknown) => {
+      localStorage.setItem("authUser", JSON.stringify(u));
+    }, USER);
+    await page.route("**/api/auth/me", (r: any) => r.fulfill({ json: USER }));
     await page.route("**/api/companies/**", (r: any) => r.fulfill({ json: COMPANY }));
     await page.route("**/api/managers**", (r: any) => r.fulfill({ json: { data: [], total: 0 } }));
     await page.route("**/api/companies/red-hat/interviews**", (r: any) => {
@@ -329,7 +354,11 @@ test.describe("Your own experience", () => {
 
   test("the country filter narrows only the chart", async ({ page }) => {
     const requested: string[] = [];
-    await page.route("**/api/auth/me", (r: any) => r.fulfill({ status: 401, json: {} }));
+    // Seeing the tab requires a manager rating, so this user has one.
+    await page.addInitScript((u: unknown) => {
+      localStorage.setItem("authUser", JSON.stringify(u));
+    }, USER);
+    await page.route("**/api/auth/me", (r: any) => r.fulfill({ json: USER }));
     await page.route("**/api/companies/**", (r: any) => r.fulfill({ json: COMPANY }));
     await page.route("**/api/managers**", (r: any) => r.fulfill({ json: { data: [], total: 0 } }));
     await page.route("**/api/companies/red-hat/interviews**", (r: any) => {

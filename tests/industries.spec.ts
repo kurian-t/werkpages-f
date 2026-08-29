@@ -92,6 +92,51 @@ test.describe("Industries browse page (/industries)", () => {
     await expect(page.getByText(/top rated/i)).not.toBeVisible();
   });
 
+  // The badge needs a sample as well as a score. An industry can average 5.0 off a single
+  // review, and these two pin the boundary so "why does 5.0 not say Top rated" has an answer
+  // in the tests rather than only in lib/topRated.ts.
+  test("a perfect score below the review floor shows no Top rated badge", async ({ page }) => {
+    await mockIndustries(page, [{ ...MOCK_INDUSTRIES[0], industry: "Legal", slug: "legal", avgRating: 5.0, totalReviews: 2 }]);
+    await page.goto("/industries");
+    await expect(page.getByRole("heading", { name: "Legal" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("5.0")).toBeVisible();
+    await expect(page.getByText(/top rated/i)).not.toBeVisible();
+  });
+
+  test("a perfect score at the review floor shows the Top rated badge", async ({ page }) => {
+    await mockIndustries(page, [{ ...MOCK_INDUSTRIES[0], industry: "Legal", slug: "legal", avgRating: 5.0, totalReviews: 3 }]);
+    await page.goto("/industries");
+    await expect(page.getByRole("heading", { name: "Legal" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/top rated/i)).toBeVisible();
+  });
+
+  // A fixed row height was a ceiling as well as a floor: a two-line name plus a stats row that
+  // wraps ran past the bottom border, and nothing on the card clips, so the text sat outside
+  // the tile. Measured rather than screenshotted so it fails on the geometry, not on pixels.
+  test("a two-line name and a wrapped stats row stay inside the tile", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 900 });
+    await mockIndustries(page, [{
+      industry: "Government & Public Sector", slug: "government-and-public-sector",
+      companyCount: 15, managerCount: 40, totalReviews: 60, avgRating: 3.0,
+    }]);
+    await page.goto("/industries");
+
+    const title = page.getByRole("heading", { name: "Government & Public Sector" });
+    await expect(title).toBeVisible({ timeout: 10_000 });
+
+    const card = page.locator("button", { has: title });
+    const cardBox = await card.boundingBox();
+    const statsBox = await page.getByText("40 managers").boundingBox();
+    expect(cardBox).not.toBeNull();
+    expect(statsBox).not.toBeNull();
+
+    // Inside the border, not merely near it: the tile carries 16px of padding at this width.
+    expect(statsBox!.y + statsBox!.height).toBeLessThanOrEqual(cardBox!.y + cardBox!.height - 12);
+    // The name wrapped, which is the condition that used to overflow.
+    const titleBox = await title.boundingBox();
+    expect(titleBox!.height).toBeGreaterThan(20);
+  });
+
   test("search filters the industry list and updates the count", async ({ page }) => {
     await mockIndustries(page);
     await page.goto("/industries");
