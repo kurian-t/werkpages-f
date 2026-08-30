@@ -1214,8 +1214,11 @@ export default function BossProfile() {
       }
 
       // All changes go through edit-request flow for admin approval
-      const payload: Record<string, string | null> = {};
+      const payload: Record<string, string | number | null> = {};
+      // The picked company's identity rides with the request. Approval uses it directly, so an
+      // admin approving weeks later cannot land on a different company that shares the name.
       if (companyChanged)  payload.company     = editFormData.company;
+      if (companyChanged)  payload.companyId   = editCompanyId ?? null;
       if (companyChanged && editCompanyLogoUrl) payload.companyLogoUrl = editCompanyLogoUrl;
       if (titleChanged)    payload.title       = toJobTitleCase(editFormData.title);
       if (statusChanged)   payload.status      = editFormData.status;
