@@ -5,6 +5,11 @@ import API_BASE from "@/lib/api";
 
 interface Suggestion {
   name: string;
+  /**
+   * The company's identity. Absent for a suggestion that has no companies row yet, and absent
+   * entirely from the Clearbit-proxied results, which are external names we have never stored.
+   */
+  id?: number;
   domain?: string;   // present when sourced from Clearbit proxy
   logoUrl?: string;  // present when sourced from DB fallback
 }
@@ -13,6 +18,16 @@ interface Props {
   value: string;
   onChange: (value: string) => void;
   onSuggestionSelect?: (name: string, logoUrl: string | undefined) => void;
+  /**
+   * The selected company's ID, or undefined when the text no longer corresponds to a selection.
+   *
+   * Kept as its own callback rather than folded into onSuggestionSelect because the *clearing*
+   * matters as much as the setting. Pick "Crumbl" (id 42), then type two more characters, and a
+   * parent holding a stale 42 would file the manager under the wrong company - a silent
+   * mis-attribution that looks exactly like correct behaviour. Fired with undefined on every
+   * manual edit and on clear, so the ID cannot outlive the text it belongs to.
+   */
+  onCompanyIdChange?: (id: number | undefined) => void;
   onClear?: () => void;
   placeholder?: string;
   className?: string;
@@ -27,7 +42,7 @@ function suggestionLogoUrl(s: Suggestion): string | undefined {
   return s.logoUrl;
 }
 
-export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onClear, placeholder, className, autoFocus, name }: Props) {
+export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCompanyIdChange, onClear, placeholder, className, autoFocus, name }: Props) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -102,6 +117,9 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCle
     justSelectedRef.current = true;
     onChange(s.name);
     setSelectedDomain(s.domain ?? null);
+    // Undefined for an external (Clearbit) name or one with no companies row: the write path then
+    // falls back to creating, which is correct, because there is nothing here to select.
+    onCompanyIdChange?.(s.id);
     setOpen(false);
     setSuggestions([]);
     if (onSuggestionSelect) {
@@ -124,6 +142,23 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCle
     } else if (e.key === "Escape") {
       setOpen(false);
     }
+  };
+
+  // Creating a company becomes a deliberate choice rather than a side effect of typing.
+  // Someone who means "Crumbl" and types "Crumbl Cookies" should see Crumbl offered first; the
+  // create row is still there, one click away, so nothing is blocked - it just stops being the
+  // default outcome of not recognising a name.
+  const typed = value.trim();
+  const exactMatch = suggestions.some(s => s.name.trim().toLowerCase() === typed.toLowerCase());
+  const showCreateRow = typed.length >= 2 && !exactMatch && suggestions.length > 0;
+
+  const chooseCreate = () => {
+    justSelectedRef.current = true;
+    // No company row is being selected, so no identity travels with this. The write path creates.
+    onCompanyIdChange?.(undefined);
+    setSelectedDomain(null);
+    setOpen(false);
+    setSuggestions([]);
   };
 
   const hasClearButton = !!onClear && value.length > 0;
@@ -164,6 +199,19 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCle
           </li>
         );
       })}
+      {showCreateRow && (
+        <li
+          role="option"
+          aria-selected={false}
+          onPointerDown={e => { e.preventDefault(); chooseCreate(); }}
+          className="flex items-start gap-2 border-t border-border px-3 py-2 cursor-pointer text-sm text-muted-foreground transition-colors hover:bg-[#d5cde0] hover:text-foreground"
+        >
+          <span className="text-base leading-none shrink-0">+</span>
+          {/* Wraps rather than truncates: the whole point of this row is to show the user the
+              exact name they are about to create, and "Crum..." does not do that. */}
+          <span className="min-w-0 break-words">Not listed? Add <span className="font-medium text-foreground">{typed}</span></span>
+        </li>
+      )}
     </ul>
   ) : null;
 
@@ -183,6 +231,8 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCle
         value={value}
         onChange={e => {
           setSelectedDomain(null);
+          // Typing invalidates the selection. Same lifecycle as the logo above it.
+          onCompanyIdChange?.(undefined);
           onChange(e.target.value);
         }}
         onKeyDown={handleKeyDown}
@@ -195,7 +245,7 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCle
       {hasClearButton && (
         <button
           type="button"
-          onClick={() => { setSelectedDomain(null); onClear!(); }}
+          onClick={() => { setSelectedDomain(null); onCompanyIdChange?.(undefined); onClear!(); }}
           className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           tabIndex={-1}
         >

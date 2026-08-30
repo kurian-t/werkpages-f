@@ -54,6 +54,11 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
   const [title,     setTitle]     = useState("");
   const [company,   setCompany]   = useState(prefilledCompany ?? "");
 
+  // Set when the user picks a company from the typeahead, cleared by the picker on the next
+  // keystroke. Deliberately not persisted with the search in sessionStorage: restoring text is
+  // safe, restoring an identity the user can no longer see would assert something they did not.
+  const [companyId, setCompanyId] = useState<number | undefined>(undefined);
+
   const [results,        setResults]        = useState<any[] | null>(null);
   const [hasContributed, setHasContributed] = useState(false);
   const [loading,        setLoading]        = useState(false);
@@ -93,6 +98,8 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
           lastName:  ln,
           title:     t,
           company:   c,
+          // Identity when the company came from the typeahead. The name below is display text.
+          companyId: companyId ?? null,
           country:   geo.country,
           state:     geo.state,
           city:      geo.city,
@@ -116,6 +123,7 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
               await axios.post(`${API_BASE}/api/managers/ghost`, {
                 name: `${fn} ${ln}`,
                 company: c,
+                companyId: companyId ?? null,
                 title: t,
                 country: geo.country,
                 state: geo.state,
@@ -240,6 +248,7 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
                 <CompanyAutocomplete
                   value={company}
                   onChange={val => { setCompany(val); setError(null); }}
+                  onCompanyIdChange={setCompanyId}
                   placeholder="company"
                   className={`${INPUT_CLASS} w-full`}
                 />

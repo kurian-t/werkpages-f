@@ -213,6 +213,11 @@ export default function AddBoss() {
   const [generatedName, setGeneratedName] = useState(() => generateUsername());
 
   const [errors, setErrors] = useState<string[]>([]);
+
+  // The company the user picked, when they picked one rather than typed one. Held outside
+  // formData because it is not text the user edits: CompanyAutocomplete sets it on selection and
+  // clears it on the next keystroke, so it can never describe a different company than the field.
+  const [companyId, setCompanyId] = useState<number | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const readyBannerRef = useRef<HTMLDivElement>(null);
   const ghostCaptureAttemptedRef = useRef(false);
@@ -352,6 +357,7 @@ export default function AddBoss() {
     axios.post(`${API_BASE}/api/managers/ghost`, {
       name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
       company: formData.company.trim(),
+      companyId: companyId ?? null,
       title: formData.title.trim(),
       country: formData.country,
       state: formData.state.trim() || null,
@@ -375,6 +381,7 @@ export default function AddBoss() {
         const res = await axios.post(`${API_BASE}/api/managers`, {
           name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
           company: formData.company.trim(),
+          companyId: companyId ?? null,
           title: formData.title.trim(),
           image: formData.firstName.trim().charAt(0).toUpperCase(),
           bio: "New manager submitted for community review",
@@ -497,6 +504,7 @@ export default function AddBoss() {
         axios.post(`${API_BASE}/api/managers/drop-off`, {
           name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
           company: formData.company.trim(),
+          companyId: companyId ?? null,
           title: formData.title.trim(),
           country: formData.country,
           state: formData.state.trim() || null,
@@ -545,6 +553,7 @@ export default function AddBoss() {
       const managerResponse = await axios.post(`${API_BASE}/api/managers`, {
         name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
         company: formData.company.trim(),
+        companyId: companyId ?? null,
         title: formData.title.trim(),
         image: formData.firstName.trim().charAt(0).toUpperCase(),
         bio: "New manager submitted for community review",
@@ -753,6 +762,7 @@ export default function AddBoss() {
                     <CompanyAutocomplete
                       value={formData.company}
                       onChange={val => { touch(); setFormData(prev => ({ ...prev, company: val })); if (errors.length > 0) setErrors([]); }}
+                      onCompanyIdChange={setCompanyId}
                       placeholder="e.g., Microsoft"
                       name="company"
                       className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
