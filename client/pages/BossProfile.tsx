@@ -472,6 +472,13 @@ export default function BossProfile() {
   const [reviewManagerCompany, setReviewManagerCompany] = useState("");
   const [reviewManagerTitle, setReviewManagerTitle] = useState("");
   const [editManagerCompany, setEditManagerCompany] = useState("");
+
+  // Company identity for the two forms that can change a manager's company. Set when a company is
+  // picked from the typeahead, cleared by the picker on the next keystroke. Without these, an edit
+  // that corrects a company name resolves by name on the server and can mint the very duplicate
+  // the correction was meant to fix.
+  const [editCompanyId, setEditCompanyId] = useState<number | undefined>(undefined);
+  const [adminEditCompanyId, setAdminEditCompanyId] = useState<number | undefined>(undefined);
   const [editManagerTitle, setEditManagerTitle] = useState("");
   const [editStartDate, setEditStartDate] = useState({ month: "", year: "" });
   const [editEndDate, setEditEndDate] = useState({ month: "", year: "" });
@@ -1164,6 +1171,7 @@ export default function BossProfile() {
       try {
         await axios.put(`${API_BASE}/api/managers/${manager.id}`, {
           company: editFormData.company,
+          companyId: editCompanyId ?? null,
           companyLogoUrl: editCompanyLogoUrl ?? null,
           title: toJobTitleCase(editFormData.title),
           status: editFormData.status,
@@ -1846,6 +1854,7 @@ export default function BossProfile() {
                   value={adminEditForm.company}
                   onChange={val => { setAdminEditForm(p => ({ ...p, company: val })); setAdminEditLogoUrl(undefined); }}
                   onSuggestionSelect={(_name, logoUrl) => setAdminEditLogoUrl(logoUrl)}
+                  onCompanyIdChange={setAdminEditCompanyId}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                 />
               </div>
@@ -1872,6 +1881,7 @@ export default function BossProfile() {
                       name:           toNameCase(adminEditForm.name)       || undefined,
                       title:          toJobTitleCase(adminEditForm.title) || undefined,
                       company:        adminEditForm.company.trim()    || undefined,
+                      companyId:      adminEditCompanyId ?? null,
                       linkedinUrl:    adminEditForm.linkedinUrl.trim() || undefined,
                       companyLogoUrl: adminEditLogoUrl,
                     }, { withCredentials: true });
@@ -3092,6 +3102,7 @@ export default function BossProfile() {
                       value={editFormData.company}
                       onChange={(val) => { setEditModalTouched(true); setEditFormData((prev) => ({ ...prev, company: val })); setEditCompanyLogoUrl(undefined); }}
                       onSuggestionSelect={(_name, logoUrl) => setEditCompanyLogoUrl(logoUrl)}
+                      onCompanyIdChange={setEditCompanyId}
                       placeholder="e.g., Microsoft, Apple"
                       className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                     />

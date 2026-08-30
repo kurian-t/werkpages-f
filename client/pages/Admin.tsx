@@ -6,6 +6,7 @@ import { Layout } from "@/components/Layout";
 import { useAuth } from "@/hooks/useAuth";
 import { Shield, CheckCircle, XCircle, Ban, RotateCcw, Plus, X, Clock, GitMerge, Pencil, MessageSquare, ChevronDown, ChevronUp, Star } from "lucide-react";
 import { toast } from "sonner";
+import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
 import axios from "axios";
 
 export default function Admin() {
@@ -63,6 +64,10 @@ export default function Admin() {
   const [editingName, setEditingName] = useState("");
   const [editingTitle, setEditingTitle] = useState("");
   const [editingCompany, setEditingCompany] = useState("");
+  // Identity of a company the admin picked, cleared by the picker the moment they type. An admin
+  // correcting a company name by hand is the single most effective way to create a duplicate, so
+  // this path gets the same alias-aware picker the public forms use.
+  const [editingCompanyId, setEditingCompanyId] = useState<number | undefined>(undefined);
   const [editSaving, setEditSaving] = useState(false);
 
   // Reviews per pending manager (lazy-loaded)
@@ -224,6 +229,7 @@ export default function Admin() {
         name: editingName.trim() || undefined,
         title: editingTitle.trim() || undefined,
         company: editingCompany.trim() || undefined,
+        companyId: editingCompanyId ?? null,
       });
       setPendingManagers((prev) => prev.map((m) =>
         m.id === managerId
@@ -577,9 +583,10 @@ export default function Admin() {
                               placeholder="Job title"
                               className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             />
-                            <input
+                            <CompanyAutocomplete
                               value={editingCompany}
-                              onChange={e => setEditingCompany(e.target.value)}
+                              onChange={setEditingCompany}
+                              onCompanyIdChange={setEditingCompanyId}
                               placeholder="Company"
                               className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             />
@@ -604,7 +611,7 @@ export default function Admin() {
                             <div className="flex items-center gap-2">
                               <h3 className="text-lg font-bold text-foreground">{manager.name}</h3>
                               <button
-                                onClick={() => { setEditingManagerId(manager.id); setEditingName(manager.name); setEditingTitle(manager.title); setEditingCompany(manager.company); }}
+                                onClick={() => { setEditingManagerId(manager.id); setEditingName(manager.name); setEditingTitle(manager.title); setEditingCompany(manager.company); setEditingCompanyId(undefined); }}
                                 aria-label="Edit manager"
                                 className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
                               >
@@ -725,9 +732,10 @@ export default function Admin() {
                               placeholder="Job title"
                               className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             />
-                            <input
+                            <CompanyAutocomplete
                               value={editingCompany}
-                              onChange={e => setEditingCompany(e.target.value)}
+                              onChange={setEditingCompany}
+                              onCompanyIdChange={setEditingCompanyId}
                               placeholder="Company"
                               className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             />
@@ -752,7 +760,7 @@ export default function Admin() {
                             <div className="flex items-center gap-2">
                               <h3 className="text-lg font-bold text-foreground">{manager.name}</h3>
                               <button
-                                onClick={() => { setEditingManagerId(manager.id); setEditingName(manager.name); setEditingTitle(manager.title); setEditingCompany(manager.company); }}
+                                onClick={() => { setEditingManagerId(manager.id); setEditingName(manager.name); setEditingTitle(manager.title); setEditingCompany(manager.company); setEditingCompanyId(undefined); }}
                                 aria-label="Edit manager"
                                 className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
                               >
