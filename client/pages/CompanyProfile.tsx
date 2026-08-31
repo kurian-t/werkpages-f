@@ -67,6 +67,24 @@ interface CompanyData {
   avgRating?: number;
   categoryAverages: Record<string, number>;
   managers: ManagerEntry[];
+  /** The company this one belongs to, when it belongs to one. */
+  partOf?: GroupCompany;
+  /** The companies that belong to this one. */
+  companiesInGroup?: GroupCompany[];
+}
+/**
+ * A company related to this one by ownership. Deliberately carries its own rating and counts:
+ * a subsidiary's score is its own, never folded into its parent's.
+ */
+interface GroupCompany {
+  id: number;
+  name: string;
+  slug?: string;
+  logoUrl?: string;
+  managerCount?: number;
+  totalReviews?: number;
+  avgRating?: number;
+  relationshipType?: string;
 }
 function StarDisplay({ rating }: { rating: number }) {
   return (
@@ -484,6 +502,24 @@ export default function CompanyProfile() {
                   >
                     <IndustryIcon industrySlug={data.industrySlug} size={12} className="flex-shrink-0" />
                     <span className="break-words">{data.industry}</span>
+                  </Link>
+                </div>
+              )}
+
+              {/* "Part of Loblaw Companies". Context, not a redirect: this company's own rating
+                  sits directly below and means exactly what it always did. The relationship type
+                  behind this (brand, subsidiary, division) is not shown, because a reader does not
+                  need the corporate vocabulary to understand who owns whom. */}
+              {data.partOf && (
+                <div className="mt-1.5">
+                  <Link
+                    to={data.partOf.slug ? `/companies/${data.partOf.slug}` : "#"}
+                    className="inline-flex items-center gap-1.5 text-xs text-muted-foreground/80 hover:text-primary transition-colors"
+                  >
+                    <Building2 size={12} className="flex-shrink-0" />
+                    <span className="break-words">
+                      Part of <span className="font-medium">{data.partOf.name}</span>
+                    </span>
                   </Link>
                 </div>
               )}
@@ -1046,6 +1082,67 @@ export default function CompanyProfile() {
                     </div>
                   </Link>
                 ))}
+              </div>
+            )}
+
+            {/*
+              The other companies in this group.
+
+              Each keeps its own rating, shown here as its own number. There is deliberately no
+              combined group score: blending a grocery chain's store managers into its parent's
+              corporate average would produce a figure that flatters or damns either one for the
+              wrong reason. A group-wide metric, if it ever exists, belongs beside these as its own
+              clearly labelled thing rather than quietly replacing what a company's rating means.
+            */}
+            {data.companiesInGroup && data.companiesInGroup.length > 0 && (
+              <div className="mt-10">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground mb-4">
+                  Companies in this group
+                </h2>
+                <div className="grid grid-cols-2 auto-rows-[minmax(180px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
+                  {data.companiesInGroup.map((co) => (
+                    <button
+                      key={co.id}
+                      onClick={() => co.slug && navigate(`/companies/${co.slug}`)}
+                      className="group relative h-full w-full min-w-0 text-left rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all min-[420px]:w-[200px] sm:p-5"
+                    >
+                      <div className="mb-1.5 flex h-[18px] items-start justify-end">
+                        <TopRatedPill
+                          rating={co.avgRating}
+                          reviewCount={co.totalReviews}
+                          hidden={isLocked}
+                          variant="inline"
+                        />
+                      </div>
+                      <div className="flex items-center gap-3 mb-3">
+                        <CompanyLogoImg company={co.name} logoUrl={co.logoUrl} sizeClass="h-10 w-10" />
+                        <h3 className="min-w-0 flex-1 font-semibold text-sm text-foreground leading-tight line-clamp-2 group-hover:text-primary transition-colors">
+                          {co.name}
+                        </h3>
+                      </div>
+                      {/* Stars plus the figure. StarDisplay draws stars only, and a group list
+                          whose entire point is "each company keeps its own score" has to actually
+                          show the score. */}
+                      {!isLocked && co.avgRating != null && (
+                        <div className="flex items-center gap-1.5">
+                          <StarDisplay rating={Number(co.avgRating)} />
+                          <span className="text-sm font-semibold leading-none text-foreground">
+                            {Number(co.avgRating).toFixed(1)}
+                          </span>
+                        </div>
+                      )}
+                      {!isLocked && co.avgRating == null && (
+                        <p className="text-xs text-muted-foreground">No ratings yet</p>
+                      )}
+                      <div className="mt-3 flex flex-col items-start gap-1.5 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1 whitespace-nowrap">
+                          <Users size={11} className="flex-shrink-0" />
+                          {co.managerCount ?? 0} {co.managerCount === 1 ? "manager" : "managers"}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
