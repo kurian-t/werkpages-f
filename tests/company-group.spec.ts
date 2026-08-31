@@ -23,6 +23,7 @@ const LOBLAW = {
     { id: 3, name: "No Frills", slug: "no-frills", managerCount: 2, totalReviews: 5, avgRating: 3.6 },
     { id: 4, name: "Quiet Brand", slug: "quiet-brand", managerCount: 0, totalReviews: 0 },
   ],
+  groupStats: { companyCount: 4, managerCount: 12, totalReviews: 35, avgRating: 3.2 },
 };
 
 /**
@@ -106,5 +107,35 @@ test.describe("Corporate structure on a company profile", () => {
 
     await page.getByRole("heading", { name: "Zehrs Markets" }).click();
     await expect(page).toHaveURL(/zehrs-markets/);
+  });
+  test("the group figure is shown as its own labelled number", async ({ page }) => {
+    // Two numbers, both labelled. Loblaw's own 3.8 is its corporate managers; the group's 3.6 is
+    // everyone. Neither silently redefines the other, and neither is behind a toggle.
+    await mockCompany(page, LOBLAW);
+    await page.goto("/industries/retail/companies/loblaw-companies");
+
+    await expect(page.getByText(/Management across the group/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("3.2")).toBeVisible();
+    await expect(page.getByText(/Based on 35 opinions across 12 managers at 4 companies/)).toBeVisible();
+    await expect(page.getByText(/own rating above covers only its own managers/)).toBeVisible();
+  });
+
+  test("a company that heads no group shows no group figure", async ({ page }) => {
+    // For a company with no children the group figure would be its own rating printed twice under
+    // a grander heading.
+    await mockCompany(page, ZEHRS);
+    await page.goto("/industries/retail/companies/zehrs-markets");
+
+    await expect(page.getByText("Zehrs Markets").first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Management across the group/i)).toHaveCount(0);
+  });
+
+  test("the group figure is hidden behind the contribution gate", async ({ page }) => {
+    // It is a rating like any other, so it follows the same rule as the ratings around it.
+    await mockCompany(page, LOBLAW, false);
+    await page.goto("/industries/retail/companies/loblaw-companies");
+
+    await expect(page.getByRole("heading", { name: /Companies in this group/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Management across the group/i)).toHaveCount(0);
   });
 });

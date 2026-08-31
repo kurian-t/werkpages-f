@@ -4,7 +4,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/Layout";
 import { useAuth } from "@/hooks/useAuth";
-import { Shield, CheckCircle, XCircle, Ban, RotateCcw, Plus, X, Clock, GitMerge, Pencil, MessageSquare, ChevronDown, ChevronUp, Star } from "lucide-react";
+import { Shield, CheckCircle, XCircle, Ban, RotateCcw, Plus, X, Clock, GitMerge, Pencil, MessageSquare, ChevronDown, ChevronUp, Star, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
 import { useCompanySelection } from "@/hooks/useCompanySelection";
@@ -59,6 +59,23 @@ export default function Admin() {
   const [coKeep, setCoKeep] = useState<any>(null);
   const [coMerge, setCoMerge] = useState<any>(null);
   const [coMerging, setCoMerging] = useState(false);
+
+  // What the pending merge would do, fetched from the server before anything is written.
+  const [mergePreview, setMergePreview] = useState<{
+    managers: number; careerEntries: number; interviews: number; aliases: number;
+    pendingEdits: number; interviewConflicts: number; duplicateManagers: number; blocked: boolean;
+  } | null>(null);
+  const [mergePreviewLoading, setMergePreviewLoading] = useState(false);
+  const [mergePreviewError, setMergePreviewError] = useState<string | null>(null);
+
+  // Corporate structure: the child and the company that owns it.
+  const [parentChild, setParentChild] = useState<any>(null);
+  const [parentOwner, setParentOwner] = useState<any>(null);
+  const [parentChildSearch, setParentChildSearch] = useState("");
+  const [parentOwnerSearch, setParentOwnerSearch] = useState("");
+  const [parentChildResults, setParentChildResults] = useState<any[]>([]);
+  const [parentOwnerResults, setParentOwnerResults] = useState<any[]>([]);
+  const [parentSaving, setParentSaving] = useState(false);
 
   // Pending manager inline edit state
   const [editingManagerId, setEditingManagerId] = useState<number | null>(null);
@@ -342,6 +359,54 @@ export default function Admin() {
       setCoMergeResults([]);
     } finally {
       setCoMergeSearching(false);
+    }
+  };
+
+  const handleParentSearch = async (query: string, which: "child" | "owner") => {
+    if (which === "child") { setParentChildSearch(query); setParentChild(null); }
+    else                   { setParentOwnerSearch(query); setParentOwner(null); }
+    if (query.trim().length < 2) {
+      which === "child" ? setParentChildResults([]) : setParentOwnerResults([]);
+      return;
+    }
+    try {
+      const res = await axios.get(`${API_BASE}/api/admin/companies`);
+      const all: any[] = res.data?.data ?? [];
+      const q = query.trim().toLowerCase();
+      const hits = all.filter((c: any) => c.name.toLowerCase().includes(q)).slice(0, 6);
+      which === "child" ? setParentChildResults(hits) : setParentOwnerResults(hits);
+    } catch {
+      which === "child" ? setParentChildResults([]) : setParentOwnerResults([]);
+    }
+  };
+
+  const handleSetCompanyParent = async () => {
+    if (!parentChild || !parentOwner) return;
+    setParentSaving(true);
+    try {
+      await axios.put(`${API_BASE}/api/admin/companies/${parentChild.id}/parent`, { parentId: parentOwner.id });
+      toast.success(`"${parentChild.name}" is now part of "${parentOwner.name}".`);
+      queryClient.invalidateQueries({ queryKey: ["company-profile-slug"] });
+    } catch (err: any) {
+      // The server rejects loops in the ownership chain; show its reason rather than a generic
+      // failure, because "that would create a loop" is something the admin can act on.
+      toast.error(err?.response?.data?.message ?? err?.response?.data?.error ?? "Could not link the companies.");
+    } finally {
+      setParentSaving(false);
+    }
+  };
+
+  const handleRemoveCompanyParent = async () => {
+    if (!parentChild) return;
+    setParentSaving(true);
+    try {
+      await axios.delete(`${API_BASE}/api/admin/companies/${parentChild.id}/parent`);
+      toast.success(`"${parentChild.name}" is no longer part of another company.`);
+      queryClient.invalidateQueries({ queryKey: ["company-profile-slug"] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? "Could not detach the company.");
+    } finally {
+      setParentSaving(false);
     }
   };
 
@@ -1140,7 +1205,9 @@ export default function Admin() {
                   <h3 className="text-base font-bold text-foreground">Merge Companies</h3>
                 </div>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Select a company to keep and one to remove. All managers from the removed company will move to the kept one, then the duplicate is deleted.
+                  For two records of the <strong>same</strong> company. Everything moves to the kept company and the
+                  duplicate is retired, keeping its link working. If they are two different companies where one owns
+                  the other, use Corporate structure below instead.
                 </p>
 
                 <div className="mb-4">
@@ -1199,7 +1266,18 @@ export default function Admin() {
 
                 <button
                   disabled={!coKeep || !coMerge || coKeep?.id === coMerge?.id || coMerging}
-                  onClick={() => setConfirmAction({ type: "merge-company", id: String(coKeep.id), label: coKeep.name })}
+                  onClick={() => {
+                    // Ask the server what this would do before the admin is asked to confirm it.
+                    setConfirmAction({ type: "merge-company", id: String(coKeep.id), label: coKeep.name });
+                    setMergePreview(null);
+                    setMergePreviewError(null);
+                    setMergePreviewLoading(true);
+                    axios.get(`${API_BASE}/api/admin/companies/${coKeep.id}/merge/${coMerge.id}/preview`)
+                      .then(res => setMergePreview(res.data))
+                      .catch(err => setMergePreviewError(
+                        err?.response?.data?.message ?? err?.response?.data?.error ?? "request failed"))
+                      .finally(() => setMergePreviewLoading(false));
+                  }}
                   className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <GitMerge size={16} />
@@ -1207,6 +1285,107 @@ export default function Admin() {
                 </button>
                 {coKeep && coMerge && coKeep.id === coMerge.id && (
                   <p className="text-xs text-destructive mt-2">Keep and Remove cannot be the same company.</p>
+                )}
+              </div>
+
+              {/*
+                Corporate structure. Sits beside the merge tool because the two are constantly
+                confused, and the copy on each says which is which: a merge is for one company
+                recorded twice, this is for two companies where one owns the other. Getting it
+                wrong the merge way destroys a distinction; getting it wrong this way is a click
+                to undo.
+              */}
+              <div className="rounded-2xl border border-border bg-background p-6 shadow-sm">
+                <div className="flex items-center gap-2 mb-1">
+                  <Building2 size={18} className="text-primary" />
+                  <h3 className="text-base font-bold text-foreground">Corporate structure</h3>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  For two <strong>different</strong> companies where one owns the other, like Zehrs and Loblaw. Both
+                  keep their own page, managers and ratings; the child simply says what it is part of.
+                </p>
+
+                <div className="grid gap-3 sm:grid-cols-2 mb-3">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">Company</label>
+                    <input
+                      value={parentChildSearch}
+                      onChange={(e) => handleParentSearch(e.target.value, "child")}
+                      placeholder="e.g. Zehrs Markets"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                    {parentChild && <p className="mt-1 text-xs text-primary">Selected: {parentChild.name}</p>}
+                    {parentChildResults.length > 0 && !parentChild && (
+                      <ul className="mt-1 rounded-lg border border-border divide-y divide-border">
+                        {parentChildResults.map((c: any) => (
+                          <li key={c.id}>
+                            <button
+                              onClick={() => { setParentChild(c); setParentChildResults([]); }}
+                              className="w-full px-3 py-1.5 text-left text-xs text-foreground hover:bg-accent/10"
+                            >
+                              {c.name}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1">is part of</label>
+                    <input
+                      value={parentOwnerSearch}
+                      onChange={(e) => handleParentSearch(e.target.value, "owner")}
+                      placeholder="e.g. Loblaw Companies"
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                    {parentOwner && <p className="mt-1 text-xs text-primary">Selected: {parentOwner.name}</p>}
+                    {parentOwnerResults.length > 0 && !parentOwner && (
+                      <ul className="mt-1 rounded-lg border border-border divide-y divide-border">
+                        {parentOwnerResults.map((c: any) => (
+                          <li key={c.id}>
+                            <button
+                              onClick={() => { setParentOwner(c); setParentOwnerResults([]); }}
+                              className="w-full px-3 py-1.5 text-left text-xs text-foreground hover:bg-accent/10"
+                            >
+                              {c.name}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    disabled={!parentChild || !parentOwner || parentChild.id === parentOwner.id || parentSaving}
+                    onClick={handleSetCompanyParent}
+                    className="rounded-lg bg-[#2e0562] px-4 py-2 text-sm font-medium text-white hover:bg-[#2e0562]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {parentSaving ? "Saving..." : "Link companies"}
+                  </button>
+                  <button
+                    disabled={!parentChild || parentSaving}
+                    onClick={handleRemoveCompanyParent}
+                    className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Detach from parent
+                  </button>
+                  {(parentChild || parentOwner) && (
+                    <button
+                      onClick={() => {
+                        setParentChild(null); setParentOwner(null);
+                        setParentChildSearch(""); setParentOwnerSearch("");
+                        setParentChildResults([]); setParentOwnerResults([]);
+                      }}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                {parentChild && parentOwner && parentChild.id === parentOwner.id && (
+                  <p className="text-xs text-destructive mt-2">A company cannot be part of itself.</p>
                 )}
               </div>
             </div>
@@ -1256,9 +1435,67 @@ export default function Admin() {
               {confirmAction.type === "ban" && `@${confirmAction.label} will be banned. Reason: ${banReason}`}
               {confirmAction.type === "unban" && `@${confirmAction.label} will be unbanned and able to use the platform again.`}
               {confirmAction.type === "merge" && mergeManager && `All reviews from "${mergeManager.name}" will be moved to "${keepManager?.name}" and the duplicate will be permanently deleted. This cannot be undone.`}
-              {confirmAction.type === "merge-company" && coMerge && `All managers from "${coMerge.name}" will be moved to "${coKeep?.name}" and the duplicate company will be permanently deleted. This cannot be undone.`}
+              {/* The preview below carries the detail. This line no longer claims the company is
+                  deleted or that the merge is irreversible, because neither is true any more: the
+                  source is retired, its URL keeps resolving, and the merge can be reverted. */}
+              {confirmAction.type === "merge-company" && coMerge && `"${coMerge.name}" will be absorbed into "${coKeep?.name}".`}
               {confirmAction.type === "ai-merge" && `${confirmAction.label} - all reviews will be moved to the kept profile and the duplicate will be permanently deleted. This cannot be undone.`}
             </p>
+
+            {/*
+              What the merge would actually do, fetched from the server before anything is written.
+
+              An admin was previously asked to confirm a destructive operation with nothing in front
+              of them but two company names. This shows the size of it, and refuses outright when
+              the data cannot be moved without a human deciding something first.
+            */}
+            {confirmAction.type === "merge-company" && (
+              <div data-testid="merge-preview" className="mb-4 rounded-lg border border-border bg-muted/30 p-3">
+                {mergePreviewLoading && (
+                  <p className="text-xs text-muted-foreground">Checking what would move…</p>
+                )}
+                {!mergePreviewLoading && mergePreviewError && (
+                  <p className="text-xs text-amber-700">
+                    Could not check this merge ({mergePreviewError}). Proceed only if you are sure.
+                  </p>
+                )}
+                {!mergePreviewLoading && mergePreview && (
+                  <>
+                    <p className="text-xs font-semibold text-foreground mb-2">What moves</p>
+                    <ul className="space-y-0.5 text-xs text-muted-foreground">
+                      <li>{mergePreview.managers} manager{mergePreview.managers === 1 ? "" : "s"}</li>
+                      <li>{mergePreview.careerEntries} career histor{mergePreview.careerEntries === 1 ? "y" : "ies"}</li>
+                      <li>{mergePreview.interviews} interview experience{mergePreview.interviews === 1 ? "" : "s"}</li>
+                      <li>{mergePreview.aliases} alternate name{mergePreview.aliases === 1 ? "" : "s"}</li>
+                      {mergePreview.pendingEdits > 0 && (
+                        <li>{mergePreview.pendingEdits} pending edit request{mergePreview.pendingEdits === 1 ? "" : "s"}</li>
+                      )}
+                    </ul>
+
+                    {mergePreview.duplicateManagers > 0 && (
+                      <p className="mt-2 text-xs text-amber-700">
+                        ⚠ {mergePreview.duplicateManagers} manager name{mergePreview.duplicateManagers === 1 ? "" : "s"} appear
+                        {mergePreview.duplicateManagers === 1 ? "s" : ""} under both companies. Merging companies does not
+                        merge managers, so review them afterwards.
+                      </p>
+                    )}
+
+                    {mergePreview.blocked ? (
+                      <p className="mt-2 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+                        Cannot merge: {mergePreview.interviewConflicts} interview review
+                        {mergePreview.interviewConflicts === 1 ? "" : "s"} would collide, because the same person
+                        reviewed interviewing at both companies in the same year. Both are real contributions and
+                        neither is discarded automatically. Resolve them first.
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        "{coMerge?.name}" is retired rather than deleted, its link keeps working, and this can be undone.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
 
             {confirmAction.type === "reject-manager" && (
               <div className="mb-4">
@@ -1292,7 +1529,10 @@ export default function Admin() {
                   else if (confirmAction.type === "merge-company") handleMergeCompanies();
                   else if (confirmAction.type === "ai-merge" && confirmAction.onConfirm) { confirmAction.onConfirm().then(() => setConfirmAction(null)); }
                 }}
-                className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors ${
+                // A blocked merge cannot succeed, so the button does not offer to try. The server
+                // refuses it too - this only saves the admin a pointless error.
+                disabled={confirmAction.type === "merge-company" && (mergePreviewLoading || mergePreview?.blocked === true)}
+                className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                   confirmAction.type === "approve-manager" || confirmAction.type === "approve"
                     ? "bg-[#2e0562] hover:bg-[#2e0562]/90"
                     : "bg-red-600 hover:bg-red-700"

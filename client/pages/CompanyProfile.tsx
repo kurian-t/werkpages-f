@@ -71,6 +71,16 @@ interface CompanyData {
   partOf?: GroupCompany;
   /** The companies that belong to this one. */
   companiesInGroup?: GroupCompany[];
+  /**
+   * Management across the whole group. A separate figure from avgRating above, never a
+   * replacement: this company's rating still means this company's managers.
+   */
+  groupStats?: {
+    companyCount: number;
+    managerCount: number;
+    totalReviews: number;
+    avgRating?: number;
+  };
 }
 /**
  * A company related to this one by ownership. Deliberately carries its own rating and counts:
@@ -1099,6 +1109,39 @@ export default function CompanyProfile() {
                 <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground mb-4">
                   Companies in this group
                 </h2>
+
+                {/*
+                  The group figure, stated as its own thing.
+
+                  It sits here rather than beside the company's headline rating on purpose. Up
+                  there it would read as a correction to that number; down here, under the list of
+                  companies it actually covers, it reads as what it is. Both numbers are labelled,
+                  and neither is a toggle that silently changes what the other means - a rating
+                  whose definition depends on a control someone flipped is a number nobody can
+                  quote.
+                */}
+                {data.groupStats && data.groupStats.avgRating != null && !isLocked && (
+                  <div className="mb-5 rounded-2xl border border-border bg-muted/30 p-4 sm:p-5">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                      Management across the group
+                    </p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <StarDisplay rating={Number(data.groupStats.avgRating)} />
+                      <span className="text-lg font-semibold leading-none text-foreground">
+                        {Number(data.groupStats.avgRating).toFixed(1)}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                      Based on {data.groupStats.totalReviews.toLocaleString()}{" "}
+                      {data.groupStats.totalReviews === 1 ? "opinion" : "opinions"} across{" "}
+                      {data.groupStats.managerCount.toLocaleString()}{" "}
+                      {data.groupStats.managerCount === 1 ? "manager" : "managers"} at{" "}
+                      {data.groupStats.companyCount.toLocaleString()}{" "}
+                      {data.groupStats.companyCount === 1 ? "company" : "companies"}.
+                      {" "}{data.name}'s own rating above covers only its own managers.
+                    </p>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 auto-rows-[minmax(180px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                   {data.companiesInGroup.map((co) => (
                     <button
