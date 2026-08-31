@@ -1,5 +1,6 @@
 import API_BASE from "@/lib/api";
 import { useState, useEffect, useRef } from "react";
+import { useCompanySelection } from "@/hooks/useCompanySelection";
 import { useNavigate } from "react-router-dom";
 import { toNameCase, toJobTitleCase } from "@/lib/utils";
 import ManagerCard from "@/components/ManagerCard";
@@ -52,12 +53,9 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
   const [firstName, setFirstName] = useState("");
   const [lastName,  setLastName]  = useState("");
   const [title,     setTitle]     = useState("");
-  const [company,   setCompany]   = useState(prefilledCompany ?? "");
+  // One object owns the name, the identity and the rule that typing invalidates it.
+  const company = useCompanySelection(prefilledCompany ?? "");
 
-  // Set when the user picks a company from the typeahead, cleared by the picker on the next
-  // keystroke. Deliberately not persisted with the search in sessionStorage: restoring text is
-  // safe, restoring an identity the user can no longer see would assert something they did not.
-  const [companyId, setCompanyId] = useState<number | undefined>(undefined);
 
   const [results,        setResults]        = useState<any[] | null>(null);
   const [hasContributed, setHasContributed] = useState(false);
@@ -67,12 +65,69 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
   const [ghostAdded,     setGhostAdded]     = useState(false);
 
   const nameFilled    = firstName.trim().length > 0 && lastName.trim().length >= 2;
-  const detailsFilled = title.trim().length > 0 && company.trim().length >= 2;
+  const detailsFilled = title.trim().length > 0 && company.name.trim().length >= 2;
   const allFilled     = nameFilled && detailsFilled;
 
   // Ref lets doSearch always see the current user without being a dependency
   const userRef = useRef(user);
   useEffect(() => { userRef.current = user; }, [user]);
+
+  /**
+   * Forwards an unmatched search to the admin queue.
+   *
+   * A name on its own is not worth an admin's time: there is nothing to tell two people of that
+   * name apart. A name with a company, or a name with a job title, is a real lead, and those were
+   * being thrown away because the endpoint demanded all four fields. Fire-and-forget - the person
+   * searching should never wait on, or see, our bookkeeping.
+   */
+  const captureSearch = async (
+    fn: string, ln: string, t: string,
+    geo: { country?: string; state?: string; city?: string },
+  ) => {
+    const { company: companyName, companyId } = await company.payload();
+    if (!companyName && !t.trim()) return;
+    axios.post(`${API_BASE}/api/managers/anonymous-capture`, {
+      name: `${fn} ${ln}`,
+      company: companyName || null,
+      companyId,
+      title: t.trim() || null,
+      country: geo.country,
+      state: geo.state,
+    }).catch(() => {});
+  };
+
+  /**
+   * Captures a search the person never completed.
+   *
+   * The Find button stays gated on every field, so a half-filled search is never submitted and,
+   * until now, was never recorded either - somebody who typed a name and a company and then gave
+   * up left nothing behind. This fires as soon as there is enough to act on, without waiting for
+   * them to finish, which is the only way a partial search is ever captured at all.
+   *
+   * Keyed on what was actually sent, so refining the company or title captures the better version
+   * once, and idle keystrokes do not re-post the same thing.
+   */
+  const lastCapturedRef = useRef<string>("");
+  useEffect(() => {
+    const fn = firstName.trim();
+    const ln = lastName.trim();
+    const t  = title.trim();
+    const c  = company.name.trim();
+    if (!fn || !ln) return;
+    if (!c && !t) return;  // a bare name tells an admin nothing
+
+    const key = `${fn}|${ln}|${t}|${c}`.toLowerCase();
+    if (lastCapturedRef.current === key) return;
+    lastCapturedRef.current = key;
+
+    const timer = setTimeout(() => {
+      void (async () => {
+        const geo = await fetchGeo().catch(() => ({}) as Awaited<ReturnType<typeof fetchGeo>>);
+        await captureSearch(fn, ln, t, geo);
+      })();
+    }, 1500);  // let them finish typing before deciding they have stopped
+    return () => clearTimeout(timer);
+  }, [firstName, lastName, title, company.name]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doSearch = async (fn: string, ln: string, t: string, c: string) => {
     if (validateManagerName(fn, ln)) {
@@ -97,9 +152,7 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
           firstName: fn,
           lastName:  ln,
           title:     t,
-          company:   c,
-          // Identity when the company came from the typeahead. The name below is display text.
-          companyId: companyId ?? null,
+          ...(await company.payload()),
           country:   geo.country,
           state:     geo.state,
           city:      geo.city,
@@ -119,11 +172,13 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
           const ghostKey = "rmm_anon_ghost_created";
           if (!localStorage.getItem(ghostKey)) {
             let ghostCreated = false;
+            // Capture before attempting the ghost. If ghost creation fails for any reason, the
+            // search itself is still worth keeping - previously a failure here lost it entirely.
+            await captureSearch(fn, ln, t, geo);
             try {
               await axios.post(`${API_BASE}/api/managers/ghost`, {
                 name: `${fn} ${ln}`,
-                company: c,
-                companyId: companyId ?? null,
+                ...(await company.payload()),
                 title: t,
                 country: geo.country,
                 state: geo.state,
@@ -155,13 +210,7 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
             }
           } else {
             // Ghost slot already used - silently forward to admin queue and show nothing
-            axios.post(`${API_BASE}/api/managers/anonymous-capture`, {
-              name: `${fn} ${ln}`,
-              company: c,
-              title: t,
-              country: geo.country,
-              state: geo.state,
-            }).catch(() => {});
+            await captureSearch(fn, ln, t, geo);
             setResults([]);
           }
         }
@@ -184,7 +233,7 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
       toNameCase(firstName),
       toNameCase(lastName),
       toJobTitleCase(title),
-      company.trim(),
+      company.name.trim(),
     );
   };
 
@@ -200,7 +249,7 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
       setFirstName(p.firstName);
       setLastName(p.lastName);
       setTitle(p.title);
-      setCompany(p.company);
+      company.set(p.company);
       doSearch(p.firstName, p.lastName, p.title, p.company);
     } catch { /* corrupted sessionStorage - ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -246,9 +295,8 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
             ) : (
               <div className="flex-1 min-w-[140px]">
                 <CompanyAutocomplete
-                  value={company}
-                  onChange={val => { setCompany(val); setError(null); }}
-                  onCompanyIdChange={setCompanyId}
+                  {...company.bind}
+                  onChange={val => { company.bind.onChange(val); setError(null); }}
                   placeholder="company"
                   className={`${INPUT_CLASS} w-full`}
                 />

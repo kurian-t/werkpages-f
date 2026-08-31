@@ -13,6 +13,7 @@ import { COUNTRIES } from "@/lib/countries";
 import { fetchGeo } from "@/lib/geo";
 import { AuthFlowModal } from "@/components/AuthFlowModal";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
+import { useCompanySelection } from "@/hooks/useCompanySelection";
 import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import type { AuthFlowStep } from "@/components/AuthFlowModal";
 import type { User } from "@/contexts/AuthContext";
@@ -214,10 +215,10 @@ export default function AddBoss() {
 
   const [errors, setErrors] = useState<string[]>([]);
 
-  // The company the user picked, when they picked one rather than typed one. Held outside
-  // formData because it is not text the user edits: CompanyAutocomplete sets it on selection and
-  // clears it on the next keystroke, so it can never describe a different company than the field.
-  const [companyId, setCompanyId] = useState<number | undefined>(undefined);
+  // Owns the company identity and the rule that typing invalidates it, so this form no longer
+  // carries its own copy of either. formData keeps the text, because the form's validation,
+  // drafts and session restore all read it from there.
+  const companySelection = useCompanySelection();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const readyBannerRef = useRef<HTMLDivElement>(null);
   const ghostCaptureAttemptedRef = useRef(false);
@@ -354,14 +355,17 @@ export default function AddBoss() {
   useEffect(() => {
     if (!step1Valid || ghostCaptureAttemptedRef.current) return;
     ghostCaptureAttemptedRef.current = true;
-    axios.post(`${API_BASE}/api/managers/ghost`, {
-      name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
-      company: formData.company.trim(),
-      companyId: companyId ?? null,
-      title: formData.title.trim(),
-      country: formData.country,
-      state: formData.state.trim() || null,
-    }).catch(() => {});
+    // Sends the picked ID, or resolves one first by creating the company explicitly. Either way
+    // the server receives an identity rather than a name to interpret.
+    void (async () => {
+      axios.post(`${API_BASE}/api/managers/ghost`, {
+        name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
+        ...(await companySelection.payload()),
+        title: formData.title.trim(),
+        country: formData.country,
+        state: formData.state.trim() || null,
+      }).catch(() => {});
+    })();
   }, [step1Valid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-save when all ratings filled ────────────────────────────────────
@@ -380,8 +384,7 @@ export default function AddBoss() {
       try {
         const res = await axios.post(`${API_BASE}/api/managers`, {
           name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
-          company: formData.company.trim(),
-          companyId: companyId ?? null,
+          ...(await companySelection.payload()),
           title: formData.title.trim(),
           image: formData.firstName.trim().charAt(0).toUpperCase(),
           bio: "New manager submitted for community review",
@@ -503,8 +506,7 @@ export default function AddBoss() {
         if (!draftTokenRef.current) draftTokenRef.current = crypto.randomUUID();
         axios.post(`${API_BASE}/api/managers/drop-off`, {
           name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
-          company: formData.company.trim(),
-          companyId: companyId ?? null,
+          ...(await companySelection.payload()),
           title: formData.title.trim(),
           country: formData.country,
           state: formData.state.trim() || null,
@@ -552,8 +554,7 @@ export default function AddBoss() {
     try {
       const managerResponse = await axios.post(`${API_BASE}/api/managers`, {
         name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
-        company: formData.company.trim(),
-        companyId: companyId ?? null,
+        ...(await companySelection.payload()),
         title: formData.title.trim(),
         image: formData.firstName.trim().charAt(0).toUpperCase(),
         bio: "New manager submitted for community review",
@@ -761,8 +762,16 @@ export default function AddBoss() {
                     <label className="block text-sm font-semibold text-foreground mb-2">Company *</label>
                     <CompanyAutocomplete
                       value={formData.company}
-                      onChange={val => { touch(); setFormData(prev => ({ ...prev, company: val })); if (errors.length > 0) setErrors([]); }}
-                      onCompanyIdChange={setCompanyId}
+                      onChange={val => {
+                        touch();
+                        setFormData(prev => ({ ...prev, company: val }));
+                        // Keep the selection's own copy of the text in step, so payload() resolves
+                        // against what the user is actually looking at.
+                        companySelection.bind.onChange(val);
+                        if (errors.length > 0) setErrors([]);
+                      }}
+                      onCompanyIdChange={companySelection.bind.onCompanyIdChange}
+                      onSuggestionSelect={companySelection.bind.onSuggestionSelect}
                       placeholder="e.g., Microsoft"
                       name="company"
                       className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"

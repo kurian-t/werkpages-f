@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { AuthFlowModal } from "@/components/AuthFlowModal";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
+import { useCompanySelection } from "@/hooks/useCompanySelection";
 import type { AuthFlowStep } from "@/components/AuthFlowModal";
 import type { User } from "@/contexts/AuthContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -473,12 +474,11 @@ export default function BossProfile() {
   const [reviewManagerTitle, setReviewManagerTitle] = useState("");
   const [editManagerCompany, setEditManagerCompany] = useState("");
 
-  // Company identity for the two forms that can change a manager's company. Set when a company is
-  // picked from the typeahead, cleared by the picker on the next keystroke. Without these, an edit
-  // that corrects a company name resolves by name on the server and can mint the very duplicate
-  // the correction was meant to fix.
-  const [editCompanyId, setEditCompanyId] = useState<number | undefined>(undefined);
-  const [adminEditCompanyId, setAdminEditCompanyId] = useState<number | undefined>(undefined);
+  // The two forms that can change a manager's company. Each owns its identity, its clearing rule
+  // and its payload through the shared selection, so an edit that corrects a company name can no
+  // longer mint the very duplicate the correction was meant to fix.
+  const editCompany = useCompanySelection();
+  const adminEditCompany = useCompanySelection();
   const [editManagerTitle, setEditManagerTitle] = useState("");
   const [editStartDate, setEditStartDate] = useState({ month: "", year: "" });
   const [editEndDate, setEditEndDate] = useState({ month: "", year: "" });
@@ -670,6 +670,9 @@ export default function BossProfile() {
         country: manager.country || "",
         linkedinUrl: manager.linkedinUrl || "",
       });
+      // Seed the selection with the company as it stands, so an edit that changes only the title
+      // still submits the company this manager already belongs to.
+      editCompany.set(manager.company, manager.companyId ?? undefined);
       // Parse start/end dates from the most recent career history entry
       const ch = manager.careerHistory?.[0];
       if (ch?.startDate) {
@@ -1170,8 +1173,7 @@ export default function BossProfile() {
     if (manager?.approvalStatus === "pending_approval") {
       try {
         await axios.put(`${API_BASE}/api/managers/${manager.id}`, {
-          company: editFormData.company,
-          companyId: editCompanyId ?? null,
+          ...(await editCompany.payload()),
           companyLogoUrl: editCompanyLogoUrl ?? null,
           title: toJobTitleCase(editFormData.title),
           status: editFormData.status,
@@ -1217,8 +1219,7 @@ export default function BossProfile() {
       const payload: Record<string, string | number | null> = {};
       // The picked company's identity rides with the request. Approval uses it directly, so an
       // admin approving weeks later cannot land on a different company that shares the name.
-      if (companyChanged)  payload.company     = editFormData.company;
-      if (companyChanged)  payload.companyId   = editCompanyId ?? null;
+      if (companyChanged)  Object.assign(payload, await editCompany.payload());
       if (companyChanged && editCompanyLogoUrl) payload.companyLogoUrl = editCompanyLogoUrl;
       if (titleChanged)    payload.title       = toJobTitleCase(editFormData.title);
       if (statusChanged)   payload.status      = editFormData.status;
@@ -1455,6 +1456,9 @@ export default function BossProfile() {
                       data-testid="admin-edit-button"
                       onClick={() => {
                         setAdminEditForm({ name: manager.name, title: manager.title, company: manager.company, linkedinUrl: manager.linkedinUrl ?? "" });
+                        // Seed the selection with the company as it stands. Without this the form
+                        // would submit an empty name for an admin who edited only the title.
+                        adminEditCompany.set(manager.company, manager.companyId ?? undefined);
                         setAdminEditing(true);
                       }}
                       className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -1855,9 +1859,9 @@ export default function BossProfile() {
                 <label className="block text-xs text-muted-foreground mb-1">Company</label>
                 <CompanyAutocomplete
                   value={adminEditForm.company}
-                  onChange={val => { setAdminEditForm(p => ({ ...p, company: val })); setAdminEditLogoUrl(undefined); }}
+                  onChange={val => { setAdminEditForm(p => ({ ...p, company: val })); setAdminEditLogoUrl(undefined); adminEditCompany.bind.onChange(val); }}
                   onSuggestionSelect={(_name, logoUrl) => setAdminEditLogoUrl(logoUrl)}
-                  onCompanyIdChange={setAdminEditCompanyId}
+                  onCompanyIdChange={adminEditCompany.bind.onCompanyIdChange}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                 />
               </div>
@@ -1883,8 +1887,7 @@ export default function BossProfile() {
                     await axios.put(`${API_BASE}/api/admin/managers/${manager?.id}`, {
                       name:           toNameCase(adminEditForm.name)       || undefined,
                       title:          toJobTitleCase(adminEditForm.title) || undefined,
-                      company:        adminEditForm.company.trim()    || undefined,
-                      companyId:      adminEditCompanyId ?? null,
+                      ...(await adminEditCompany.payload()),
                       linkedinUrl:    adminEditForm.linkedinUrl.trim() || undefined,
                       companyLogoUrl: adminEditLogoUrl,
                     }, { withCredentials: true });
@@ -3103,9 +3106,9 @@ export default function BossProfile() {
                     <label className="block text-sm font-semibold text-foreground mb-2">Company *</label>
                     <CompanyAutocomplete
                       value={editFormData.company}
-                      onChange={(val) => { setEditModalTouched(true); setEditFormData((prev) => ({ ...prev, company: val })); setEditCompanyLogoUrl(undefined); }}
+                      onChange={(val) => { setEditModalTouched(true); setEditFormData((prev) => ({ ...prev, company: val })); setEditCompanyLogoUrl(undefined); editCompany.bind.onChange(val); }}
                       onSuggestionSelect={(_name, logoUrl) => setEditCompanyLogoUrl(logoUrl)}
-                      onCompanyIdChange={setEditCompanyId}
+                      onCompanyIdChange={editCompany.bind.onCompanyIdChange}
                       placeholder="e.g., Microsoft, Apple"
                       className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                     />
