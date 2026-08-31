@@ -24,7 +24,7 @@ import { StarRating } from "@/components/StarRating";
 import { generateUsername } from "@/lib/validators";
 import { CareerTimeline } from "@/components/CareerTimeline";
 import { COUNTRIES, getCountryFlag } from "@/lib/countries";
-
+ 
 const RATING_CATEGORIES = [
   "Communication Style",
   "Perceived Approachability",
