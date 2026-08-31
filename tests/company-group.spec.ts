@@ -25,12 +25,29 @@ const LOBLAW = {
   ],
 };
 
+/**
+ * Serves whichever company the request actually asked for.
+ *
+ * Returning one fixed company for every request looks simpler and is wrong: the profile page
+ * rewrites the URL to the canonical path for the company it loaded, so navigating to Zehrs while
+ * the mock answers with Loblaw bounces straight back to Loblaw. That made the navigation test pass
+ * or fail on timing rather than on behaviour.
+ */
 async function mockCompany(page: any, company: any, contributed = true) {
   await page.addInitScript((u: any) => localStorage.setItem("authUser", JSON.stringify(u)),
     { ...MOCK_USER, hasContributed: contributed });
   await page.route("**/api/auth/me", (r: any) => r.fulfill({ json: { ...MOCK_USER, hasContributed: contributed } }));
-  await page.route("**/api/companies/**", (r: any) => r.fulfill({ json: company }));
-  await page.route("**/api/companies/by-slug/**", (r: any) => r.fulfill({ json: company }));
+
+  const known = [company, ZEHRS, LOBLAW];
+  const serve = (route: any) => {
+    const url = decodeURIComponent(route.request().url());
+    const match = known.find(c => c.slug && url.includes(c.slug))
+               ?? known.find(c => url.includes(encodeURIComponent(c.name)) || url.includes(c.name))
+               ?? company;
+    route.fulfill({ json: match });
+  };
+  await page.route("**/api/companies/**", serve);
+  await page.route("**/api/companies/by-slug/**", serve);
   await page.route("**/api/managers**", (r: any) => r.fulfill({ json: { data: [], total: 0 } }));
 }
 
