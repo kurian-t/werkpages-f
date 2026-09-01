@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Star } from "lucide-react";
 import { companyLogoDomain } from "@/lib/utils";
@@ -52,21 +52,109 @@ export function ManagerAvatar({ name, size = "md" }: { name: string; size?: "sm"
   );
 }
 
-export function CompanyLogoImg({ company, logoUrl, sizeClass }: { company: string; logoUrl?: string; sizeClass: string }) {
+/**
+ * How far ahead of the viewport a logo starts loading.
+ *
+ * Native loading="lazy" would be one attribute, but the browser owns its threshold and will not
+ * tell you what it is. This is the number we actually want to control: far enough ahead that a
+ * logo is always ready by the time it is scrolled to, close enough that a long directory page does
+ * not fetch every logo on it. Tiles are a little over 200px tall, so this is roughly three rows.
+ */
+const LOGO_PRELOAD_MARGIN = "800px";
+
+/**
+ * Logo domains that have already failed this session.
+ *
+ * Domains here are guessed from company names - "Zehrs Markets" becomes zehrsmarkets.com - so a
+ * large share of them will never resolve. Without this, every tile for such a company re-requests
+ * the same known-bad URL on every render and every page, and each one is billed.
+ *
+ * sessionStorage rather than localStorage: a logo that was missing an hour ago may exist now, and
+ * a permanent negative cache would hide it indefinitely.
+ */
+const failedLogos = new Set<string>(
+  (() => {
+    try {
+      if (typeof sessionStorage === "undefined") return [];
+      return JSON.parse(sessionStorage.getItem("wp_failed_logos") ?? "[]") as string[];
+    } catch {
+      return [];
+    }
+  })(),
+);
+
+function rememberLogoFailure(url: string) {
+  failedLogos.add(url);
+  try {
+    sessionStorage?.setItem("wp_failed_logos", JSON.stringify([...failedLogos]));
+  } catch {
+    // Private mode, or storage full. The in-memory Set still works for this page.
+  }
+}
+
+/**
+ * True once the element is within `rootMargin` of the viewport, and true from then on.
+ *
+ * Never flips back: a logo that has been loaded should not be discarded and re-fetched when it
+ * scrolls away, which would turn one request into one per pass.
+ */
+function useNearViewport<T extends Element>(rootMargin: string, skip: boolean) {
+  const ref = useRef<T | null>(null);
+  const [near, setNear] = useState(skip);
+
+  useEffect(() => {
+    if (skip || near) return;
+    const el = ref.current;
+    // No observer (jsdom, very old browsers) means load immediately. Degrading to the previous
+    // behaviour is correct here; degrading to a permanently blank logo is not.
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setNear(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setNear(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [skip, near, rootMargin]);
+
+  return [ref, near] as const;
+}
+
+export function CompanyLogoImg({ company, logoUrl, sizeClass, eager = false }: { company: string; logoUrl?: string; sizeClass: string; eager?: boolean }) {
   const logoDevUrl = `https://img.logo.dev/${companyLogoDomain(company)}?token=pk_MXSjJV-uTC6-L5D_FbXZUA`;
-  const initialSrc = logoUrl ?? logoDevUrl;
-  const [src, setSrc] = useState(initialSrc);
-  const [failed, setFailed] = useState(false);
+  const preferred = logoUrl ?? logoDevUrl;
+  // Skip any candidate already known to fail, so a repeat visit goes straight to the letter
+  // instead of re-requesting its way back down to it.
+  const firstUntried = !failedLogos.has(preferred) ? preferred
+                     : !failedLogos.has(logoDevUrl) ? logoDevUrl
+                     : null;
+
+  const [ref, near] = useNearViewport<HTMLDivElement>(LOGO_PRELOAD_MARGIN, eager);
+  const [src, setSrc] = useState<string | null>(firstUntried);
   const initial = company.trim().charAt(0).toUpperCase();
 
   const handleError = () => {
-    if (src !== logoDevUrl) setSrc(logoDevUrl);
-    else setFailed(true);
+    if (src) rememberLogoFailure(src);
+    if (src !== logoDevUrl && !failedLogos.has(logoDevUrl)) setSrc(logoDevUrl);
+    else setSrc(null);
   };
 
-  if (failed) {
+  // Same box, same border, same space. Reserving the layout here is what keeps lazy loading from
+  // shifting anything as logos arrive.
+  const boxClass = `${sizeClass} flex-shrink-0 rounded-md border border-slate-200`;
+
+  if (!near) return <div ref={ref} className={`${boxClass} bg-white`} aria-hidden="true" />;
+
+  if (src === null) {
     return (
-      <div className={`${sizeClass} flex-shrink-0 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-[13px] font-semibold text-slate-500`}>
+      <div className={`${boxClass} bg-slate-100 flex items-center justify-center text-[13px] font-semibold text-slate-500`}>
         {initial}
       </div>
     );
@@ -75,7 +163,11 @@ export function CompanyLogoImg({ company, logoUrl, sizeClass }: { company: strin
     <img
       src={src}
       alt={company}
-      className={`${sizeClass} flex-shrink-0 object-contain rounded-md bg-white border border-slate-200`}
+      // Belt and braces beneath the observer above: if this ever renders outside one, the browser
+      // still declines to fetch a logo nobody can see.
+      loading={eager ? "eager" : "lazy"}
+      decoding="async"
+      className={`${boxClass} object-contain bg-white`}
       onError={handleError}
     />
   );
@@ -89,7 +181,7 @@ export function CompanyRow({ company, title, industry, logoUrl, logoSize = "md",
   const sizeClass = logoSize === "lg" ? "h-12 w-12" : "h-10 w-10";
   return (
     <div className="flex min-w-0 items-center gap-2">
-      <CompanyLogoImg company={company} logoUrl={logoUrl} sizeClass={sizeClass} />
+      <CompanyLogoImg company={company} logoUrl={logoUrl} sizeClass={sizeClass} eager={logoSize === "lg"} />
       <div className="min-w-0 flex-1">
         <p className={`text-sm font-semibold leading-tight truncate ${companyClassName ?? "text-foreground"}`}>{company}</p>
         <p className={`text-xs text-muted-foreground ${wrapTitle ? "break-words" : "truncate"}`}>{title}</p>
