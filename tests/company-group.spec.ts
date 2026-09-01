@@ -88,8 +88,10 @@ test.describe("Corporate structure on a company profile", () => {
     await mockCompany(page, LOBLAW);
     await page.goto("/industries/retail/companies/loblaw-companies");
 
+    // Listed, with no stats line. Membership is not decided by having stats; saying "No ratings
+    // yet" on the tile only advertised the gap.
     await expect(page.getByRole("heading", { name: "Quiet Brand" })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("No ratings yet")).toBeVisible();
+    await expect(page.getByText("No ratings yet")).toHaveCount(0);
   });
 
   test("a company in no group shows neither section", async ({ page }) => {

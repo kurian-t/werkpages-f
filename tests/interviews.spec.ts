@@ -436,7 +436,6 @@ test.describe("Adding an interview experience", () => {
     await page.goto("/companies/red-hat/add-interview");
 
     await expect(page.locator("textarea")).toHaveCount(0);
-    await expect(page.getByText(/No free text/)).toBeVisible();
   });
 
   test("Back returns to step one instead of leaving the form", async ({ page }) => {

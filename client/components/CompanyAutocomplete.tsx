@@ -10,6 +10,8 @@ interface Suggestion {
    * entirely from the Clearbit-proxied results, which are external names we have never stored.
    */
   id?: number;
+  /** The company's address. Absent for external names and for rows that predate slugs. */
+  slug?: string;
   domain?: string;   // present when sourced from Clearbit proxy
   logoUrl?: string;  // present when sourced from DB fallback
 }
@@ -28,6 +30,14 @@ interface Props {
    * manual edit and on clear, so the ID cannot outlive the text it belongs to.
    */
   onCompanyIdChange?: (id: number | undefined) => void;
+  /**
+   * The whole chosen suggestion, for callers that need more than a name and an id.
+   *
+   * Additive rather than a wider onSuggestionSelect, so the existing call sites keep the
+   * signature they were written against. Fired only on an actual pick - a caller that needs a
+   * company to exist can treat "never fired" as "nothing was selected".
+   */
+  onSuggestionPicked?: (s: { id?: number; name: string; slug?: string; logoUrl?: string }) => void;
   onClear?: () => void;
   placeholder?: string;
   className?: string;
@@ -42,7 +52,7 @@ function suggestionLogoUrl(s: Suggestion): string | undefined {
   return s.logoUrl;
 }
 
-export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCompanyIdChange, onClear, placeholder, className, autoFocus, name }: Props) {
+export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCompanyIdChange, onSuggestionPicked, onClear, placeholder, className, autoFocus, name }: Props) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -122,10 +132,9 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
     onCompanyIdChange?.(s.id);
     setOpen(false);
     setSuggestions([]);
-    if (onSuggestionSelect) {
-      const logoUrl = suggestionLogoUrl(s);
-      onSuggestionSelect(s.name, logoUrl);
-    }
+    const logoUrl = suggestionLogoUrl(s);
+    if (onSuggestionSelect) onSuggestionSelect(s.name, logoUrl);
+    onSuggestionPicked?.({ id: s.id, name: s.name, slug: s.slug, logoUrl });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

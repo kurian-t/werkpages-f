@@ -4,14 +4,12 @@ import { MOCK_USER } from "./fixtures";
 /**
  * Manager tiles on a company profile.
  *
- * A tile has two states - rated and not yet rated - and they have to look like the same component.
- * The rated branch renders its stars in a div, so the review count below falls onto its own line;
- * the unrated branch rendered an inline span, so the margin was silently dropped and the two ran
- * together as "No ratings yet0 reviews". Nothing threw and no test covered it, so it shipped.
+ * An unrated manager used to get two lines of nothing: "No ratings yet" above "0 reviews". Both
+ * were true and neither was worth the space - a tile whose only content is a report of its own
+ * emptiness. The tile now says nothing at all until there is something to say.
  *
- * Asserted on geometry rather than on text. getByText matches an element's whole subtree, so a
- * parent holding two correctly separated lines still reads as one concatenated string - the exact
- * assertion that looks like it tests this and does not.
+ * Asserted on geometry as well as text, because the earlier bug here was a layout one: the two
+ * strings ran together as "No ratings yet0 reviews" when the label was rendered inline.
  */
 
 const RATED = {
@@ -40,47 +38,41 @@ async function mockCompany(page: any) {
   const serve = (r: any) => r.fulfill({ json: COMPANY });
   await page.route("**/api/companies/**", serve);
   await page.route("**/api/companies/by-slug/**", serve);
-
   await page.goto("/industries/retail/companies/loblaw-companies-limited");
 }
 
 const tile = (page: any, name: string) => page.getByRole("link", { name: new RegExp(name) });
 
 test.describe("Manager tiles on a company profile", () => {
-  test("an unrated manager's count sits below the label, not beside it", async ({ page }) => {
+  test("an unrated manager advertises nothing", async ({ page }) => {
     await mockCompany(page);
     const card = tile(page, "Christine Brady");
     await expect(card).toBeVisible({ timeout: 10_000 });
 
-    const label = await card.getByText("No ratings yet").boundingBox();
-    const count = await card.getByText("0 reviews").boundingBox();
-    expect(label).not.toBeNull();
-    expect(count).not.toBeNull();
-    // Starts at or below where the label ends: two lines, not one run of text.
-    expect(count!.y).toBeGreaterThanOrEqual(label!.y + label!.height - 1);
-  });
-
-  test("the unrated tile lays out like the rated one", async ({ page }) => {
-    // Both counts are the last line of their tile and should sit on the same baseline, which is
-    // what "looks like all the other tiles" actually means here.
-    await mockCompany(page);
-    await expect(tile(page, "Scott Mcdougall")).toBeVisible({ timeout: 10_000 });
-
-    const rated = await tile(page, "Scott Mcdougall").getByText("3 reviews").boundingBox();
-    const unrated = await tile(page, "Christine Brady").getByText("0 reviews").boundingBox();
-    expect(rated).not.toBeNull();
-    expect(unrated).not.toBeNull();
-    expect(Math.abs(rated!.y - unrated!.y)).toBeLessThanOrEqual(2);
+    await expect(card.getByText("No ratings yet")).toHaveCount(0);
+    await expect(card.getByText("0 reviews")).toHaveCount(0);
   });
 
   test("a rated manager still shows its rating and count", async ({ page }) => {
-    // The branch that was already correct, so the fix to the other one cannot quietly break it.
+    // The branch that carries real information is untouched.
     await mockCompany(page);
     const card = tile(page, "Scott Mcdougall");
     await expect(card).toBeVisible({ timeout: 10_000 });
 
     await expect(card.getByText("4.8")).toBeVisible();
     await expect(card.getByText("3 reviews")).toBeVisible();
-    await expect(card.getByText("No ratings yet")).toHaveCount(0);
+  });
+
+  test("dropping the text does not collapse the tile", async ({ page }) => {
+    // The row height reserves the space, so an empty tile still lines up with a full one. This is
+    // the regression the earlier layout complaints were about.
+    await mockCompany(page);
+    await expect(tile(page, "Scott Mcdougall")).toBeVisible({ timeout: 10_000 });
+
+    const rated = await tile(page, "Scott Mcdougall").boundingBox();
+    const unrated = await tile(page, "Christine Brady").boundingBox();
+    expect(rated).not.toBeNull();
+    expect(unrated).not.toBeNull();
+    expect(Math.abs(rated!.height - unrated!.height)).toBeLessThanOrEqual(2);
   });
 });

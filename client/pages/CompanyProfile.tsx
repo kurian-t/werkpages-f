@@ -953,13 +953,12 @@ export default function CompanyProfile() {
                                 ))}
                                 <span className="ml-1 flex-shrink-0 whitespace-nowrap text-sm font-semibold leading-none text-foreground">{Number(boss.overallRating).toFixed(1)}</span>
                               </div>
-                            ) : (
-                              // Block, for the same reason as the tile grid below.
-                              <p className="text-xs text-muted-foreground">No ratings yet</p>
+                            ) : null}
+                            {(boss.reviewsCount ?? 0) > 0 && (
+                              <p className="mt-1.5 whitespace-nowrap text-[11px] leading-none text-muted-foreground">
+                                {boss.reviewsCount} {boss.reviewsCount === 1 ? "review" : "reviews"}
+                              </p>
                             )}
-                            <p className="mt-1.5 whitespace-nowrap text-[11px] leading-none text-muted-foreground">
-                              {boss.reviewsCount ?? 0} {(boss.reviewsCount ?? 0) === 1 ? "review" : "reviews"}
-                            </p>
                           </div>
                         </Link>
                       ) : (
@@ -1084,15 +1083,18 @@ export default function CompanyProfile() {
                           ))}
                           <span className="ml-1 flex-shrink-0 whitespace-nowrap text-sm font-semibold leading-none text-foreground">{Number(mgr.overallRating).toFixed(1)}</span>
                         </div>
-                      ) : (
-                        // Block, not inline. The rated branch above is a div, so the review count
-                        // below it falls onto its own line; an inline span here would let the two
-                        // run together as "No ratings yet0 reviews" and silently drop the margin.
-                        <p className="text-xs text-muted-foreground">No ratings yet</p>
+                      ) : null}
+                      {/*
+                        An unrated manager shows nothing here rather than "No ratings yet" and
+                        "0 reviews". Both were true and neither was worth saying: the tile spent
+                        two lines advertising an absence. The space is still reserved by the row
+                        height, so tiles stay aligned whether or not they carry a rating.
+                      */}
+                      {mgr.reviewsCount > 0 && (
+                        <p className="mt-1.5 whitespace-nowrap text-[11px] leading-none text-muted-foreground">
+                          {mgr.reviewsCount} {mgr.reviewsCount === 1 ? "review" : "reviews"}
+                        </p>
                       )}
-                      <p className="mt-1.5 whitespace-nowrap text-[11px] leading-none text-muted-foreground">
-                        {mgr.reviewsCount} {mgr.reviewsCount === 1 ? "review" : "reviews"}
-                      </p>
                     </div>
                   </Link>
                 ))}
@@ -1178,15 +1180,20 @@ export default function CompanyProfile() {
                           </span>
                         </div>
                       )}
-                      {!isLocked && co.avgRating == null && (
-                        <p className="text-xs text-muted-foreground">No ratings yet</p>
+                      {/*
+                        Nothing where a rating would go, rather than "No ratings yet". Membership
+                        in the group is not decided by having stats - a brand nobody has reviewed
+                        is still part of the group and still listed here - but saying so on the
+                        tile only advertises the gap.
+                      */}
+                      {(co.managerCount ?? 0) > 0 && (
+                        <div className="mt-3 flex flex-col items-start gap-1.5 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1 whitespace-nowrap">
+                            <Users size={11} className="flex-shrink-0" />
+                            {co.managerCount} {co.managerCount === 1 ? "manager" : "managers"}
+                          </span>
+                        </div>
                       )}
-                      <div className="mt-3 flex flex-col items-start gap-1.5 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1 whitespace-nowrap">
-                          <Users size={11} className="flex-shrink-0" />
-                          {co.managerCount ?? 0} {co.managerCount === 1 ? "manager" : "managers"}
-                        </span>
-                      </div>
                     </button>
                   ))}
                 </div>

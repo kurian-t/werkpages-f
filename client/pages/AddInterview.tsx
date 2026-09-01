@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import API_BASE from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { RoleAutocomplete } from "@/components/RoleAutocomplete";
+import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
 import { useCompanyInterviews } from "@/hooks/useCompanyInterviews";
 import { COUNTRIES } from "@/lib/countries";
 import { fetchGeo } from "@/lib/geo";
@@ -87,7 +88,29 @@ export default function AddInterview() {
     retry: false,
   });
 
-  const companyName = company?.name ?? "this company";
+  /**
+   * The company this interview is about.
+   *
+   * Seeded from the URL when you arrive from a company page, but not owned by it: requiring
+   * someone to find a company and open its page before they can say anything about interviewing
+   * there loses the contribution from everyone who did not start on that page.
+   *
+   * A slug, not a name. Interview reviews never create a company (see InterviewService), so the
+   * only valid answer here is a company that already exists - and picking one from the list is
+   * what proves that. Typed text that was never selected leaves this null and submission stops.
+   */
+  const [pickedCompany, setPickedCompany] = useState<{ name: string; slug: string } | null>(null);
+  const [companyText, setCompanyText] = useState("");
+
+  useEffect(() => {
+    if (company?.name && company?.slug) {
+      setPickedCompany({ name: company.name, slug: company.slug });
+      setCompanyText(company.name);
+    }
+  }, [company?.name, company?.slug]);
+
+  const activeSlug = pickedCompany?.slug ?? companySlug ?? null;
+  const companyName = pickedCompany?.name ?? company?.name ?? "this company";
 
   const { data: stats } = useCompanyInterviews(companySlug ?? "");
   const existing = editingId ? stats?.myInterview ?? null : null;
@@ -150,7 +173,7 @@ export default function AddInterview() {
 
   // Back to the interview tab specifically. Landing on "what it's like to work here" after
   // cancelling an interview review is a different half of the page from the one you left.
-  const leaveForm = () => navigate(`/companies/${companySlug}?tab=hiring`);
+  const leaveForm = () => navigate(activeSlug ? `/companies/${activeSlug}?tab=hiring` : "/explore");
 
   const handleBack = () => {
     setErrors({});
@@ -171,6 +194,8 @@ export default function AddInterview() {
     if (found.rounds) stepOneErrors.rounds = found.rounds;
     if (found.roleCategory) stepOneErrors.roleCategory = found.roleCategory;
     if (found.difficulty) stepOneErrors.difficulty = found.difficulty;
+    // Only when the form owns the company. Arriving from a company page, it is already settled.
+    if (!companySlug && !pickedCompany) stepOneErrors.company = "Choose a company from the list.";
 
     if (Object.keys(stepOneErrors).length > 0) {
       setErrors(stepOneErrors);
@@ -183,10 +208,11 @@ export default function AddInterview() {
   const handleSubmit = async () => {
     setSubmitError(null);
     const found = validateInterviewDraft(draft, currentYear);
+    if (!companySlug && !pickedCompany) found.company = "Choose a company from the list.";
     if (Object.keys(found).length > 0) {
       setErrors(found);
       // A problem with a step-one field is not visible from here, so go back to it.
-      if (found.outcome || found.interviewYear) setStep("process");
+      if (found.outcome || found.interviewYear || found.company) setStep("process");
       return;
     }
 
@@ -198,7 +224,7 @@ export default function AddInterview() {
         });
       } else {
         await axios.post(
-          `${API_BASE}/api/companies/${companySlug}/interviews`,
+          `${API_BASE}/api/companies/${activeSlug}/interviews`,
           toInterviewPayload(draft),
           { withCredentials: true },
         );
@@ -206,7 +232,7 @@ export default function AddInterview() {
       queryClient.invalidateQueries({ queryKey: ["company-interviews"] });
       queryClient.invalidateQueries({ queryKey: ["has-interview-contributed"] });
       toast.success(editingId ? "Your interview experience has been updated." : "Thanks, your interview experience is live.");
-      navigate(`/companies/${companySlug}?tab=hiring`);
+      navigate(`/companies/${activeSlug}?tab=hiring`);
     } catch (err) {
       const status = axios.isAxiosError(err) ? err.response?.status : undefined;
       const code = axios.isAxiosError(err)
@@ -228,7 +254,7 @@ export default function AddInterview() {
           </p>
           <button
             type="button"
-            onClick={() => navigate(`/signin?returnTo=/companies/${companySlug}/add-interview`)}
+            onClick={() => navigate(`/signin?returnTo=${companySlug ? `/companies/${companySlug}/add-interview` : "/add-interview"}`)}
             className="mt-4 rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2e0562]/90"
           >
             Sign in
@@ -295,12 +321,42 @@ export default function AddInterview() {
               <div className="space-y-8">
                 <div>
                   <h1 className="text-xl font-bold text-foreground">
-                    Your interview at {companyName}
+                    {pickedCompany || companySlug ? `Your interview at ${companyName}` : "Your interview"}
                   </h1>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    No free text - just the facts, so every answer is comparable.
-                  </p>
                 </div>
+
+                {/*
+                  Where the interview happened, editable even when the page was opened from a
+                  company. Someone who came here to write about one company and remembered
+                  another should not have to go and find it first.
+
+                  Selection only - no create. Interview reviews never bring a company into
+                  existence, so a name typed and not picked is not an answer, and the error says
+                  so rather than silently submitting to nothing.
+                */}
+                <Field
+                  label="Which company?"
+                  required
+                  error={errors.company}
+                  hint="Pick from the list. You can only add an interview for a company already on Werkpages."
+                >
+                  <CompanyAutocomplete
+                    value={companyText}
+                    onChange={(v) => {
+                      setCompanyText(v);
+                      // Typing invalidates the pick, exactly as it does in the manager forms: the
+                      // text and the company it refers to can never disagree.
+                      setPickedCompany(null);
+                    }}
+                    onSuggestionPicked={(sug) => {
+                      setCompanyText(sug.name);
+                      setPickedCompany(sug.slug ? { name: sug.name, slug: sug.slug } : null);
+                      setErrors((prev) => ({ ...prev, company: undefined }));
+                    }}
+                    onClear={() => { setCompanyText(""); setPickedCompany(null); }}
+                    placeholder="Search companies"
+                  />
+                </Field>
 
                 <Field
                   label="How did it end?"

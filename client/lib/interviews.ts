@@ -326,7 +326,14 @@ export function interviewYearOptions(currentYear: number): number[] {
 
 // ── Validation ──────────────────────────────────────────────────────────────
 
-export type InterviewDraftErrors = Partial<Record<keyof InterviewDraft, string>>;
+/**
+ * Errors the interview form can show.
+ *
+ * `company` is not part of the draft - the draft is what gets sent, and the company is in the
+ * URL path - but the form still has to say when one has not been chosen, so it lives here rather
+ * than in a second error bag the form would have to merge by hand.
+ */
+export type InterviewDraftErrors = Partial<Record<keyof InterviewDraft, string>> & { company?: string };
 
 /**
  * Client-side mirror of the server's rules, so a mistake is caught before the round trip.

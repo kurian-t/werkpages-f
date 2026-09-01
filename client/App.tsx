@@ -99,6 +99,9 @@ const App = () => (
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/companies" element={<Companies />} />
             <Route path="/companies/:companySlug/add-interview" element={<AddInterview />} />
+            {/* Same form with no company chosen yet. Sharing an interview should not require
+                finding the company's page first. */}
+            <Route path="/add-interview" element={<AddInterview />} />
             <Route path="/companies/:companySlug" element={<CompanyProfile />} />
             <Route path="/resume" element={<AdminOnly><ResumeBuilder /></AdminOnly>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

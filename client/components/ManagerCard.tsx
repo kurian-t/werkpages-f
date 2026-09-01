@@ -257,12 +257,7 @@ export default function ManagerCard({ boss, isPending = false }: ManagerCardProp
                 {(boss.reviews || 0).toLocaleString()} {boss.reviews === 1 ? "review" : "reviews"}
               </div>
             </div>
-          ) : (
-            <div className="flex flex-col items-start">
-              <p className="text-xs whitespace-nowrap text-muted-foreground">No ratings yet</p>
-              <div className="mt-1.5 whitespace-nowrap text-[11px] leading-none text-muted-foreground">0 reviews</div>
-            </div>
-          )}
+          ) : null}
         </div>
       )}
     </Link>

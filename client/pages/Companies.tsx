@@ -251,23 +251,36 @@ export default function Companies() {
                   </div>
 
                   {!isLocked && co.avgRating != null && <StarRating rating={co.avgRating} />}
-                  {!isLocked && co.avgRating == null && <p className="text-xs text-muted-foreground">No ratings yet</p>}
                   {isLocked && <LockedStars />}
 
-                  <div className="mt-3 flex flex-col items-start gap-1.5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:gap-3">
-                    <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
-                      <Users size={11} className="flex-shrink-0" />
-                      {isLocked
-                        ? <span className="inline-block h-2.5 w-14 rounded-full bg-[#6d5091]/20 blur-[3px]" />
-                        : <span className="whitespace-nowrap">{co.managerCount} {co.managerCount === 1 ? "manager" : "managers"}</span>}
-                    </span>
-                    <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
-                      <MessageSquare size={11} className="flex-shrink-0" />
-                      {isLocked
-                        ? <span className="inline-block h-2.5 w-14 rounded-full bg-[#6d5091]/20 blur-[3px]" />
-                        : <span className="whitespace-nowrap">{co.totalReviews} {co.totalReviews === 1 ? "review" : "reviews"}</span>}
-                    </span>
-                  </div>
+                  {/*
+                  Zero is not worth printing. A tile that says "0 reviews" spends a line
+                  advertising an absence; one that says "2 managers" and stops has said
+                  everything true about it. Each stat stands or falls on its own, and the row
+                  itself disappears when neither has anything to report.
+
+                  The locked placeholders are exempt - they are a deliberate teaser, not a fact.
+                */}
+                  {(isLocked || co.managerCount > 0 || co.totalReviews > 0) && (
+                    <div className="mt-3 flex flex-col items-start gap-1.5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:gap-3">
+                    {(isLocked || co.managerCount > 0) && (
+                      <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
+                        <Users size={11} className="flex-shrink-0" />
+                        {isLocked
+                          ? <span className="inline-block h-2.5 w-14 rounded-full bg-[#6d5091]/20 blur-[3px]" />
+                          : <span className="whitespace-nowrap">{co.managerCount} {co.managerCount === 1 ? "manager" : "managers"}</span>}
+                      </span>
+                    )}
+                    {(isLocked || co.totalReviews > 0) && (
+                      <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
+                        <MessageSquare size={11} className="flex-shrink-0" />
+                        {isLocked
+                          ? <span className="inline-block h-2.5 w-14 rounded-full bg-[#6d5091]/20 blur-[3px]" />
+                          : <span className="whitespace-nowrap">{co.totalReviews} {co.totalReviews === 1 ? "review" : "reviews"}</span>}
+                      </span>
+                    )}
+                    </div>
+                  )}
                 </button>
               ))}
             </div>
