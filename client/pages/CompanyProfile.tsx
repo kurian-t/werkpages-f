@@ -577,19 +577,27 @@ export default function CompanyProfile() {
                   </>
                 ) : (
                   <>
-                    <span className="flex items-center gap-1.5">
-                      <Users size={14} />
-                      {data.managerCount} {data.managerCount === 1 ? "manager" : "managers"}
-                    </span>
+                    {data.managerCount > 0 && (
+                      <span className="flex items-center gap-1.5">
+                        <Users size={14} />
+                        {data.managerCount} {data.managerCount === 1 ? "manager" : "managers"}
+                      </span>
+                    )}
                     {/*
                       Everything people have contributed about this company, both tabs combined:
                       opinions about working here plus experiences of interviewing here. The header
                       is the summary of the whole page, so counting only one tab understates it.
+
+                      Hidden at zero, like every other count on the page. A header whose only
+                      content is "0 reviews" is the page telling you there is nothing here before
+                      you have had a chance to look.
                     */}
-                    <span className="flex items-center gap-1.5">
-                      <MessageSquare size={14} />
-                      {totalContributions} {totalContributions === 1 ? "review" : "reviews"}
-                    </span>
+                    {totalContributions > 0 && (
+                      <span className="flex items-center gap-1.5">
+                        <MessageSquare size={14} />
+                        {totalContributions} {totalContributions === 1 ? "review" : "reviews"}
+                      </span>
+                    )}
                   </>
                 )}
               </div>
@@ -632,7 +640,11 @@ export default function CompanyProfile() {
               id: "working",
               emoji: "\u{1F465}",
               title: `What it's like to work at ${decoded}`,
-              count: `${data.totalReviews} manager ${data.totalReviews === 1 ? "opinion" : "opinions"}`,
+              // Empty rather than "0 manager opinions". The tab already says what it is; a count
+              // of nothing only tells the reader not to bother opening it.
+              count: data.totalReviews > 0
+                ? `${data.totalReviews} manager ${data.totalReviews === 1 ? "opinion" : "opinions"}`
+                : "",
             },
             {
               id: "hiring",
@@ -640,7 +652,9 @@ export default function CompanyProfile() {
               title: `What it's like to interview at ${decoded}`,
               count: interviewCount == null
                 ? "\u2014"
-                : `${interviewCount} candidate ${interviewCount === 1 ? "experience" : "experiences"}`,
+                : interviewCount > 0
+                  ? `${interviewCount} candidate ${interviewCount === 1 ? "experience" : "experiences"}`
+                  : "",
             },
           ] as const).filter((tab) => tab.id === "working" || canSeeInterviewTab)).map((tab) => {
             const active = activeTab === tab.id;
