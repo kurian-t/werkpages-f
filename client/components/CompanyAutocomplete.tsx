@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import API_BASE from "@/lib/api";
+import { logoDevUrlForDomain } from "@/lib/logo";
 
 interface Suggestion {
   name: string;
@@ -45,10 +46,9 @@ interface Props {
   name?: string;
 }
 
-const LOGO_DEV_TOKEN = "pk_MXSjJV-uTC6-L5D_FbXZUA";
 
 function suggestionLogoUrl(s: Suggestion): string | undefined {
-  if (s.domain) return `https://img.logo.dev/${s.domain}?token=${LOGO_DEV_TOKEN}`;
+  if (s.domain) return logoDevUrlForDomain(s.domain);
   return s.logoUrl;
 }
 
@@ -171,7 +171,7 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
   };
 
   const hasClearButton = !!onClear && value.length > 0;
-  const inputLogoUrl = selectedDomain ? `https://img.logo.dev/${selectedDomain}?token=${LOGO_DEV_TOKEN}` : null;
+  const inputLogoUrl = selectedDomain ? logoDevUrlForDomain(selectedDomain) : null;
 
   const dropdown = open ? (
     <ul

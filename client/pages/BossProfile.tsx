@@ -8,6 +8,7 @@ import { Star, Edit2, X, Trash2, Flag, Check, ChevronDown, ArrowLeft } from "luc
 import { IndustryIcon } from "@/components/IndustryIcon";
 import { managerPath, companyPath } from "@/lib/urls";
 import { ManagerAvatar, CompanyLogoImg, getInitials, getAvatarColor } from "@/components/ManagerCard";
+import { logoDevUrl as buildLogoDevUrl } from "@/lib/logo";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useAnalytics } from "@/hooks/useAnalytics";
@@ -2796,7 +2797,7 @@ export default function BossProfile() {
                               {(() => {
                                 const displayCompany = reviewManagerCompany || manager.company;
                                 const logoSrc = manager.companyLogoUrl
-                                  ?? `https://img.logo.dev/${companyLogoDomain(displayCompany)}?token=pk_MXSjJV-uTC6-L5D_FbXZUA`;
+                                  ?? buildLogoDevUrl(displayCompany);
                                 return (
                                   <div key={displayCompany} className="h-5 w-5 rounded flex-shrink-0 overflow-hidden bg-white border border-border flex items-center justify-center">
                                     <img
@@ -3270,7 +3271,7 @@ export default function BossProfile() {
                               {(() => {
                                 const displayCompany = editManagerCompany || manager.company;
                                 const logoSrc = manager.companyLogoUrl
-                                  ?? `https://img.logo.dev/${companyLogoDomain(displayCompany)}?token=pk_MXSjJV-uTC6-L5D_FbXZUA`;
+                                  ?? buildLogoDevUrl(displayCompany);
                                 return (
                                   <div key={displayCompany} className="h-5 w-5 rounded flex-shrink-0 overflow-hidden bg-white border border-border flex items-center justify-center">
                                     <img src={logoSrc} alt={displayCompany} className="h-full w-full object-contain" onError={(e) => { e.currentTarget.parentElement!.style.display = "none"; }} />

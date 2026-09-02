@@ -1,4 +1,5 @@
 import API_BASE from "@/lib/api";
+import { validateManagerName } from "@/lib/managerName";
 import { useState, useEffect, useRef } from "react";
 import { useCompanySelection } from "@/hooks/useCompanySelection";
 import { useNavigate } from "react-router-dom";
@@ -13,34 +14,7 @@ import axios from "axios";
 const INPUT_CLASS =
   "rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] shadow-sm placeholder:text-muted-foreground";
 
-const FAKE_NAME_PARTS = new Set([
-  "test", "fake", "admin", "null", "undefined", "anonymous",
-  "unknown", "none", "nope", "asdf", "qwerty", "aaaa", "xxxx", "blah", "lorem", "ipsum",
-]);
-const FAKE_FULL_NAMES = new Set([
-  "john doe", "jane doe", "john smith", "jane smith",
-  "test user", "test manager", "test test",
-  "foo bar", "foo foo", "bar baz",
-  "first last", "firstname lastname",
-]);
-const NAME_LETTERS_ONLY = /^[a-zA-ZÀ-ÖØ-öø-ÿ'\-\s]+$/;
 
-function validateManagerName(firstName: string, lastName: string): string | null {
-  const f = firstName.trim();
-  const l = lastName.trim();
-  if (!NAME_LETTERS_ONLY.test(f) || !NAME_LETTERS_ONLY.test(l)) {
-    return "Name should only contain letters";
-  }
-  const fl = f.toLowerCase();
-  const ll = l.toLowerCase();
-  if (FAKE_NAME_PARTS.has(fl) || FAKE_NAME_PARTS.has(ll)) {
-    return "This doesn't appear to be a real person's name";
-  }
-  if (FAKE_FULL_NAMES.has(`${fl} ${ll}`)) {
-    return "This doesn't appear to be a real person's name";
-  }
-  return null;
-}
 
 interface Props {
   prefilledCompany?: string;

@@ -4,6 +4,7 @@ import {
   ChevronDown, ChevronUp, ArrowUp, ArrowDown, ChevronRight,
 } from "lucide-react";
 import { companyLogoDomain } from "@/lib/utils";
+import { logoDevUrlForDomain } from "@/lib/logo";
 import {
   generateCareerInsights,
   computeConsistencyScore,
@@ -77,7 +78,7 @@ function CompanyLogo({ company, logoUrl }: { company: string; logoUrl?: string }
   const [failed,       setFailed]       = useState(false);
   const initial   = company.trim().charAt(0).toUpperCase();
   const domain    = companyLogoDomain(company);
-  const domainSrc = `https://img.logo.dev/${domain}?token=pk_MXSjJV-uTC6-L5D_FbXZUA`;
+  const domainSrc = logoDevUrlForDomain(domain);
 
   // Two-tier fallback: stored URL → logo.dev domain URL → letter initial.
   // Stored URLs may be stale (e.g. Clearbit, which shut down its free API).

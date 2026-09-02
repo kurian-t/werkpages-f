@@ -56,28 +56,7 @@ function CategoryBreakdown({ categoryAverages }: { categoryAverages: Record<stri
   );
 }
 
-function StarRating({ rating }: { rating: number }) {
-  return (
-    <div className="flex max-w-full flex-nowrap items-center gap-0.5 whitespace-nowrap">
-      {[1, 2, 3, 4, 5].map((s) => (
-        <Star key={s} size={12}
-          className={`flex-shrink-0 ${s <= Math.round(rating) ? "fill-amber-400 text-amber-400" : "fill-none text-border"}`} />
-      ))}
-      <span className="ml-1 flex-shrink-0 whitespace-nowrap text-sm font-semibold leading-none text-foreground">{rating.toFixed(1)}</span>
-    </div>
-  );
-}
 
-function LockedStars() {
-  return (
-    <div className="flex items-center gap-1">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <div key={i} className="h-3 w-3 rounded-full bg-amber-300/40 blur-[2px]" />
-      ))}
-      <div className="ml-1 h-3 w-6 rounded-full bg-[#6d5091]/20 blur-[3px]" />
-    </div>
-  );
-}
 
 export default function IndustryProfile() {
   const { slug } = useParams();

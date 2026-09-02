@@ -1,6 +1,8 @@
 import API_BASE from "@/lib/api";
+import { validateManagerName } from "@/lib/managerName";
 import { TopRatedPill } from "@/components/TopRatedPill";
 import { CompanyTile } from "@/components/CompanyTile";
+import { Stars } from "@/components/Stars";
 import { useState, useEffect } from "react";
 import { Helmet } from "react-helmet-async";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
@@ -18,33 +20,6 @@ import ManagerCard from "@/components/ManagerCard";
 import { fetchGeo } from "@/lib/geo";
 import { InterviewPanel } from "@/components/InterviewPanel";
 import { useCompanyInterviews } from "@/hooks/useCompanyInterviews";
-const FAKE_NAME_PARTS = new Set([
-  "test", "fake", "admin", "null", "undefined", "anonymous",
-  "unknown", "none", "nope", "asdf", "qwerty", "aaaa", "xxxx", "blah", "lorem", "ipsum",
-]);
-const FAKE_FULL_NAMES = new Set([
-  "john doe", "jane doe", "john smith", "jane smith",
-  "test user", "test manager", "test test",
-  "foo bar", "foo foo", "bar baz",
-  "first last", "firstname lastname",
-]);
-const NAME_LETTERS_ONLY = /^[a-zA-ZÀ-ÖØ-öø-ÿ'**\\\**-**\\\**s]+$/;
-function validateManagerName(firstName: string, lastName: string): string | null {
-  const f = firstName.trim();
-  const l = lastName.trim();
-  if (!NAME_LETTERS_ONLY.test(f) || !NAME_LETTERS_ONLY.test(l)) {
-    return "Name should only contain letters";
-  }
-  const fl = f.toLowerCase();
-  const ll = l.toLowerCase();
-  if (FAKE_NAME_PARTS.has(fl) || FAKE_NAME_PARTS.has(ll)) {
-    return "This doesn't appear to be a real person's name";
-  }
-  if (FAKE_FULL_NAMES.has(`${fl} ${ll}`)) {
-    return "This doesn't appear to be a real person's name";
-  }
-  return null;
-}
 interface ManagerEntry {
   id: number;
   name: string;
@@ -97,19 +72,6 @@ interface GroupCompany {
   totalReviews?: number;
   avgRating?: number;
   relationshipType?: string;
-}
-function StarDisplay({ rating }: { rating: number }) {
-  return (
-    <div className="flex items-center gap-1">
-      {[1, 2, 3, 4, 5].map((s) => (
-        <Star
-          key={s}
-          size={14}
-          className={s <= Math.round(rating) ? "fill-amber-400 text-amber-400" : "fill-none text-border"}
-        />
-      ))}
-    </div>
-  );
 }
 function RatingBar({ value, max = 5 }: { value: number; max?: number }) {
   const pct = Math.min(100, (value / max) * 100);
@@ -558,7 +520,7 @@ export default function CompanyProfile() {
                     </>
                   ) : (
                     <>
-                      <StarDisplay rating={data.avgRating} />
+                      <Stars rating={Number(data.avgRating)} size={14} showValue={false} />
                       <span className="text-lg font-semibold text-foreground">{data.avgRating.toFixed(1)}</span>
                     </>
                   )}
@@ -1092,7 +1054,7 @@ export default function CompanyProfile() {
                       Management across the group
                     </p>
                     <div className="mt-2 flex items-center gap-2">
-                      <StarDisplay rating={Number(data.groupStats.avgRating)} />
+                      <Stars rating={Number(data.groupStats.avgRating)} size={14} showValue={false} />
                       <span className="text-lg font-semibold leading-none text-foreground">
                         {Number(data.groupStats.avgRating).toFixed(1)}
                       </span>

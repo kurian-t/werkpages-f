@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Star } from "lucide-react";
-import { companyLogoDomain } from "@/lib/utils";
+import { logoDevUrl as buildLogoDevUrl } from "@/lib/logo";
 import { TopRatedPill } from "@/components/TopRatedPill";
 
 interface Manager {
@@ -136,7 +136,7 @@ function useNearViewport<T extends Element>(rootMargin: string, skip: boolean) {
 }
 
 export function CompanyLogoImg({ company, logoUrl, sizeClass, eager = false }: { company: string; logoUrl?: string; sizeClass: string; eager?: boolean }) {
-  const logoDevUrl = `https://img.logo.dev/${companyLogoDomain(company)}?token=pk_MXSjJV-uTC6-L5D_FbXZUA`;
+  const logoDevUrl = buildLogoDevUrl(company);
   const preferred = logoUrl ?? logoDevUrl;
   // Skip any candidate already known to fail, so a repeat visit goes straight to the letter
   // instead of re-requesting its way back down to it.

@@ -1,6 +1,7 @@
 import API_BASE from "@/lib/api";
 import { topRatedTitleClearance } from "@/lib/topRated";
 import { TopRatedPill } from "@/components/TopRatedPill";
+import { Stars } from "@/components/Stars";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
@@ -19,20 +20,6 @@ interface IndustryEntry {
 }
 
 /** Matches Companies.tsx and IndustryProfile.tsx - one threshold across every card type. */
-function StarRating({ rating }: { rating: number }) {
-  return (
-    <div className="flex max-w-full flex-nowrap items-center gap-0.5 whitespace-nowrap">
-      {[1, 2, 3, 4, 5].map((s) => (
-        <Star
-          key={s}
-          size={12}
-          className={`flex-shrink-0 ${s <= Math.round(rating) ? "fill-amber-400 text-amber-400" : "fill-none text-border"}`}
-        />
-      ))}
-      <span className="ml-1 flex-shrink-0 whitespace-nowrap text-sm font-semibold leading-none text-foreground">{rating.toFixed(1)}</span>
-    </div>
-  );
-}
 
 // The Industries hero illustration.
 function IndustryHeroImage({ imgClass }: { imgClass: string }) {
@@ -188,7 +175,7 @@ export default function Industries() {
                 </h2>
 
                 {ind.avgRating != null
-                  ? <StarRating rating={ind.avgRating} />
+                  ? <Stars rating={Number(ind.avgRating)} />
                   : <p className="text-xs text-muted-foreground">No ratings yet</p>}
 
                 {/* Always stacked, never wrapped. shrink-0 keeps each stat at its intrinsic width
