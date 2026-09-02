@@ -14,6 +14,7 @@ import axios from "axios";
 import { ManagerAvatar, CompanyLogoImg, CompanyRow } from "@/components/ManagerCard";
 import { useAuth } from "@/hooks/useAuth";
 import LockedManagerCard from "@/components/LockedManagerCard";
+import ManagerCard from "@/components/ManagerCard";
 import { fetchGeo } from "@/lib/geo";
 import { InterviewPanel } from "@/components/InterviewPanel";
 import { useCompanyInterviews } from "@/hooks/useCompanyInterviews";
@@ -947,35 +948,11 @@ export default function CompanyProfile() {
                   <div className="grid grid-cols-2 auto-rows-[minmax(210px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                     {searchResults.map((boss: any) =>
                       resultsUnlocked ? (
-                        <Link
+                        <ManagerCard
                           key={boss.id}
+                          boss={{ ...boss, reviews: boss.reviewsCount ?? 0, company: data.name, companyLogoUrl: data.logoUrl }}
                           to={data.slug && boss.slug ? managerPath(data.industrySlug, data.slug, boss.slug) : `/manager/${boss.id}`}
-                          className="group relative flex h-full w-full min-w-0 flex-col rounded-2xl border border-border bg-background p-4 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all min-[420px]:w-[200px] sm:p-5"
-                        >
-                          {/* Same amber pill as the manager, company and industry cards. */}
-                          <TopRatedPill rating={boss.overallRating} reviewCount={boss.reviewsCount} />
-                          <div className="flex items-center gap-3 mb-3">
-                            <div className="flex-shrink-0"><ManagerAvatar name={boss.name} size="sm" /></div>
-                            <p className="text-sm font-semibold text-foreground group-hover:text-[#6d28d9] transition-colors leading-tight truncate flex-1 min-w-0">{boss.name}</p>
-                          </div>
-                          <CompanyRow company={data.name} title={boss.title} logoUrl={data.logoUrl} />
-                          <div className="mt-auto min-w-0 pt-3">
-                            {Number(boss.overallRating) > 0 ? (
-                              <div className="flex max-w-full flex-nowrap items-center gap-0.5 whitespace-nowrap">
-                                {[1,2,3,4,5].map((s) => (
-                                  <Star key={s} size={13} aria-hidden="true"
-                                    className={s <= Math.round(Number(boss.overallRating)) ? "fill-amber-400 text-amber-400" : "fill-none text-border"} />
-                                ))}
-                                <span className="ml-1 flex-shrink-0 whitespace-nowrap text-sm font-semibold leading-none text-foreground">{Number(boss.overallRating).toFixed(1)}</span>
-                              </div>
-                            ) : null}
-                            {(boss.reviewsCount ?? 0) > 0 && (
-                              <p className="mt-1.5 whitespace-nowrap text-[11px] leading-none text-muted-foreground">
-                                {boss.reviewsCount} {boss.reviewsCount === 1 ? "review" : "reviews"}
-                              </p>
-                            )}
-                          </div>
-                        </Link>
+                        />
                       ) : (
                         <LockedManagerCard
                           key={boss.id}
@@ -1075,43 +1052,11 @@ export default function CompanyProfile() {
             ) : (
               <div className="grid grid-cols-2 auto-rows-[minmax(210px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                 {data.managers.map((mgr) => (
-                  <Link
+                  <ManagerCard
                     key={mgr.id}
+                    boss={{ ...mgr, reviews: mgr.reviewsCount ?? 0, company: data.name, companyLogoUrl: data.logoUrl }}
                     to={data.slug && mgr.slug ? managerPath(data.industrySlug, data.slug, mgr.slug) : `/manager/${mgr.id}`}
-                    className="group relative flex h-full w-full min-w-0 flex-col rounded-2xl border border-border bg-background p-4 shadow-sm hover:shadow-md hover:border-[#2e0562]/30 transition-all min-[420px]:w-[200px] sm:p-5"
-                  >
-                    {/* Same amber pill as the manager, company and industry cards. */}
-                    <TopRatedPill rating={mgr.overallRating} reviewCount={mgr.reviewsCount} />
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="flex-shrink-0"><ManagerAvatar name={mgr.name} size="sm" /></div>
-                      <p className="text-sm font-semibold text-foreground group-hover:text-[#6d28d9] transition-colors leading-tight truncate flex-1 min-w-0">
-                        {mgr.name}
-                      </p>
-                    </div>
-                    <CompanyRow company={data.name} title={mgr.title} logoUrl={data.logoUrl} />
-                    <div className="mt-auto min-w-0 pt-3">
-                      {Number(mgr.overallRating) > 0 ? (
-                        <div className="flex max-w-full flex-nowrap items-center gap-0.5 whitespace-nowrap">
-                          {[1,2,3,4,5].map((s) => (
-                            <Star key={s} size={13} aria-hidden="true"
-                              className={s <= Math.round(Number(mgr.overallRating)) ? "fill-amber-400 text-amber-400" : "fill-none text-border"} />
-                          ))}
-                          <span className="ml-1 flex-shrink-0 whitespace-nowrap text-sm font-semibold leading-none text-foreground">{Number(mgr.overallRating).toFixed(1)}</span>
-                        </div>
-                      ) : null}
-                      {/*
-                        An unrated manager shows nothing here rather than "No ratings yet" and
-                        "0 reviews". Both were true and neither was worth saying: the tile spent
-                        two lines advertising an absence. The space is still reserved by the row
-                        height, so tiles stay aligned whether or not they carry a rating.
-                      */}
-                      {mgr.reviewsCount > 0 && (
-                        <p className="mt-1.5 whitespace-nowrap text-[11px] leading-none text-muted-foreground">
-                          {mgr.reviewsCount} {mgr.reviewsCount === 1 ? "review" : "reviews"}
-                        </p>
-                      )}
-                    </div>
-                  </Link>
+                  />
                 ))}
               </div>
             )}

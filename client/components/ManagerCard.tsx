@@ -21,6 +21,14 @@ interface Manager {
 interface ManagerCardProps {
   boss: Manager;
   isPending?: boolean;
+  /**
+   * Where the tile links. Defaults to /manager/:id.
+   *
+   * Exists so a company page can point at the canonical nested path without keeping its own copy
+   * of this markup - which is what it used to do, and why an unrated manager there rendered
+   * "No ratings yet0 reviews" while the same tile in the directory did not.
+   */
+  to?: string;
 }
 
 const AVATAR_COLORS = [
@@ -198,11 +206,11 @@ export function CompanyRow({ company, title, industry, logoUrl, logoSize = "md",
   );
 }
 
-export default function ManagerCard({ boss, isPending = false }: ManagerCardProps) {
+export default function ManagerCard({ boss, isPending = false, to }: ManagerCardProps) {
   const rating = Number(boss.overallRating);
   return (
     <Link
-      to={`/manager/${boss.id}`}
+      to={to ?? `/manager/${boss.id}`}
       className={`group relative flex h-[210px] w-full min-w-0 flex-col rounded-2xl border bg-card p-4 shadow-sm transition-all hover:shadow-md min-[420px]:w-[200px] sm:p-5 ${
         isPending
           ? "border-amber-300 hover:border-amber-400 hover:shadow-amber-100"
