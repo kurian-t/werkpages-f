@@ -1,5 +1,6 @@
 import API_BASE from "@/lib/api";
 import { TopRatedPill } from "@/components/TopRatedPill";
+import { CompanyTile } from "@/components/CompanyTile";
 import { useState, useEffect } from "react";
 import { Helmet } from "react-helmet-async";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
@@ -1164,51 +1165,11 @@ export default function CompanyProfile() {
                 )}
                 <div className="grid grid-cols-2 auto-rows-[minmax(180px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                   {data.companiesInGroup.map((co) => (
-                    <button
-                      key={co.id}
-                      onClick={() => co.slug && navigate(`/companies/${co.slug}`)}
-                      className="group relative h-full w-full min-w-0 text-left rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all min-[420px]:w-[200px] sm:p-5"
-                    >
-                      <div className="mb-1.5 flex h-[18px] items-start justify-end">
-                        <TopRatedPill
-                          rating={co.avgRating}
-                          reviewCount={co.totalReviews}
-                          hidden={isLocked}
-                          variant="inline"
-                        />
-                      </div>
-                      <div className="flex items-center gap-3 mb-3">
-                        <CompanyLogoImg company={co.name} logoUrl={co.logoUrl} sizeClass="h-10 w-10" />
-                        <h3 className="min-w-0 flex-1 font-semibold text-sm text-foreground leading-tight line-clamp-2 group-hover:text-primary transition-colors">
-                          {co.name}
-                        </h3>
-                      </div>
-                      {/* Stars plus the figure. StarDisplay draws stars only, and a group list
-                          whose entire point is "each company keeps its own score" has to actually
-                          show the score. */}
-                      {!isLocked && co.avgRating != null && (
-                        <div className="flex items-center gap-1.5">
-                          <StarDisplay rating={Number(co.avgRating)} />
-                          <span className="text-sm font-semibold leading-none text-foreground">
-                            {Number(co.avgRating).toFixed(1)}
-                          </span>
-                        </div>
-                      )}
-                      {/*
-                        Nothing where a rating would go, rather than "No ratings yet". Membership
-                        in the group is not decided by having stats - a brand nobody has reviewed
-                        is still part of the group and still listed here - but saying so on the
-                        tile only advertises the gap.
-                      */}
-                      {(co.managerCount ?? 0) > 0 && (
-                        <div className="mt-3 flex flex-col items-start gap-1.5 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1 whitespace-nowrap">
-                            <Users size={11} className="flex-shrink-0" />
-                            {co.managerCount} {co.managerCount === 1 ? "manager" : "managers"}
-                          </span>
-                        </div>
-                      )}
-                    </button>
+                    <CompanyTile
+                      company={co}
+                      isLocked={isLocked}
+                      onClick={() => navigate(companyPath(data.industrySlug, co.slug))}
+                    />
                   ))}
                 </div>
               </div>

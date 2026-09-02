@@ -1,5 +1,6 @@
 import API_BASE from "@/lib/api";
 import { topRatedTitleClearance } from "@/lib/topRated";
+import { CompanyTile } from "@/components/CompanyTile";
 import { TopRatedPill } from "@/components/TopRatedPill";
 import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
@@ -209,51 +210,11 @@ export default function IndustryProfile() {
         {visible.length > 0 && (
           <div className="grid grid-cols-2 auto-rows-[minmax(180px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
             {visible.map((co) => (
-              <button
-                key={co.slug ?? co.name}
+              <CompanyTile
+                company={co}
+                isLocked={isLocked}
                 onClick={() => navigate(co.slug ? companyPath(data?.slug, co.slug) : companyPathByName(co.name))}
-                className="group relative h-full w-full min-w-0 text-left rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all min-[420px]:w-[200px] sm:p-5"
-              >
-                <TopRatedPill rating={co.avgRating} reviewCount={co.totalReviews} hidden={isLocked} />
-                <div className="flex items-center gap-3 mb-3">
-                  <CompanyLogoImg company={co.name} logoUrl={co.logoUrl} sizeClass="h-12 w-12" />
-                  <h2 className={`min-w-0 flex-1 font-semibold text-sm text-foreground group-hover:text-[#6d28d9] leading-tight transition-colors line-clamp-2 ${isLocked ? "" : topRatedTitleClearance(co.avgRating, co.totalReviews)}`}>
-                    {co.name}
-                  </h2>
-                </div>
-
-                {!isLocked && co.avgRating != null && <StarRating rating={co.avgRating} />}
-                {isLocked && <LockedStars />}
-
-                {/*
-                  Zero is not worth printing. A tile that says "0 reviews" spends a line
-                  advertising an absence; one that says "2 managers" and stops has said
-                  everything true about it. Each stat stands or falls on its own, and the row
-                  itself disappears when neither has anything to report.
-
-                  The locked placeholders are exempt - they are a deliberate teaser, not a fact.
-                */}
-                {(isLocked || co.managerCount > 0 || co.totalReviews > 0) && (
-                  <div className="mt-3 flex flex-col items-start gap-1.5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:gap-3">
-                  {(isLocked || co.managerCount > 0) && (
-                    <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
-                      <Users size={11} className="flex-shrink-0" />
-                      {isLocked
-                        ? <span className="inline-block h-2.5 w-14 rounded-full bg-[#6d5091]/20 blur-[3px]" />
-                        : <span className="whitespace-nowrap">{co.managerCount} {co.managerCount === 1 ? "manager" : "managers"}</span>}
-                    </span>
-                  )}
-                  {(isLocked || co.totalReviews > 0) && (
-                    <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
-                      <MessageSquare size={11} className="flex-shrink-0" />
-                      {isLocked
-                        ? <span className="inline-block h-2.5 w-14 rounded-full bg-[#6d5091]/20 blur-[3px]" />
-                        : <span className="whitespace-nowrap">{co.totalReviews} {co.totalReviews === 1 ? "review" : "reviews"}</span>}
-                    </span>
-                  )}
-                  </div>
-                )}
-              </button>
+              />
             ))}
           </div>
         )}
