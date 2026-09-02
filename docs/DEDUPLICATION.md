@@ -1,5 +1,22 @@
 # Werkpages: de-duplicating the core product
 
+> **Status.** Phases 1–5 and B-1 are done and ported to RMM. Phases 6, 7, 8 and B-2..B-7
+> remain. Both apps green: Werkpages 790 chromium / 404 unit / 1001 IT; RMM 660 chromium
+> (+14 known Auth0 env failures) / 389 unit / 850 IT.
+>
+> | Phase | State |
+> |---|---|
+> | 1 — orphaned helpers deleted | done, both apps |
+> | 2 — one logo rule (backend) | done, both apps — *also fixed two behaviour gaps in the by-name route* |
+> | 3 — `components/Stars.tsx` | done, both apps |
+> | 4 — `lib/logo.ts` | done, both apps |
+> | 5 — `lib/managerName.ts` | done, both apps — *fixed a live bug, see below* |
+> | B-1 — review limit bypass | done, both apps |
+> | 6 — approval filter | **done differently.** The string substitution was rejected: all 39 sites sit in text blocks, many containing `%` for LIKE, so `.formatted()` corrupts them and concatenation makes 39 queries less readable. The intent — a surface cannot silently change which statuses it admits — was already met for 9 of 10 methods by `ApprovalStatusFilterIntegrationTest` and `CompanyListingIntegrationTest`. Closed the last gap with a guard test for `findManagersByCompanyId`. |
+> | 7 — locked tile | **not done, deliberately.** `LockedManagerCard` blurs a real manager; `GhostManagerCard` invents fictional ones to pad the grid. Same markup, different jobs. Folding costs the ghost tiles their avatar colours and their `pointer-events-none`, and RMM's badge can read "Narrow search", so it is not even identical. Left as two. |
+> | 8 — unused shadcn | deferred pending a look at why they were added |
+> | B-2..B-7 | not started |
+
 ## Context
 
 Today produced a run of bugs that all had one cause: the same UI existed in several
