@@ -164,3 +164,76 @@ written twice, and the mirroring has slipped before.
 
 This is a real problem and a much bigger one — a shared module, published artifact, or
 monorepo. Worth planning separately; noted here so the scale is on record.
+
+
+---
+
+# Werkpages backend inventory
+
+10,026 lines across 33 files. Smaller than the client, and the duplication is less about markup
+than about **rules restated in several places, where one copy has learned something the others
+have not.**
+
+## What is duplicated
+
+| # | Cluster | Copies | Demonstrated cost |
+|---|---|---|---|
+| B1 | Daily-limit + cooldown enforcement | 4 sites | **one copy is bypassable — see below** |
+| B2 | `countSubmittedTodayByUser` | 4 repositories | 3 naive, 1 correct |
+| B3 | `approval_status IN ('approved','ghost')` | 39 sites | CLAUDE.md table enforced by convention only |
+| B4 | Soft-delete + deletions-table + cooldown | 2 repositories | Review and Interview solved it separately |
+| B5 | Per-field length / blank validation written inline | 136 `badRequest` calls, 18 "too long" | a field's rules live wherever it is read |
+| B6 | `isBlank`, `getEnv` | 2 each | trivial, but genuinely copied |
+| B7 | Row→JSON shaping | 11 methods across 5 services | no shared shape for a manager or a company |
+
+`ManagerService.java` is 2,587 lines and holds most of it.
+
+## B1 — the one that is a bug, not just duplication
+
+Four places enforce "N submissions per day, then a 30-day cooldown": managers
+(`ManagerService:853`), reviews (`:1164`), edits (`:1868`), interviews
+(`InterviewService:82`). They have drifted in two ways.
+
+**The limit is a magic number in three of four.** `>= 6` appears three times;
+`InterviewService` has `private static final int DAILY_LIMIT = 3`. `plusDays(30)` is written
+out twice.
+
+**The review limit is refundable by deleting.** `ReviewRepository.countSubmittedTodayByUser`
+counts `WHERE user_id = $1 AND created_at >= current_date AND deleted_at IS NULL`. Delete a
+review and it stops counting, so the 6/day limit resets. The 30-day cooldown does **not** close
+this — it is keyed per manager, so the loop is: review manager A, delete, review manager B,
+delete, and so on without limit.
+
+`InterviewRepository` already solved exactly this and wrote down why:
+
+> *"Deleting clears user_id, so a deleted review is invisible to the query above. Counting
+> today's deletions as well is what stops delete-and-resubmit refunding the day's allowance."*
+
+The `review_deletions` table exists (V8/V10) and `ReviewRepository.recordDeletion` already
+writes to it, so the same fix applies almost verbatim. Nothing new is needed.
+
+**Recommended order:** fix the review count first (it is a live bypass), then unify all four
+onto one helper with named limits, so the next lesson any one of them learns is learned by all.
+
+## Suggested phases
+
+- **B-1** Close the review-count bypass by counting `review_deletions`, mirroring
+  `InterviewRepository`. Add an integration test that submits, deletes, and asserts the day's
+  allowance did not reset.
+- **B-2** One `RateLimit` helper taking a named daily limit and cooldown, used by all four sites.
+  Replaces `>= 6` ×3 and `plusDays(30)` ×2.
+- **B-3** Named approval-status fragments (Phase 6 above).
+- **B-4** Fold the soft-delete/cooldown pair into one shared shape across Review and Interview.
+- **B-5..B-7** Lower value: shared field validators, `isBlank`/`getEnv`, and splitting
+  `ManagerService`. Worth doing only alongside work that already touches them.
+
+## Verification
+
+Same bar as the frontend — existing suites pass unchanged:
+
+```
+mvn verify -DskipITs=false -pl Api -am    # expect 404 unit / 999 IT
+```
+
+B-1 is the exception: it *changes* behaviour deliberately, so it needs a new test proving the
+allowance no longer resets, and an existing-test review to check nothing depended on the refund.
