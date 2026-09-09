@@ -1,6 +1,7 @@
 import API_BASE from "@/lib/api";
 import { TopRatedPill } from "@/components/TopRatedPill";
 import { companyLogoDomain, toNameCase, toJobTitleCase } from "@/lib/utils";
+import { RatingBreakdown, HighLowCards, confidenceLabel } from "@/components/RatingBreakdown";
 import { Helmet } from "react-helmet-async";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
@@ -1967,6 +1968,7 @@ export default function BossProfile() {
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">Company</label>
                 <CompanyAutocomplete
+                  name="adminEditCompany"
                   value={adminEditForm.company}
                   onChange={val => { setAdminEditForm(p => ({ ...p, company: val })); setAdminEditLogoUrl(undefined); adminEditCompany.bind.onChange(val); }}
                   onSuggestionSelect={(_name, logoUrl) => setAdminEditLogoUrl(logoUrl)}
@@ -2380,8 +2382,8 @@ export default function BossProfile() {
       <section className="border-b border-border py-10">
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
           <div className="mb-6">
-            <h2 className="text-[17px] font-semibold text-foreground tracking-tight">Performance Breakdown</h2>
-            <p className="text-[13px] text-muted-foreground mt-0.5">Average scores across all rating categories</p>
+            <h2 className="text-[17px] font-semibold text-foreground tracking-tight">How people rated them</h2>
+            <p className="text-[13px] text-muted-foreground mt-0.5">Average scores across every rating category</p>
           </div>
           {isLocked ? (
             <div className="relative">
@@ -2408,23 +2410,28 @@ export default function BossProfile() {
               </div>
             </div>
           ) : contextReviews.length > 0 ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {RATING_CATEGORIES.map((category) => {
-                const avg = managerCategoryAverages[category] || 0;
-                const pct = (avg / 5) * 100;
-                return (
-                  <div key={category} className="flex items-center gap-3">
-                    <span className="w-44 flex-shrink-0 text-xs text-muted-foreground leading-tight">{category}</span>
-                    <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div className="h-full rounded-full bg-[#6d5091] transition-all duration-500" style={{ width: `${pct}%` }} />
-                    </div>
-                    <span className="w-7 flex-shrink-0 text-right text-xs font-semibold text-foreground tabular-nums">
-                      {avg > 0 ? avg.toFixed(1) : "-"}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+            <>
+              {/*
+                The same two components the company page uses. These bars were drawn here by hand
+                and again over there, so a change to one was invisible to the other.
+              */}
+              <HighLowCards
+                rows={RATING_CATEGORIES
+                  .map((c) => ({ key: c, label: c, value: managerCategoryAverages[c] || 0 }))
+                  .filter((r) => r.value > 0)}
+              />
+              <div className="mt-8">
+                <RatingBreakdown
+                  rows={RATING_CATEGORIES.map((c) => ({
+                    key: c, label: c, value: managerCategoryAverages[c] || 0,
+                  }))}
+                />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Based on {contextReviews.length} {contextReviews.length === 1 ? "review" : "reviews"}.
+                  {" "}{confidenceLabel(contextReviews.length)}.
+                </p>
+              </div>
+            </>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {RATING_CATEGORIES.map((category) => (

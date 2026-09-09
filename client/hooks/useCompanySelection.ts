@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import axios from "axios";
 import API_BASE from "@/lib/api";
+import { resolveCompanyPayload } from "@/lib/companySelection";
 
 /**
  * One company selection, owned in one place.
@@ -80,20 +81,12 @@ export function useCompanySelection(initialName = ""): CompanySelection {
   }, []);
 
   const payload = useCallback(async () => {
-    const trimmed = name.trim();
-    if (id != null) return { company: trimmed, companyId: id };
-    if (trimmed.length < 2) return { company: trimmed, companyId: null };
-    try {
-      const res = await axios.post(`${API_BASE}/api/companies`, { name: trimmed });
-      const newId = res.data?.id;
-      if (typeof newId === "number") {
-        setId(newId);
-        return { company: res.data?.name ?? trimmed, companyId: newId };
-      }
-    } catch {
-      // Falls through to the name-only payload below.
-    }
-    return { company: trimmed, companyId: null };
+    const resolved = await resolveCompanyPayload(name.trim(), id, async (n) => {
+      const res = await axios.post(`${API_BASE}/api/companies`, { name: n });
+      return res.data ?? {};
+    });
+    if (resolved.companyId != null) setId(resolved.companyId);
+    return resolved;
   }, [name, id]);
 
   return {

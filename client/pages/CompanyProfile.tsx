@@ -8,6 +8,8 @@ import { useState, useEffect } from "react";
 import { Helmet } from "react-helmet-async";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Layout } from "@/components/Layout";
+import { RatingBreakdown, HighLowCards, RatingBar, confidenceLabel } from "@/components/RatingBreakdown";
+import { CompanyRatingList } from "@/components/CompanyRatingList";
 import { Star, Building2, Users, MessageSquare, TrendingUp, TrendingDown, ChevronLeft, PlusCircle, Lock, Pencil } from "lucide-react";
 import { IndustryIcon } from "@/components/IndustryIcon";
 import { companyPath, managerPath } from "@/lib/urls";
@@ -80,17 +82,6 @@ interface GroupCompany {
   avgRating?: number;
   relationshipType?: string;
 }
-function RatingBar({ value, max = 5 }: { value: number; max?: number }) {
-  const pct = Math.min(100, (value / max) * 100);
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
-        <div className="h-full rounded-full bg-[#6d5091]" style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-xs font-medium text-foreground w-6 text-right">{value.toFixed(1)}</span>
-    </div>
-  );
-}
 const GHOST_SLOTS = [
   { initials: "JW", name: "James Wilson",   role: "Senior Product Manager",   color: "bg-violet-500", rating: "4.3", reviews: 12 },
   { initials: "SC", name: "Sarah Chen",     role: "Director of Engineering",  color: "bg-sky-500",    rating: "3.8", reviews: 7  },
@@ -141,19 +132,31 @@ const SIDEBAR_INPUT =
 function CompanyRatingPanel({
   rating,
   companyName,
+  companySlug,
   isLocked,
   onRate,
   onSeeManagers,
 }: {
   rating?: CompanyData["companyRating"];
   companyName: string;
+  companySlug?: string;
   isLocked: boolean;
   onRate: () => void;
   onSeeManagers: () => void;
 }) {
-  // Nothing rather than zeroes. A page printing 0.0 says the workplace is terrible; a page saying
-  // nobody has rated it yet says what is actually true.
-  if (!rating || rating.ratingCount === 0) {
+  /*
+    Order matters, and it matches the interview panel exactly.
+
+    "Nobody has rated this yet" is an invitation, and it only makes sense to somebody who could
+    act on it knowingly - a contributor. Showing it to a visitor who has not contributed both
+    tells them the dataset is empty and skips the ask, so the gate is checked first and they get
+    the same locked teaser every other company shows.
+
+    Nothing rather than zeroes for the unlocked case: a page printing 0.0 says the workplace is
+    terrible; a page saying nobody has rated it yet says what is actually true.
+  */
+  const noRatings = !rating || rating.ratingCount === 0;
+  if (noRatings && !isLocked) {
     return (
       <div className="rounded-xl border border-border bg-background/50 py-12 text-center">
         <Building2 size={36} className="mx-auto mb-3 text-muted-foreground opacity-40" />
@@ -174,89 +177,113 @@ function CompanyRatingPanel({
     );
   }
 
-  const entries = COMPANY_CATEGORIES
-    .map((c) => ({ key: c, label: COMPANY_CATEGORY_LABELS[c], value: rating.categories?.[c] }))
-    .filter((e) => e.value != null)
-    .map((e) => ({ key: String(e.key), label: e.label, value: e.value as number }));
-  const ranked = [...entries].sort((a, b) => b.value - a.value);
-  const strongest = ranked.slice(0, 3);
-  const weakest = [...ranked].reverse().slice(0, 3);
+  /*
+    A company with nothing yet still has to look like it has something behind the lock. Blurring a
+    row of dashes tells a visitor there is no data and gives them no reason to contribute, so the
+    locked-and-empty case shows plausible bars behind the blur - the same device the manager
+    profile uses with its ghost cards, and the interview panel with its placeholder figures.
+
+    These are never shown unblurred: this branch is only reachable when isLocked is true.
+  */
+  const placeholders = [4.1, 3.8, 4.3, 3.6, 4.0, 3.9, 4.2, 3.7, 4.4, 3.5];
+  const entries = noRatings
+    ? COMPANY_CATEGORIES.map((c, i) => ({
+        key: String(c), label: COMPANY_CATEGORY_LABELS[c], value: placeholders[i % placeholders.length],
+      }))
+    : COMPANY_CATEGORIES
+        .map((c) => ({ key: c, label: COMPANY_CATEGORY_LABELS[c], value: rating!.categories?.[c] }))
+        .filter((e) => e.value != null)
+        .map((e) => ({ key: String(e.key), label: e.label, value: e.value as number }));
+  const overall = rating?.overallRating ?? 0;
 
   return (
     <div className="space-y-8">
-      {!isLocked && strongest.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <AreaCard title="Strongest" icon={<TrendingUp size={16} className="text-emerald-600" />} rows={strongest} />
-          <AreaCard title="Weakest" icon={<TrendingDown size={16} className="text-amber-600" />} rows={weakest} />
+      {/*
+        The headline, its sample, and what that sample is worth - on one row, because they only
+        mean anything together. A score with no count invites trust it has not earned.
+      */}
+      {!isLocked && !noRatings && (
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="flex flex-wrap items-center gap-x-10 gap-y-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-bold text-foreground tabular-nums leading-none">{overall.toFixed(1)}</span>
+                <div className="flex gap-0.5" role="img" aria-label={`${overall.toFixed(1)} out of 5`}>
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star
+                      key={i}
+                      size={14}
+                      aria-hidden="true"
+                      className={i < Math.round(overall) ? "fill-amber-400 text-amber-400" : "text-border"}
+                    />
+                  ))}
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">out of 5</p>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground tabular-nums">{rating!.ratingCount}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                {rating!.ratingCount === 1 ? "rating" : "ratings"}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">{confidenceLabel(rating!.ratingCount)}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">based on sample size</p>
+            </div>
+          </div>
         </div>
       )}
 
-      <div>
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-          All ten
-        </h2>
-        {/*
-          Behind the same gate as everything else on this page. These bars were rendering in the
-          clear while the manager averages beside them were blurred, which is not a lighter policy
-          - it is one surface quietly opting out of the site's contribution gate.
-        */}
-        <div className={`relative ${isLocked ? "select-none" : ""}`}>
-          <div className={`space-y-3 rounded-xl border border-border bg-card p-5 ${
-            isLocked ? "pointer-events-none blur-sm" : ""
-          }`} aria-hidden={isLocked || undefined}>
-            {entries.map((e) => (
-              <div key={e.key} className="grid grid-cols-[1fr_auto] items-center gap-3">
-                <span className="text-sm text-foreground">{e.label}</span>
-                <RatingBar value={e.value} />
-              </div>
-            ))}
-          </div>
-          {isLocked && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center rounded-xl bg-background/60 text-center">
-              <p className="text-sm font-semibold text-foreground">Workplace ratings are locked</p>
-              <p className="mt-1 text-xs text-muted-foreground">Rate a workplace to unlock them.</p>
-              <button
-                onClick={onRate}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2e0562]/90"
-              >
-                Rate {companyName}
-              </button>
-            </div>
-          )}
-        </div>
-        {/*
-          One count for all ten. Every category is required, so they share a denominator - which
-          is exactly what makes a single "based on N" honest here.
-        */}
-        <p className="mt-2 text-xs text-muted-foreground">
-          Based on {rating.ratingCount} {rating.ratingCount === 1 ? "rating" : "ratings"} from people who worked here.
-          {rating.ratingCount < 10 && " Small sample size, treat as indicative only."}
+      {/*
+        The two that answer "what is it like here" before the full list does. Suppressed while
+        locked, and while there is nothing real to rank - placeholders must never be presented as
+        this company's strengths.
+      */}
+      {!isLocked && !noRatings && <HighLowCards rows={entries} />}
+
+      <RatingBreakdown
+        rows={entries}
+        subtitle="Average scores across every rating category"
+        locked={isLocked}
+        lockedOverlay={
+          <>
+            <p className="text-sm font-semibold text-foreground">Workplace ratings are locked</p>
+            <p className="mt-1 text-xs text-muted-foreground">Rate a workplace to unlock them.</p>
+            <button
+              onClick={onRate}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2e0562]/90"
+            >
+              Rate {companyName}
+            </button>
+          </>
+        }
+      />
+
+      {/*
+        One count for every category. All ten are required, so they share a denominator - which is
+        what makes a single "based on N" honest here. The confidence word says what that number
+        means, because a 4.8 from three people and a 4.8 from ninety are the same number and not
+        the same claim.
+      */}
+      {noRatings ? null : (
+        <p className="-mt-6 text-xs text-muted-foreground">
+          Every category is required, so all ten share one denominator.
         </p>
-      </div>
+      )}
+
+      {/*
+        What the average is made of. Only once it is unlocked: the individual ratings are the data
+        the gate exists to protect, and showing them beneath a blurred summary would be the same
+        surface opting out of the gate twice over.
+      */}
+      {!isLocked && !noRatings && companySlug && (
+        <CompanyRatingList companySlug={companySlug} totalCount={rating!.ratingCount} />
+      )}
     </div>
   );
 }
 
-function AreaCard({ title, icon, rows }: { title: string; icon: React.ReactNode; rows: { key: string; label: string; value: number }[] }) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <div className="mb-3 flex items-center gap-2">
-        {icon}
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-foreground">{title}</h3>
-      </div>
-      <div className="space-y-3">
-        {rows.map((r) => (
-          <div key={r.key}>
-            <div className="mb-1 flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">{r.label}</span>
-            </div>
-            <RatingBar value={r.value} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 type CompanyTab = "company" | "managers" | "hiring";
 
@@ -938,6 +965,7 @@ export default function CompanyProfile() {
             <CompanyRatingPanel
               rating={data.companyRating}
               companyName={decoded}
+              companySlug={data.slug ?? companySlug}
               isLocked={companyLocked}
               onRate={() => navigate(`/companies/${data.slug ?? companySlug}/rate`)}
               onSeeManagers={() => setActiveTab("managers")}

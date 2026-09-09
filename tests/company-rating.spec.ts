@@ -58,9 +58,11 @@ test.describe("Company ratings on a company page", () => {
     await mock(page);
 
     await expect(page.getByText("workplace rating", { exact: false })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("4.1")).toBeVisible();  // the workplace figure, unique on the page
+    // The figure now appears twice on purpose - in the summary row and again in the panel header -
+    // so this asserts it is shown rather than that it is unique.
+    await expect(page.getByText("4.1").first()).toBeVisible();
     await expect(page.getByText("avg manager rating")).toBeVisible();
-    await expect(page.getByText("3.9")).toBeVisible();
+    await expect(page.getByText("3.9").first()).toBeVisible();
   });
 
   test("there are three tabs, one question each", async ({ page }) => {
@@ -83,6 +85,31 @@ test.describe("Company ratings on a company page", () => {
     await mock(page, UNRATED);
     await expect(page.getByRole("tab", { name: "Managers" }))
       .toHaveAttribute("aria-selected", "true", { timeout: 10_000 });
+  });
+
+  test("an unrated company is locked, not shown as empty", async ({ page }) => {
+    /*
+     * The gate is checked before the empty state, the same way the interview tab does it.
+     * "Nobody has rated this yet" is an invitation, and telling it to somebody who has not
+     * contributed both reveals the dataset is empty and skips the ask. A locked visitor sees the
+     * same teaser every other company shows.
+     */
+    await mock(page, UNRATED, false, false);
+    await page.getByRole("tab", { name: "Working here" }).click();
+
+    await expect(page.getByText("Workplace ratings are locked")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Nobody has rated Red Hat as a workplace yet/)).toHaveCount(0);
+  });
+
+  test("a locked empty company still looks like it has something behind the lock", async ({ page }) => {
+    // Blurring a row of dashes tells a visitor there is no data and gives them no reason to
+    // contribute. Same device the manager profile uses with its ghost cards.
+    await mock(page, UNRATED, false, false);
+    await page.getByRole("tab", { name: "Working here" }).click();
+
+    const bars = page.locator('[aria-hidden="true"]').filter({ hasText: "Work–life balance" });
+    await expect(bars.first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Based on 0 ratings/)).toHaveCount(0);
   });
 
   test("an unrated company says so rather than showing zero", async ({ page }) => {
