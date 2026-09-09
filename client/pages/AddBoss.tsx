@@ -128,15 +128,17 @@ type AddBossStep = "info" | "timeline" | "ratings";
 
 export default function AddBoss() {
   const navigate = useNavigate();
-  const { user, setUser } = useAuth();
+  const { user, setUser, refreshUser } = useAuth();
 
-  // After a successful submission the user has contributed a review, which lifts the
-  // ratings lock site-wide. The gate reads user.hasContributed (sourced from /api/auth/me,
-  // only refreshed on app mount), so we must optimistically flip it here - otherwise the
-  // manager they just rated stays blurred until a full page reload.
-  const markContributed = () => {
-    if (user && !user.hasContributed) setUser({ ...user, hasContributed: true });
-  };
+  /*
+    After a successful submission, re-read the account rather than assuming what it unlocked.
+
+    This used to flip hasContributed locally, on the reasoning that a submitted rating always
+    counts. That stopped being true when ratings could be withheld pending verification: a rating
+    held by the server unlocked the whole site in the browser anyway, because the client had
+    already decided the answer. Asking costs one request on a path somebody reaches once.
+  */
+  const markContributed = () => { void refreshUser(); };
   const queryClient = useQueryClient();
 
   const [searchParams, setSearchParams] = useSearchParams();

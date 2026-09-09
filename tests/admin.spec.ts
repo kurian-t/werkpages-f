@@ -418,15 +418,31 @@ test.describe("Admin Panel", () => {
 
     test("saving inline edit calls PUT /api/admin/managers/:id and updates the card", async ({ page }) => {
       let putBody: any = null;
+      /*
+       * The card is re-read from the server after a save rather than rebuilt from the write's
+       * response, so this mock has to behave like one: the pending list answers differently once
+       * the edit has landed.
+       *
+       * That is the point of the change. Reconstructing the row from the response meant any field
+       * the response omitted silently kept its old value - the save succeeded, the toast said so,
+       * and the card showed what it showed before.
+       */
+      let saved = false;
       await mockAdminPage(page);
+      await page.route("**/api/admin/pending-managers**", async (route) => {
+        await route.fulfill({
+          json: { data: [saved
+            ? { ...MOCK_PENDING_ADMIN_MANAGER, name: "John Updated", title: "CTO", company: "New Corp" }
+            : MOCK_PENDING_ADMIN_MANAGER] },
+        });
+      });
       await page.goto("/admin");
 
       await page.route(`**/api/admin/managers/${MOCK_PENDING_ADMIN_MANAGER.id}`, async (route) => {
         if (route.request().method() === "PUT") {
           putBody = route.request().postDataJSON();
-          await route.fulfill({
-            json: { success: true, name: "John Updated", company: "New Corp" },
-          });
+          saved = true;
+          await route.fulfill({ json: { success: true } });
         } else {
           await route.continue();
         }

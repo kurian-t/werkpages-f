@@ -1,41 +1,38 @@
 # Werkpages: de-duplicating the core product
 
-> **Status.** Phases 1–5 and B-1 are done and ported to RMM. Phases 6, 7, 8 and B-2..B-7
-> remain. Both apps green: Werkpages 790 chromium / 404 unit / 1001 IT; RMM 660 chromium
-> (+14 known Auth0 env failures) / 389 unit / 850 IT.
->
-> | Phase | State |
-> |---|---|
-> | 1 — orphaned helpers deleted | done, both apps |
-> | 2 — one logo rule (backend) | done, both apps — *also fixed two behaviour gaps in the by-name route* |
-> | 3 — `components/Stars.tsx` | done, both apps |
-> | 4 — `lib/logo.ts` | done, both apps |
-> | 5 — `lib/managerName.ts` | done, both apps — *fixed a live bug, see below* |
-> | B-1 — review limit bypass | done, both apps |
-> | 6 — approval filter | **done differently.** The string substitution was rejected: all 39 sites sit in text blocks, many containing `%` for LIKE, so `.formatted()` corrupts them and concatenation makes 39 queries less readable. The intent — a surface cannot silently change which statuses it admits — was already met for 9 of 10 methods by `ApprovalStatusFilterIntegrationTest` and `CompanyListingIntegrationTest`. Closed the last gap with a guard test for `findManagersByCompanyId`. |
-> | 7 — locked tile | **not done, deliberately.** `LockedManagerCard` blurs a real manager; `GhostManagerCard` invents fictional ones to pad the grid. Same markup, different jobs. Folding costs the ghost tiles their avatar colours and their `pointer-events-none`, and RMM's badge can read "Narrow search", so it is not even identical. Left as two. |
-> | 8 — unused shadcn | deferred pending a look at why they were added |
-> | B-2..B-7 | not started |
+## Status
 
-## Context
+**Done — shipped to both Werkpages and RMM, all suites green**
 
-Today produced a run of bugs that all had one cause: the same UI existed in several
-hand-written copies, and fixes landed in some copies and not others.
+| | Change | Result |
+|---|---|---|
+| ✅ 1 | Delete helpers orphaned by the tile extraction | 4 dead functions removed |
+| ✅ 2 | One logo resolution rule | 7 inline sites → `bestCompanyLogo` + `managerSuppliedLogo`; **also fixed 2 behaviour gaps in the by-name route** |
+| ✅ 3 | One star primitive | `components/Stars.tsx`; 6 definitions → 1 |
+| ✅ 4 | One logo.dev entry point | `lib/logo.ts`; 5 hardcoded tokens → 1 |
+| ✅ 5 | One name validator | `lib/managerName.ts` + 13 unit tests; **fixed a live bug** |
+| ✅ B-1 | Review daily-limit bypass | counts `review_deletions`; 2 new tests |
+| ✅ B-2 | One rate-limit rule | `SubmissionLimits`, named limits replacing three bare `6`s |
+| ✅ B-4 | One cooldown constant | bound into SQL via `make_interval`; no longer written out in four places |
+| ✅ B-5 | Field validators | `Fields`; 18 inline length checks → 6 declarative blocks |
+| ✅ B-6 | One `isBlank`, one `env` | 4 private copies → 1 each |
 
-- The "hide zero counts" rule had to be applied **three times** (companies directory,
-  industry profile, group grid) because there were three copies of the company tile.
-- BlackBerry QNX showed its logo on its own page and a bare letter **"B"** in its parent's
-  group list, with no review count, because that copy read `companies.logo_url` only while
-  every other surface resolved `stats_logo_url → logo_url → resolver`.
-- `ManagerCard.tsx` already carries a comment recording the same class of bug:
-  *"this file kept its own [copy], which is how it ended up being the one surface that
-  awarded the badge off a single five-star review."*
+Earlier the same day, also done: `CompanyTile` (3 copies → 1) and `ManagerCard` gaining a `to`
+prop so `CompanyProfile` stops hand-rolling manager tiles (3 copies → 1).
 
-Two extractions are already done and green (`CompanyTile`, and `ManagerCard` gaining a `to`
-prop so `CompanyProfile` stops hand-rolling manager tiles). This plan covers what is left.
+**Not done — with the reason**
 
-**Out of scope:** the resume builder (user's decision), and the Werkpages/RMM fork
-duplication (separate, much larger question — see Appendix).
+| | Change | Why not |
+|---|---|---|
+| ❌ 6 / B-3 | Named approval-status SQL fragments | **Rejected on the evidence.** All 39 sites sit in text blocks, many containing `%` for `LIKE`, so `.formatted()` corrupts them and concatenation makes 39 queries less readable. The intent — a surface cannot silently change which statuses it admits — was already met for 9 of 10 methods by `ApprovalStatusFilterIntegrationTest` and `CompanyListingIntegrationTest`. Closed the last gap with a guard test for `findManagersByCompanyId` instead. |
+| ❌ 7 | Merge `GhostManagerCard` into `LockedManagerCard` | **Rejected.** `LockedManagerCard` blurs a *real* manager; `GhostManagerCard` invents fictional ones to pad the grid. Same markup, different jobs. Folding costs the ghost tiles their avatar colours and their deliberate `pointer-events-none`, and RMM's badge can read "Narrow search" so it is not even identical. |
+| ⏸️ 8 | Delete 36 unused shadcn `ui/*` files (4,108 lines) | **Deferred** pending a look at why they were added. |
+| ⏸️ B-7 | Split `ManagerService` (2,587 lines) | **Deferred.** The one change here whose risk is not bounded by the existing tests — see the note at the end. |
+| ⏸️ — | Werkpages/RMM fork (~6,000 near-identical backend lines) | **Out of scope** by decision; the two are kept as deliberate duplicates. See Appendix. |
+| ⏸️ — | Resume builder (60,559 of 95,017 client lines) | **Out of scope** by decision. |
+
+Suites at the end: Werkpages 404 unit / 1,002 IT / 790 chromium. RMM 389 unit / 850 IT / 660
+chromium (+14 known Auth0-env failures).
 
 ## What is duplicated, measured
 
@@ -254,3 +251,31 @@ mvn verify -DskipITs=false -pl Api -am    # expect 404 unit / 999 IT
 
 B-1 is the exception: it *changes* behaviour deliberately, so it needs a new test proving the
 allowance no longer resets, and an existing-test review to check nothing depended on the refund.
+
+
+---
+
+## B-7 — splitting ManagerService, and why it is still open
+
+`ManagerService.java` is 2,587 lines and holds the manager, review, edit, company-profile and
+drop-off paths. It is the obvious next target and it is deliberately not done.
+
+Every other phase here was verifiable the same way: extract, run the existing suites, and a green
+run proves behaviour was preserved because the tests exercise the surfaces directly. Splitting
+this class does not have that property. The 1,002 integration tests would still pass while the
+seams between the new collaborators went untested, because nothing asserts *which class* does the
+work - only that the work happens.
+
+That makes it the one change here whose risk is not bounded by the existing tests, which is a bad
+shape for a busy week.
+
+When it is done, the natural seams are visible from the file itself:
+
+- **Company profile** — `getCompanyProfile`, `getCompanyBySlug`, `buildCompanyProfileResponse`,
+  `withCorporateStructure`, `bestCompanyLogo`, `managerSuppliedLogo`
+- **Capture / drop-off** — `createDropOffDraft`, `createDropOffReview`, `captureAnonymousSearch`,
+  `findOrCreate`
+- **Reviews** — `createReview`, `validateAndInsertReview`, `deleteReview`, `buildMyReviewJson`
+
+Company profile is the cleanest first cut: it is the group that today's logo work already drew a
+boundary around, and it barely touches the review or capture paths.

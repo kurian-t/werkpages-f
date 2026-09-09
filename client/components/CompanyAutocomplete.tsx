@@ -62,6 +62,7 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
   const dropdownRef = useRef<HTMLUListElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const justSelectedRef = useRef(false);
+  const firstRunRef = useRef(true);
 
   // Compute fixed-position dropdown coordinates from the container's viewport rect.
   // This makes the dropdown escape any overflow:hidden/auto ancestor (e.g. modal scroll containers).
@@ -79,6 +80,21 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    // A non-empty value on the first render was put there by the parent, not typed - nobody can
+    // type before mount. Searching it pops the dropdown open over a field nobody has touched,
+    // which is what a form pre-filled from the URL used to do.
+    //
+    // This has to sit here rather than inside the debounce: an empty initial value returns early
+    // below, so a guard further down would still be armed and would swallow the user's first
+    // real keystroke instead.
+    if (firstRunRef.current) {
+      firstRunRef.current = false;
+      if (value.trim().length > 0) {
+        setOpen(false);
+        return;
+      }
+    }
 
     const trimmed = value.trim();
     if (trimmed.length < 1) {

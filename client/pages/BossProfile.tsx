@@ -20,6 +20,7 @@ import type { User } from "@/contexts/AuthContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { toast } from "sonner";
+import { isNudgeSuppressed, suppressNudge } from "@/lib/rateCompanyNudge";
 import { formatDistanceToNow } from 'date-fns';
 import { StarRating } from "@/components/StarRating";
 import { generateUsername } from "@/lib/validators";
@@ -162,7 +163,7 @@ export default function BossProfile() {
   }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { user, setUser } = useAuth();
+  const { user, setUser, refreshUser } = useAuth();
   const { track } = useAnalytics();
   const isBanned = user?.isBanned === true;
 
@@ -357,6 +358,33 @@ export default function BossProfile() {
       return Array.isArray(res.data.data) ? res.data.data : [];
     },
     enabled: !!dbUserId && !!manager?.id,
+  });
+
+  /*
+    Is one of the caller's own ratings of this manager being withheld?
+
+    Read from data the page already has. Their held rating IS returned to them by the reviews
+    endpoint - deliberately, since withholding it from its author would leave them no way to know
+    it exists - and it now carries its disposition, so no extra request is needed to notice.
+  */
+  const myHeldReview = cachedUserReviews.find((r: any) => r?.disposition === "held");
+
+  /*
+    Only then ask what stage the challenge is at, because that is the one thing the review payload
+    cannot say. Gated on a held rating existing, so the request fires for the handful of people who
+    have one rather than on every profile view by every signed-in visitor.
+  */
+  const { data: myProofChallenge } = useQuery({
+    queryKey: ["proof-challenge", manager?.id],
+    queryFn: async () => {
+      const res = await axios.get(`${API_BASE}/api/managers/${manager!.id}/proof-challenge`, {
+        withCredentials: true,
+      });
+      return res.data?.challenge ?? null;
+    },
+    enabled: !!manager?.id && !!user && !!myHeldReview,
+    retry: false,
+    refetchOnWindowFocus: false,
   });
 
   const userHasReviewedState = cachedUserReviews.length > 0;
@@ -1007,6 +1035,8 @@ export default function BossProfile() {
 
     setIsSubmittingReview(true);
     const authorName = generatedName;
+    // Declared out here so the code after the try can read what the server did with the write.
+    let created: { data?: { disposition?: string } } | undefined;
 
     const overallRating = parseFloat(
       (
@@ -1017,7 +1047,7 @@ export default function BossProfile() {
 
     // 1. POST the new review
     try {
-      await axios.post(
+      created = await axios.post(
         `${API_BASE}/api/managers/${manager.id}/reviews`,
         {
           author: authorName,
@@ -1063,12 +1093,27 @@ export default function BossProfile() {
       return;
     }
 
+    /*
+      Did the server hold this rating? It said so in the response.
+
+      The two lines below used to be unconditional: the toast said "is live!" and the gate was
+      opened locally. For a held rating both are false, and the person would find out by seeing
+      everything still locked with no explanation.
+
+      Read from the write's own answer rather than a follow-up request. A second call asking what
+      the write had just done is a race the write does not have, and its failure mode is silently
+      telling somebody the wrong thing.
+    */
+    const heldForProof = created.data?.disposition === "held";
+
     // 2. Refresh manager and reviews in cache
     queryClient.invalidateQueries({ queryKey: managerQueryKey });
     queryClient.invalidateQueries({ queryKey: ["manager-reviews", manager.id] });
     queryClient.invalidateQueries({ queryKey: ["manager-career-segments", manager.id] });
     queryClient.removeQueries({ queryKey: ["managers-directory"] });
-    if (user && !user.hasContributed) setUser({ ...user, hasContributed: true });
+    // Ask, do not assume: the server knows whether this rating counts, and it is the only
+    // thing that does once ratings can be held.
+    void refreshUser();
     queryClient.removeQueries({ queryKey: ["managers-top"] });
     queryClient.removeQueries({ queryKey: ["stats"] });
 
@@ -1080,9 +1125,54 @@ export default function BossProfile() {
     reviewDraftTokenRef.current = null;
     localStorage.removeItem("rmm_pending_review");
     track("review_submitted");
+
+    if (heldForProof) {
+      // Straight to the proof screen, and the copy leads with the rating being safe. "One more
+      // step" reads very differently when somebody fears the last two minutes are gone.
+      toast(`Your rating of ${manager.name} is saved`, {
+        description: "One quick step before it goes live.",
+      });
+      navigate(
+        `/managers/${manager.id}/confirm?name=${encodeURIComponent(manager.name)}` +
+        `&company=${encodeURIComponent(manager.company ?? "")}`,
+      );
+      return;
+    }
+
     toast.success(`Your review of ${manager.name} is live!`, {
       description: "Others can now see your experience. Thank you for helping the community.",
     });
+
+    /*
+      Then, separately, ask about the employer.
+
+      Delayed so it lands after the success toast rather than on top of it, and offered here on
+      the manager's own profile because that is where people want to be once they have rated
+      someone. A screen of its own would take them off the page they came for.
+
+      Never part of the review itself: nothing may make the manager contribution harder.
+    */
+    if (manager.companySlug && !isNudgeSuppressed(manager.companySlug)) {
+      const slug = manager.companySlug;
+      const companyName = manager.company ?? "this company";
+      setTimeout(() => {
+        toast(`Rate ${companyName} too?`, {
+          description: `You've rated ${manager.name}. Tell us what the workplace itself was like.`,
+          duration: Infinity,
+          action: {
+            label: `Rate ${companyName}`,
+            onClick: () => { suppressNudge(slug); navigate(`/companies/${slug}/rate`); },
+          },
+          cancel: {
+            label: "Maybe later",
+            onClick: () => suppressNudge(slug),
+          },
+          // Dismissing by any route counts as an answer, so the ✕ suppresses it too. Two exits
+          // that behave differently would be a trap for anyone who closes rather than declines.
+          onDismiss: () => suppressNudge(slug),
+        });
+      }, 1500);
+    }
 
     setIsSubmittingReview(false);
     setReviewStep(null);
@@ -1256,6 +1346,9 @@ export default function BossProfile() {
       return;
     }
 
+    // Declared out here so the toast below can read what the server actually did with the edit.
+    let updated: { data?: { disposition?: string } } | undefined;
+
     const overallRating = parseFloat(
       (
         Object.values(editReviewData).reduce((a, b) => a + b, 0) /
@@ -1269,7 +1362,7 @@ export default function BossProfile() {
         editAuthorType === "real_name" ? `${user.firstName} ${user.lastName}` :
         editAuthorType === "anonymous"  ? editGeneratedName :
         user.username;
-      await axios.put(
+      updated = await axios.put(
         `${API_BASE}/api/managers/${manager?.id}/reviews/${editingReviewId}`,
         {
           authorType: editAuthorType,
@@ -1315,7 +1408,22 @@ export default function BossProfile() {
     queryClient.removeQueries({ queryKey: ["managers-directory"] });
     queryClient.removeQueries({ queryKey: ["managers-top"] });
 
-    toast.success(`Your review of ${manager?.name} has been updated.`);
+    /*
+      Say which one happened.
+
+      "Has been updated" is true of a held rating too, and that is the problem: it reads as
+      published when the rating is still withheld. Somebody would edit, be told it worked, and
+      never learn their rating is not on the site.
+    */
+    const stillHeld = updated?.data?.disposition === "held";
+
+    if (stillHeld) {
+      toast.success(`Your changes to ${manager?.name} are saved.`, {
+        description: "This rating is still being verified before it publishes.",
+      });
+    } else {
+      toast.success(`Your review of ${manager?.name} has been updated.`);
+    }
 
     setEditReviewStep(null);
   };
@@ -2052,12 +2160,45 @@ export default function BossProfile() {
       )}
 
       {/* System notices - between hero and content */}
-      {(manager.approvalStatus === "pending_approval" || pendingEdits.length > 0 || (hasReported && manager.approvalStatus !== "pending_approval")) && (
+      {(manager.approvalStatus === "pending_approval" || pendingEdits.length > 0 || !!myHeldReview || (hasReported && manager.approvalStatus !== "pending_approval")) && (
         <section className="bg-background py-3">
           <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 space-y-2">
             {manager.approvalStatus === "pending_approval" && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
                 <p className="text-sm font-medium text-amber-800">Profile under review. Awaiting admin approval before going public.</p>
+              </div>
+            )}
+            {/* Only its author sees this. It is the difference between "saved" and "published",
+                which the page otherwise gives them no way to tell apart. */}
+            {myHeldReview && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                {/*
+                  Three states, and only one of them has anything for the reader to do.
+
+                  This used to test `challenge?.status !== "admin_review"`, which is true when the
+                  challenge is undefined - still loading, failed, or absent - so the link rendered
+                  with nothing behind it. Optional chaining put "we don't know yet" into the
+                  affirmative branch.
+
+                  And only a high-profile hold has a self-serve path at all. A rating held because
+                  its author has proof outstanding elsewhere is decided by a person; offering them
+                  a verify link sends them to a page that can only tell them so.
+                */}
+                <p className="text-sm font-medium text-amber-800">
+                  {myProofChallenge?.status === "admin_review"
+                    ? "Your rating is saved and being verified. Someone on our team is reading what you sent."
+                    : myProofChallenge?.reason === "high_profile"
+                    ? "Your rating is saved but not published yet."
+                    : "Your rating is saved and waiting on a review by our team."}
+                </p>
+                {myProofChallenge?.status === "open" && myProofChallenge?.reason === "high_profile" && (
+                  <Link
+                    to={`/managers/${manager.id}/confirm?name=${encodeURIComponent(manager.name)}&company=${encodeURIComponent(manager.company ?? "")}`}
+                    className="mt-1 inline-block text-sm font-semibold text-amber-900 underline"
+                  >
+                    Help us verify it
+                  </Link>
+                )}
               </div>
             )}
             {pendingEdits.length > 0 && (
@@ -2408,8 +2549,24 @@ export default function BossProfile() {
                 return (
                 <div
                   key={review.id}
-                  className="rounded-xl border border-border bg-card p-5 shadow-sm"
+                  className={`rounded-xl border bg-card p-5 shadow-sm ${
+                    review.disposition === "held"
+                      ? "border-amber-300 ring-1 ring-amber-200"
+                      : "border-border"
+                  }`}
                 >
+                  {/*
+                    A held rating reaches this list only for its author or an admin - the public
+                    query filters it out - so it must not sit here looking published. Marked rather
+                    than hidden: an admin needs to see the thing they are deciding about, and its
+                    author needs to see that the rating they wrote exists.
+                  */}
+                  {review.disposition === "held" && (
+                    <p className="mb-3 inline-block rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                      Not published yet, awaiting verification
+                    </p>
+                  )}
+
                   {/* Role context - most important signal for readers */}
                   <div className="mb-3">
                     <p className="text-[13px] font-semibold text-foreground">

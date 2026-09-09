@@ -12,8 +12,12 @@ const distPath = path.join(__dirname, "../spa");
 // Serve static files
 app.use(express.static(distPath));
 
-// Handle React Router - serve index.html for all non-API routes
-app.get("*", (req, res) => {
+// Handle React Router - serve index.html for all non-API routes.
+//
+// "/*splat" rather than "*": Express 5 parses routes with path-to-regexp 8, which requires a
+// wildcard to be named and rooted. A bare "*" now throws at startup ("Missing parameter name at
+// index 1"), so this is not a style preference - the server does not boot without it.
+app.get("/*splat", (req, res) => {
   // Don't serve index.html for API routes
   if (req.path.startsWith("/api/") || req.path.startsWith("/health")) {
     return res.status(404).json({ error: "API endpoint not found" });

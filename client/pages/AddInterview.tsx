@@ -9,6 +9,7 @@ import API_BASE from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
+import { RatingInput, FormField } from "@/components/RatingInput";
 import { useCompanyInterviews } from "@/hooks/useCompanyInterviews";
 import { COUNTRIES } from "@/lib/countries";
 import { fetchGeo } from "@/lib/geo";
@@ -110,7 +111,14 @@ export default function AddInterview() {
   }, [company?.name, company?.slug]);
 
   const activeSlug = pickedCompany?.slug ?? companySlug ?? null;
-  const companyName = pickedCompany?.name ?? company?.name ?? "this company";
+  /**
+   * The company the headings name.
+   *
+   * Only ever the picked one. Falling back to the company the URL loaded meant that typing a
+   * different name - which clears the pick, by design - left the old company's name in the
+   * heading, so the page claimed to be about a company the form was no longer pointed at.
+   */
+  const companyName = pickedCompany?.name ?? null;
 
   const { data: stats } = useCompanyInterviews(companySlug ?? "");
   const existing = editingId ? stats?.myInterview ?? null : null;
@@ -285,7 +293,7 @@ export default function AddInterview() {
           <div className="text-center">
             <p className="text-sm font-semibold text-foreground">{STEP_TITLES[step]}</p>
             <p className="text-xs text-muted-foreground">
-              Step {stepIdx} of {STEPS.length} · {companyName}
+              Step {stepIdx} of {STEPS.length}{companyName ? ` · ${companyName}` : ""}
             </p>
           </div>
           <button
@@ -321,7 +329,7 @@ export default function AddInterview() {
               <div className="space-y-8">
                 <div>
                   <h1 className="text-xl font-bold text-foreground">
-                    {pickedCompany || companySlug ? `Your interview at ${companyName}` : "Your interview"}
+                    {companyName ? `Your interview at ${companyName}` : "Your interview"}
                   </h1>
                 </div>
 
@@ -334,7 +342,7 @@ export default function AddInterview() {
                   existence, so a name typed and not picked is not an answer, and the error says
                   so rather than silently submitting to nothing.
                 */}
-                <Field
+                <FormField
                   label="Which company?"
                   required
                   error={errors.company}
@@ -354,11 +362,11 @@ export default function AddInterview() {
                       setErrors((prev) => ({ ...prev, company: undefined }));
                     }}
                     onClear={() => { setCompanyText(""); setPickedCompany(null); }}
-                    placeholder="Search companies"
+                    placeholder="e.g., Microsoft"
                   />
-                </Field>
+                </FormField>
 
-                <Field
+                <FormField
                   label="How did it end?"
                   required
                   error={errors.outcome}
@@ -375,9 +383,9 @@ export default function AddInterview() {
                       </Chip>
                     ))}
                   </div>
-                </Field>
+                </FormField>
 
-                <Field
+                <FormField
                   label="How difficult was it?"
                   required
                   error={errors.difficulty}
@@ -394,10 +402,10 @@ export default function AddInterview() {
                       </Chip>
                     ))}
                   </div>
-                </Field>
+                </FormField>
 
                 <div className="grid gap-5 sm:grid-cols-2">
-                  <Field label="Year" required error={errors.interviewYear} htmlFor="interview-year">
+                  <FormField label="Year" required error={errors.interviewYear} htmlFor="interview-year">
                     <select
                       id="interview-year"
                       value={draft.interviewYear ?? ""}
@@ -408,9 +416,9 @@ export default function AddInterview() {
                         <option key={year} value={year}>{year}</option>
                       ))}
                     </select>
-                  </Field>
+                  </FormField>
 
-                  <Field label="Role" required error={errors.roleCategory} htmlFor="interview-role">
+                  <FormField label="Role" required error={errors.roleCategory} htmlFor="interview-role">
                     {/*
                       Same typeahead as the manager title field, drawing on the same vocabulary -
                       a role someone interviewed for and a manager's title are the same kind of
@@ -424,9 +432,9 @@ export default function AddInterview() {
                       placeholder="e.g. Engineering Manager"
                       className={INPUT}
                     />
-                  </Field>
+                  </FormField>
 
-                  <Field
+                  <FormField
                     label="Country"
                     required
                     htmlFor="interview-country"
@@ -443,9 +451,9 @@ export default function AddInterview() {
                         <option key={c.value} value={c.value}>{c.flag} {c.value}</option>
                       ))}
                     </select>
-                  </Field>
+                  </FormField>
 
-                  <Field label="How long did it take?" required htmlFor="interview-length">
+                  <FormField label="How long did it take?" required htmlFor="interview-length">
                     <select
                       id="interview-length"
                       value={draft.processLength ?? ""}
@@ -457,7 +465,7 @@ export default function AddInterview() {
                         <option key={length} value={length}>{PROCESS_LENGTH_LABELS[length]}</option>
                       ))}
                     </select>
-                  </Field>
+                  </FormField>
                 </div>
 
                 {/*
@@ -465,7 +473,7 @@ export default function AddInterview() {
                   VP conversation" is the shape someone wants to know before committing three
                   evenings - a count of 3 and the word "panel" throws away two thirds of that.
                 */}
-                <Field
+                <FormField
                   label="What were the rounds?"
                   error={errors.rounds}
                   hint="Optional - add them in the order they happened, if you remember."
@@ -507,7 +515,7 @@ export default function AddInterview() {
                       </button>
                     )}
                   </div>
-                </Field>
+                </FormField>
               </div>
             ) : (
               <div className="space-y-8">
@@ -526,24 +534,24 @@ export default function AddInterview() {
                 */}
                 <div className="space-y-6 rounded-xl border border-border bg-card p-5">
                   {INTERVIEW_CATEGORIES.map((category) => (
-                    <Field key={category} label={CATEGORY_LABELS[category]} error={errors[category]}>
-                      <Stars
+                    <FormField key={category} label={CATEGORY_LABELS[category]} required error={errors[category]}>
+                      <RatingInput
                         value={draft[category] ?? null}
                         onChange={(value) => update(category, value)}
                         ariaLabelPrefix={CATEGORY_LABELS[category]}
                         size={24}
                       />
-                    </Field>
+                    </FormField>
                   ))}
 
                   <div className="border-t border-border pt-6">
-                    <Field label="Overall" required error={errors.overallRating}>
-                      <Stars
+                    <FormField label="Overall" required error={errors.overallRating}>
+                      <RatingInput
                         value={draft.overallRating}
                         onChange={(value) => update("overallRating", value)}
                         ariaLabelPrefix="Overall"
                       />
-                    </Field>
+                    </FormField>
                   </div>
                 </div>
               </div>
@@ -580,34 +588,6 @@ function removeAt<T>(list: T[], index: number): T[] {
 const INPUT =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]";
 
-function Field({
-  label,
-  children,
-  error,
-  hint,
-  required,
-  htmlFor,
-}: {
-  label: string;
-  children: React.ReactNode;
-  error?: string;
-  hint?: string;
-  required?: boolean;
-  /** Id of the control this labels. Without it the label is decoration, not a label. */
-  htmlFor?: string;
-}) {
-  return (
-    <div className="space-y-2">
-      <label htmlFor={htmlFor} className="block text-sm font-semibold text-foreground">
-        {label}
-        {required && <span className="ml-0.5 text-destructive">*</span>}
-      </label>
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-      {children}
-      {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-    </div>
-  );
-}
 
 function Chip({
   selected,
@@ -634,40 +614,3 @@ function Chip({
   );
 }
 
-function Stars({
-  value,
-  onChange,
-  ariaLabelPrefix,
-  size = 28,
-}: {
-  value: number | null;
-  onChange: (value: number) => void;
-  ariaLabelPrefix: string;
-  size?: number;
-}) {
-  const [hovered, setHovered] = useState<number | null>(null);
-  return (
-    <div className="flex gap-1.5">
-      {[1, 2, 3, 4, 5].map((star) => {
-        const filled = star <= (hovered ?? value ?? 0);
-        return (
-          <button
-            key={star}
-            type="button"
-            onMouseEnter={() => setHovered(star)}
-            onMouseLeave={() => setHovered(null)}
-            onClick={() => onChange(star)}
-            aria-label={`${ariaLabelPrefix}: ${star} star${star === 1 ? "" : "s"}`}
-            className="rounded transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            <Star
-              size={size}
-              aria-hidden="true"
-              className={`transition-colors ${filled ? "fill-amber-400 text-amber-400" : "text-border"}`}
-            />
-          </button>
-        );
-      })}
-    </div>
-  );
-}

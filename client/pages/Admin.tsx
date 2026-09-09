@@ -4,7 +4,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/Layout";
 import { useAuth } from "@/hooks/useAuth";
-import { Shield, CheckCircle, XCircle, Ban, RotateCcw, Plus, X, Clock, GitMerge, Pencil, MessageSquare, ChevronDown, ChevronUp, Star, Building2 } from "lucide-react";
+import { Shield, CheckCircle, XCircle, Ban, RotateCcw, Plus, X, Clock, GitMerge, Pencil, MessageSquare, Star, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
 import { useCompanySelection } from "@/hooks/useCompanySelection";
@@ -87,23 +87,36 @@ export default function Admin() {
 
   // Reviews per pending manager (lazy-loaded)
   const [managerReviews, setManagerReviews] = useState<Record<number, { loading: boolean; reviews: any[] }>>({});
-  const [expandedReviewsId, setExpandedReviewsId] = useState<number | null>(null);
 
-  const toggleManagerReviews = async (managerId: number) => {
-    if (expandedReviewsId === managerId) {
-      setExpandedReviewsId(null);
-      return;
-    }
-    setExpandedReviewsId(managerId);
-    if (managerReviews[managerId]) return; // already loaded
+  /*
+    Reviews load with the queue, not on request.
+
+    There was a "See reviews" toggle here, which put the thing being judged one click behind the
+    buttons that judge it: approving or rejecting a manager IS a decision about their reviews, and
+    asking an admin to go and fetch them first invites deciding without them.
+
+    Loaded once per manager and cached, so opening the queue is one request per row rather than a
+    request every render.
+  */
+  // Every row in the queue gets its reviews, as soon as the queue is known.
+  useEffect(() => {
+    pendingManagers.forEach((m) => { void loadManagerReviews(m.id); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingManagers]);
+
+  const loadManagerReviews = async (managerId: number) => {
+    if (managerReviews[managerId]) return;
     setManagerReviews(prev => ({ ...prev, [managerId]: { loading: true, reviews: [] } }));
     try {
+      // Credentials are on by default, so an admin's request returns held ratings too - the ones
+      // most likely to be the reason this manager is in the queue at all.
       const res = await axios.get(`${API_BASE}/api/managers/${managerId}/reviews`, { params: { limit: 10 } });
       setManagerReviews(prev => ({ ...prev, [managerId]: { loading: false, reviews: res.data?.data ?? [] } }));
     } catch {
       setManagerReviews(prev => ({ ...prev, [managerId]: { loading: false, reviews: [] } }));
     }
   };
+
 
   // Confirm dialog state
   const [confirmAction, setConfirmAction] = useState<{
@@ -240,16 +253,23 @@ export default function Admin() {
     if (!editingName.trim() && !editingTitle.trim() && !editingCompany.name.trim()) return;
     setEditSaving(true);
     try {
-      const res = await axios.put(`${API_BASE}/api/admin/managers/${managerId}`, {
+      await axios.put(`${API_BASE}/api/admin/managers/${managerId}`, {
         name: editingName.trim() || undefined,
         title: editingTitle.trim() || undefined,
         ...(await editingCompany.payload()),
       });
-      setPendingManagers((prev) => prev.map((m) =>
-        m.id === managerId
-          ? { ...m, name: res.data.name ?? m.name, title: res.data.title ?? m.title, company: res.data.company ?? m.company }
-          : m
-      ));
+      /*
+        Re-read the list rather than rebuilding the row from the response.
+
+        This used to patch local state with `res.data.name ?? m.name` for each field, so any field
+        the response did not carry silently kept its old value - the save succeeded, the toast said
+        so, and the row still showed what it showed before. Reconstructing a row from a write's
+        response means every field is one missing key away from looking broken.
+
+        This page holds its data in useState rather than react-query, so nothing else invalidates
+        it. One request after an edit is cheap and always right.
+      */
+      await fetchPendingManagers();
       queryClient.invalidateQueries({ queryKey: ["company-profile-slug"] });
       queryClient.invalidateQueries({ queryKey: ["company-listing"] });
       toast.success("Manager updated.");
@@ -330,8 +350,23 @@ export default function Admin() {
     if (!keepManager || !mergeManager) return;
     setIsMerging(true);
     try {
-      await axios.post(`${API_BASE}/api/admin/managers/${keepManager.id}/merge/${mergeManager.id}`);
-      toast.success(`Merged "${mergeManager.name}" into "${keepManager.name}".`);
+      const res = await axios.post(`${API_BASE}/api/admin/managers/${keepManager.id}/merge/${mergeManager.id}`);
+      /*
+        Say what happened to the reviews.
+
+        A review cannot always come across: one person cannot hold two reviews of the same role on
+        the same manager, so when both profiles carry their review of the same job, only one can
+        live on the survivor. The other is set aside - soft-deleted on the merged-away row, not
+        destroyed - and an admin who is not told that has just watched a review vanish.
+      */
+      const moved  = res.data?.movedReviews ?? 0;
+      const parked = res.data?.parkedReviews ?? 0;
+      toast.success(`Merged "${mergeManager.name}" into "${keepManager.name}".`, {
+        description: parked > 0
+          ? `${moved} review${moved === 1 ? "" : "s"} moved. ${parked} could not: the same person had already reviewed that role here, so it was set aside rather than deleted.`
+          : `${moved} review${moved === 1 ? "" : "s"} moved.`,
+        duration: parked > 0 ? 12_000 : undefined,
+      });
       setKeepManager(null);
       setMergeManager(null);
       setMergeResults([]);
@@ -699,42 +734,47 @@ export default function Admin() {
                       </div>
                     </div>
 
-                    {/* Reviews section */}
+                    {/* Reviews, always. Deciding on a manager is deciding about these. */}
                     <div className="mb-4">
-                      <button
-                        onClick={() => toggleManagerReviews(manager.id)}
-                        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                      >
+                      <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
                         <MessageSquare size={14} />
-                        {expandedReviewsId === manager.id ? "Hide reviews" : "See reviews"}
-                        {expandedReviewsId === manager.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      </button>
-
-                      {expandedReviewsId === manager.id && (
-                        <div className="mt-3 space-y-3">
-                          {managerReviews[manager.id]?.loading ? (
-                            <p className="text-xs text-muted-foreground">Loading reviews...</p>
-                          ) : managerReviews[manager.id]?.reviews.length === 0 ? (
-                            <p className="text-xs text-muted-foreground">No reviews yet.</p>
-                          ) : (
-                            managerReviews[manager.id].reviews.map((review: any) => (
-                              <div key={review.id} className="rounded-lg border border-border bg-muted/30 p-3 space-y-1">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-xs font-medium text-foreground">{review.author}</span>
-                                  <div className="flex items-center gap-0.5">
-                                    {[1,2,3,4,5].map(i => (
-                                      <Star key={i} size={11} className={i <= Math.round(review.overallRating) ? "fill-amber-400 text-amber-400" : "text-border"} />
-                                    ))}
-                                    <span className="text-xs text-muted-foreground ml-1">{Number(review.overallRating).toFixed(1)}</span>
-                                  </div>
+                        Reviews
+                      </p>
+                      <div className="space-y-3">
+                        {managerReviews[manager.id]?.loading ? (
+                          <p className="text-xs text-muted-foreground">Loading reviews...</p>
+                        ) : (managerReviews[manager.id]?.reviews.length ?? 0) === 0 ? (
+                          <p className="text-xs text-muted-foreground">No reviews yet.</p>
+                        ) : (
+                          managerReviews[manager.id].reviews.map((review: any) => (
+                            <div
+                              key={review.id}
+                              className={`rounded-lg border p-3 space-y-1 ${
+                                review.disposition === "held"
+                                  ? "border-amber-300 bg-amber-50/60"
+                                  : "border-border bg-muted/30"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-medium text-foreground">{review.author}</span>
+                                <div className="flex items-center gap-0.5">
+                                  {[1,2,3,4,5].map(i => (
+                                    <Star key={i} size={11} className={i <= Math.round(review.overallRating) ? "fill-amber-400 text-amber-400" : "text-border"} />
+                                  ))}
+                                  <span className="text-xs text-muted-foreground ml-1">{Number(review.overallRating).toFixed(1)}</span>
                                 </div>
-                                <p className="text-xs text-muted-foreground">{review.managerTitle} at {review.managerCompany}</p>
-                                {review.text && <p className="text-xs text-foreground leading-relaxed">{review.text}</p>}
                               </div>
-                            ))
-                          )}
-                        </div>
-                      )}
+                              <p className="text-xs text-muted-foreground">{review.managerTitle} at {review.managerCompany}</p>
+                              {review.text && <p className="text-xs text-foreground leading-relaxed">{review.text}</p>}
+                              {review.disposition === "held" && (
+                                <p className="text-xs font-semibold text-amber-800">
+                                  Held pending verification
+                                </p>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex gap-3">

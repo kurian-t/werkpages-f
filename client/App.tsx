@@ -17,6 +17,8 @@ import BossProfile from "./pages/BossProfile";
 import Directory from "./pages/Directory";
 import AddBoss from "./pages/AddBoss";
 import AddInterview from "./pages/AddInterview";
+import RateCompany from "./pages/RateCompany";
+import ProveIt from "./pages/ProveIt";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import AccountSettings from "./pages/AccountSettings";
@@ -99,6 +101,10 @@ const App = () => (
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/companies" element={<Companies />} />
             <Route path="/companies/:companySlug/add-interview" element={<AddInterview />} />
+            {/* Rating the workplace itself. Both URL shapes, like the company page it returns to. */}
+            <Route path="/managers/:managerId/confirm" element={<ProveIt />} />
+            <Route path="/companies/:companySlug/rate" element={<RateCompany />} />
+            <Route path="/industries/:industrySlug/companies/:companySlug/rate" element={<RateCompany />} />
             {/* Same form with no company chosen yet. Sharing an interview should not require
                 finding the company's page first. */}
             <Route path="/add-interview" element={<AddInterview />} />

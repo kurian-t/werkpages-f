@@ -3,6 +3,7 @@ import { validateManagerName } from "@/lib/managerName";
 import { TopRatedPill } from "@/components/TopRatedPill";
 import { CompanyTile } from "@/components/CompanyTile";
 import { Stars } from "@/components/Stars";
+import { COMPANY_CATEGORIES, COMPANY_CATEGORY_LABELS } from "@/lib/companyRatings";
 import { useState, useEffect } from "react";
 import { Helmet } from "react-helmet-async";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
@@ -52,6 +53,12 @@ interface CompanyData {
    * Management across the whole group. A separate figure from avgRating above, never a
    * replacement: this company's rating still means this company's managers.
    */
+  /** What the employer is like to work for. Absent until somebody has rated it. */
+  companyRating?: {
+    ratingCount: number;
+    overallRating?: number;
+    categories?: Record<string, number>;
+  };
   groupStats?: {
     companyCount: number;
     managerCount: number;
@@ -123,6 +130,136 @@ function GhostManagerCard({ index, company, logoUrl, isLoggedIn }: { index: numb
 }
 const SIDEBAR_INPUT =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]";
+
+/**
+ * What the employer is like to work for.
+ *
+ * Deliberately its own panel beside the manager one rather than merged with it. A company can be
+ * a good employer with uneven managers, and showing the two separately is the only way that
+ * divergence is readable - averaged into one score it disappears.
+ */
+function CompanyRatingPanel({
+  rating,
+  companyName,
+  isLocked,
+  onRate,
+  onSeeManagers,
+}: {
+  rating?: CompanyData["companyRating"];
+  companyName: string;
+  isLocked: boolean;
+  onRate: () => void;
+  onSeeManagers: () => void;
+}) {
+  // Nothing rather than zeroes. A page printing 0.0 says the workplace is terrible; a page saying
+  // nobody has rated it yet says what is actually true.
+  if (!rating || rating.ratingCount === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-background/50 py-12 text-center">
+        <Building2 size={36} className="mx-auto mb-3 text-muted-foreground opacity-40" />
+        <p className="text-sm font-medium text-foreground">
+          Nobody has rated {companyName} as a workplace yet.
+        </p>
+        <button
+          onClick={onRate}
+          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2e0562]/90"
+        >
+          Be the first
+        </button>
+        <p className="mt-4 text-xs text-muted-foreground">
+          Looking for a specific manager?{" "}
+          <button onClick={onSeeManagers} className="underline hover:text-foreground">Managers</button>
+        </p>
+      </div>
+    );
+  }
+
+  const entries = COMPANY_CATEGORIES
+    .map((c) => ({ key: c, label: COMPANY_CATEGORY_LABELS[c], value: rating.categories?.[c] }))
+    .filter((e) => e.value != null)
+    .map((e) => ({ key: String(e.key), label: e.label, value: e.value as number }));
+  const ranked = [...entries].sort((a, b) => b.value - a.value);
+  const strongest = ranked.slice(0, 3);
+  const weakest = [...ranked].reverse().slice(0, 3);
+
+  return (
+    <div className="space-y-8">
+      {!isLocked && strongest.length > 0 && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <AreaCard title="Strongest" icon={<TrendingUp size={16} className="text-emerald-600" />} rows={strongest} />
+          <AreaCard title="Weakest" icon={<TrendingDown size={16} className="text-amber-600" />} rows={weakest} />
+        </div>
+      )}
+
+      <div>
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+          All ten
+        </h2>
+        {/*
+          Behind the same gate as everything else on this page. These bars were rendering in the
+          clear while the manager averages beside them were blurred, which is not a lighter policy
+          - it is one surface quietly opting out of the site's contribution gate.
+        */}
+        <div className={`relative ${isLocked ? "select-none" : ""}`}>
+          <div className={`space-y-3 rounded-xl border border-border bg-card p-5 ${
+            isLocked ? "pointer-events-none blur-sm" : ""
+          }`} aria-hidden={isLocked || undefined}>
+            {entries.map((e) => (
+              <div key={e.key} className="grid grid-cols-[1fr_auto] items-center gap-3">
+                <span className="text-sm text-foreground">{e.label}</span>
+                <RatingBar value={e.value} />
+              </div>
+            ))}
+          </div>
+          {isLocked && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center rounded-xl bg-background/60 text-center">
+              <p className="text-sm font-semibold text-foreground">Workplace ratings are locked</p>
+              <p className="mt-1 text-xs text-muted-foreground">Rate a workplace to unlock them.</p>
+              <button
+                onClick={onRate}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2e0562]/90"
+              >
+                Rate {companyName}
+              </button>
+            </div>
+          )}
+        </div>
+        {/*
+          One count for all ten. Every category is required, so they share a denominator - which
+          is exactly what makes a single "based on N" honest here.
+        */}
+        <p className="mt-2 text-xs text-muted-foreground">
+          Based on {rating.ratingCount} {rating.ratingCount === 1 ? "rating" : "ratings"} from people who worked here.
+          {rating.ratingCount < 10 && " Small sample size, treat as indicative only."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function AreaCard({ title, icon, rows }: { title: string; icon: React.ReactNode; rows: { key: string; label: string; value: number }[] }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-5">
+      <div className="mb-3 flex items-center gap-2">
+        {icon}
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-foreground">{title}</h3>
+      </div>
+      <div className="space-y-3">
+        {rows.map((r) => (
+          <div key={r.key}>
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">{r.label}</span>
+            </div>
+            <RatingBar value={r.value} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type CompanyTab = "company" | "managers" | "hiring";
+
 export default function CompanyProfile() {
   const { industrySlug: industryParam, companySlug } = useParams<{ industrySlug?: string; companySlug: string }>();
   const navigate = useNavigate();
@@ -255,30 +392,23 @@ export default function CompanyProfile() {
       setSearchLoading(false);
     }
   };
-  const isLocked = !user?.hasContributed;
+  /**
+   * One gate per dataset, each opened by contributing to that dataset.
+   *
+   * Rating a manager says nothing about a workplace, so it does not buy the workplace numbers -
+   * and the reverse holds too. Interview data already worked this way; these are the same rule
+   * applied to the other two.
+   */
+  const isLocked = !user?.hasContributed;              // manager data
+  const companyLocked = !user?.hasRatedCompany;        // workplace data
   // A company profile answers two different questions for two different readers: what it is
   // like to work here, and what it is like to try to get hired here. They share a company but
   // nothing else - different reviewers, different ratings, different contribution gate.
   // The tab lives in the URL, not in component state. Without that, a refresh drops you back on
   // the first tab, the link you share never opens where you were, and returning from the add
   // form lands on the wrong half of the page.
-  // The interview tab is not shown until someone has rated a manager. Manager ratings are the
-  // primary data this site collects, and a second contribution surface offered alongside them
-  // competes for the same attention. Once that first review exists the product expands: the tab
-  // appears, still locked, and an interview experience is what opens it.
-  const canSeeInterviewTab = !isLocked;
   const requestedTab = searchParams.get("tab");
-  const activeTab: "working" | "hiring" =
-    requestedTab === "hiring" && canSeeInterviewTab ? "hiring" : "working";
-  const setActiveTab = (next: "working" | "hiring" | ((current: "working" | "hiring") => "working" | "hiring")) => {
-    const value = typeof next === "function" ? next(activeTab) : next;
-    const params = new URLSearchParams(searchParams);
-    // "working" is the default, so it stays out of the URL and the canonical link is unchanged.
-    if (value === "hiring") params.set("tab", "hiring");
-    else params.delete("tab");
-    // replace, not push: flipping a tab is not a navigation someone wants to press Back through.
-    setSearchParams(params, { replace: true });
-  };
+
   // Detect whether the URL param is a slug (lowercase, no spaces) or a legacy name.
   // Name-based navigation from the search form still works through the by-name fallback.
   const isSlugParam = !!companySlug && /^[a-z0-9-]+$/.test(companySlug);
@@ -304,6 +434,48 @@ export default function CompanyProfile() {
   // the same query key the panel uses with no filters applied, so React Query serves both from
   // one request rather than fetching twice.
   const { data: interviewStats } = useCompanyInterviews(data?.slug ?? "");
+
+  /**
+   * Three tabs, three questions.
+   *
+   * "company" is what the employer is like to work for; "managers" is what its managers are like.
+   * Those were one tab until company ratings existed, and that tab said "what it's like to work
+   * at X" while showing averages computed from manager reviews - a different question wearing the
+   * wrong label.
+   */
+  const hasCompanyRating = (data?.companyRating?.ratingCount ?? 0) > 0;
+  /**
+   * Open on the tab that has something in it, preferring the company.
+   *
+   * A fixed default would be wrong half the time: every company starts with no workplace ratings
+   * and plenty of manager ones, so defaulting to "company" would open thousands of pages on an
+   * empty panel.
+   */
+  const defaultTab: CompanyTab = hasCompanyRating ? "company" : "managers";
+  /**
+   * All three tabs, always. Each dataset has its own gate on its own contents, so hiding a tab
+   * would be a second, cruder gate on top of that - and one that teaches a first-time visitor
+   * nothing. A tab you cannot open yet still says the dataset exists and what opens it.
+   *
+   * This used to hide Interviewing until a manager had been rated, which quietly made a manager
+   * rating the price of admission to two datasets it says nothing about.
+   */
+  const visibleTabs: CompanyTab[] = ["company", "managers", "hiring"];
+  const showTabChrome = visibleTabs.length > 1;
+  const activeTab: CompanyTab =
+    requestedTab === "hiring" ? "hiring"
+    : requestedTab === "managers" ? "managers"
+    : requestedTab === "company" ? "company"
+    : defaultTab;
+  const setActiveTab = (next: CompanyTab | ((current: CompanyTab) => CompanyTab)) => {
+    const value = typeof next === "function" ? next(activeTab) : next;
+    const params = new URLSearchParams(searchParams);
+    // The default stays out of the URL so the canonical link is unchanged.
+    if (value !== defaultTab) params.set("tab", value);
+    else params.delete("tab");
+    // replace, not push: flipping a tab is not a navigation someone wants to press Back through.
+    setSearchParams(params, { replace: true });
+  };
   const interviewCount = interviewStats?.reviewCount ?? null;
   const totalContributions = (data?.totalReviews ?? 0) + (interviewCount ?? 0);
   // Collapse every historical URL variant into the one canonical form for Google: legacy
@@ -527,6 +699,55 @@ export default function CompanyProfile() {
                   <span className="text-sm text-muted-foreground">avg manager rating</span>
                 </div>
               )}
+
+              {/*
+                The workplace rating, beside the manager one and never merged with it. Two numbers
+                answering two questions: a company can be a decent employer with uneven managers,
+                and one blended score would hide exactly that.
+
+                The CTA sits on the row it changes rather than in the header bar, where it would
+                be a third button competing with the global Add Manager.
+              */}
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                {companyLocked ? (
+                  <>
+                    <div className="flex items-center gap-1">
+                      {[1,2,3,4,5].map(i => (
+                        <div key={i} className="h-3.5 w-3.5 rounded-full bg-amber-300/40 blur-[2px]" />
+                      ))}
+                    </div>
+                    <span className="text-sm text-muted-foreground">workplace rating</span>
+                  </>
+                ) : (
+                  <>
+                  {data.companyRating?.overallRating != null ? (
+                    <>
+                      <Stars rating={Number(data.companyRating.overallRating)} size={14} showValue={false} />
+                      <span className="text-lg font-semibold text-foreground">
+                        {data.companyRating.overallRating.toFixed(1)}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        workplace rating · {data.companyRating.ratingCount}{" "}
+                        {data.companyRating.ratingCount === 1 ? "rating" : "ratings"}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">No workplace ratings yet</span>
+                  )}
+                  </>
+                )}
+                {/*
+                  The way in stays open whether or not the numbers are readable: reading is
+                  earned, contributing is not. Somebody who arrived from a search for the company
+                  can still say what it was like without first rating a stranger.
+                */}
+                <button
+                  onClick={() => navigate(`/companies/${data.slug ?? companySlug}/rate`)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-[#2e0562]/30 px-2.5 py-1 text-xs font-semibold text-[#2e0562] transition-colors hover:bg-[#2e0562]/5"
+                >
+                  ⭐ Add yours
+                </button>
+              </div>
               <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
                 {isLocked ? (
                   <>
@@ -586,7 +807,7 @@ export default function CompanyProfile() {
           rather than as structure. Until the interview tab is earned this is one plain card with
           a heading, and the tab chrome appears at the moment there is a second place to go.
         */}
-        {canSeeInterviewTab && (
+        {showTabChrome && (
         <div
           role="tablist"
           aria-label="Company sections"
@@ -595,17 +816,35 @@ export default function CompanyProfile() {
             // tablist; Tab alone should jump past the whole control into the panel.
             if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
             e.preventDefault();
-            setActiveTab((current) => (current === "working" ? "hiring" : "working"));
+            // Cycle the tabs in order. Two-way flipping was fine with two tabs and silently
+            // skips one now that there are three.
+            setActiveTab((current) => {
+              const i = visibleTabs.indexOf(current);
+              const step = e.key === "ArrowRight" ? 1 : -1;
+              return visibleTabs[(i + step + visibleTabs.length) % visibleTabs.length];
+            });
           }}
           className="flex max-w-3xl items-stretch gap-1"
         >
+          {/*
+            Short labels. "What it's like to work at Red Hat" three times does not fit a phone,
+            and the company name is already in the header directly above.
+          */}
           {(([
             {
-              id: "working",
+              id: "company",
+              emoji: "\u{1F3E2}",
+              title: "Working here",
+              // Empty rather than "0 ratings". The tab already says what it is; a count of nothing
+              // only tells the reader not to bother opening it.
+              count: (data.companyRating?.ratingCount ?? 0) > 0
+                ? `${data.companyRating!.ratingCount} ${data.companyRating!.ratingCount === 1 ? "rating" : "ratings"}`
+                : "",
+            },
+            {
+              id: "managers",
               emoji: "\u{1F465}",
-              title: `What it's like to work at ${decoded}`,
-              // Empty rather than "0 manager opinions". The tab already says what it is; a count
-              // of nothing only tells the reader not to bother opening it.
+              title: "Managers",
               count: data.totalReviews > 0
                 ? `${data.totalReviews} manager ${data.totalReviews === 1 ? "opinion" : "opinions"}`
                 : "",
@@ -613,14 +852,14 @@ export default function CompanyProfile() {
             {
               id: "hiring",
               emoji: "\u{1F4AC}",
-              title: `What it's like to interview at ${decoded}`,
+              title: "Interviewing",
               count: interviewCount == null
                 ? "\u2014"
                 : interviewCount > 0
                   ? `${interviewCount} candidate ${interviewCount === 1 ? "experience" : "experiences"}`
                   : "",
             },
-          ] as const).filter((tab) => tab.id === "working" || canSeeInterviewTab)).map((tab) => {
+          ] as const).filter((tab) => visibleTabs.includes(tab.id))).map((tab) => {
             const active = activeTab === tab.id;
             return (
               <button
@@ -691,10 +930,20 @@ export default function CompanyProfile() {
         */}
         <div
           className={`border border-border bg-card p-5 sm:p-7 ${
-            canSeeInterviewTab ? "rounded-b-2xl" : "rounded-2xl"
+            showTabChrome ? "rounded-b-2xl" : "rounded-2xl"
           }`}
         >
-        {activeTab === "hiring" ? (
+        {activeTab === "company" ? (
+          <div role="tabpanel" id="panel-company" aria-labelledby="tab-company">
+            <CompanyRatingPanel
+              rating={data.companyRating}
+              companyName={decoded}
+              isLocked={companyLocked}
+              onRate={() => navigate(`/companies/${data.slug ?? companySlug}/rate`)}
+              onSeeManagers={() => setActiveTab("managers")}
+            />
+          </div>
+        ) : activeTab === "hiring" ? (
           <div role="tabpanel" id="panel-hiring" aria-labelledby="tab-hiring">
             <InterviewPanel
               companySlug={data.slug ?? companySlug ?? ""}
@@ -709,7 +958,7 @@ export default function CompanyProfile() {
         // Only a tabpanel while a tablist exists. Standing alone it is just the page, and
         // aria-labelledby would point at a tab id that is not in the document - a dangling
         // reference leaves a screen reader announcing the region with no name at all.
-        <div {...(canSeeInterviewTab
+        <div {...(showTabChrome
           ? { role: "tabpanel", id: "panel-working", "aria-labelledby": "tab-working" }
           : {})}>
         {/*
@@ -717,7 +966,7 @@ export default function CompanyProfile() {
           "Strongest Areas" with nothing saying whose strengths they are or how many people are
           behind them, so the heading moves inside.
         */}
-        {!canSeeInterviewTab && (
+        {!showTabChrome && (
           <div className="mb-6 flex items-center gap-2.5">
             <span
               aria-hidden="true"

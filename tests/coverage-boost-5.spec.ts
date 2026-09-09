@@ -560,10 +560,10 @@ test.describe("Admin - access denied", () => {
   });
 });
 
-// ─── Admin - toggle manager reviews ──────────────────────────────────────────
+// ─── Admin - manager reviews ─────────────────────────────────────────────────
 
-test.describe("Admin - toggle manager reviews", () => {
-  test("clicking See reviews loads and shows reviews for a pending manager", async ({ page }) => {
+test.describe("Admin - manager reviews", () => {
+  test("a pending manager's reviews are shown without asking", async ({ page }) => {
     await mockAdminPage(page);
     // Mock reviews endpoint for the pending manager
     await page.route(/\/api\/managers\/admin-pm-1\/reviews/, (route: any) =>
@@ -584,14 +584,15 @@ test.describe("Admin - toggle manager reviews", () => {
     );
     await page.goto("/admin");
     await expect(page.getByText(/john doe/i)).toBeVisible({ timeout: 10000 });
-    // Click "See reviews" button (line 590, calls toggleManagerReviews - lines 71-84)
-    await page.getByRole("button", { name: /see reviews/i }).first().click();
-    // Reviews section expands
+
+    /*
+     * No click. There was a "See reviews" toggle here, which put the thing being judged one step
+     * behind the buttons that judge it - approving or rejecting a manager IS a decision about
+     * their reviews, and making an admin fetch them first invites deciding without them.
+     */
     await expect(page.getByText(/anonymous reviewer/i)).toBeVisible({ timeout: 8000 });
     await expect(page.getByText(/decent manager overall/i)).toBeVisible({ timeout: 3000 });
-    // Click again to hide (line 72-74: if expandedReviewsId === managerId, set null)
-    await page.getByRole("button", { name: /hide reviews/i }).first().click();
-    await expect(page.getByText(/anonymous reviewer/i)).not.toBeVisible({ timeout: 3000 });
+    await expect(page.getByRole("button", { name: /see reviews|hide reviews/i })).toHaveCount(0);
   });
 });
 

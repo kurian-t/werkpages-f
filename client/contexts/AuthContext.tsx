@@ -12,12 +12,26 @@ export interface User {
   phone?: string;
   role?: "admin" | "user";
   isBanned?: boolean;
+  /** Has rated a manager. Gates manager data. */
   hasContributed?: boolean;
+  /** Has rated a company. Gates workplace data - one gate per dataset. */
+  hasRatedCompany?: boolean;
 }
 
 export interface AuthContextType {
   user: User | null;
   setUser: (user: User) => void;
+  /**
+   * Re-read the signed-in user from the server.
+   *
+   * Call this after anything that may have changed what the account is entitled to. Contributing
+   * used to flip `hasContributed` locally on the assumption that a submitted rating always counts,
+   * which stopped being true the moment ratings could be withheld pending verification: the client
+   * unlocked the site while the server had held the rating and unlocked nothing.
+   *
+   * Asking beats guessing. The server decides entitlement, so it is the only thing that can say.
+   */
+  refreshUser: () => Promise<void>;
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<void>;
   signup: (data: SignupData) => Promise<void>;
@@ -47,6 +61,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const setUser = useCallback((u: User) => {
     setUserState(u);
     localStorage.setItem("authUser", JSON.stringify(u));
+  }, []);
+
+  /** Pulls the authoritative account state, including role and what it has unlocked. */
+  const refreshUser = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/api/auth/me`);
+      setUserState((prev) => {
+        const fresh = { ...(prev ?? {}), ...res.data } as User;
+        localStorage.setItem("authUser", JSON.stringify(fresh));
+        return fresh;
+      });
+    } catch {
+      // Leave the session alone. The startup effect below owns signing somebody out on a 401;
+      // a failed refresh after a write should not log them out mid-flow.
+    }
   }, []);
 
   // Validate session on startup - refresh user data (including role) from the server
@@ -108,6 +137,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const value: AuthContextType = {
     user,
     setUser,
+    refreshUser,
     isAuthenticated: !!user,
     login,
     signup,

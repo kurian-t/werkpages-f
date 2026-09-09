@@ -202,14 +202,33 @@ test.describe("AddBoss - 3-step flow", () => {
     ).toBeVisible({ timeout: 5_000 });
   });
 
-  test("REGRESSION: add + rate flips hasContributed so the ratings lock lifts (no reload needed)", async ({
+  test("REGRESSION: add + rate lifts the ratings lock without a reload", async ({
     page,
   }) => {
-    // Start as a logged-in user who has NOT contributed yet - the ratings lock is on.
+    /*
+     * The behaviour is unchanged: contribute, and the site-wide lock lifts immediately rather
+     * than on the next full page load.
+     *
+     * What changed is who decides. This used to assert that AddBoss flipped hasContributed in the
+     * browser on the assumption that a submitted rating always counts. That assumption broke when
+     * ratings could be held pending verification - a held rating unlocked the whole site anyway,
+     * because the client had already made up its mind. The page now re-reads the account, so the
+     * mock has to answer like a server: not contributed before the write, contributed after.
+     */
+    let contributed = false;
     await mockAddBossPage(page, { loggedIn: true, user: { ...MOCK_USER, hasContributed: false } });
+    await page.route("**/api/auth/me", (route) =>
+      route.fulfill({ json: { ...MOCK_USER, hasContributed: contributed } }));
+    await page.route("**/api/managers", async (route) => {
+      if (route.request().method() === "POST") {
+        contributed = true;
+        await route.fulfill({ json: { id: 999, name: "Jordan Smith" } });
+      } else {
+        await route.fallback();
+      }
+    });
     await page.goto("/add");
 
-    // Sanity: the session starts locked (hasContributed=false).
     await expect.poll(async () =>
       await page.evaluate(() => JSON.parse(localStorage.getItem("authUser") || "{}").hasContributed)
     ).toBe(false);
@@ -222,11 +241,6 @@ test.describe("AddBoss - 3-step flow", () => {
     await attestFirstHandExperience(page);
     await page.getByRole("button", { name: /submit review/i }).click();
 
-    await expect(page.getByText(/jordan smith submitted for review/i)).toBeVisible({ timeout: 5_000 });
-
-    // The fix: AddBoss optimistically flips user.hasContributed (persisted to authUser) so the
-    // site-wide ratings lock lifts immediately. Previously it only invalidated a dead
-    // ["has-contributed"] query, leaving the just-rated manager blurred until a full reload.
     await expect.poll(async () =>
       await page.evaluate(() => JSON.parse(localStorage.getItem("authUser") || "{}").hasContributed),
       { timeout: 5_000 }
