@@ -1248,12 +1248,16 @@ export default function CompanyProfile() {
               <>
                 <div className="grid grid-cols-2 auto-rows-[minmax(210px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
                   {data.managers.slice(0, 3).map((mgr) => (
+                    /*
+                      A ghost is live, so who they are is readable like any other live manager.
+                      Its rating is not: a ghost is seeded with a synthetic placeholder review, and
+                      showing that number to somebody who has not contributed would present made-up
+                      data as real. Identity is public; the fake rating stays behind the gate.
+                    */
                     <LockedManagerCard
                       key={mgr.id}
                       boss={mgr as any}
                       isLoggedIn={!!user}
-                      forceShowCompany={mgr.approvalStatus === 'ghost'}
-                      blurTitle={mgr.approvalStatus === 'ghost'}
                       blurRating={mgr.approvalStatus === 'ghost'}
                     />
                   ))}

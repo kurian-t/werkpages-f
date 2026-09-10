@@ -60,8 +60,19 @@ function LockedRating({ overallRating, blur }: { overallRating?: number | null; 
 }
 
 export default function LockedManagerCard({ boss, isLoggedIn: _isLoggedIn, narrowSearch = false, asLink = true, blurRating = false, blurCompany = false, blurTitle = false, forceShowCompany = false }: LockedManagerCardProps) {
-  const isGhost = boss.approvalStatus === "ghost";
-  const blurDetails = !forceShowCompany && (blurCompany || narrowSearch || isGhost || !boss.company);
+  /*
+   * Ghost is a live status, not a hidden one.
+   *
+   * `ghost` means the record was created automatically - the first time a signed-in user searches
+   * for a manager nobody has added yet - and it is auto-approved and public from that moment. It
+   * appears in the directory, in search, and in the counts. Blurring its company and title purely
+   * for being a ghost contradicted that: a manager somebody had just brought into existence was
+   * unreadable on the company page, which is exactly where you would go to look for them.
+   *
+   * What the gate withholds is ratings, which are earned. Who someone is and where they work is
+   * not gated for any other live manager, and a ghost is a live manager.
+   */
+  const blurDetails = !forceShowCompany && (blurCompany || narrowSearch || !boss.company);
 
   const inner = (
     <div className="group flex flex-col rounded-2xl border border-border bg-card p-5 shadow-sm relative overflow-hidden cursor-pointer hover:shadow-md hover:border-primary/30 transition-all">
