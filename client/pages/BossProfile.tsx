@@ -2,6 +2,7 @@ import API_BASE from "@/lib/api";
 import { TopRatedPill } from "@/components/TopRatedPill";
 import { companyLogoDomain, toNameCase, toJobTitleCase } from "@/lib/utils";
 import { RatingBreakdown, HighLowCards, confidenceLabel } from "@/components/RatingBreakdown";
+import { gateKey } from "@/lib/gateKey";
 import { Helmet } from "react-helmet-async";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
@@ -172,9 +173,11 @@ export default function BossProfile() {
 
   // Fetch manager - cached so returning to this page shows data instantly.
   // Supports both legacy numeric-ID route (/manager/:id) and slug route (/companies/:c/managers/:m).
+  // Keyed on the gate too: the profile arrives with its analytics stripped for a reader who has
+  // not contributed, so the same URL has two different correct responses.
   const managerQueryKey = id
-    ? ["manager", id]
-    : ["manager-slug", companySlug, managerSlug];
+    ? ["manager", id, gateKey(user)]
+    : ["manager-slug", companySlug, managerSlug, gateKey(user)];
 
   const { data: manager, isLoading: isManagerLoading, isError: isManagerError } = useQuery({
     queryKey: managerQueryKey,

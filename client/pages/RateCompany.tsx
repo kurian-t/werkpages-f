@@ -36,7 +36,7 @@ export default function RateCompany() {
   const { industrySlug, companySlug } = useParams<{ industrySlug?: string; companySlug: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
 
   const [draft, setDraft] = useState<CompanyRatingDraft>(emptyCompanyRatingDraft());
   const [errors, setErrors] = useState<CompanyRatingErrors>({});
@@ -108,6 +108,16 @@ export default function RateCompany() {
         toCompanyRatingPayload(draft),
         { withCredentials: true },
       );
+      /*
+        Pull the session before going back, not after.
+
+        Rating a workplace is what opens the workplace gate, and the gate lives on the account -
+        so until the session is re-read the reader lands back on a page that still believes they
+        have not contributed. Invalidating the profile alone did not help: the server shapes that
+        response around the gate, so refetching it while the session still says "locked" just
+        fetches the locked copy again. This is the write that unlocked it; it has to say so.
+      */
+      await refreshUser();
       queryClient.invalidateQueries({ queryKey: ["company-profile-slug", companySlug] });
       queryClient.invalidateQueries({ queryKey: ["my-company-rating", companySlug] });
       toast.success(`Thanks, your rating of ${companyName} is live.`);

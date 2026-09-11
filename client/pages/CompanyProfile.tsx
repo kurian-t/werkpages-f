@@ -8,7 +8,8 @@ import { useState, useEffect } from "react";
 import { Helmet } from "react-helmet-async";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Layout } from "@/components/Layout";
-import { RatingBreakdown, HighLowCards, RatingBar, confidenceLabel } from "@/components/RatingBreakdown";
+import { RatingBreakdown, HighLowCards, RatingBar } from "@/components/RatingBreakdown";
+import { gateKey } from "@/lib/gateKey";
 import { CompanyRatingList } from "@/components/CompanyRatingList";
 import { Star, Building2, Users, MessageSquare, TrendingUp, TrendingDown, ChevronLeft, PlusCircle, Lock, Pencil } from "lucide-react";
 import { IndustryIcon } from "@/components/IndustryIcon";
@@ -199,37 +200,39 @@ function CompanyRatingPanel({
   return (
     <div className="space-y-8">
       {/*
-        The headline, its sample, and what that sample is worth - on one row, because they only
-        mean anything together. A score with no count invites trust it has not earned.
+        The headline and its sample together, because a score with no count invites trust it has
+        not earned.
       */}
       {!isLocked && !noRatings && (
         <div className="rounded-xl border border-border bg-card p-5">
-          <div className="flex flex-wrap items-center gap-x-10 gap-y-3">
+          {/*
+            The same rating strip the manager profile uses.
+
+            It previously spelled out "out of 5" beneath the number and gave the sample its own
+            column labelled "Low confidence" / "based on sample size". Nowhere else on the site does
+            either, so one score read as a different kind of measurement depending which page you
+            were on. The count carries that caveat inline now, in the manager profile's own words.
+          */}
+          <div className="flex items-center gap-3">
+            <span className="text-2xl font-bold text-[#6d5091] tabular-nums leading-none whitespace-nowrap">
+              {overall.toFixed(1)}
+            </span>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-bold text-foreground tabular-nums leading-none">{overall.toFixed(1)}</span>
-                <div className="flex gap-0.5" role="img" aria-label={`${overall.toFixed(1)} out of 5`}>
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star
-                      key={i}
-                      size={14}
-                      aria-hidden="true"
-                      className={i < Math.round(overall) ? "fill-amber-400 text-amber-400" : "text-border"}
-                    />
-                  ))}
-                </div>
+              <div className="flex items-center gap-0.5" role="img" aria-label={`${overall.toFixed(1)} out of 5 stars`}>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Star
+                    key={i}
+                    size={13}
+                    aria-hidden="true"
+                    className={i < Math.floor(overall) ? "fill-amber-400 text-amber-400" : "text-border"}
+                  />
+                ))}
               </div>
-              <p className="text-[11px] text-muted-foreground mt-1">out of 5</p>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground tabular-nums">{rating!.ratingCount}</p>
-              <p className="text-[11px] text-muted-foreground mt-1">
-                {rating!.ratingCount === 1 ? "rating" : "ratings"}
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {rating!.ratingCount > 0
+                  ? `${rating!.ratingCount.toLocaleString()} ${rating!.ratingCount === 1 ? "rating" : "ratings"}${rating!.ratingCount < 3 ? " (limited data, interpret cautiously)" : ""}`
+                  : "No ratings yet"}
               </p>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">{confidenceLabel(rating!.ratingCount)}</p>
-              <p className="text-[11px] text-muted-foreground mt-1">based on sample size</p>
             </div>
           </div>
         </div>
@@ -440,7 +443,7 @@ export default function CompanyProfile() {
   // Name-based navigation from the search form still works through the by-name fallback.
   const isSlugParam = !!companySlug && /^[a-z0-9-]+$/.test(companySlug);
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["company-profile-slug", companySlug],
+    queryKey: ["company-profile-slug", companySlug, gateKey(user)],
     queryFn: async () => {
       if (isSlugParam) {
         const res = await axios.get(`${API_BASE}/api/companies/by-slug/${companySlug}`);
