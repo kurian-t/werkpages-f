@@ -1,7 +1,7 @@
 import API_BASE from "@/lib/api";
 import { TopRatedPill } from "@/components/TopRatedPill";
 import { companyLogoDomain, toNameCase, toJobTitleCase } from "@/lib/utils";
-import { RatingBreakdown, HighLowCards, confidenceLabel } from "@/components/RatingBreakdown";
+import { RatingBreakdown } from "@/components/RatingBreakdown";
 import { gateKey } from "@/lib/gateKey";
 import { Helmet } from "react-helmet-async";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -15,6 +15,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { AuthFlowModal } from "@/components/AuthFlowModal";
+import { CompanyField } from "@/components/CompanyField";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
 import { useCompanySelection } from "@/hooks/useCompanySelection";
 import type { AuthFlowStep } from "@/components/AuthFlowModal";
@@ -451,7 +452,7 @@ export default function BossProfile() {
   const [editReviewDateError, setEditReviewDateError] = useState<string | null>(null);
   const [authFlowStep, setAuthFlowStep] = useState<AuthFlowStep | null>(null);
   const [authFlowEmail, setAuthFlowEmail] = useState("");
-  const pendingAction = useRef<"edit" | "report" | "edit-submit" | "report-submit" | "career-unlock" | "rate" | null>(null);
+  const pendingAction = useRef<"edit" | "report" | "edit-submit" | "report-submit" | null>(null);
   const [timelineUnlocked, setTimelineUnlocked] = useState(false);
   const [timelineFadeIn, setTimelineFadeIn] = useState(false);
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
@@ -1074,6 +1075,16 @@ export default function BossProfile() {
           setReviewSubmitError("You've reached the limit of 5 reviews for this manager.");
         } else if (msg === "already_reviewed_this_role") {
           setReviewTitleError("You've already submitted a review for this role. Change the title to review a different role.");
+          /*
+            Back to the step that shows it, and can fix it.
+
+            The title lives on the ratings step; submit happens on the identity step. Setting the
+            error alone left somebody looking at a Submit button that had silently greyed out -
+            submitDisabled includes reviewTitleError - with the explanation and the field to change
+            both on a screen they could not see. A dead button and no reason is the worst possible
+            answer to "I spent two minutes on this".
+          */
+          setReviewStep("ratings");
         } else if (msg.startsWith("review_cooldown:")) {
           const cooldownDate = msg.split(":")[1];
           const formatted = cooldownDate ? new Date(cooldownDate + "T00:00:00").toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" }) : "30 days after your deletion";
@@ -1085,8 +1096,11 @@ export default function BossProfile() {
         const lower = msg.toLowerCase();
         if (lower.includes("date") || lower.includes("'from'") || lower.includes("'to'")) {
           setReviewDateError(msg);
+          // Same reason as above: the dates step is where this renders and where it is fixed.
+          setReviewStep("dates");
         } else if (lower.includes("title")) {
           setReviewTitleError(msg);
+          setReviewStep("ratings");
         } else {
           setReviewSubmitError(msg);
         }
@@ -1384,6 +1398,12 @@ export default function BossProfile() {
       if (err?.response?.status === 409) {
         if (msg === "already_reviewed_this_role") {
           setEditReviewTitleError("You already have a review for this role. Change the title to update a different role.");
+          /*
+            Back to the step that shows it. Same trap as the create path: the title lives on the
+            ratings step, the save is on the identity step, and setting the error alone left the
+            author on a screen with no message and a Save that had quietly stopped working.
+          */
+          setEditReviewStep("ratings");
         } else {
           setEditReviewSubmitError("Failed to update review. Please try again.");
         }
@@ -1391,8 +1411,10 @@ export default function BossProfile() {
         const lower = msg.toLowerCase();
         if (lower.includes("date") || lower.includes("'from'") || lower.includes("'to'")) {
           setEditReviewDateError(msg);
+          setEditReviewStep("dates");
         } else if (lower.includes("title")) {
           setEditReviewTitleError(msg);
+          setEditReviewStep("ratings");
         } else {
           setEditReviewSubmitError(msg);
         }
@@ -1617,6 +1639,7 @@ export default function BossProfile() {
                     ) : (
                       <button
                         type="button"
+                        data-testid="admin-delete-manager"
                         onClick={() => setAdminDeleteConfirm(true)}
                         className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
                       >
@@ -2386,7 +2409,9 @@ export default function BossProfile() {
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
           <div className="mb-6">
             <h2 className="text-[17px] font-semibold text-foreground tracking-tight">How people rated them</h2>
-            <p className="text-[13px] text-muted-foreground mt-0.5">Average scores across every rating category</p>
+            <p className="text-[13px] text-muted-foreground mt-0.5">
+              Average scores across {RATING_CATEGORIES.length} rating categories
+            </p>
           </div>
           {isLocked ? (
             <div className="relative">
@@ -2415,23 +2440,40 @@ export default function BossProfile() {
           ) : contextReviews.length > 0 ? (
             <>
               {/*
-                The same two components the company page uses. These bars were drawn here by hand
-                and again over there, so a change to one was invisible to the other.
+                No Strongest / Weakest cards above this any more.
+
+                They restated three high and three low categories in big rectangles, and the
+                breakdown beneath then listed the very same figures again - every number on this
+                section appeared twice, in two different visual languages. The filter does that job
+                now: same chart, same bars, same reading, just fewer rows. One thing to learn
+                instead of two, and the component does not mutate into something unrelated when the
+                reader narrows it.
               */}
-              <HighLowCards
-                rows={RATING_CATEGORIES
-                  .map((c) => ({ key: c, label: c, value: managerCategoryAverages[c] || 0 }))
-                  .filter((r) => r.value > 0)}
-              />
-              <div className="mt-8">
+              <div>
                 <RatingBreakdown
+                  /* No heading here: the section above already says "How people rated them", and
+                     printing "Rating breakdown / How people rated them across each category" a
+                     line below it said the same thing twice in two voices. */
+                  title={null}
+                  /* Three pills instead of every category at once - see RatingBreakdown. */
+                  filterable
                   rows={RATING_CATEGORIES.map((c) => ({
                     key: c, label: c, value: managerCategoryAverages[c] || 0,
                   }))}
                 />
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Based on {contextReviews.length} {contextReviews.length === 1 ? "review" : "reviews"}.
-                  {" "}{confidenceLabel(contextReviews.length)}.
+                {/*
+                  "Based on 2 opinions · Limited data — interpret cautiously" rather than "Based on
+                  2 reviews. Low confidence." Same signal, said the way the rest of the site says
+                  it: a reader is being told how much weight to give the number, not read a
+                  statistic about it.
+                */}
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Based on {contextReviews.length} {contextReviews.length === 1 ? "opinion" : "opinions"}
+                  {contextReviews.length < 5
+                    ? " · Limited data — interpret cautiously"
+                    : contextReviews.length < 20
+                      ? " · Still a small sample"
+                      : ""}
                 </p>
               </div>
             </>
@@ -2907,10 +2949,16 @@ export default function BossProfile() {
                     {/* Role selector - lets reviewer pick which role they're reviewing */}
                     {manager.careerHistory && manager.careerHistory.length > 1 && (
                       <div>
-                        <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                        {/* htmlFor/id: the label named nothing, so a screen reader announced a bare
+                            combobox and clicking the label focused nothing. */}
+                        <label
+                          htmlFor="review-career-role"
+                          className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5"
+                        >
                           Which role are you reviewing?
                         </label>
                         <select
+                          id="review-career-role"
                           value={selectedCareerRoleIdx}
                           onChange={(e) => {
                             const idx = Number(e.target.value);
@@ -3009,12 +3057,15 @@ export default function BossProfile() {
                               />
                             </div>
                             <div>
-                              <label className="block text-xs text-muted-foreground mb-1">Their company <span className="text-red-500">*</span></label>
-                              <CompanyAutocomplete
+                              {/* The shared company field - same control, same logo behaviour and
+                                  same edit lifecycle as every other form that asks for a company. */}
+                              <CompanyField
+                                label="Their company"
                                 value={reviewManagerCompany}
                                 onChange={val => { setReviewManagerCompany(val); setReviewTitleError(null); setConflictAfterAuth(false); }}
-                                placeholder="e.g. Acme Corp"
-                                className={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] ${reviewTitleError || isDuplicateTitle ? "border-red-500" : "border-border"}`}
+                                logoUrl={manager.companyLogoUrl ?? undefined}
+                                logoUrlFor={manager.company}
+                                inputClassName={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] ${reviewTitleError || isDuplicateTitle ? "border-red-500" : "border-border"}`}
                               />
                             </div>
                           </div>
@@ -3469,12 +3520,14 @@ export default function BossProfile() {
                               />
                             </div>
                             <div>
-                              <label className="block text-xs text-muted-foreground mb-1">Their company <span className="text-red-500">*</span></label>
-                              <CompanyAutocomplete
+                              {/* Same shared field as the rate form above. */}
+                              <CompanyField
+                                label="Their company"
                                 value={editManagerCompany}
                                 onChange={val => setEditManagerCompany(val)}
-                                placeholder="e.g. Acme Corp"
-                                className={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] ${isEditDuplicateTitle ? "border-red-500" : "border-border"}`}
+                                logoUrl={manager.companyLogoUrl ?? undefined}
+                                logoUrlFor={manager.company}
+                                inputClassName={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] ${isEditDuplicateTitle ? "border-red-500" : "border-border"}`}
                               />
                             </div>
                           </div>
@@ -3756,14 +3809,15 @@ export default function BossProfile() {
           setPendingEmailVerified(false);
           const action = pendingAction.current;
           pendingAction.current = null;
-          if (action === "rate") {
-            navigate("/add");
-          } else if (action === "career-unlock") {
-            const y = parseInt(sessionStorage.getItem("rmm_career_unlock_scroll") ?? "0", 10);
-            sessionStorage.removeItem("rmm_career_unlock_scroll");
-            setTimelineUnlocked(true);
-            requestAnimationFrame(() => window.scrollTo({ top: y, behavior: "instant" }));
-          } else if (action === "edit-submit") {
+          /*
+            Only the two in-page resumptions are handled here.
+
+            "rate" and "career-unlock" were handled here too, and neither was reachable - nothing
+            ever set them. Both of those gates sign in through a full-page OAuth redirect, which
+            destroys this component and its ref along with it, so they are restored from
+            sessionStorage by the effects near the top of the file instead.
+          */
+          if (action === "edit-submit") {
             handleEditManager();
           } else if (action === "report-submit") {
             handleSubmitReport(authedUser);

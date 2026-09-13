@@ -12,7 +12,10 @@ import { validateProfileUrl, generateUsername } from "@/lib/validators";
 import { COUNTRIES } from "@/lib/countries";
 import { fetchGeo } from "@/lib/geo";
 import { AuthFlowModal } from "@/components/AuthFlowModal";
+import { CompanyField } from "@/components/CompanyField";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
+import { FormSubjectCard } from "@/components/RatingFormParts";
+import { CompanyLogoImg } from "@/components/ManagerCard";
 import { useCompanySelection } from "@/hooks/useCompanySelection";
 import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import type { AuthFlowStep } from "@/components/AuthFlowModal";
@@ -190,6 +193,9 @@ export default function AddBoss() {
     let cancelled = false;
     fetchGeo().then(geo => {
       if (cancelled) return;
+      // Remembered so a later change of country can tell "still what we detected" from "somebody
+      // picked somewhere else", which is what decides whether the detected state still applies.
+      setDetectedCountry(geo.country ?? null);
       setFormData(prev => ({
         ...prev,
         country: prev.country || geo.country,
@@ -211,10 +217,12 @@ export default function AddBoss() {
   const [currentlyWorking, setCurrentlyWorking] = useState(false);
   const [formTouched, setFormTouched] = useState(false);
   const [editingLocation, setEditingLocation] = useState(false);
+  const [detectedCountry, setDetectedCountry] = useState<string | null>(null);
 
   const [authorType] = useState<"anonymous">("anonymous");
   const [generatedName, setGeneratedName] = useState(() => generateUsername());
 
+  const [editingCompany, setEditingCompany] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
 
   // Owns the company identity and the rule that typing invalidates it, so this form no longer
@@ -303,7 +311,30 @@ export default function AddBoss() {
           localStorage.removeItem("rmm_pending_manager");
         } else {
           localStorage.removeItem("rmm_pending_manager");
-          if (data.formData)    setFormData(prev => ({ ...prev, ...data.formData }));
+          if (data.formData) {
+            /*
+              The company comes from the URL, not from a stale draft.
+
+              Arriving from a company page - "Rate a manager" - carries ?company=, and that is the
+              company being added, so it fills the field. Clicking "Add Manager" from the nav
+              carries nothing, and must give a clean field: somebody who abandoned a draft about
+              Facebook last week and now wants to add someone elsewhere should not find Facebook
+              waiting for them.
+
+              An auth round-trip is the exception. There the draft *is* the in-flight form, and
+              dropping its company would lose the thing the person had already chosen.
+            */
+            const isAuthReturn = isVerified || !!data.signupEmail;
+            const { company: draftCompany, ...restOfDraft } = data.formData as Record<string, unknown>;
+            setFormData(prev => ({
+              ...prev,
+              ...restOfDraft,
+              company: isAuthReturn ? ((draftCompany as string) ?? prev.company) : prev.company,
+            }));
+            if (isAuthReturn && typeof draftCompany === "string" && draftCompany) {
+              companySelection.set(draftCompany);
+            }
+          }
           if (data.ratings)     setRatings(data.ratings);
           if (data.workedFrom)  setWorkedFrom(data.workedFrom);
           if (data.step)        setStep(data.step);
@@ -595,10 +626,17 @@ export default function AddBoss() {
       });
       navigate(`/manager/${managerId}`);
     } catch (error: any) {
+      /*
+        The server's own words if it gave any, and our sentence if it did not.
+
+        axios.message sat between the two, and it is always set - so on any failure without a
+        message body the reader got "Request failed with status code 500" and the friendly fallback
+        below it could never be reached. That string is for a log, not for somebody who has just
+        spent five minutes filling in a form.
+      */
       const apiMessage =
         error?.response?.data?.error ||
         error?.response?.data?.message ||
-        error?.message ||
         "Failed to submit manager and review";
       if (error?.response?.status === 401) {
         setErrors([]);
@@ -729,6 +767,7 @@ export default function AddBoss() {
 
 
 
+
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <label className="block text-sm font-semibold text-foreground mb-2">First Name *</label>
@@ -761,8 +800,22 @@ export default function AddBoss() {
                       className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]" />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-foreground mb-2">Company *</label>
-                    <CompanyAutocomplete
+                    {/* htmlFor: the field is CompanyField's input, which owns that id. */}
+                    <label htmlFor="company-field" className="block text-sm font-semibold text-foreground mb-2">Company *</label>
+                    {/*
+                      Arriving from a company page the company is settled, so the field shows it
+                      rather than asking again - logo then name, with the edit on the right. Editing
+                      swaps in the picker in place, exactly as the manager review's card does.
+                    */}
+                    {/*
+                      A company is a company however it arrived. Gating this on "came from a company
+                      page" meant picking one here left it as a bare text box, while the same value
+                      on the other forms showed as a card - the same field looking like two things.
+                    */}
+                    {/* The shared company field - one implementation of a pattern that was
+                        hand-rolled on four forms and had to be bug-fixed on each separately. */}
+                    <CompanyField
+                      label={null}
                       value={formData.company}
                       onChange={val => {
                         touch();
@@ -774,76 +827,74 @@ export default function AddBoss() {
                       }}
                       onCompanyIdChange={companySelection.bind.onCompanyIdChange}
                       onSuggestionSelect={companySelection.bind.onSuggestionSelect}
-                      placeholder="e.g., Microsoft"
-                      name="company"
-                      className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
+                      hint={formData.company.trim().length === 1 ? (
+                        <p className="mt-1 text-xs text-amber-600">Company name must be at least 2 characters</p>
+                      ) : undefined}
                     />
-                    {formData.company.trim().length === 1 && (
-                      <p className="mt-1 text-xs text-amber-600">Company name must be at least 2 characters</p>
-                    )}
                   </div>
                 </div>
 
                 {/* Country + State - read-only chip when pre-filled, editable on request */}
                 <div className="space-y-4">
-                  {formData.country && !editingLocation ? (
-                    <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-xs text-muted-foreground mb-0.5">Location</p>
-                          <p className="text-sm font-medium text-foreground">
-                            {COUNTRIES.find(c => c.value === formData.country)?.flag ?? ""} {formData.country}
-                            {formData.state ? `, ${formData.state}` : ""}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setEditingLocation(true)}
-                          className="flex-shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors mt-0.5"
-                        >
-                          Edit location
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-semibold text-foreground mb-2">Country *</label>
+                  {/*
+                    One country field, behaving like every other one: the value with its flag, the
+                    pencil on the right, and the select swapping in place with "Done editing". The
+                    choice applies the moment it is made - Done only collapses the card.
+                  */}
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-2">Country *</label>
+                    {formData.country ? (
+                      <FormSubjectCard
+                        layout="inline"
+                        name={formData.country}
+                        logo={
+                          <span aria-hidden="true" className="text-base leading-none">
+                            {COUNTRIES.find(c => c.value === formData.country)?.flag ?? ""}
+                          </span>
+                        }
+                        editing={editingLocation}
+                        onEditStart={() => setEditingLocation(true)}
+                        onEditDone={() => setEditingLocation(false)}
+                      >
                         <select
                           name="country"
                           value={formData.country}
-                          onChange={e => { touch(); setFormData(prev => ({ ...prev, country: e.target.value })); if (errors.length > 0) setErrors([]); }}
-                          className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
+                          onChange={e => {
+                            touch();
+                            setFormData(prev => ({
+                              ...prev,
+                              country: e.target.value,
+                              // The detected state belongs to the detected country. Say Brazil after
+                              // geo said Canada and we simply do not know the province.
+                              state: e.target.value === detectedCountry ? prev.state : "",
+                            }));
+                            if (errors.length > 0) setErrors([]);
+                          }}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                         >
-                          <option value="">Select a country</option>
                           {COUNTRIES.map(c => (
                             <option key={c.value} value={c.value}>{c.flag} {c.value}</option>
                           ))}
                         </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-foreground mb-2">State / Province</label>
-                        <input
-                          type="text"
-                          name="state"
-                          value={formData.state}
-                          onChange={e => { touch(); setFormData(prev => ({ ...prev, state: e.target.value })); }}
-                          placeholder="e.g. Ontario"
-                          maxLength={100}
-                          className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
-                        />
-                      </div>
-                      {formData.country && editingLocation && (
-                        <button
-                          type="button"
-                          onClick={() => setEditingLocation(false)}
-                          className="text-xs text-[#2e0562] hover:underline"
-                        >
-                          Done editing
-                        </button>
-                      )}
-                    </div>
-                  )}
+                      </FormSubjectCard>
+                    ) : (
+                      <select
+                        name="country"
+                        value={formData.country}
+                        onChange={e => {
+                          touch();
+                          setFormData(prev => ({ ...prev, country: e.target.value }));
+                          if (errors.length > 0) setErrors([]);
+                        }}
+                        className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
+                      >
+                        <option value="">Select...</option>
+                        {COUNTRIES.map(c => (
+                          <option key={c.value} value={c.value}>{c.flag} {c.value}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
                 </div>
 
                 <div>
@@ -920,21 +971,15 @@ export default function AddBoss() {
                   <p className="mt-1 text-sm text-muted-foreground">Rate them on each dimension. All 10 categories are required.</p>
                 </div>
 
-                {/* Rating progress */}
-                <div className="rounded-lg bg-[#2e0562]/5 p-4">
-                  <div className="mb-2 flex items-center justify-between">
-                    <p className="text-sm font-medium text-foreground">Progress</p>
-                    <p className="text-sm font-semibold text-[#2e0562]">
-                      {Object.values(ratings).filter(r => r > 0).length} / {RATING_CATEGORIES.length}
-                    </p>
-                  </div>
-                  <div className="h-2 w-full rounded-full bg-border overflow-hidden">
-                    <div
-                      className="h-full bg-[#2e0562] transition-all duration-300"
-                      style={{ width: `${(Object.values(ratings).filter(r => r > 0).length / RATING_CATEGORIES.length) * 100}%` }}
-                    />
-                  </div>
-                </div>
+                {/*
+                  The ratings progress bar used to sit here - a count and a filled track over the
+                  ten category rows.
+
+                  Removed: no other form on the site carries one, and the rows themselves already
+                  show the state plainly - each unrated one says "Required" beside its stars, and
+                  the submit button stays disabled until none do. A second, larger restatement of
+                  that was clutter above the thing it was describing.
+                */}
 
                 {/* Author type */}
                 <div className="rounded-xl border border-border p-5 space-y-3">

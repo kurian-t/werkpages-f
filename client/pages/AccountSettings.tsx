@@ -319,29 +319,6 @@ export default function AccountSettings() {
     }
   };
 
-  const handleDeleteReview = async () => {
-    if (!selectedReview) return;
-
-    try {
-      await axios.delete(
-        `${API_BASE}/api/managers/${selectedReview.managerId}/reviews/${selectedReview.id}`
-      );
-
-      setMyReviews((prev) => prev.filter((r) => r.id !== selectedReview.id));
-
-      queryClient.removeQueries({ queryKey: ["managers-directory"] });
-      queryClient.removeQueries({ queryKey: ["managers-top"] });
-      queryClient.removeQueries({ queryKey: ["manager", String(selectedReview.managerId)] });
-      queryClient.removeQueries({ queryKey: ["stats"] });
-
-      toast.success("Review deleted.");
-      setEditReviewStep(null);
-      setSelectedReview(null);
-    } catch {
-      toast.error("Failed to delete review. Please try again.");
-    }
-  };
-
   const handleDeleteReviewById = async (review: any) => {
     try {
       await axios.delete(
@@ -987,9 +964,18 @@ export default function AccountSettings() {
             </div>
 
             <div className="p-6 space-y-4">
+              {/*
+                Each label names its own input through htmlFor/id.
+
+                They were plain <label> elements with nothing tying them to the field beneath, so a
+                screen reader announced three unlabelled text boxes in a row and clicking a label
+                did not focus anything. The visual order implied the pairing; nothing in the markup
+                stated it.
+              */}
               <div>
-                <label className="block text-sm font-semibold text-foreground mb-1">Full Name *</label>
+                <label htmlFor="submission-field-name" className="block text-sm font-semibold text-foreground mb-1">Full Name *</label>
                 <input
+                  id="submission-field-name"
                   type="text"
                   value={editSubmissionData.name}
                   onChange={(e) => setEditSubmissionData((p) => ({ ...p, name: e.target.value }))}
@@ -998,8 +984,9 @@ export default function AccountSettings() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-foreground mb-1">Title *</label>
+                <label htmlFor="submission-field-title" className="block text-sm font-semibold text-foreground mb-1">Title *</label>
                 <input
+                  id="submission-field-title"
                   type="text"
                   value={editSubmissionData.title}
                   onChange={(e) => setEditSubmissionData((p) => ({ ...p, title: e.target.value }))}
@@ -1008,8 +995,9 @@ export default function AccountSettings() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-foreground mb-1">Company *</label>
+                <label htmlFor="submission-field-company" className="block text-sm font-semibold text-foreground mb-1">Company *</label>
                 <input
+                  id="submission-field-company"
                   type="text"
                   value={editSubmissionData.company}
                   onChange={(e) => setEditSubmissionData((p) => ({ ...p, company: e.target.value }))}

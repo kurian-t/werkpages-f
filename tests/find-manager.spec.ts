@@ -415,10 +415,12 @@ test.describe("FindYourManager - name and title normalisation", () => {
     expect(body.title).toBe("CFO");
   });
 
-  test("svp of sales is sent as SVP Of Sales", async ({ page }) => {
+  test("svp of sales is sent as SVP of Sales", async ({ page }) => {
+    // The abbreviation is uppercased and the preposition is not - "SVP Of Sales" is not a way
+    // anyone writes a job title. See toJobTitleCase.
     const body = await captureAndSearch(page, {
       firstName: "Alex", lastName: "Johnson", title: "svp of sales",
     });
-    expect(body.title).toBe("SVP Of Sales");
+    expect(body.title).toBe("SVP of Sales");
   });
 });

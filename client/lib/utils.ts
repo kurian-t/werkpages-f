@@ -44,13 +44,27 @@ export function toNameCase(name: string): string {
  * "ceo" → "CEO", "chief executive officer" → "Chief Executive Officer",
  * "vp engineering" → "VP Engineering"
  */
+/**
+ * The words title case leaves alone.
+ *
+ * Every one of these is a preposition, article or conjunction, and capitalising them is what makes
+ * a title read as machine output: "Director Of Engineering", "Head Of People And Culture", "VP Of
+ * Sales". Never applied to the first word - "Of Counsel" is a real title and it keeps its capital.
+ */
+const TITLE_MINOR_WORDS = new Set([
+  "a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of", "on", "or", "the", "to",
+  "vs", "with",
+]);
+
 export function toJobTitleCase(title: string): string {
   return title
     .trim()
     .split(/\s+/)
-    .map(word => {
+    .map((word, index) => {
       const upper = word.toUpperCase();
       if (TITLE_ABBREVIATIONS.has(upper)) return upper;
+      // Minor words stay lowercase, except as the first word of the title.
+      if (index > 0 && TITLE_MINOR_WORDS.has(word.toLowerCase())) return word.toLowerCase();
       // Handle leading punctuation like '(' - find the first alphabetic char and capitalise it.
       return word.replace(/^([^a-zA-Z]*)([a-zA-Z])(.*)$/, (_, prefix, letter, rest) =>
         prefix + letter.toUpperCase() + rest.toLowerCase()

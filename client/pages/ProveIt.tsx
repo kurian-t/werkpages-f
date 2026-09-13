@@ -71,8 +71,13 @@ export default function ProveIt() {
     const found: Record<string, string | undefined> = {};
     // Error text names the field's own question, so the message and the label agree instead of
     // making somebody map one onto the other.
+    /*
+      Both dates report on the one field, so the message has to be whichever is actually missing -
+      and the start is asked for first. Written as two unguarded assignments to the same key, the
+      second always won, so an empty form asked for the end date and never mentioned the start.
+    */
     if (!workedFrom) found.workedFrom = "Add when you started working together";
-    if (!stillThere && !workedUntil) found.workedFrom = "Add when you stopped working together";
+    else if (!stillThere && !workedUntil) found.workedFrom = "Add when you stopped working together";
     if (!claimedTitle.trim()) found.claimedTitle = "Add the role you held at the time";
     if (!relationship) found.relationship = "Pick the option that fits best";
     return found;

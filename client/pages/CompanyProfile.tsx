@@ -8,10 +8,11 @@ import { useState, useEffect } from "react";
 import { Helmet } from "react-helmet-async";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Layout } from "@/components/Layout";
-import { RatingBreakdown, HighLowCards, RatingBar } from "@/components/RatingBreakdown";
 import { gateKey } from "@/lib/gateKey";
+import { CompanyTabHeader } from "@/components/CompanyTabHeader";
+import { YourContributionMenu } from "@/components/YourContributionMenu";
 import { CompanyRatingList } from "@/components/CompanyRatingList";
-import { Star, Building2, Users, MessageSquare, TrendingUp, TrendingDown, ChevronLeft, PlusCircle, Lock, Pencil } from "lucide-react";
+import { Star, Building2, Users, MessageSquare, ChevronLeft, PlusCircle, Lock, Pencil } from "lucide-react";
 import { IndustryIcon } from "@/components/IndustryIcon";
 import { companyPath, managerPath } from "@/lib/urls";
 import { toast } from "sonner";
@@ -91,7 +92,7 @@ const GHOST_SLOTS = [
 function GhostManagerCard({ index, company, logoUrl, isLoggedIn }: { index: number; company: string; logoUrl?: string; isLoggedIn: boolean }) {
   const slot = GHOST_SLOTS[index % GHOST_SLOTS.length];
   return (
-    <div className="flex flex-col rounded-2xl border border-border bg-background p-5 shadow-sm select-none pointer-events-none relative overflow-hidden">
+    <div className="flex flex-col rounded-2xl border border-border bg-card p-5 shadow-sm select-none pointer-events-none relative overflow-hidden">
       {/* Badge - identical to LockedManagerCard */}
       <div className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-500">
         <Lock size={10} />
@@ -197,83 +198,124 @@ function CompanyRatingPanel({
         .map((e) => ({ key: String(e.key), label: e.label, value: e.value as number }));
   const overall = rating?.overallRating ?? 0;
 
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  // Whether this reader already rated the workplace. Same lookup the rate form uses, so the two
+  // never disagree about whether there is something to edit.
+  const { data: myRating } = useQuery({
+    queryKey: ["my-company-rating", companySlug],
+    queryFn: async () => {
+      const res = await axios.get(`${API_BASE}/api/companies/${companySlug}/rating`, {
+        withCredentials: true,
+      });
+      return res.data?.review ?? null;
+    },
+    enabled: !!companySlug && !!user,
+    retry: false,
+  });
+
   return (
     <div className="space-y-8">
-      {/*
-        The headline and its sample together, because a score with no count invites trust it has
-        not earned.
-      */}
-      {!isLocked && !noRatings && (
-        <div className="rounded-xl border border-border bg-card p-5">
-          {/*
-            The same rating strip the manager profile uses.
-
-            It previously spelled out "out of 5" beneath the number and gave the sample its own
-            column labelled "Low confidence" / "based on sample size". Nowhere else on the site does
-            either, so one score read as a different kind of measurement depending which page you
-            were on. The count carries that caveat inline now, in the manager profile's own words.
-          */}
-          <div className="flex items-center gap-3">
-            <span className="text-2xl font-bold text-[#6d5091] tabular-nums leading-none whitespace-nowrap">
-              {overall.toFixed(1)}
-            </span>
-            <div>
-              <div className="flex items-center gap-0.5" role="img" aria-label={`${overall.toFixed(1)} out of 5 stars`}>
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star
-                    key={i}
-                    size={13}
-                    aria-hidden="true"
-                    className={i < Math.floor(overall) ? "fill-amber-400 text-amber-400" : "text-border"}
-                  />
-                ))}
-              </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {rating!.ratingCount > 0
-                  ? `${rating!.ratingCount.toLocaleString()} ${rating!.ratingCount === 1 ? "rating" : "ratings"}${rating!.ratingCount < 3 ? " (limited data, interpret cautiously)" : ""}`
-                  : "No ratings yet"}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/*
-        The two that answer "what is it like here" before the full list does. Suppressed while
-        locked, and while there is nothing real to rank - placeholders must never be presented as
-        this company's strengths.
-      */}
-      {!isLocked && !noRatings && <HighLowCards rows={entries} />}
-
-      <RatingBreakdown
-        rows={entries}
-        subtitle="Average scores across every rating category"
+      <CompanyTabHeader
+        eyebrow="Workplace experience"
+        subtitle={`What employees experienced working at ${companyName}`}
+        score={rating?.overallRating ?? null}
+        countLabel="review"
+        countValue={rating?.ratingCount ?? 0}
         locked={isLocked}
+        scoreLabel="workplace rating"
+        /*
+          What the lock is and what opens it.
+
+          The redesign moved this tab onto CompanyTabHeader and did not carry the overlay across,
+          so a locked reader got a blurred dash and no words at all - the figure was still properly
+          withheld, but nothing said why or what to do about it. The Interviewing tab kept its
+          overlay through the same change, which left two sibling tabs explaining the same gate and
+          the third staying silent.
+        */
         lockedOverlay={
           <>
+            <Lock size={20} className="mb-1.5 text-muted-foreground opacity-70" aria-hidden="true" />
             <p className="text-sm font-semibold text-foreground">Workplace ratings are locked</p>
-            <p className="mt-1 text-xs text-muted-foreground">Rate a workplace to unlock them.</p>
-            <button
-              onClick={onRate}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2e0562]/90"
-            >
-              Rate {companyName}
-            </button>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Rate a workplace to unlock them
+            </p>
           </>
+        }
+        /*
+          The same three highest and three lowest the manager tab shows. The HighLowCards that used
+          to sit below carried exactly these six, so the page was stating them twice.
+        */
+        highlights={
+          !isLocked && !noRatings
+            ? (() => {
+                /*
+                  One sorted list, split - never two independent top-3 and bottom-3 slices. With
+                  six or fewer categories those slices overlap, and a company with three of them
+                  listed all three as its strongest AND its weakest, which is nonsense on its face.
+                */
+                const sorted = [...entries].sort((a, b) => b.value - a.value);
+                const cut = Math.max(3, sorted.length - 3);
+                return [
+                  ...sorted.slice(0, 3)
+                    .map((e) => ({ direction: "up" as const, label: e.label, value: e.value })),
+                  ...sorted.slice(cut)
+                    .map((e) => ({ direction: "down" as const, label: e.label, value: e.value })),
+                ];
+              })()
+            : []
+        }
+        highlightsFootnote={
+          `Based on ${rating?.ratingCount ?? 0} ${(rating?.ratingCount ?? 0) === 1 ? "rating" : "ratings"}.` +
+          ((rating?.ratingCount ?? 0) < 10 ? " Small sample size - treat as indicative only." : "")
+        }
+        action={
+          myRating ? (
+            <YourContributionMenu
+              label="Your rating"
+              editLabel="Edit your rating"
+              deleteLabel="Delete your rating"
+              confirmTitle="Delete your workplace rating?"
+              confirmBody={`Your ratings will be removed from ${companyName}'s workplace statistics.`}
+              onEdit={onRate}
+              onDelete={async () => {
+                try {
+                  await axios.delete(`${API_BASE}/api/companies/${companySlug}/rating`, { withCredentials: true });
+                  // The company's aggregates change the moment this goes, so nothing cached survives it.
+                  queryClient.invalidateQueries({ queryKey: ["company-profile-slug"] });
+                  queryClient.invalidateQueries({ queryKey: ["company-ratings", companySlug] });
+                  queryClient.invalidateQueries({ queryKey: ["my-company-rating", companySlug] });
+                  toast.success("Your workplace rating has been removed.");
+                } catch {
+                  toast.error("We couldn't remove that. Please try again.");
+                  throw new Error("delete failed");
+                }
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={onRate}
+              className="rounded-lg bg-[#2e0562] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#2e0562]/90"
+            >
+              Rate this workplace
+            </button>
+          )
         }
       />
 
       {/*
-        One count for every category. All ten are required, so they share a denominator - which is
-        what makes a single "based on N" honest here. The confidence word says what that number
-        means, because a 4.8 from three people and a 4.8 from ninety are the same number and not
-        the same claim.
+        The Strongest / Weakest cards used to sit here. The header above now names the same six
+        categories, so rendering both put every one of those figures on the page twice. Every
+        category still appears in the breakdown below.
       */}
-      {noRatings ? null : (
-        <p className="-mt-6 text-xs text-muted-foreground">
-          Every category is required, so all ten share one denominator.
-        </p>
-      )}
+
+      {/*
+        The Rating breakdown listed every category with a bar. The header above already names
+        the three strongest and three weakest, and on a workplace rating where the categories
+        are all required and move together, the full list restated what those six already
+        said. The individual ratings below still carry each person's own scores.
+      */}
 
       {/*
         What the average is made of. Only once it is unlocked: the individual ratings are the data
@@ -281,7 +323,7 @@ function CompanyRatingPanel({
         surface opting out of the gate twice over.
       */}
       {!isLocked && !noRatings && companySlug && (
-        <CompanyRatingList companySlug={companySlug} totalCount={rating!.ratingCount} />
+        <CompanyRatingList companySlug={companySlug} companyName={companyName} />
       )}
     </div>
   );
@@ -473,15 +515,22 @@ export default function CompanyProfile() {
    * at X" while showing averages computed from manager reviews - a different question wearing the
    * wrong label.
    */
-  const hasCompanyRating = (data?.companyRating?.ratingCount ?? 0) > 0;
+  // "Rated" means somebody reviewed them, not merely that they exist - a directory of unrated
+  // managers and one where every manager has reviews are very different places.
+  const ratedManagerCount = (data?.managers ?? []).filter((m: any) => (m.reviewsCount ?? 0) > 0).length;
   /**
-   * Open on the tab that has something in it, preferring the company.
+   * Managers first, always.
    *
-   * A fixed default would be wrong half the time: every company starts with no workplace ratings
-   * and plenty of manager ones, so defaulting to "company" would open thousands of pages on an
-   * empty panel.
+   * This used to open on the workplace tab whenever a company happened to have one rating, which
+   * buried the thing people came for behind a panel with a single opinion on it. Managers is what
+   * the site is for and the tab with the most on it, so it is where a company page opens.
    */
-  const defaultTab: CompanyTab = hasCompanyRating ? "company" : "managers";
+  /*
+    Managers first, always. It is what the site is for, it is the tab with the most on it, and
+    opening on the workplace tab because a company happened to have one rating buried the thing
+    people came for.
+  */
+  const defaultTab: CompanyTab = "managers";
   /**
    * All three tabs, always. Each dataset has its own gate on its own contents, so hiding a tab
    * would be a second, cruder gate on top of that - and one that teaches a first-time visitor
@@ -490,7 +539,7 @@ export default function CompanyProfile() {
    * This used to hide Interviewing until a manager had been rated, which quietly made a manager
    * rating the price of admission to two datasets it says nothing about.
    */
-  const visibleTabs: CompanyTab[] = ["company", "managers", "hiring"];
+  const visibleTabs: CompanyTab[] = ["managers", "company", "hiring"];
   const showTabChrome = visibleTabs.length > 1;
   const activeTab: CompanyTab =
     requestedTab === "hiring" ? "hiring"
@@ -558,9 +607,10 @@ export default function CompanyProfile() {
   const catEntries = Object.entries(data.categoryAverages)
     .filter(([, v]) => typeof v === "number" && !isNaN(v))
     .sort(([, a], [, b]) => b - a);
+  // Split one sorted list rather than taking two independent slices: with six or fewer
+  // categories, slice(0,3) and slice(-3) overlap and a category is named both best and worst.
   const strongest = catEntries.slice(0, 3);
-  const weakest   = catEntries.slice(-3).reverse();
-  const hasAreas  = catEntries.length >= 3;
+  const weakest   = catEntries.slice(Math.max(3, catEntries.length - 3)).reverse();
   // Whether to show unlocked tiles in the results column
   const resultsUnlocked = searchResults !== null ? searchHasContributed : !isLocked;
   const canonicalUrl = `https://werkpages.com${companyPath(data.industrySlug, data.slug ?? companySlug)}`;
@@ -700,122 +750,13 @@ export default function CompanyProfile() {
                 </div>
               )}
 
-              {/* Above the score it is a statement about: you read "Top rated", then the number
-                  that earned it. Hidden while the rating itself is hidden. */}
-              <TopRatedPill
-                rating={data.avgRating}
-                reviewCount={data.totalReviews}
-                variant="inline"
-                hidden={isLocked}
-              />
-
-              {data.avgRating != null && (
-                <div className="mt-1.5 flex items-center gap-2">
-                  {isLocked ? (
-                    <>
-                      <div className="flex items-center gap-1">
-                        {[1,2,3,4,5].map(i => (
-                          <div key={i} className="h-3.5 w-3.5 rounded-full bg-amber-300/40 blur-[2px]" />
-                        ))}
-                      </div>
-                      <div className="h-5 w-8 rounded bg-[#6d5091]/20 blur-[3px]" />
-                    </>
-                  ) : (
-                    <>
-                      <Stars rating={Number(data.avgRating)} size={14} showValue={false} />
-                      <span className="text-lg font-semibold text-foreground">{data.avgRating.toFixed(1)}</span>
-                    </>
-                  )}
-                  <span className="text-sm text-muted-foreground">avg manager rating</span>
-                </div>
-              )}
-
               {/*
-                The workplace rating, beside the manager one and never merged with it. Two numbers
-                answering two questions: a company can be a decent employer with uneven managers,
-                and one blended score would hide exactly that.
-
-                The CTA sits on the row it changes rather than in the header bar, where it would
-                be a third button competing with the global Add Manager.
+                The scores used to sit here: both averages, their star rows, a rate button and
+                two counts. Every one of them is now stated by the tab it belongs to, and two
+                copies of a number on one screen is worse than either placement - the reader
+                has to work out whether they disagree. The header names the company and its
+                industry; the tabs answer the questions.
               */}
-              <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                {companyLocked ? (
-                  <>
-                    <div className="flex items-center gap-1">
-                      {[1,2,3,4,5].map(i => (
-                        <div key={i} className="h-3.5 w-3.5 rounded-full bg-amber-300/40 blur-[2px]" />
-                      ))}
-                    </div>
-                    <span className="text-sm text-muted-foreground">workplace rating</span>
-                  </>
-                ) : (
-                  <>
-                  {data.companyRating?.overallRating != null ? (
-                    <>
-                      <Stars rating={Number(data.companyRating.overallRating)} size={14} showValue={false} />
-                      <span className="text-lg font-semibold text-foreground">
-                        {data.companyRating.overallRating.toFixed(1)}
-                      </span>
-                      <span className="text-sm text-muted-foreground">
-                        workplace rating · {data.companyRating.ratingCount}{" "}
-                        {data.companyRating.ratingCount === 1 ? "rating" : "ratings"}
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">No workplace ratings yet</span>
-                  )}
-                  </>
-                )}
-                {/*
-                  The way in stays open whether or not the numbers are readable: reading is
-                  earned, contributing is not. Somebody who arrived from a search for the company
-                  can still say what it was like without first rating a stranger.
-                */}
-                <button
-                  onClick={() => navigate(`/companies/${data.slug ?? companySlug}/rate`)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[#2e0562]/30 px-2.5 py-1 text-xs font-semibold text-[#2e0562] transition-colors hover:bg-[#2e0562]/5"
-                >
-                  ⭐ Add yours
-                </button>
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                {isLocked ? (
-                  <>
-                    <span className="flex items-center gap-1.5">
-                      <Users size={14} />
-                      <span className="inline-block h-3 w-14 rounded-full bg-[#6d5091]/20 blur-[3px]" />
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <MessageSquare size={14} />
-                      <span className="inline-block h-3 w-14 rounded-full bg-[#6d5091]/20 blur-[3px]" />
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    {data.managerCount > 0 && (
-                      <span className="flex items-center gap-1.5">
-                        <Users size={14} />
-                        {data.managerCount} {data.managerCount === 1 ? "manager" : "managers"}
-                      </span>
-                    )}
-                    {/*
-                      Everything people have contributed about this company, both tabs combined:
-                      opinions about working here plus experiences of interviewing here. The header
-                      is the summary of the whole page, so counting only one tab understates it.
-
-                      Hidden at zero, like every other count on the page. A header whose only
-                      content is "0 reviews" is the page telling you there is nothing here before
-                      you have had a chance to look.
-                    */}
-                    {totalContributions > 0 && (
-                      <span className="flex items-center gap-1.5">
-                        <MessageSquare size={14} />
-                        {totalContributions} {totalContributions === 1 ? "review" : "reviews"}
-                      </span>
-                    )}
-                  </>
-                )}
-              </div>
             </div>
           </div>
         </div>
@@ -854,41 +795,21 @@ export default function CompanyProfile() {
               return visibleTabs[(i + step + visibleTabs.length) % visibleTabs.length];
             });
           }}
-          className="flex max-w-3xl items-stretch gap-1"
+          className="flex items-stretch gap-8 border-b border-border"
         >
           {/*
-            Short labels. "What it's like to work at Red Hat" three times does not fit a phone,
-            and the company name is already in the header directly above.
+            An underline bar, not folder tabs.
+
+            The folder treatment gave each tab an outline, a recessed fill, a circled emoji and a
+            count beneath the label - five pieces of chrome to say which of three words is selected.
+            It also restated counts the panel header now carries, so every number on this page
+            appeared twice. A rule under the active label says the same thing with nothing left to
+            read, and matches how the rest of the site marks a current item.
           */}
           {(([
-            {
-              id: "company",
-              emoji: "\u{1F3E2}",
-              title: "Working here",
-              // Empty rather than "0 ratings". The tab already says what it is; a count of nothing
-              // only tells the reader not to bother opening it.
-              count: (data.companyRating?.ratingCount ?? 0) > 0
-                ? `${data.companyRating!.ratingCount} ${data.companyRating!.ratingCount === 1 ? "rating" : "ratings"}`
-                : "",
-            },
-            {
-              id: "managers",
-              emoji: "\u{1F465}",
-              title: "Managers",
-              count: data.totalReviews > 0
-                ? `${data.totalReviews} manager ${data.totalReviews === 1 ? "opinion" : "opinions"}`
-                : "",
-            },
-            {
-              id: "hiring",
-              emoji: "\u{1F4AC}",
-              title: "Interviewing",
-              count: interviewCount == null
-                ? "\u2014"
-                : interviewCount > 0
-                  ? `${interviewCount} candidate ${interviewCount === 1 ? "experience" : "experiences"}`
-                  : "",
-            },
+            { id: "managers", title: "Managers" },
+            { id: "company",  title: "Company" },
+            { id: "hiring",   title: "Interviewing" },
           ] as const).filter((tab) => visibleTabs.includes(tab.id))).map((tab) => {
             const active = activeTab === tab.id;
             return (
@@ -901,49 +822,13 @@ export default function CompanyProfile() {
                 aria-controls={`panel-${tab.id}`}
                 tabIndex={active ? 0 : -1}
                 onClick={() => setActiveTab(tab.id)}
-                className={`group relative flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-t-xl border border-border px-2.5 py-2.5 text-left sm:gap-2.5 sm:px-4 sm:py-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6d5091] ${
+                className={`relative -mb-px cursor-pointer whitespace-nowrap border-b-2 pb-3 pt-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6d5091] ${
                   active
-                    ? // -mb-px pulls the tab down onto the panel's top edge and border-b-0 opens
-                      // its floor, so tab and panel read as one continuous surface.
-                      "-mb-px z-10 border-b-0 bg-card"
-                    : // Unselected tabs keep their outline so both read as tabs, and sit on a
-                      // recessed fill so the selected one is clearly the raised, active page.
-                      "bg-muted/50 hover:bg-muted"
+                    ? "border-[#2e0562] font-semibold text-foreground"
+                    : "border-transparent font-medium text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {active && (
-                  <span
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-0 -bottom-px z-20 h-0.5 bg-card"
-                  />
-                )}
-                {/*
-                  Circled like a browser tab's favicon. The circle keeps its own light fill and
-                  ring rather than inheriting the tab's, so it reads on both the white active tab
-                  and the recessed inactive one. The bottom padding offsets an emoji's asymmetric
-                  bearing - items-center centres the line box, but the visible glyph sits below
-                  its centreline, so without it the emoji looks low in the circle.
-                */}
-                <span
-                  aria-hidden="true"
-                  className={`hidden h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-background pb-[3px] text-sm leading-none ring-1 ring-border transition-opacity min-[400px]:flex ${
-                    active ? "opacity-100" : "opacity-60 group-hover:opacity-100"
-                  }`}
-                >
-                  {tab.emoji}
-                </span>
-                <span className="min-w-0">
-                  <span
-                    className={`block text-[13px] font-semibold leading-snug transition-colors sm:text-sm ${
-                      active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
-                    }`}
-                  >
-                    {tab.title}
-                  </span>
-                  <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
-                    {tab.count}
-                  </span>
-                </span>
+                {tab.title}
               </button>
             );
           })}
@@ -958,10 +843,24 @@ export default function CompanyProfile() {
           Rounded on all four corners when it stands alone: the flat top edge exists to meet a
           tab, and with no tab above it the square corners look like a card that lost its lid.
         */}
+        {/*
+          No panel behind the tabs.
+
+          The white card existed to be the surface a folder tab attached to. With an underline bar
+          there is nothing to attach, and the card was covering the page's own background - so the
+          tiles inside it were white on white and stopped reading as tiles at all. Content sits on
+          the page ground now and the cards within it are the white surfaces, which is how the
+          manager side of the site has always looked.
+
+          Standing alone without tabs it is still a card, because then it is a card rather than a
+          page section.
+        */}
         <div
-          className={`border border-border bg-card p-5 sm:p-7 ${
-            showTabChrome ? "rounded-b-2xl" : "rounded-2xl"
-          }`}
+          className={
+            showTabChrome
+              ? "pt-6"
+              : "rounded-2xl border border-border bg-card p-5 sm:p-7"
+          }
         >
         {activeTab === "company" ? (
           <div role="tabpanel" id="panel-company" aria-labelledby="tab-company">
@@ -970,7 +869,14 @@ export default function CompanyProfile() {
               companyName={decoded}
               companySlug={data.slug ?? companySlug}
               isLocked={companyLocked}
-              onRate={() => navigate(`/companies/${data.slug ?? companySlug}/rate`)}
+              /* Back to this tab, not just this company. Cancelling used to land on Managers,
+                 because that is the page default and nothing said where the reader had been. */
+              onRate={() =>
+                navigate(
+                  `/companies/${data.slug ?? companySlug}/rate?returnTo=` +
+                  encodeURIComponent(`/companies/${data.slug ?? companySlug}?tab=company`),
+                )
+              }
               onSeeManagers={() => setActiveTab("managers")}
             />
           </div>
@@ -979,9 +885,17 @@ export default function CompanyProfile() {
             <InterviewPanel
               companySlug={data.slug ?? companySlug ?? ""}
               companyName={decoded}
-              onAddInterview={() => navigate(`/companies/${data.slug ?? companySlug}/add-interview`)}
+              onAddInterview={() =>
+                navigate(
+                  `/companies/${data.slug ?? companySlug}/add-interview?returnTo=` +
+                  encodeURIComponent(`/companies/${data.slug ?? companySlug}?tab=hiring`),
+                )
+              }
               onEditInterview={(reviewId) =>
-                navigate(`/companies/${data.slug ?? companySlug}/add-interview?edit=${reviewId}`)
+                navigate(
+                  `/companies/${data.slug ?? companySlug}/add-interview?edit=${reviewId}&returnTo=` +
+                  encodeURIComponent(`/companies/${data.slug ?? companySlug}?tab=hiring`),
+                )
               }
             />
           </div>
@@ -993,136 +907,81 @@ export default function CompanyProfile() {
           ? { role: "tabpanel", id: "panel-working", "aria-labelledby": "tab-working" }
           : {})}>
         {/*
-          The tab carried this heading and its count. Without the tab the card would open on
-          "Strongest Areas" with nothing saying whose strengths they are or how many people are
-          behind them, so the heading moves inside.
+          The same header the other two tabs open with. It replaces a heading that only appeared
+          when the tab bar was hidden, which meant this panel introduced itself differently
+          depending on how you arrived at it.
         */}
-        {!showTabChrome && (
-          <div className="mb-6 flex items-center gap-2.5">
-            <span
-              aria-hidden="true"
-              className="hidden h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-background pb-[3px] text-sm leading-none ring-1 ring-border min-[400px]:flex"
+        <CompanyTabHeader
+          /* Eyebrow + subtitle, the same pair the workplace tab uses ("Workplace experience" /
+             "What employees experienced working at X"). Without it the manager count sat at the
+             top of the panel with nothing saying what it counted, and the three tabs introduced
+             themselves in three different ways. */
+          eyebrow="Manager opinions"
+          subtitle={`What people experienced reporting to managers at ${data.name}`}
+          score={data.avgRating ?? null}
+          countLabel="review"
+          countValue={data.totalReviews ?? 0}
+          locked={isLocked}
+          /*
+            The heading only - the grid below supplies the call to action.
+
+            The redesign moved this tab onto CompanyTabHeader without carrying its overlay across,
+            so a locked reader got a blurred dash with nothing naming the gate. Restoring the whole
+            overlay put "Rate a manager to unlock ratings" on the page twice, because the locked
+            manager cards underneath already say it. The header names what is locked; the grid says
+            what to do about it; neither repeats the other.
+          */
+          lockedOverlay={
+            <>
+              <Lock size={20} className="mb-1.5 text-muted-foreground opacity-70" aria-hidden="true" />
+              <p className="text-sm font-semibold text-foreground">Company insights are locked</p>
+            </>
+          }
+          /*
+            Just how many managers there are. The review count is deliberately not repeated here -
+            the caveat opposite already carries it, and the same number twice on one row reads as
+            two figures that happen to agree.
+          */
+          metrics={[
+            { icon: "managers",
+              value: String(data.managerCount ?? 0),
+              label: (data.managerCount ?? 0) === 1 ? "manager" : "managers" },
+          ]}
+          /*
+            The three highest and three lowest scoring categories - the same set the boxes below
+            draw. Shown whenever there is anything to rank rather than only past a threshold, so a
+            company with two categories still says what they are.
+          */
+          highlightsFootnote={
+            `Based on ${data.totalReviews} ${data.totalReviews === 1 ? "review" : "reviews"} across ` +
+            `${data.managerCount} ${data.managerCount === 1 ? "manager" : "managers"}.` +
+            (data.totalReviews < 10 ? " Small sample size - treat as indicative only." : "")
+          }
+          highlights={
+            !isLocked
+              ? [
+                  // The key is already the display name here - the boxes below render it raw too.
+                  ...strongest.map(([label, value]) => ({ direction: "up" as const, label, value })),
+                  ...weakest.map(([label, value]) => ({ direction: "down" as const, label, value })),
+                ]
+              : []
+          }
+          action={
+            <button
+              type="button"
+              onClick={() => navigate(`/add?company=${encodeURIComponent(data.name)}&returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`)}
+              className="rounded-lg bg-[#2e0562] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#2e0562]/90"
             >
-              {"\u{1F465}"}
-            </span>
-            <span className="min-w-0">
-              <h2 className="text-[13px] font-semibold leading-snug text-foreground sm:text-sm">
-                What it's like to work at {decoded}
-              </h2>
-              {/*
-                Blurred like every other figure on a locked page. The heading still says what
-                this card holds; how much of it is one more thing rating a manager reveals.
-                aria-hidden with an sr-only note, so the number is gated rather than merely
-                out of focus - a blur a screen reader reads straight out is not a lock.
-              */}
-              <span
-                aria-hidden="true"
-                className="mt-0.5 block select-none text-xs leading-snug text-muted-foreground blur-[3px]"
-              >
-                {data.totalReviews} manager {data.totalReviews === 1 ? "opinion" : "opinions"}
-              </span>
-              <span className="sr-only">
-                Manager opinion count hidden until you rate a manager
-              </span>
-            </span>
-          </div>
-        )}
-        {/* Strongest / Weakest areas */}
-        {(isLocked || hasAreas) && (
-          <div className="mb-10">
-            {isLocked ? (
-              <div>
-                <div className="relative">
-                <div className="grid gap-6 sm:grid-cols-2 blur-sm select-none pointer-events-none">
-                  {[{ label: "Strongest Areas", icon: <TrendingUp size={16} className="text-green-600" />, vals: [4.8, 4.6, 4.3] }, { label: "Weakest Areas", icon: <TrendingDown size={16} className="text-amber-500" />, vals: [2.9, 2.7, 2.4] }].map(({ label, icon, vals }) => (
-                    <div key={label} className="rounded-2xl border border-border bg-background p-5">
-                      <div className="flex items-center gap-2 mb-4">
-                        {icon}
-                        <h2 className="text-sm font-semibold text-foreground">{label}</h2>
-                      </div>
-                      <div className="space-y-3">
-                        {vals.map((v, i) => (
-                          <div key={i}>
-                            <div className="h-2.5 w-3/4 rounded bg-muted mb-1.5" />
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
-                                <div className="h-full rounded-full bg-[#6d5091]" style={{ width: `${(v / 5) * 100}%` }} />
-                              </div>
-                              <span className="text-xs font-medium text-foreground w-6 text-right">{v.toFixed(1)}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 bg-background/60 rounded-lg">
-                  <Lock size={20} className="mb-1.5 text-muted-foreground opacity-70" />
-                  <p className="text-sm font-semibold text-foreground">Company insights are locked</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Rate any manager to unlock</p>
-                  <button
-                    onClick={() => navigate(`/add?returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`)}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-4 py-2 text-xs font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
-                  >
-                    ⭐ Rate a manager
-                  </button>
-                </div>
-                </div>
-                <div className="mt-4 rounded-xl border border-border bg-background p-8 text-center">
-                  <p className="text-sm font-semibold text-foreground">Company insights are locked</p>
-                  <p className="mt-1 text-xs text-muted-foreground">Rate any manager to see strongest and weakest areas.</p>
-                  <button
-                    onClick={() => navigate(`/add?returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`)}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
-                  >
-                    ⭐ Rate a manager to unlock
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div className="grid gap-6 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-border bg-background p-5">
-                    <div className="flex items-center gap-2 mb-4">
-                      <TrendingUp size={16} className="text-green-600" />
-                      <h2 className="text-sm font-semibold text-foreground">Strongest Areas</h2>
-                    </div>
-                    <div className="space-y-3">
-                      {strongest.map(([key, val]) => (
-                        <div key={key}>
-                          <div className="flex items-center justify-between mb-0.5">
-                            <span className="text-xs text-muted-foreground">{key}</span>
-                          </div>
-                          <RatingBar value={val} />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-border bg-background p-5">
-                    <div className="flex items-center gap-2 mb-4">
-                      <TrendingDown size={16} className="text-amber-500" />
-                      <h2 className="text-sm font-semibold text-foreground">Weakest Areas</h2>
-                    </div>
-                    <div className="space-y-3">
-                      {weakest.map(([key, val]) => (
-                        <div key={key}>
-                          <div className="flex items-center justify-between mb-0.5">
-                            <span className="text-xs text-muted-foreground">{key}</span>
-                          </div>
-                          <RatingBar value={val} />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Based on {data.totalReviews} {data.totalReviews === 1 ? "review" : "reviews"} across {data.managerCount} {data.managerCount === 1 ? "manager" : "managers"}.
-                  {data.totalReviews < 10 && " Small sample size - treat as indicative only."}
-                </p>
-              </div>
-            )}
-          </div>
-        )}
+              Rate a manager
+            </button>
+          }
+        />
+        {/*
+          The Strongest / Weakest boxes used to sit here, with their own purple bars and their
+          own "Based on N reviews" line. The header above now states the same six categories
+          and the same sample sentence, and printing both put every one of those figures on
+          the page twice. The full list of every category survives in Rating breakdown below.
+        */}
         {/* Manager section - same two-column layout as Directory */}
         <div className="flex flex-col gap-8 lg:flex-row">
           {/* Left sidebar - Find a Manager */}
@@ -1212,7 +1071,7 @@ export default function CompanyProfile() {
                       <p className="text-sm font-semibold text-foreground">Rate a manager to unlock ratings</p>
                       <p className="mt-1 text-xs text-muted-foreground">It's anonymous and takes 2 minutes.</p>
                       <button
-                        onClick={() => navigate(`/add?returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`)}
+                        onClick={() => navigate(`/add?company=${encodeURIComponent(data.name)}&returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`)}
                         className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
                       >
                         ⭐ Rate a manager
@@ -1240,7 +1099,7 @@ export default function CompanyProfile() {
                     Try a different spelling or add them yourself.
                   </p>
                   <button
-                    onClick={() => navigate(`/add?returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`)}
+                    onClick={() => navigate(`/add?company=${encodeURIComponent(data.name)}&returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`)}
                     className="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
                   >
                     + Add Manager
@@ -1275,7 +1134,7 @@ export default function CompanyProfile() {
                   <p className="text-sm font-semibold text-foreground">Rate a manager to unlock ratings</p>
                   <p className="mt-1 text-xs text-muted-foreground">It's anonymous and takes 2 minutes.</p>
                   <button
-                    onClick={() => navigate(`/add?returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`)}
+                    onClick={() => navigate(`/add?company=${encodeURIComponent(data.name)}&returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`)}
                     className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
                   >
                     ⭐ Rate a manager

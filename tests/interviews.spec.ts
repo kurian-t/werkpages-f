@@ -91,6 +91,13 @@ async function mockCompany(page: any, stats: Record<string, unknown>, signedIn =
   await page.route("**/api/companies/by-slug/**", (r: any) => r.fulfill({ json: COMPANY }));
   await page.route("**/api/managers**", (r: any) => r.fulfill({ json: { data: [], total: 0 } }));
   await page.route("**/api/companies/red-hat/interviews**", (r: any) => r.fulfill({ json: stats }));
+  /*
+    The country is inferred from geo and shown rather than asked, so without this the field never
+    settles and the process step can never be completed - which is why every test that fills the
+    form began failing at once rather than one at a time.
+  */
+  await page.route("**/api/geo", (r: any) =>
+    r.fulfill({ json: { country: "Canada", state: "ON", city: "Toronto" } }));
 }
 
 async function openHiringTab(page: any) {
@@ -111,21 +118,27 @@ async function completeRatingsStep(page: any) {
     "Clarity about the role",
     "Fairness of the process",
     "Transparency about next steps",
+    "Role relevance",
   ]) {
     await page.getByRole("button", { name: `${label}: 4 stars` }).click();
   }
 }
 
+/*
+  Every question the process step asks. Year was missing and Country was being set through a
+  <select> that no longer exists - the field became an inferred card, filled from geo, matching how
+  country is asked everywhere else on the site.
+*/
 async function completeProcessStep(page: any) {
   await page.getByRole("button", { name: "Received an offer" }).click();
   await page.getByRole("button", { name: "Average", exact: true }).click();
-  await page.getByLabel("Country").selectOption("Canada");
+  await page.getByLabel("Year").selectOption("2025");
   await page.getByLabel("How long did it take?").selectOption("2_4_weeks");
   await page.getByLabel("Role").fill("Engineering");
 }
 
 test.describe("Getting hired tab", () => {
-  test("a company profile opens on Working here, not the interview tab", async ({ page }) => {
+  test("a company profile opens on Managers, not the interview tab", async ({ page }) => {
     await mockCompany(page, interviewStats());
     await page.goto(COMPANY_URL);
     await expect(page.getByRole("tab", { name: "Managers" })).toHaveAttribute("aria-selected", "true");
@@ -144,20 +157,26 @@ test.describe("Getting hired tab", () => {
 
     await expect(page.getByRole("tab", { name: "Managers" }))
       .toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole("tab", { name: "Working here" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Company" })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Interviewing" })).toBeVisible();
     await expect(page.getByRole("tab")).toHaveCount(3);
   });
 
-  test("a locked tab still says how much is behind it", async ({ page }) => {
-    // The same reasoning the interview tab already follows: a locked page that will not even say
-    // how much it holds gives someone arriving from search no reason to come back. The ratings
-    // stay hidden; the size of what is hidden does not.
+  test("a locked panel still says how much is behind it", async ({ page }) => {
+    /*
+      A locked page that will not even say how much it holds gives someone arriving from search no
+      reason to come back. The ratings stay hidden; the size of what is hidden does not.
+
+      Asserted on the panel header rather than the tab. This read the count off the tab label, and
+      the redesign removed it from there for restating what the header already carries - which it
+      does whether or not the reader has contributed, so the property this test exists to protect
+      is intact and only its location moved.
+    */
     await mockCompany(page, interviewStats(), false);
     await page.goto(COMPANY_URL);
 
-    await expect(page.getByRole("tab", { name: "Managers" }))
-      .toContainText("3 manager opinions", { timeout: 10_000 });
+    await expect(page.getByText(/3 (manager )?(opinions|reviews)/).first())
+      .toBeVisible({ timeout: 10_000 });
   });
 
   test("a hiring URL opens the hiring tab, signed in or not", async ({ page }) => {
@@ -186,25 +205,15 @@ test.describe("Getting hired tab", () => {
     await expect(page.getByRole("tab")).toHaveCount(3);
   });
 
-  test("the tab still says how much is behind the lock", async ({ page }) => {
-    // A locked page that will not even say how many experiences it holds gives someone arriving
-    // from search no reason to come back.
+  test("the panel still says how much is behind the lock", async ({ page }) => {
+    // Same move as above: the count lives in the panel header now, not on the tab label, and it is
+    // shown to a locked reader on purpose.
     await mockCompany(page, interviewStats({ gated: true, hasContributed: false, categoryAverages: null, categoryComparison: null }));
     await page.goto(COMPANY_URL);
 
-    await expect(page.getByRole("tab", { name: "Interviewing" }))
-      .toContainText("12 candidate experiences", { timeout: 10_000 });
-  });
-
-  test("the offer / no-offer gap is stated rather than averaged away", async ({ page }) => {
-    await mockCompany(page, interviewStats());
-    await openHiringTab(page);
-
-    // All three series are on screen at once, so nobody has to filter and compare from memory.
-    await expect(page.getByText("Explore the interview data")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("Got offer").first()).toBeVisible();
-    await expect(page.getByText("No offer").first()).toBeVisible();
-    await expect(page.getByText(/Biggest outcome gap/)).toBeVisible();
+    await page.getByRole("tab", { name: "Interviewing" }).click();
+    await expect(page.getByText(/12 (candidate )?experiences/).first())
+      .toBeVisible({ timeout: 10_000 });
   });
 
   test("the category breakdown is locked for a non-contributor", async ({ page }) => {
@@ -228,33 +237,14 @@ test.describe("Getting hired tab", () => {
     await mockCompany(page, interviewStats());
     await openHiringTab(page);
 
-    // Same Strongest / Weakest layout the Working tab uses, so switching tabs needs no relearning.
-    await expect(page.getByText("Strongest Areas")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("Weakest Areas")).toBeVisible();
+    /*
+      Same Strongest / Weakest layout the Company tab uses, so switching tabs needs no relearning -
+      which is why these read "Strongest" and "Weakest" now. The "Areas" suffix belonged to the
+      HighLowCards below, removed for restating the six figures the header already carries.
+    */
+    await expect(page.getByText("Strongest", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Weakest", { exact: true })).toBeVisible();
     await expect(page.getByText("Communication").first()).toBeVisible();
-  });
-
-  test("the role filter re-requests only that slice, and never sends an outcome", async ({ page }) => {
-    const requested: string[] = [];
-    // Seeing the tab requires a manager rating, so this user has one.
-    await page.addInitScript((u: unknown) => {
-      localStorage.setItem("authUser", JSON.stringify(u));
-    }, USER);
-    await page.route("**/api/auth/me", (r: any) => r.fulfill({ json: USER }));
-    await page.route("**/api/companies/**", (r: any) => r.fulfill({ json: COMPANY }));
-    await page.route("**/api/managers**", (r: any) => r.fulfill({ json: { data: [], total: 0 } }));
-    await page.route("**/api/companies/red-hat/interviews**", (r: any) => {
-      requested.push(r.request().url());
-      r.fulfill({ json: interviewStats() });
-    });
-
-    await openHiringTab(page);
-    await expect(page.getByTestId("interview-panel")).toBeVisible({ timeout: 10_000 });
-
-    await page.getByLabel("Role").selectOption("Engineering");
-
-    await expect.poll(() => requested.some((u) => u.includes("role=Engineering"))).toBe(true);
-    expect(requested.every((u) => !u.includes("outcome="))).toBe(true);
   });
 
   test("difficulty is described in its own words, never as a rating", async ({ page }) => {
@@ -309,18 +299,38 @@ test.describe("Getting hired tab", () => {
     await expect(page.getByText(/Nobody has described interviewing at Red Hat/)).toBeVisible();
   });
 
-  test("too few reports is explained as a sample problem, not a locked gate", async ({ page }) => {
-    await mockCompany(page, interviewStats({
-      reviewCount: 2,
-      categoryAverages: null,
-      categoryComparison: null,
-      gated: false,
-      belowThreshold: true,
-    }));
+  test("a thin sample is shown and flagged, not withheld", async ({ page }) => {
+    /*
+      CHANGED DELIBERATELY. This asserted "Not enough reports to break down yet" - the tab used to
+      replace its breakdown with that notice below a threshold. The figures are shown now, with a
+      caveat beside them, which is what the manager profile and the workplace tab both do. Refusing
+      to show two people's experience is a worse answer than showing it and saying it is two.
+    */
+    await mockCompany(page, interviewStats({ reviewCount: 2, gated: false, belowThreshold: true }));
     await openHiringTab(page);
 
-    await expect(page.getByText("Not enough reports to break down yet")).toBeVisible({ timeout: 10_000 });
+    // .last(): the header keeps a hidden copy of this footnote, so the visible caveat is the second.
+    await expect(page.getByText(/Limited data — interpret cautiously/).last()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Not enough reports to break down yet")).toHaveCount(0);
     await expect(page.getByText("Interview insights are locked")).toHaveCount(0);
+  });
+
+  test("the outcome-comparison chart is not rendered", async ({ page }) => {
+    /*
+      REMOVED DELIBERATELY, and pinned so its return is a decision rather than a regression.
+
+      It was a second, much larger presentation of figures the panel header already gives - five
+      categories tall, in a visual language nothing else on the page used - so the tab read as two
+      competing charts. Its filters went with it.
+
+      The data is untouched: categoryComparison is still computed and returned, so bringing it back
+      is a rendering change.
+    */
+    await mockCompany(page, interviewStats());
+    await openHiringTab(page);
+
+    await expect(page.getByText("Explore the interview data")).toHaveCount(0);
+    await expect(page.getByText("Compare", { exact: true })).toHaveCount(0);
   });
 });
 
@@ -348,7 +358,8 @@ test.describe("Your own experience", () => {
     await page.getByRole("button", { name: /Your experience/ }).click();
     await page.getByRole("button", { name: /Edit your experience/ }).click();
 
-    await expect(page).toHaveURL(/add-interview\?edit=rev-1$/, { timeout: 10_000 });
+    // Not anchored: the link also carries returnTo, so Cancel comes back to this tab.
+    await expect(page).toHaveURL(/add-interview\?edit=rev-1/, { timeout: 10_000 });
   });
 
   test("delete asks first and says what will happen", async ({ page }) => {
@@ -374,29 +385,6 @@ test.describe("Your own experience", () => {
     await expect.poll(() => deleted).toBe(true);
   });
 
-  test("the country filter narrows only the chart", async ({ page }) => {
-    const requested: string[] = [];
-    // Seeing the tab requires a manager rating, so this user has one.
-    await page.addInitScript((u: unknown) => {
-      localStorage.setItem("authUser", JSON.stringify(u));
-    }, USER);
-    await page.route("**/api/auth/me", (r: any) => r.fulfill({ json: USER }));
-    await page.route("**/api/companies/**", (r: any) => r.fulfill({ json: COMPANY }));
-    await page.route("**/api/managers**", (r: any) => r.fulfill({ json: { data: [], total: 0 } }));
-    await page.route("**/api/companies/red-hat/interviews**", (r: any) => {
-      requested.push(r.request().url());
-      r.fulfill({ json: interviewStats() });
-    });
-
-    await openHiringTab(page);
-    await expect(page.getByTestId("interview-panel")).toBeVisible({ timeout: 10_000 });
-
-    await page.getByLabel("Country").selectOption("Canada");
-
-    await expect.poll(() => requested.some((u) => u.includes("country=Canada"))).toBe(true);
-    // The headline is unchanged: it never depended on the filter.
-    await expect(page.getByText("12 experiences")).toBeVisible();
-  });
 });
 
 test.describe("Adding an interview experience", () => {
@@ -407,7 +395,12 @@ test.describe("Adding an interview experience", () => {
 
     await page.getByRole("button", { name: "Share your experience" }).first().click();
 
-    await expect(page).toHaveURL(/\/companies\/red-hat\/add-interview$/, { timeout: 10_000 });
+    /*
+      Not anchored with $. The link now carries ?returnTo=, so that Cancel lands the contributor
+      back on the tab they started from instead of the default one - anchoring to the end of the
+      path asserted the absence of a feature.
+    */
+    await expect(page).toHaveURL(/\/companies\/red-hat\/add-interview/, { timeout: 10_000 });
     await expect(page.getByText("Step 1 of 2")).toBeVisible();
   });
 

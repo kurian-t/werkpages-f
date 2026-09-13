@@ -3,7 +3,7 @@ import { test, expect } from "./base";
 /**
  * The company's overall rating reads the same way the manager's does.
  *
- * The Working here tab used to spell out "out of 5" under the number and give the sample its own
+ * The Company tab used to spell out "out of 5" under the number and give the sample its own
  * column labelled "Low confidence" / "based on sample size". The manager profile does neither, so
  * one score looked like a different kind of measurement depending which page you were on.
  */

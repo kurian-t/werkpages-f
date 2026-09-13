@@ -147,7 +147,14 @@ export function AuthFlowModal({
       if (err?.response?.data?.error === "username_taken") {
         setUsernameError("That username is already taken. Please choose another.");
       } else if (err?.response?.data?.error === "email_already_registered") {
-        setSignupError("An account with this email already exists.");
+        /*
+          Reported on the sign-in step, because that is where this lands the person.
+
+          signupError only renders inside the signup block, which unmounts on the very next line -
+          so setting it here showed nothing at all: the form silently became a different form with
+          the email pre-filled and no word about why.
+        */
+        setSigninError("An account with this email already exists.");
         setIdentifier(signupEmail);
         setStep("signin");
         setEmailMode(true);

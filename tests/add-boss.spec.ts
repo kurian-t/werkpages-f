@@ -335,16 +335,24 @@ test.describe("AddBoss - 3-step flow", () => {
 
     await page.goto("/add");
 
-    // Draft is restored - the previously filled fields are pre-populated
+    /*
+      The work is restored; the company is not.
+
+      CHANGED DELIBERATELY. This used to assert the draft's company came back too. It does not any
+      more: arriving at /add with no ?company= is a deliberate fresh start, and somebody who
+      abandoned a draft about one employer last week should not find it waiting when they come to
+      add someone somewhere else. The company is whatever the URL says, and nothing else.
+
+      An auth round-trip is the exception - there the draft is the in-flight form - but that is a
+      different arrival, carrying signupEmail or verified.
+    */
     await expect(
       page.locator('input[name="firstName"]')
     ).toHaveValue("Drafted", { timeout: 5_000 });
     await expect(
       page.locator('input[name="lastName"]')
     ).toHaveValue("Manager");
-    await expect(
-      page.locator('input[name="company"]')
-    ).toHaveValue("Draft Corp");
+    await expect(page.getByLabel(/Company/i).first()).toHaveValue("");
   });
 
   test("cancel button closes the form", async ({ page }) => {
@@ -399,5 +407,102 @@ test.describe("AddBoss - 3-step flow", () => {
     await page.getByRole("button", { name: /^close$/i }).click();
 
     await expect(page).toHaveURL(/\/companies\/Acme/, { timeout: 5_000 });
+  });
+});
+
+/**
+ * The company field's two presentations, and staying in one of them.
+ *
+ * A settled company shows as a card - logo, name, "Edit details" - matching how a company is shown
+ * on every other form. Editing swaps the picker in place, and "Done editing" puts the card back.
+ *
+ * What settles a value is picking a suggestion or arriving with one already filled in. Typing does
+ * not: the field must stay a plain input under the cursor while somebody is still using it.
+ */
+test.describe("Editing the company on the add-manager form", () => {
+  /* Scoped: the country field on this same step is also a card with an "Edit details" control. */
+  const field = (page: any) => page.getByTestId("company-field");
+
+  /**
+   * Types a few characters and takes whatever the picker offers, which is what settles the value.
+   *
+   * Returns the chosen name rather than assuming one: the suggestions come from the fixture, and a
+   * test that hard-codes a company silently stops exercising the pick if that list ever changes.
+   */
+  async function pickCompany(page: any): Promise<string> {
+    await page.getByLabel(/Company/i).first().fill("Acme");
+    const option = page.getByRole("option").first();
+    await expect(option).toBeVisible({ timeout: 10_000 });
+    const chosen = (await option.innerText()).split("\n")[0].trim();
+    await option.click();
+    await expect(field(page).getByRole("button", { name: /Edit details/i }))
+      .toBeVisible({ timeout: 10_000 });
+    return chosen;
+  }
+
+  test("typing does not turn the field into a card mid-word", async ({ page }) => {
+    /*
+      The second keystroke used to push the value past the length threshold, re-render the field as
+      a card, and - because no edit was in progress - show the card's *summary*. The input being
+      typed into vanished and took the caret with it, which read as a company being auto-selected.
+    */
+    await mockAddBossPage(page);
+    await page.goto("/add");
+
+    const input = page.getByLabel(/Company/i).first();
+    await input.fill("Ac");
+
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue("Ac");
+    await expect(field(page).getByRole("button", { name: /Edit details/i })).toHaveCount(0);
+  });
+
+  test("picking a company settles it into a card with its logo", async ({ page }) => {
+    await mockAddBossPage(page);
+    await page.goto("/add");
+
+    const chosen = await pickCompany(page);
+
+    await expect(field(page).getByText(chosen, { exact: false })).toBeVisible();
+  });
+
+  test("backspacing to one character does not throw you out of editing", async ({ page }) => {
+    /*
+      The card rendered only above a length threshold, so deleting down to a single character
+      unmounted it mid-edit: the control changed shape under the cursor and "Done editing"
+      vanished. Clearing a field to retype it is the most ordinary thing somebody does here.
+    */
+    await mockAddBossPage(page);
+    await page.goto("/add");
+    await pickCompany(page);
+    await field(page).getByRole("button", { name: /Edit details/i }).click();
+
+    await page.getByLabel(/Company/i).first().fill("A");
+
+    await expect(field(page).getByRole("button", { name: "Done editing" })).toBeVisible();
+    await expect(page.getByText(/at least 2 characters/i)).toBeVisible();
+  });
+
+  test("clearing the field entirely still leaves you editing", async ({ page }) => {
+    await mockAddBossPage(page);
+    await page.goto("/add");
+    await pickCompany(page);
+    await field(page).getByRole("button", { name: /Edit details/i }).click();
+
+    await page.getByLabel(/Company/i).first().fill("");
+
+    await expect(field(page).getByRole("button", { name: "Done editing" })).toBeVisible();
+  });
+
+  test("Done editing returns to the card", async ({ page }) => {
+    await mockAddBossPage(page);
+    await page.goto("/add");
+    await pickCompany(page);
+    await field(page).getByRole("button", { name: /Edit details/i }).click();
+
+    await field(page).getByRole("button", { name: "Done editing" }).click();
+
+    await expect(field(page).getByRole("button", { name: /Edit details/i })).toBeVisible();
+    await expect(field(page).getByRole("button", { name: "Done editing" })).toHaveCount(0);
   });
 });

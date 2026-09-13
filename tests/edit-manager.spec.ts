@@ -318,6 +318,6 @@ test.describe("Edit Manager - title normalisation", () => {
   test("all-caps plain title is normalised to title case", async ({ page }) => {
     const body = await captureEditPayload(page, "DIRECTOR OF OPERATIONS");
     expect(body).not.toBeNull();
-    expect(body.title).toBe("Director Of Operations");
+    expect(body.title).toBe("Director of Operations");
   });
 });

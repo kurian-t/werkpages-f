@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import API_BASE from "@/lib/api";
-import { logoDevUrlForDomain } from "@/lib/logo";
+import { logoDevUrlForDomain, logoDevUrl } from "@/lib/logo";
 
 interface Suggestion {
   name: string;
@@ -44,6 +44,8 @@ interface Props {
   className?: string;
   autoFocus?: boolean;
   name?: string;
+  /** So a <label htmlFor> can name this field. */
+  id?: string;
 }
 
 
@@ -52,11 +54,19 @@ function suggestionLogoUrl(s: Suggestion): string | undefined {
   return s.logoUrl;
 }
 
-export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCompanyIdChange, onSuggestionPicked, onClear, placeholder, className, autoFocus, name }: Props) {
+export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCompanyIdChange, onSuggestionPicked, onClear, placeholder, className, autoFocus, name, id }: Props) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
+  /*
+    Whether the current value is mid-edit rather than a settled company name.
+
+    It gates the logo below: resolving a mark for "Goo" on the way to "Google" would flicker a
+    wrong logo at every keystroke, so nothing is shown until the value settles - either by picking
+    a suggestion or by arriving already filled in.
+  */
+  const [typing, setTyping] = useState(false);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLUListElement>(null);
@@ -143,6 +153,7 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
     justSelectedRef.current = true;
     onChange(s.name);
     setSelectedDomain(s.domain ?? null);
+    setTyping(false);
     // Undefined for an external (Clearbit) name or one with no companies row: the write path then
     // falls back to creating, which is correct, because there is nothing here to select.
     onCompanyIdChange?.(s.id);
@@ -187,7 +198,23 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
   };
 
   const hasClearButton = !!onClear && value.length > 0;
-  const inputLogoUrl = selectedDomain ? logoDevUrlForDomain(selectedDomain) : null;
+  /*
+    The logo inside the field.
+
+    A picked suggestion carries a domain, which is the exact answer. Without one - the common case
+    for a field that opened already filled in, such as editing a review you wrote months ago - it
+    resolves from the company name instead, the same way every other surface on the site does. It
+    used to render only for a picked suggestion, so a pre-filled company sat in a bare box while
+    the identical name one form over showed its mark.
+
+    A name that resolves to nothing simply hides the image, so a company logo.dev has never heard
+    of costs nothing.
+  */
+  const inputLogoUrl = selectedDomain
+    ? logoDevUrlForDomain(selectedDomain)
+    : !typing && value.trim().length > 1
+      ? logoDevUrl(value.trim())
+      : null;
 
   const dropdown = open ? (
     <ul
@@ -252,10 +279,12 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
       )}
       <input
         type="text"
+        id={id}
         name={name}
         value={value}
         onChange={e => {
           setSelectedDomain(null);
+          setTyping(true);
           // Typing invalidates the selection. Same lifecycle as the logo above it.
           onCompanyIdChange?.(undefined);
           onChange(e.target.value);

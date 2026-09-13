@@ -15,7 +15,7 @@ export default function Admin() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const [activeTab, setActiveTab] = useState<"pending-managers" | "live-profiles" | "approvals" | "bans" | "merge" | "companies" | "ai-suggestions">("pending-managers");
+  const [activeTab, setActiveTab] = useState<"pending-managers" | "live-profiles" | "approvals" | "bans" | "merge" | "companies" | "pending-companies" | "ai-suggestions">("pending-managers");
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
   const [aiSuggestionsTotal, setAiSuggestionsTotal] = useState(0);
   const [aiSuggestionsLoading, setAiSuggestionsLoading] = useState(false);
@@ -204,6 +204,34 @@ export default function Admin() {
 
   useEffect(() => { fetchPendingManagers(); }, []);
   useEffect(() => { fetchPendingEdits(); }, []);
+  /*
+    Companies invented by a workplace rating.
+
+    A rating for an employer the directory does not hold creates it rather than refusing - the one
+    moment somebody is willing to contribute is the worst moment to say no - but it is held at
+    pending_approval and shows up here instead of going live.
+  */
+  const [pendingCompanies, setPendingCompanies] = useState<any[]>([]);
+  const fetchPendingCompanies = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/api/admin/companies/pending`, { withCredentials: true });
+      setPendingCompanies(Array.isArray(res.data?.data) ? res.data.data : []);
+    } catch {
+      toast.error("Failed to load companies awaiting review");
+    }
+  };
+  const decideCompany = async (id: number, approve: boolean) => {
+    try {
+      await axios.post(`${API_BASE}/api/admin/companies/${id}/decision`,
+        { approve }, { withCredentials: true });
+      setPendingCompanies(prev => prev.filter(c => c.id !== id));
+      toast.success(approve ? "Company added to the directory" : "Company rejected");
+    } catch {
+      toast.error("Could not save that decision");
+    }
+  };
+  useEffect(() => { if (activeTab === "pending-companies") fetchPendingCompanies(); }, [activeTab]);
+
   useEffect(() => { if (activeTab === "live-profiles") fetchGhostManagers(); }, [activeTab]);
   useEffect(() => { if (activeTab === "bans") fetchBanData(); }, [activeTab]);
   useEffect(() => {
@@ -566,6 +594,21 @@ export default function Admin() {
               {pendingManagers.length > 0 && (
                 <span className="ml-2 inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-xs font-bold text-white">
                   {pendingManagers.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("pending-companies")}
+              className={`whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                activeTab === "pending-companies"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              New Companies
+              {pendingCompanies.length > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-xs font-bold text-white">
+                  {pendingCompanies.length}
                 </span>
               )}
             </button>
@@ -1236,6 +1279,59 @@ export default function Admin() {
           )}
 
           {/* ── Companies Tab ── */}
+          {activeTab === "pending-companies" && (
+            <div className="space-y-3">
+              {pendingCompanies.length === 0 ? (
+                <div className="rounded-xl border border-border bg-card p-8 text-center">
+                  <p className="text-sm font-medium text-foreground">Nothing waiting</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Companies created by a workplace rating appear here before they go live.
+                  </p>
+                </div>
+              ) : (
+                pendingCompanies.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card p-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground">{c.name}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {/*
+                          Everything attached, not just the workplace ratings. A pending company is
+                          reachable, so the same person can also add a manager at it and an
+                          interview experience for it - showing one slice understated exactly what
+                          the decision is about.
+                        */}
+                        {[
+                          `${c.ratingCount} ${c.ratingCount === 1 ? "rating" : "ratings"}`,
+                          c.managerCount > 0
+                            ? `${c.managerCount} ${c.managerCount === 1 ? "manager" : "managers"}`
+                            : null,
+                          c.interviewCount > 0
+                            ? `${c.interviewCount} ${c.interviewCount === 1 ? "interview" : "interviews"}`
+                            : null,
+                        ].filter(Boolean).join(" · ")}
+                        {" · added "}{new Date(c.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="flex flex-shrink-0 gap-2">
+                      <button
+                        onClick={() => decideCompany(c.id, false)}
+                        className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/60"
+                      >
+                        Reject
+                      </button>
+                      <button
+                        onClick={() => decideCompany(c.id, true)}
+                        className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                      >
+                        Add to directory
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
           {activeTab === "companies" && (
             <div className="space-y-6">
               {/* Company merge tool */}

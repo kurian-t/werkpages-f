@@ -61,6 +61,7 @@ function completeDraft(overrides: Partial<InterviewDraft> = {}): InterviewDraft 
     roleClarity: 4,
     processFairness: 4,
     nextStepTransparency: 4,
+    jobRelevance: 4,
     ...overrides,
   });
 }

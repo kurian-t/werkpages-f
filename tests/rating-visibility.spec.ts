@@ -330,12 +330,23 @@ test.describe("CompanyProfile - locked state (≤3 real managers)", () => {
     await expect(page.getByText(/\b2 managers\b/)).not.toBeVisible();
   });
 
-  test("company review count is NOT shown as text when locked", async ({ page }) => {
+  test("the review count IS shown when locked - the ratings are what is hidden", async ({ page }) => {
+    /*
+      CHANGED DELIBERATELY. This asserted the opposite: that a locked company hid how many reviews
+      it held. That rule is gone, and interviews.spec states the replacement twice with its
+      reasoning - "a locked page that will not even say how much it holds gives someone arriving
+      from search no reason to come back. The ratings stay hidden; the size of what is hidden does
+      not."
+
+      Kept as an explicit assertion rather than deleted, because the two positions are genuinely
+      different products and this is the one currently shipped: the score is withheld (never in the
+      DOM at all, per CompanyTabHeader), the sample size is not.
+    */
     await mockCompanyProfile(page, { loggedIn: false, hasContributed: false });
     await page.goto(`/companies/${TEST_COMPANY_SLUG}`);
 
     await expect(page.getByText("Alex Johnson")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/\b12 reviews\b/)).not.toBeVisible();
+    await expect(page.getByText(/\b12 reviews\b/).last()).toBeVisible();
   });
 
   test("'Company insights are locked' message is shown", async ({ page }) => {
@@ -472,8 +483,10 @@ test.describe("CompanyProfile - unlocked state (contributed)", () => {
     await page.goto(`/companies/${TEST_COMPANY_SLUG}`);
 
     await expect(page.getByText("Alex Johnson")).toBeVisible({ timeout: 10_000 });
-    // "2 managers" appears in both the hero stat span and the insights footer paragraph
-    await expect(page.getByText(/\b2 managers\b/).first()).toBeVisible();
+    // Number and noun are separate spans in the header metric, so no single text node holds
+    // "2 managers" - the figure and its label are asserted as the two elements they are.
+    await expect(page.getByText("2", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("managers", { exact: true }).first()).toBeVisible();
   });
 
   test("company review count is visible when unlocked", async ({ page }) => {
@@ -481,8 +494,12 @@ test.describe("CompanyProfile - unlocked state (contributed)", () => {
     await page.goto(`/companies/${TEST_COMPANY_SLUG}`);
 
     await expect(page.getByText("Alex Johnson")).toBeVisible({ timeout: 10_000 });
-    // "12 reviews" appears in both the hero stat span and the insights footer paragraph
-    await expect(page.getByText(/\b12 reviews\b/).first()).toBeVisible();
+    /*
+      .last(), not .first(). Two elements carry "12 reviews": the header's sample caveat, which is
+      visible, and the highlights footnote, which is deliberately rendered with `hidden` and comes
+      first in the DOM. Taking the first one asserted the hidden copy and could only ever fail.
+    */
+    await expect(page.getByText(/\b12 reviews\b/).last()).toBeVisible();
   });
 
   test("no 'Rate a manager to unlock ratings' CTA when unlocked", async ({ page }) => {
@@ -526,8 +543,11 @@ test.describe("CompanyProfile - unlocked state (contributed)", () => {
     await page.goto(`/companies/${TEST_COMPANY_SLUG}`);
 
     await expect(page.getByText("Alex Johnson")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("Strongest Areas")).toBeVisible();
-    await expect(page.getByText("Weakest Areas")).toBeVisible();
+    // The header names these groups "Strongest" / "Weakest". They were "Strongest Areas" and
+    // "Weakest Areas" on the HighLowCards below, which were removed for restating the same six
+    // figures the header already carried.
+    await expect(page.getByText("Strongest", { exact: true })).toBeVisible();
+    await expect(page.getByText("Weakest", { exact: true })).toBeVisible();
   });
 });
 

@@ -5,6 +5,7 @@ import { ChevronDown, Star } from "lucide-react";
 import API_BASE from "@/lib/api";
 import { COMPANY_CATEGORIES, COMPANY_CATEGORY_LABELS } from "@/lib/companyRatings";
 import { getAvatarColor, getInitials } from "@/components/ManagerCard";
+import { formatDistanceToNow } from "date-fns";
 
 /**
  * The individual ratings behind a company's average.
@@ -27,20 +28,36 @@ interface CompanyRatingRow {
   workedUntil: string | null;
   current: boolean;
   createdAt: string;
+  updatedAt?: string | null;
+  /** The handle its author picked. Null on ratings written before authors existed. */
+  author: string | null;
   mine: boolean;
 }
 
 const monthYear = (iso: string | null) =>
   iso ? new Date(iso + "T00:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" }) : null;
 
-export function CompanyRatingList({
-  companySlug,
-  totalCount,
-}: {
-  companySlug: string;
-  totalCount: number;
-}) {
+/**
+ * When it was written, the way a manager review says it.
+ *
+ * "3 days ago" rather than "September 2026": a reader judging whether an opinion still applies
+ * wants the distance, not the date, and the manager profile has always said it that way. An edit
+ * says so out loud - a rating changed last week is not the same claim as one untouched since it
+ * was written.
+ */
+function writtenWhen(createdAt: string, updatedAt?: string | null): string {
+  const created = new Date(createdAt);
+  if (isNaN(created.getTime())) return "";
+  const updated = updatedAt ? new Date(updatedAt) : null;
+  if (updated && !isNaN(updated.getTime()) && updated.getTime() - created.getTime() > 5000) {
+    return `edited ${formatDistanceToNow(updated)} ago`;
+  }
+  return `${formatDistanceToNow(created)} ago`;
+}
+
+export function CompanyRatingList({ companySlug, companyName }: { companySlug: string; companyName: string }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [sortBy, setSortBy] = useState("recent");
 
   const { data } = useQuery({
     queryKey: ["company-ratings", companySlug],
@@ -57,32 +74,89 @@ export function CompanyRatingList({
   const rows = data ?? [];
   if (rows.length === 0) return null;
 
-  // The reader's own first. It is the one they came back to check.
-  const ordered = [...rows].sort((a, b) => Number(b.mine) - Number(a.mine));
+  /*
+    Sorted the way the manager profile sorts its reviews, with the same three options. Still no
+    floating your own to the top - the order is whatever the reader chose, for every card equally.
+  */
+  const ordered = [...rows].sort((a, b) => {
+    if (sortBy === "highest") return (b.overallRating ?? 0) - (a.overallRating ?? 0);
+    if (sortBy === "lowest")  return (a.overallRating ?? 0) - (b.overallRating ?? 0);
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
 
   return (
+    /*
+      Constrained and headed the way the manager profile heads its reviews. A column of review
+      cards running the full width of the page is hard to read and looks nothing like the same
+      feature one click away, so the width, the heading size and the sub-line all come from there.
+    */
     <div>
-      <div className="mb-6">
-        <h2 className="text-[17px] font-semibold text-foreground tracking-tight">Employee ratings</h2>
-        <p className="text-[13px] text-muted-foreground mt-0.5">
-          {totalCount} {totalCount === 1 ? "person has" : "people have"} rated this workplace
-        </p>
-      </div>
 
-      <div className="space-y-4">
+      {/*
+        Sidebar left, cards right - the Managers tab's own two-column shape. The control that
+        governs a list belongs beside it, not stacked above it where it reads as a heading.
+      */}
+      <div className="flex flex-col gap-8 lg:flex-row">
+        <aside className="lg:w-56 flex-shrink-0">
+          <label
+            htmlFor="rating-sort"
+            className="mb-3 block text-xs font-semibold uppercase tracking-widest text-muted-foreground"
+          >
+            Sort by
+          </label>
+          <select
+            id="rating-sort"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
+          >
+            <option value="recent">Most Recent</option>
+            <option value="highest">Highest Rated</option>
+            <option value="lowest">Lowest Rated</option>
+          </select>
+        </aside>
+
+        <div className="min-w-0 flex-1">
+        {/* Over the reviews, not over the whole row. It titles the list; spanning the sidebar too
+            made it read as a heading for the sort control as well. */}
+        <div className="mb-4">
+          {/* The Managers tab's own section heading: uppercase, tracked out, muted. One page should
+              not label its two lists in two different voices. */}
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+            Opinions on {companyName}
+            {/* The count is a value, not part of the label - darker and untracked so it reads as
+                a number rather than another word in the heading. */}
+            {rows.length > 0 && (
+              <span className="ml-2 text-xs font-normal tracking-normal text-muted-foreground/70 tabular-nums">
+                {rows.length}
+              </span>
+            )}
+          </h2>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            Personal opinions shared by employees · tenure and roles are self-reported
+          </p>
+        </div>
+
+        <div className="space-y-4">
         {ordered.map((r) => {
-          const isExpanded = r.mine || expanded.has(r.id);
+          const isExpanded = expanded.has(r.id);
           const score = r.overallRating ?? 0;
           // Anonymous by construction, so the avatar is seeded from the row's own id rather than a
           // name. Stable per rating, and it reveals nothing.
-          const seed = r.mine ? "You" : r.id;
+          // Seeded from the handle so the avatar colour and initials belong to the name shown.
+          // Falling back to the row id keeps older, unsigned ratings stable and distinct.
+          const seed = r.author ?? r.id;
+          const displayName = r.author ?? "Anonymous employee";
 
           return (
             <div
               key={r.id}
-              className={`rounded-xl border bg-card p-5 shadow-sm ${
-                r.mine ? "border-[#2e0562]/30 ring-1 ring-[#2e0562]/10" : "border-border"
-              }`}
+              /*
+                Every card the same, including your own. The manager profile does not ring or badge
+                the review you wrote - editing it lives in the header, not in the list - and a
+                highlighted card here made the same feature look different one click away.
+              */
+              className="rounded-xl border border-border bg-card p-5 shadow-sm"
             >
               {/* Tenure first - the context a reader needs before the number means anything. */}
               <div className="mb-3">
@@ -105,21 +179,14 @@ export function CompanyRatingList({
                     className="flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
                     style={{ backgroundColor: getAvatarColor(seed) }}
                   >
-                    {r.mine ? "You" : getInitials("Anonymous Employee")}
+                    {getInitials(displayName)}
                   </div>
                   <div>
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-sm font-medium text-foreground">
-                        {r.mine ? "Your rating" : "Anonymous employee"}
-                      </span>
-                      {r.mine && (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground whitespace-nowrap flex-shrink-0">
-                          ✓ You
-                        </span>
-                      )}
+                      <span className="text-sm font-medium text-foreground">{displayName}</span>
                     </div>
                     <p className="text-[11px] text-muted-foreground">
-                      {new Date(r.createdAt).toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                      {writtenWhen(r.createdAt, r.updatedAt)}
                     </p>
                   </div>
                 </div>
@@ -141,9 +208,7 @@ export function CompanyRatingList({
                 </div>
               </div>
 
-              {/* Their own is always open - there is nothing to reveal to somebody who wrote it. */}
-              {!r.mine && (
-                <button
+              <button
                   onClick={() =>
                     setExpanded((prev) => {
                       const next = new Set(prev);
@@ -156,7 +221,6 @@ export function CompanyRatingList({
                   <ChevronDown size={13} className={`transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                   {isExpanded ? "Hide breakdown" : "Show rating breakdown"}
                 </button>
-              )}
 
               {isExpanded && (
                 <div className="grid gap-1.5 sm:grid-cols-2 mt-3 pt-3 border-t border-border/60">
@@ -183,6 +247,8 @@ export function CompanyRatingList({
             </div>
           );
         })}
+        </div>
+        </div>
       </div>
     </div>
   );

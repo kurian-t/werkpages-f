@@ -374,6 +374,10 @@ function CompanyCard({
                             <button
                               type="button"
                               onClick={() => onEditCareerEntry({ entryId: role.careerHistoryId!, company: role.company, role: role.role, startDate: role.startDate, endDate: role.endDate })}
+                              /* Named by its row. A timeline of five jobs otherwise offers five
+                                 buttons all called "Edit", which tells a screen-reader user
+                                 nothing about which one they are on. */
+                              aria-label={`Edit ${role.company} career entry`}
                               className="text-[10px] text-slate-400 hover:text-slate-600 transition-colors leading-none"
                             >
                               Edit
@@ -383,6 +387,7 @@ function CompanyCard({
                             <button
                               type="button"
                               onClick={() => onDeleteCareerEntry(role.careerHistoryId!)}
+                              aria-label={`Delete ${role.company} career entry`}
                               className="text-[10px] text-red-400 hover:text-red-600 transition-colors leading-none"
                             >
                               Delete

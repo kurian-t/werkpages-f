@@ -37,6 +37,14 @@ export const INTERVIEW_CATEGORIES = [
   "roleClarity",
   "processFairness",
   "nextStepTransparency",
+  /*
+    The only one about substance rather than conduct.
+
+    The other five ask how a company behaved toward a candidate. This asks whether the process
+    actually assessed the job - the most common substantive complaint about hiring, and the most
+    actionable thing on the list for whoever designed the loop.
+  */
+  "jobRelevance",
 ] as const;
 export type InterviewCategory = (typeof INTERVIEW_CATEGORIES)[number];
 
@@ -61,6 +69,7 @@ export const CATEGORY_LABELS: Record<InterviewCategory, string> = {
   roleClarity: "Clarity about the role",
   processFairness: "Fairness of the process",
   nextStepTransparency: "Transparency about next steps",
+  jobRelevance: "Role relevance",
 };
 
 export const ROUND_TYPE_LABELS: Record<RoundType, string> = {
@@ -112,6 +121,7 @@ export interface CategorySeries {
   roleClarity: number | null;
   processFairness: number | null;
   nextStepTransparency: number | null;
+  jobRelevance: number | null;
 }
 
 export interface CategoryComparison {
@@ -144,6 +154,8 @@ export interface CompanyInterviewStats {
   avgRating: number | null;
   avgDifficulty: number | null;
   medianRounds: number | null;
+  /** How long the process usually took, as one of PROCESS_LENGTHS. Null when nobody said. */
+  medianProcessLength: ProcessLength | null;
   outcomeSplit: Record<string, OutcomeBucket>;
   roleCategories?: Array<{ role: string; count: number }>;
   typicalRounds?: Array<{ round: number; type: RoundType; reportedBy: number }>;
@@ -169,6 +181,7 @@ export interface InterviewReview {
   roleClarity: number | null;
   processFairness: number | null;
   nextStepTransparency: number | null;
+  jobRelevance: number | null;
   difficulty: number | null;
   outcome: InterviewOutcome;
   rounds: number | null;
@@ -186,6 +199,7 @@ export interface InterviewDraft {
   roleClarity?: number | null;
   processFairness?: number | null;
   nextStepTransparency?: number | null;
+  jobRelevance?: number | null;
   difficulty?: number | null;
   outcome: InterviewOutcome | null;
   rounds: RoundType[];

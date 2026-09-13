@@ -2,13 +2,17 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
-import { AlertCircle, ArrowLeft, Plus, Star, X } from "lucide-react";
+import { Check, AlertCircle, ArrowLeft, Plus, Star, X } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { toast } from "sonner";
 import API_BASE from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { RoleAutocomplete } from "@/components/RoleAutocomplete";
+import { CompanyField } from "@/components/CompanyField";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
+import { CompanyLogoImg } from "@/components/ManagerCard";
+import { AboutPanel, AnonymityCard, FormIntro, FormSubjectCard, RatingRow } from "@/components/RatingFormParts";
+import { generateUsername } from "@/lib/validators";
 import { RatingInput, FormField } from "@/components/RatingInput";
 import { useCompanyInterviews } from "@/hooks/useCompanyInterviews";
 import { COUNTRIES } from "@/lib/countries";
@@ -40,14 +44,16 @@ type Step = "process" | "ratings";
 
 const STEPS: Step[] = ["process", "ratings"];
 const STEP_TITLES: Record<Step, string> = {
-  process: "About the interview",
-  ratings: "Rate the experience",
+  process:  "About the interview",
+  ratings:  "Rate the experience",
 };
 
 /**
  * Add an interview experience - a routed page, matching how every other submission flow works.
  *
- * <p>Two steps rather than three: an interview is three conversations, not months of employment,
+ * <p>Three steps, the same shape as a manager review and a workplace rating: what happened, how it
+ * felt, and who it appears as. An interview is three conversations rather than months of
+ * employment,
  * and a long form after a rejection does not get finished. Facts first, ratings second, because
  * the outcome is what makes the ratings interpretable.
  *
@@ -66,6 +72,13 @@ export default function AddInterview() {
   const currentYear = new Date().getFullYear();
 
   const [step, setStep] = useState<Step>("process");
+  const [changingCompany, setChangingCompany] = useState(false);
+  const [editingCountry, setEditingCountry] = useState(false);
+  /*
+    The handle this experience is signed with. Generated once on mount so it does not change under
+    the reader mid-form, and replaced only when they ask for another.
+  */
+  const [generatedName, setGeneratedName] = useState(() => generateUsername());
   const [draft, setDraft] = useState<InterviewDraft>({
     overallRating: null,
     outcome: null,
@@ -83,7 +96,7 @@ export default function AddInterview() {
     queryKey: ["company-profile-slug", companySlug],
     queryFn: async () => {
       const res = await axios.get(`${API_BASE}/api/companies/by-slug/${companySlug}`);
-      return res.data as { name: string; slug?: string };
+      return res.data as { name: string; slug?: string; logoUrl?: string };
     },
     enabled: !!companySlug,
     retry: false,
@@ -114,11 +127,16 @@ export default function AddInterview() {
   /**
    * The company the headings name.
    *
-   * Only ever the picked one. Falling back to the company the URL loaded meant that typing a
-   * different name - which clears the pick, by design - left the old company's name in the
-   * heading, so the page claimed to be about a company the form was no longer pointed at.
+   * Whatever the company field currently says. It used to be only the *picked* company, which was
+   * right when the field lived on the second step and the heading was the sole statement of the
+   * subject - a half-typed name in the heading would have claimed a company nobody had chosen.
+   *
+   * With the field on the same screen that reasoning inverts: typing a new name cleared the pick
+   * and the heading collapsed from "Your interview at Google" to "Your interview" while the field
+   * plainly read what had been typed. The heading now follows the field, and falls back to nothing
+   * only when the field is genuinely empty.
    */
-  const companyName = pickedCompany?.name ?? null;
+  const companyName = pickedCompany?.name ?? (companyText.trim() || null);
 
   const { data: stats } = useCompanyInterviews(companySlug ?? "");
   const existing = editingId ? stats?.myInterview ?? null : null;
@@ -141,7 +159,16 @@ export default function AddInterview() {
       country: existing.country,
       city: existing.city,
       interviewYear: existing.interviewYear,
-      rounds: [],
+      /*
+        The rounds that were recorded, not an empty list.
+
+        This was hardcoded to [] while every other field above came from `existing`, so opening an
+        experience to fix a typo silently emptied the rounds - and saving stored that emptiness
+        back. The server has always returned them; only the form discarded them. Rounds are the one
+        field here where order carries the meaning, and the most tedious to re-enter, which makes
+        them the worst possible thing to quietly drop.
+      */
+      rounds: Array.isArray(existing.rounds) ? existing.rounds : [],
     });
     setLoadedExisting(true);
   }, [existing, loadedExisting]);
@@ -181,11 +208,23 @@ export default function AddInterview() {
 
   // Back to the interview tab specifically. Landing on "what it's like to work here" after
   // cancelling an interview review is a different half of the page from the one you left.
-  const leaveForm = () => navigate(activeSlug ? `/companies/${activeSlug}?tab=hiring` : "/explore");
+  /*
+    Back where you came from, when the caller said where that was. The interview tab is the
+    fallback: a link typed by hand has no origin to return to.
+  */
+  const returnTo = searchParams.get("returnTo");
+  const leaveForm = () =>
+    navigate(
+      returnTo && returnTo.startsWith("/")
+        ? returnTo
+        : activeSlug
+          ? `/companies/${activeSlug}?tab=hiring`
+          : "/explore",
+    );
 
   const handleBack = () => {
     setErrors({});
-    if (step === "ratings") setStep("process");
+    if (step !== "process") { setStep(STEPS[STEPS.indexOf(step) - 1]); return; }
     else leaveForm();
   };
 
@@ -210,7 +249,7 @@ export default function AddInterview() {
       return;
     }
     setErrors({});
-    setStep("ratings");
+    setStep(STEPS[STEPS.indexOf(step) + 1]);
   };
 
   const handleSubmit = async () => {
@@ -227,20 +266,20 @@ export default function AddInterview() {
     setSubmitting(true);
     try {
       if (editingId) {
-        await axios.put(`${API_BASE}/api/interviews/${editingId}`, toInterviewPayload(draft), {
+        await axios.put(`${API_BASE}/api/interviews/${editingId}`, { ...toInterviewPayload(draft), author: generatedName }, {
           withCredentials: true,
         });
       } else {
         await axios.post(
           `${API_BASE}/api/companies/${activeSlug}/interviews`,
-          toInterviewPayload(draft),
+          { ...toInterviewPayload(draft), author: generatedName },
           { withCredentials: true },
         );
       }
       queryClient.invalidateQueries({ queryKey: ["company-interviews"] });
       queryClient.invalidateQueries({ queryKey: ["has-interview-contributed"] });
       toast.success(editingId ? "Your interview experience has been updated." : "Thanks, your interview experience is live.");
-      navigate(`/companies/${activeSlug}?tab=hiring`);
+      leaveForm();
     } catch (err) {
       const status = axios.isAxiosError(err) ? err.response?.status : undefined;
       const code = axios.isAxiosError(err)
@@ -325,7 +364,7 @@ export default function AddInterview() {
               </div>
             )}
 
-            {step === "process" ? (
+            {step === "process" && (
               <div className="space-y-8">
                 <div>
                   <h1 className="text-xl font-bold text-foreground">
@@ -334,14 +373,41 @@ export default function AddInterview() {
                 </div>
 
                 {/*
-                  Where the interview happened, editable even when the page was opened from a
-                  company. Someone who came here to write about one company and remembered
-                  another should not have to go and find it first.
+                  Which company, asked first.
+
+                  It used to sit on the ratings step - so somebody answered every question about a
+                  process and only then chose, or changed, the company those answers were about.
+                  The subject of a form belongs before the questions about it.
+                */}
+                <CompanyField
+                  value={companyText}
+                  onChange={(v) => { setCompanyText(v); setPickedCompany(null); }}
+                  onSuggestionPicked={(sug) => {
+                    setCompanyText(sug.name);
+                    setPickedCompany(sug.slug ? { name: sug.name, slug: sug.slug } : null);
+                    setErrors((prev) => ({ ...prev, company: undefined }));
+                  }}
+                  logoUrl={company?.logoUrl}
+                  logoUrlFor={company?.name}
+                  hint={errors.company ? (
+                    <p className="mt-1 text-xs text-red-600">{errors.company}</p>
+                  ) : undefined}
+                />
+
+
+                {/*
+                  Only when the company is not already known.
+
+                  Arriving from a company page, the URL says which company and the heading above
+                  says it too - putting an open autocomplete under that asks the reader to answer a
+                  question the page has already answered, and it was the first thing on the screen.
+                  The manager form never asks which manager you are rating for the same reason.
 
                   Selection only - no create. Interview reviews never bring a company into
                   existence, so a name typed and not picked is not an answer, and the error says
                   so rather than silently submitting to nothing.
                 */}
+                {!companySlug && (
                 <FormField
                   label="Which company?"
                   required
@@ -365,6 +431,7 @@ export default function AddInterview() {
                     placeholder="e.g., Microsoft"
                   />
                 </FormField>
+                )}
 
                 <FormField
                   label="How did it end?"
@@ -440,17 +507,54 @@ export default function AddInterview() {
                     htmlFor="interview-country"
                     hint={draft.city && draft.country === inferredCountry ? `Looks like ${draft.city}` : undefined}
                   >
-                    <select
-                      id="interview-country"
-                      value={draft.country ?? ""}
-                      onChange={(e) => update("country", e.target.value || null)}
-                      className={INPUT}
-                    >
-                      <option value="">Select...</option>
-                      {COUNTRIES.map((c) => (
-                        <option key={c.value} value={c.value}>{c.flag} {c.value}</option>
-                      ))}
-                    </select>
+                    {/*
+                      Inferred from geo, so it is shown rather than asked - the same card the
+                      company field uses, with the flag in the logo slot. Editing swaps the picker
+                      in place. Nothing inferred means nothing settled, so the picker stands alone.
+                    */}
+                    {draft.country ? (
+                      <FormSubjectCard
+                        layout="inline"
+                        name={draft.country}
+                        logo={
+                          <span aria-hidden="true" className="text-base leading-none">
+                            {COUNTRIES.find((c) => c.value === draft.country)?.flag ?? ""}
+                          </span>
+                        }
+                        editing={editingCountry}
+                        onEditStart={() => setEditingCountry(true)}
+                        onEditDone={() => setEditingCountry(false)}
+                      >
+                        {/*
+                          The choice takes effect the moment it is made - "Done editing" only
+                          collapses the card back. A control that needed confirming would lose
+                          somebody's answer when they moved on without pressing it.
+                        */}
+                        <select
+                          id="interview-country"
+                          value={draft.country ?? ""}
+                          onChange={(e) => update("country", e.target.value || null)}
+                          className={INPUT}
+                        >
+                          <option value="">Select...</option>
+                          {COUNTRIES.map((c) => (
+                            <option key={c.value} value={c.value}>{c.flag} {c.value}</option>
+                          ))}
+                        </select>
+                      </FormSubjectCard>
+                    ) : (
+                      <select
+                        id="interview-country"
+                        value={draft.country ?? ""}
+                        onChange={(e) => update("country", e.target.value || null)}
+                        className={INPUT}
+                      >
+                        <option value="">Select...</option>
+                        {COUNTRIES.map((c) => (
+                          <option key={c.value} value={c.value}>{c.flag} {c.value}</option>
+                        ))}
+                      </select>
+                    )}
                   </FormField>
 
                   <FormField label="How long did it take?" required htmlFor="interview-length">
@@ -517,56 +621,66 @@ export default function AddInterview() {
                   </div>
                 </FormField>
               </div>
-            ) : (
+            )}
+
+            {step === "ratings" && (
               <div className="space-y-8">
-                <div>
-                  <h1 className="text-xl font-bold text-foreground">How was the experience?</h1>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Rate each part of the process. All of them together are what make company
-                    comparisons meaningful.
-                  </p>
-                </div>
+                <FormIntro
+                  title="Rate an Interview"
+                  blurb="Takes just a minute. Your firsthand experience helps other job seekers make more informed decisions."
+                />
+                <AnonymityCard
+                  what="experience"
+                  name={generatedName}
+                  onRegenerate={() => setGeneratedName(generateUsername())}
+                />
+                <AboutPanel
+                  title="About your experience"
+                  summary="Your ratings reflect your personal experience. All feedback is structured and opinion-based."
+                  points={[
+                    "One experience per company per year",
+                    "Difficulty is recorded separately and never affects ratings",
+                    "No written reviews, only structured ratings",
+                  ]}
+                />
 
                 {/*
                   Overall sits inside the card with the rest, and last. Outside it read as a
                   separate question about something else; at the end it reads as the summary of
                   the parts just rated, which is what it is.
                 */}
-                <div className="space-y-6 rounded-xl border border-border bg-card p-5">
+                <div className="space-y-3">
                   {INTERVIEW_CATEGORIES.map((category) => (
-                    <FormField key={category} label={CATEGORY_LABELS[category]} required error={errors[category]}>
-                      <RatingInput
-                        value={draft[category] ?? null}
-                        onChange={(value) => update(category, value)}
-                        ariaLabelPrefix={CATEGORY_LABELS[category]}
-                        size={24}
-                      />
-                    </FormField>
+                    <RatingRow
+                      key={category}
+                      label={CATEGORY_LABELS[category]}
+                      value={draft[category] ?? null}
+                      onChange={(value) => update(category, value)}
+                    />
                   ))}
-
-                  <div className="border-t border-border pt-6">
-                    <FormField label="Overall" required error={errors.overallRating}>
-                      <RatingInput
-                        value={draft.overallRating}
-                        onChange={(value) => update("overallRating", value)}
-                        ariaLabelPrefix="Overall"
-                      />
-                    </FormField>
-                  </div>
+                  <RatingRow
+                    label="Overall"
+                    value={draft.overallRating}
+                    onChange={(value) => update("overallRating", value)}
+                  />
                 </div>
               </div>
             )}
+
           </div>
         </div>
 
         {/* Footer */}
         <div className="border-t border-border px-4 py-3 sm:px-6">
-          <div className="mx-auto flex max-w-2xl justify-end">
+          {/* Full width, as the manager review and the workplace rating both are. A small button
+              in the corner of a full-screen form reads as an afterthought next to the one thing
+              the screen is asking you to do. */}
+          <div className="mx-auto max-w-2xl">
             <button
               type="button"
               onClick={isLastStep ? handleSubmit : handleNext}
               disabled={nextDisabled}
-              className="rounded-xl bg-[#2e0562] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2e0562]/90 disabled:opacity-50"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#2e0562] px-4 py-3 font-medium text-white transition-all hover:bg-[#2e0562]/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isLastStep ? (submitting ? "Saving…" : "Share experience") : "Next"}
             </button>

@@ -101,6 +101,32 @@ describe("toNameCase", () => {
 });
 
 describe("toJobTitleCase", () => {
+  /*
+    Minor words.
+
+    Every word was capitalised, so the most common shape of a real job title came back as
+    "Director Of Engineering". It is the kind of wrong that is hard to unsee and reads as machine
+    output - and it was applied on save, so it rewrote what people had typed correctly.
+  */
+  it("keeps 'of' lowercase in the middle of a title", () => {
+    expect(toJobTitleCase("director of engineering")).toBe("Director of Engineering");
+  });
+
+  it("keeps every minor word lowercase", () => {
+    expect(toJobTitleCase("head of people and culture")).toBe("Head of People and Culture");
+    expect(toJobTitleCase("vice president for the americas")).toBe("Vice President for the Americas");
+  });
+
+  it("capitalises a minor word when the title opens with it", () => {
+    // "Of Counsel" is a real title, and it is not the same word doing the same job.
+    expect(toJobTitleCase("of counsel")).toBe("Of Counsel");
+    expect(toJobTitleCase("the chief of staff")).toBe("The Chief of Staff");
+  });
+
+  it("still uppercases an abbreviation sitting next to a minor word", () => {
+    expect(toJobTitleCase("vp of sales")).toBe("VP of Sales");
+  });
+
   // Known abbreviations
   it("uppercases ceo", () => {
     expect(toJobTitleCase("ceo")).toBe("CEO");
@@ -127,11 +153,11 @@ describe("toJobTitleCase", () => {
   });
 
   it("uppercases hr", () => {
-    expect(toJobTitleCase("director of hr")).toBe("Director Of HR");
+    expect(toJobTitleCase("director of hr")).toBe("Director of HR");
   });
 
   it("uppercases it", () => {
-    expect(toJobTitleCase("head of it")).toBe("Head Of IT");
+    expect(toJobTitleCase("head of it")).toBe("Head of IT");
   });
 
   it("uppercases sre", () => {
@@ -148,12 +174,12 @@ describe("toJobTitleCase", () => {
   });
 
   it("title-cases director of operations", () => {
-    expect(toJobTitleCase("director of operations")).toBe("Director Of Operations");
+    expect(toJobTitleCase("director of operations")).toBe("Director of Operations");
   });
 
   // Mixed
   it("handles mixed known and plain words", () => {
-    expect(toJobTitleCase("senior vp of hr")).toBe("Senior VP Of HR");
+    expect(toJobTitleCase("senior vp of hr")).toBe("Senior VP of HR");
   });
 
   it("handles already-correct casing", () => {
@@ -161,7 +187,7 @@ describe("toJobTitleCase", () => {
   });
 
   it("handles all-caps non-abbreviation by lowercasing then capitalising", () => {
-    expect(toJobTitleCase("DIRECTOR OF OPERATIONS")).toBe("Director Of Operations");
+    expect(toJobTitleCase("DIRECTOR OF OPERATIONS")).toBe("Director of Operations");
   });
 
   it("trims surrounding whitespace", () => {
