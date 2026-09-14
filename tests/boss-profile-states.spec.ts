@@ -307,9 +307,11 @@ test.describe("Filtering the rating breakdown", () => {
     await openBreakdown(page);
 
     await page.getByRole("tab", { name: /^Highest/ }).click();
+    await expect(breakdown(page).locator("span.w-44")).toHaveCount(3);
     const strengths = await breakdown(page).locator("span.w-44").allInnerTexts();
 
     await page.getByRole("tab", { name: /^Lower/ }).click();
+    await expect(breakdown(page).locator("span.w-44")).toHaveCount(3);
     const weaknesses = await breakdown(page).locator("span.w-44").allInnerTexts();
 
     expect(strengths.filter((s) => weaknesses.includes(s))).toEqual([]);
@@ -349,11 +351,13 @@ test.describe("Filtering the rating breakdown", () => {
     await openBreakdown(page);
 
     await page.getByRole("tab", { name: /^Highest/ }).click();
+    await expect(breakdown(page).locator("span.tabular-nums")).toHaveCount(3);
     const best = await breakdown(page).locator("span.tabular-nums").allInnerTexts();
     const bestScores = best.map(Number).filter((n) => !Number.isNaN(n));
     expect(bestScores).toEqual([...bestScores].sort((a, b) => b - a));
 
     await page.getByRole("tab", { name: /^Lower/ }).click();
+    await expect(breakdown(page).locator("span.tabular-nums")).toHaveCount(3);
     const worst = await breakdown(page).locator("span.tabular-nums").allInnerTexts();
     const worstScores = worst.map(Number).filter((n) => !Number.isNaN(n));
     expect(worstScores).toEqual([...worstScores].sort((a, b) => a - b));
