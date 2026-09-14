@@ -266,8 +266,16 @@ export function CompanyTabHeader({
         <div className="w-full max-w-[200px] flex-shrink-0">{scoreBlock}</div>
       </div>
 
+        {/*
+          Transparent to the pointer, deliberately.
+
+          The overlay covers the whole header, and the header's action slot holds "Rate a manager" -
+          the one control that unlocks what the overlay is covering. Without pointer-events-none it
+          swallowed the click, so a locked reader was shown an instruction and then prevented from
+          following it. Nothing inside here is interactive, so letting clicks through costs nothing.
+        */}
         {locked && lockedOverlay && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-xl bg-background/75 text-center">
+          <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center rounded-xl bg-background/75 text-center">
             {lockedOverlay}
           </div>
         )}

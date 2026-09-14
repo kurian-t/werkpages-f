@@ -30,18 +30,22 @@ test.describe("AddBoss - 3-step flow", () => {
     await expect(page.locator('input[name="lastName"]')).toBeVisible();
   });
 
-  test("step 1: country and state/province pre-fill from inferred geo and show as chip", async ({
-    page,
-  }) => {
+  test("step 1: country pre-fills from inferred geo", async ({ page }) => {
+    /*
+      The location used to be shown as a chip that had to be opened with "Edit location" before the
+      fields appeared. It is a plain country select now, so what is worth asserting is the same
+      thing it always was - that the guess arrives filled in rather than leaving somebody to find
+      their own country in a list of two hundred.
+    */
     await mockAddBossPage(page);
     await page.goto("/add");
 
-    // Geo pre-fills country+state; the chip view shows the detected location.
-    await expect(page.getByText("United States, California")).toBeVisible({ timeout: 5_000 });
-    // Inputs are hidden; clicking "Edit location" reveals them.
-    await page.getByRole("button", { name: /edit location/i }).click();
+    // Settled, so it shows as a summary card naming the detected country.
+    await expect(page.getByText("United States").first()).toBeVisible({ timeout: 5_000 });
+
+    // The select is behind the card's own edit control, the same pattern the company field uses.
+    await page.getByRole("button", { name: /Edit details/i }).first().click();
     await expect(page.locator('select[name="country"]')).toHaveValue("United States");
-    await expect(page.locator('input[name="state"]')).toHaveValue("California");
   });
 
   test("step 1: Next is disabled until required fields are filled", async ({

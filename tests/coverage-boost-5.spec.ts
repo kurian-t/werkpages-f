@@ -312,7 +312,8 @@ test.describe("CompanyProfile - locked insights buttons", () => {
     // The "Rate a manager to unlock" button should appear (lines 549, 771)
     await expect(page.getByText(/rate a manager to unlock/i).first()).toBeVisible({ timeout: 5000 });
     // Click the button - navigates to /add
-    await page.getByRole("button", { name: /rate a manager to unlock/i }).first().click();
+    // The "…to unlock ratings" line is the caption above the control, not the control itself.
+    await page.getByRole("button", { name: /rate a manager/i }).first().click();
     await expect(page).toHaveURL(/\/add/, { timeout: 5000 });
   });
 });
@@ -852,9 +853,11 @@ test.describe("AddBoss - draft restore and form interactions", () => {
     await page.getByPlaceholder(/e.g., Satya/i).fill("Jane");
     await page.getByPlaceholder(/e.g., Nadella/i).fill("Doe");
     await page.getByPlaceholder(/e.g., Engineering Manager/i).fill("Engineer");
-    await page.getByPlaceholder(/e.g., Microsoft/i).fill("Acme Corp");
-    // Geo pre-fills country as a chip - click "Edit location" to reveal the select (line 742)
-    await page.getByRole("button", { name: /edit location/i }).click();
+    // The company field is CompanyField now, which owns its own placeholder; the name
+    // attribute is what stayed stable across that change.
+    await page.locator('input[name="company"]').fill("Acme Corp");
+    // Geo settles the country into a summary card; its edit control reveals the select.
+    await page.getByRole("button", { name: /Edit details/i }).first().click();
     await expect(page.locator('select[name="country"]')).toBeVisible({ timeout: 5000 });
     await page.selectOption('select[name="country"]', 'Canada');
     await expect(page.locator('select[name="country"]')).toHaveValue("Canada", { timeout: 3000 });
@@ -868,7 +871,9 @@ test.describe("AddBoss - draft restore and form interactions", () => {
     await page.getByPlaceholder(/e.g., Satya/i).fill("Jane");
     await page.getByPlaceholder(/e.g., Nadella/i).fill("Doe");
     await page.getByPlaceholder(/e.g., Engineering Manager/i).fill("Engineer");
-    await page.getByPlaceholder(/e.g., Microsoft/i).fill("Acme Corp");
+    // The company field is CompanyField now, which owns its own placeholder; the name
+    // attribute is what stayed stable across that change.
+    await page.locator('input[name="company"]').fill("Acme Corp");
     // Country is pre-filled from geo - no need to change it
     await page.getByRole("button", { name: /next/i }).click();
     // Now on timeline step
@@ -891,7 +896,9 @@ test.describe("AddBoss - draft restore and form interactions", () => {
     await page.getByPlaceholder(/e.g., Satya/i).fill("Jane");
     await page.getByPlaceholder(/e.g., Nadella/i).fill("Doe");
     await page.getByPlaceholder(/e.g., Engineering Manager/i).fill("Engineer");
-    await page.getByPlaceholder(/e.g., Microsoft/i).fill("Acme Corp");
+    // The company field is CompanyField now, which owns its own placeholder; the name
+    // attribute is what stayed stable across that change.
+    await page.locator('input[name="company"]').fill("Acme Corp");
     await page.getByRole("button", { name: /next/i }).click();
     // Fill step 2 (dates)
     await expect(page.getByRole("heading", { name: /work timeline/i })).toBeVisible({ timeout: 5000 });

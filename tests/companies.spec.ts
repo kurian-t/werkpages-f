@@ -160,36 +160,43 @@ test.describe("Company profile page", () => {
     ).toBeVisible({ timeout: 10_000 });
   });
 
-  test("blurs avg rating, manager count, and review count for non-contributing user", async ({ page }) => {
+  /*
+    These four describe the company header after it became CompanyTabHeader. Three things moved:
+    the review count is no longer repeated beside the manager count (the caveat line under the
+    figure already carries it), the manager count is a figure and a word in separate elements
+    rather than one "2 managers" string, and "Strongest Areas" / "Weakest Areas" are now the
+    header's own "Strongest" / "Weakest" rows - the boxes they used to live in were removed.
+  */
+
+  test("withholds the score from a non-contributing user", async ({ page }) => {
     await page.goto("/companies/Acme%20Corp");
 
-    await expect(page.getByText("4.1")).not.toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("2 managers", { exact: true })).not.toBeVisible();
-    await expect(page.getByText("12 reviews", { exact: true })).not.toBeVisible();
+    await expect(page.getByText(/company insights are locked/i).first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("4.1")).not.toBeVisible();
   });
 
-  test("shows avg rating, manager count, and review count for contributing user", async ({ page }) => {
+  test("shows the score and manager count to a contributing user", async ({ page }) => {
     await mockCompanyRoutes(page, { loggedIn: true, hasContributed: true });
     await page.goto("/companies/Acme%20Corp");
 
     await expect(page.getByText("4.1")).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("2 managers", { exact: true })).toBeVisible();
-    await expect(page.getByText("12 reviews", { exact: true })).toBeVisible();
+    await expect(page.getByText("2", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("managers", { exact: true }).first()).toBeVisible();
   });
 
   test("shows lock gate for unauthenticated user instead of areas", async ({ page }) => {
     await page.goto("/companies/Acme%20Corp");
 
     await expect(page.getByText(/company insights are locked/i).first()).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText(/rate any manager to see strongest and weakest areas/i)).toBeVisible();
+    await expect(page.getByText(/strongest/i)).toHaveCount(0);
   });
 
   test("shows strongest and weakest areas for a contributing user", async ({ page }) => {
     await mockCompanyRoutes(page, { loggedIn: true, hasContributed: true });
     await page.goto("/companies/Acme%20Corp");
 
-    await expect(page.getByText(/strongest areas/i)).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText(/weakest areas/i)).toBeVisible();
+    await expect(page.getByText(/strongest/i).first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/weakest/i).first()).toBeVisible();
   });
 
   test("shows sidebar search form and locked manager cards for non-contributing user", async ({ page }) => {
@@ -407,7 +414,8 @@ test.describe("Company profile page", () => {
 
     await page.getByRole("button", { name: /rate a manager/i }).first().click();
 
-    await expect(page).toHaveURL(/\/add\?returnTo=.*companies.*Acme/, { timeout: 5_000 });
+    // Carries the company as well as the way back, so the form arrives pre-populated.
+    await expect(page).toHaveURL(/\/add\?company=.*Acme.*returnTo=.*companies.*Acme/, { timeout: 5_000 });
   });
 
   test("cancelling /add when arrived from company profile returns to company profile", async ({ page }) => {

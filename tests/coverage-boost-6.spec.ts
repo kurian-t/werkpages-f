@@ -477,7 +477,9 @@ test.describe("AddBoss - draft lifecycle", () => {
     await page.getByPlaceholder(/e.g., Satya/i).fill("Jane");
     await page.getByPlaceholder(/e.g., Nadella/i).fill("Doe");
     await page.getByPlaceholder(/e.g., Engineering Manager/i).fill("Engineer");
-    await page.getByPlaceholder(/e.g., Microsoft/i).fill("Acme Corp");
+    // The company field is CompanyField now, which owns its own placeholder; the name
+    // attribute is what stayed stable across that change.
+    await page.locator('input[name="company"]').fill("Acme Corp");
     // Fill an invalid LinkedIn URL if the field exists
     const linkedinInput = page.locator('input[type="url"]').first();
     if (await linkedinInput.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -504,7 +506,9 @@ test.describe("AddBoss - draft lifecycle", () => {
     await page.getByPlaceholder(/e.g., Satya/i).fill("Jane");
     await page.getByPlaceholder(/e.g., Nadella/i).fill("Doe");
     await page.getByPlaceholder(/e.g., Engineering Manager/i).fill("Engineer");
-    await page.getByPlaceholder(/e.g., Microsoft/i).fill("Acme Corp");
+    // The company field is CompanyField now, which owns its own placeholder; the name
+    // attribute is what stayed stable across that change.
+    await page.locator('input[name="company"]').fill("Acme Corp");
     await page.getByRole("button", { name: /^next$/i }).click();
     // Step 2
     await expect(page.getByRole("heading", { name: /work timeline/i })).toBeVisible({ timeout: 5000 });

@@ -627,7 +627,9 @@ test.describe("AddBoss - multi-step form flow", () => {
     await page.getByPlaceholder(/e.g., Satya/i).fill("Alice");
     await page.getByPlaceholder(/e.g., Nadella/i).fill("Smith");
     await page.getByPlaceholder(/e.g., Engineering Manager/i).fill("Engineering Manager");
-    await page.getByPlaceholder(/e.g., Microsoft/i).fill("Acme Corp");
+    // The company field is CompanyField now, which owns its own placeholder; the name
+    // attribute is what stayed stable across that change.
+    await page.locator('input[name="company"]').fill("Acme Corp");
 
     await expect(page.getByPlaceholder(/e.g., Satya/i)).toHaveValue("Alice");
     await expect(page.getByPlaceholder(/e.g., Nadella/i)).toHaveValue("Smith");
@@ -641,7 +643,9 @@ test.describe("AddBoss - multi-step form flow", () => {
     await page.getByPlaceholder(/e.g., Satya/i).fill("Alice");
     await page.getByPlaceholder(/e.g., Nadella/i).fill("Smith");
     await page.getByPlaceholder(/e.g., Engineering Manager/i).fill("Engineering Manager");
-    await page.getByPlaceholder(/e.g., Microsoft/i).fill("Acme Corp");
+    // The company field is CompanyField now, which owns its own placeholder; the name
+    // attribute is what stayed stable across that change.
+    await page.locator('input[name="company"]').fill("Acme Corp");
 
     // Geo pre-fills country; verify country select has a value
     const countrySelect = page.locator("select").first();

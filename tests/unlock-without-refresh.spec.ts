@@ -55,6 +55,9 @@ test.describe("Unlocking without a refresh", () => {
     const count = await stars.count();
     for (let i = 0; i < count; i++) await stars.nth(i).click();
 
+    // The period moved to a second step - the subject of the form is asked before the questions
+    // about it, so the dates now sit behind Next rather than under the ratings.
+    await page.getByRole("button", { name: "Next" }).click();
     await page.getByLabel(/I still work here/i).check();
     // Month before year: the pair only reports a value once both halves are set.
     const selects = page.locator("select");

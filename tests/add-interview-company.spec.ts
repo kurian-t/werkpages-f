@@ -61,7 +61,7 @@ test.describe("Choosing a company on the interview form", () => {
     await mock(page);
     await page.goto("/add-interview");
 
-    await page.getByPlaceholder("e.g., Microsoft").fill("Red");
+    await page.getByPlaceholder("e.g. Acme Corp").fill("Red");
     await page.getByText("Red Hat", { exact: true }).click();
 
     await expect(page.getByRole("heading", { name: /Your interview at Red Hat/ })).toBeVisible({ timeout: 10_000 });
@@ -73,8 +73,8 @@ test.describe("Choosing a company on the interview form", () => {
     await mock(page);
     await page.goto("/add-interview");
 
-    await page.getByPlaceholder("e.g., Microsoft").fill("Red Hat");
-    await page.getByPlaceholder("e.g., Microsoft").blur();
+    await page.getByPlaceholder("e.g. Acme Corp").fill("Red Hat");
+    await page.getByPlaceholder("e.g. Acme Corp").blur();
 
     await expect(page.getByRole("heading", { name: "Your interview" })).toBeVisible();
   });
@@ -86,9 +86,15 @@ test.describe("Choosing a company on the interview form", () => {
     await page.goto("/companies/red-hat/add-interview");
 
     await expect(page.getByRole("heading", { name: /Your interview at Red Hat/ })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByPlaceholder("e.g., Microsoft")).toHaveValue("Red Hat");
+    /*
+      Settled, so the field shows as a card naming the company rather than as a bare input - the
+      same shape the manager forms use. It is still editable, which is the point of this test: the
+      picker used to be removed entirely when the company came from the URL.
+    */
+    await expect(page.getByTestId("company-field").getByText("Red Hat")).toBeVisible();
 
-    await page.getByPlaceholder("e.g., Microsoft").fill("Redis");
+    await page.getByRole("button", { name: /Edit details/i }).first().click();
+    await page.getByPlaceholder("e.g. Acme Corp").fill("Redis");
     await page.getByText("Redis", { exact: true }).click();
     await expect(page.getByRole("heading", { name: /Your interview at Redis/ })).toBeVisible();
   });

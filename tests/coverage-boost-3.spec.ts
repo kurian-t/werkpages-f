@@ -648,7 +648,9 @@ test.describe("AddBoss - Regenerate button and location editing", () => {
     await page.getByPlaceholder(/e.g., Satya/i).fill("Alice");
     await page.getByPlaceholder(/e.g., Nadella/i).fill("Smith");
     await page.getByPlaceholder(/e.g., Engineering Manager/i).fill("Engineering Manager");
-    await page.getByPlaceholder(/e.g., Microsoft/i).fill("Acme Corp");
+    // The company field is CompanyField now, which owns its own placeholder; the name
+    // attribute is what stayed stable across that change.
+    await page.locator('input[name="company"]').fill("Acme Corp");
     // Country should be auto-filled from geo; if not, set it
     const countrySelect = page.locator("select").first();
     if (await countrySelect.isVisible({ timeout: 2000 }).catch(() => false)) {

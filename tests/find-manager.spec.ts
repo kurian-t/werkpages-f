@@ -76,7 +76,9 @@ test.describe("FindYourManager page (/find)", () => {
     await fillAndSearch(page);
 
     await expect(page.getByText("Alex Johnson")).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("Acme Corp")).toBeVisible();
+    // The company appears twice once a search has run: the field keeps what was typed, and the
+    // result card names it too.
+    await expect(page.getByText("Acme Corp").first()).toBeVisible();
   });
 
   test("results list shows 'See all results in directory' link for contributors", async ({ page }) => {

@@ -380,6 +380,9 @@ export default function AddInterview() {
                   The subject of a form belongs before the questions about it.
                 */}
                 <CompanyField
+                  /* The form's own wording. CompanyField defaults to "Company", which is right on
+                     the manager forms and vague here, where the company is the subject. */
+                  label="Which company?"
                   value={companyText}
                   onChange={(v) => { setCompanyText(v); setPickedCompany(null); }}
                   onSuggestionPicked={(sug) => {
@@ -407,31 +410,17 @@ export default function AddInterview() {
                   existence, so a name typed and not picked is not an answer, and the error says
                   so rather than silently submitting to nothing.
                 */}
-                {!companySlug && (
-                <FormField
-                  label="Which company?"
-                  required
-                  error={errors.company}
-                  hint="Pick from the list. You can only add an interview for a company already on Werkpages."
-                >
-                  <CompanyAutocomplete
-                    value={companyText}
-                    onChange={(v) => {
-                      setCompanyText(v);
-                      // Typing invalidates the pick, exactly as it does in the manager forms: the
-                      // text and the company it refers to can never disagree.
-                      setPickedCompany(null);
-                    }}
-                    onSuggestionPicked={(sug) => {
-                      setCompanyText(sug.name);
-                      setPickedCompany(sug.slug ? { name: sug.name, slug: sug.slug } : null);
-                      setErrors((prev) => ({ ...prev, company: undefined }));
-                    }}
-                    onClear={() => { setCompanyText(""); setPickedCompany(null); }}
-                    placeholder="e.g., Microsoft"
-                  />
-                </FormField>
-                )}
+                {/*
+                  The second company picker that used to sit here is gone.
+
+                  CompanyField above already asks this, unconditionally. This one rendered whenever
+                  there was no company in the URL, so the form showed two company pickers at once -
+                  and when there *was* one in the URL it rendered neither, leaving somebody who had
+                  opened the wrong company with no way to correct it without navigating away. The
+                  selection-only rule it documented still holds: CompanyField reports a pick, and a
+                  name typed without picking is refused on submit, so an interview still cannot
+                  bring a company into existence.
+                */}
 
                 <FormField
                   label="How did it end?"

@@ -57,7 +57,8 @@ async function openWorkingHere(page: any, ratingCount: number, avg = 4.3) {
 test.describe("Company rating strip", () => {
   test("shows the score the way the manager profile does", async ({ page }) => {
     await openWorkingHere(page, 12);
-    await expect(page.getByText("12 ratings").first()).toBeVisible();
+    // The strip's own countLabel is "review", so that is the word on the page.
+    await expect(page.getByText("12 reviews").first()).toBeVisible();
   });
 
   test("does not spell out 'out of 5' as visible text", async ({ page }) => {
