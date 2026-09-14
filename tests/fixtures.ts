@@ -638,6 +638,24 @@ export async function mockAddBossPage(
     submitResponse = { status: 201, json: { id: "new-manager-1", slug: "new-manager-1" } },
   } = opts;
 
+  /*
+    The company picker's own endpoint.
+
+    Without this the request falls through to the vite proxy and whatever backend happens to be
+    running on the developer's machine - which answers, so the dropdown fills and the tests pass.
+    CI has no backend: the proxy refuses the connection, the lookup returns nothing, and the four
+    tests that pick a company fail there and only there. Mocked here so the form's picker is
+    answered by the same fixture that answers the rest of the form.
+  */
+  await page.route(/\/api\/companies\/suggest/, (route) => {
+    const query = (new URL(route.request().url()).searchParams.get("query") || "").toLowerCase();
+    route.fulfill({
+      json: MOCK_COMPANIES_LIST
+        .filter((c) => c.toLowerCase().includes(query))
+        .slice(0, 6)
+        .map((name) => ({ name, domain: `${name.toLowerCase().replace(/\s+/g, "")}.com` })),
+    });
+  });
   await page.route("**/api/auth/me", (route) => {
     if (loggedIn) {
       route.fulfill({ json: user });
