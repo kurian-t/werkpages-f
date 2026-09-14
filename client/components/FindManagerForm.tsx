@@ -36,7 +36,6 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
   const [loading,        setLoading]        = useState(false);
   const [error,          setError]          = useState<string | null>(null);
   const [searched,       setSearched]       = useState(false);
-  const [ghostAdded,     setGhostAdded]     = useState(false);
 
   const nameFilled    = firstName.trim().length > 0 && lastName.trim().length >= 2;
   const detailsFilled = title.trim().length > 0 && company.name.trim().length >= 2;
@@ -113,7 +112,6 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
     setLoading(true);
     setError(null);
     setResults(null);
-    setGhostAdded(false);
 
     // Persist search params so we can restore them if the user rates and returns
     sessionStorage.setItem("rmm_find_search", JSON.stringify({ firstName: fn, lastName: ln, title: t, company: c }));
@@ -146,11 +144,12 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
           const ghostKey = "rmm_anon_ghost_created";
           if (!localStorage.getItem(ghostKey)) {
             let ghostCreated = false;
+            let ghostRow: { id?: number | string } | null = null;
             // Capture before attempting the ghost. If ghost creation fails for any reason, the
             // search itself is still worth keeping - previously a failure here lost it entirely.
             await captureSearch(fn, ln, t, geo);
             try {
-              await axios.post(`${API_BASE}/api/managers/ghost`, {
+              const ghostRes = await axios.post(`${API_BASE}/api/managers/ghost`, {
                 name: `${fn} ${ln}`,
                 ...(await company.payload()),
                 title: t,
@@ -158,26 +157,40 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
                 state: geo.state,
                 city: geo.city,
               });
+              ghostRow = ghostRes.data ?? null;
               localStorage.setItem(ghostKey, "true");
               ghostCreated = true;
             } catch {
               // Ghost creation failed - leave results empty
             }
             if (ghostCreated) {
+              /*
+                The manager we just created, shown as an ordinary locked tile.
+
+                This is the feature, not a side effect: somebody searching for a manager nobody has
+                rated yet should find one, the same as any other search, and be able to open the
+                profile and rate them. A re-search is preferred because it returns the real row; the
+                tile below is built from the create response for when that read comes back empty -
+                the row exists either way, so falling back to a "Manager added! Your manager was
+                added to the database" notice both announced our plumbing and left them with
+                nothing to click.
+              */
+              const justCreated = {
+                id: ghostRow?.id,
+                name: `${fn} ${ln}`,
+                company: c,
+                title: t,
+                overallRating: 0,
+                reviewsCount: 0,
+              };
               try {
                 const retryRes = await axios.get(`${API_BASE}/api/managers`, {
                   params: { search, limit: 8, offset: 0 },
                 });
                 const retryData = retryRes.data.data ?? [];
-                if (retryData.length > 0) {
-                  setResults(retryData);
-                } else {
-                  setGhostAdded(true);
-                  setResults([]);
-                }
+                setResults(retryData.length > 0 ? retryData : (justCreated.id != null ? [justCreated] : []));
               } catch {
-                setGhostAdded(true);
-                setResults([]);
+                setResults(justCreated.id != null ? [justCreated] : []);
               }
             } else {
               setResults([]);
@@ -334,19 +347,6 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
                   </button>
                 </div>
               )}
-            </div>
-          ) : ghostAdded ? (
-            <div className="rounded-xl border border-border bg-card p-6 text-center">
-              <p className="text-sm font-semibold text-foreground">Manager added!</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Your manager was added to the database. Search again to see their profile.
-              </p>
-              <button
-                onClick={() => navigate("/signin", { state: { returnTo: window.location.pathname } })}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
-              >
-                Sign in to rate
-              </button>
             </div>
           ) : (
             <div className="rounded-xl border border-border bg-card p-6 text-center">

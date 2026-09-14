@@ -144,27 +144,35 @@ test.describe("A signed-out visitor searching for somebody we do not have", () =
     await page.goto("/find");
   }
 
-  test("the name is added, and the page says so", async ({ page }) => {
-    // The alternative is "no manager found" immediately after creating the manager, which is both
-    // untrue and the version where nobody returns.
+  test("the manager comes back as a locked tile, like any other result", async ({ page }) => {
+    /*
+      The whole point of the ghost. Somebody searching for a manager nobody has rated yet should
+      find one - an ordinary locked tile they can open and then rate - not be told that a row was
+      written to our database.
+
+      This spec previously asserted that notice and called it intended. It was never intended: it
+      announced our plumbing to a reader who had asked a question, and left them nothing to click.
+    */
     await anonymousMiss(page);
-    await page.route(/\/api\/managers\/ghost/, (r: any) => r.fulfill({ status: 201, json: { id: 9 } }));
+    await page.route(/\/api\/managers\/ghost/, (r: any) =>
+      r.fulfill({ status: 201, json: { id: 4242, name: "Alex Johnson", created: true } }));
 
     await fillAndSearch(page);
 
-    await expect(page.getByText("Manager added!")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(/Search again to see their profile/i)).toBeVisible();
+    await expect(page.getByText("Alex Johnson").first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Manager added!/i)).toHaveCount(0);
   });
 
-  test("the next step offered is signing in to rate them", async ({ page }) => {
+  test("that tile opens the manager's profile", async ({ page }) => {
+    // Locked until they rate somebody, but reachable - the tile is a way in, not a dead end.
     await anonymousMiss(page);
-    await page.route(/\/api\/managers\/ghost/, (r: any) => r.fulfill({ status: 201, json: { id: 9 } }));
+    await page.route(/\/api\/managers\/ghost/, (r: any) =>
+      r.fulfill({ status: 201, json: { id: 4242, name: "Alex Johnson", created: true } }));
+
     await fillAndSearch(page);
-    await expect(page.getByText("Manager added!")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Alex Johnson").first()).toBeVisible({ timeout: 15_000 });
 
-    await page.getByRole("button", { name: "Sign in to rate" }).click();
-
-    await expect(page).toHaveURL(/\/signin/);
+    await expect(page.locator('a[href="/manager/4242"]')).toHaveCount(1);
   });
 
   test("the second search of the browser's life adds nothing", async ({ page }) => {
