@@ -665,7 +665,7 @@ test.describe("CompanyProfile - search validation error", () => {
 // ─── CompanyProfile - anonymous ghost creation flow ───────────────────────────
 
 test.describe("CompanyProfile - anonymous ghost creation", () => {
-  test("anonymous search with empty results triggers ghost creation and shows Manager added", async ({ page }) => {
+  test("anonymous search with empty results returns the created manager as a tile", async ({ page }) => {
     await mockCompanyProfileRoutes(page, { loggedIn: false });
 
     // First managers GET (search query) → empty, and retry → also empty → setGhostAdded(true)
@@ -694,8 +694,8 @@ test.describe("CompanyProfile - anonymous ghost creation", () => {
     await page.locator('input[placeholder="Job title"]').fill("Engineering Manager");
     // Submit
     await page.getByRole("button", { name: /^Search$/ }).click();
-    // Wait for ghost creation flow to complete - shows "Manager added!"
-    await expect(page.getByText(/manager added/i)).toBeVisible({ timeout: 10000 });
+    // The created manager comes back as an ordinary tile; nothing reveals that a row was written.
+    await expect(page.getByText(/manager added/i)).toHaveCount(0);
   });
 });
 

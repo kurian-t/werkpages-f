@@ -42,8 +42,10 @@ test.describe("Industries browse page (/industries)", () => {
     // Same decorative hero-image treatment as the Companies tab. Two copies live in
     // the DOM (mobile stacked / desktop side-by-side); exactly one is shown per
     // breakpoint while the other is display:none.
-    await expect(page.locator('img[src="/industry-insights-v1.webp"]')).toHaveCount(2);
-    await expect(page.locator('img[src="/industry-insights-v1.webp"]:visible')).toHaveCount(1, { timeout: 10_000 });
+    // v2: the same drawing cropped to its own bounds at 3:2, so it can be sized with the exact
+    // classes the other two heroes use instead of coming out narrower or taller than them.
+    await expect(page.locator('img[src="/industry-insights-v2.webp"]')).toHaveCount(2);
+    await expect(page.locator('img[src="/industry-insights-v2.webp"]:visible')).toHaveCount(1, { timeout: 10_000 });
   });
 
   test("clicking a tile navigates to that industry profile", async ({ page }) => {
