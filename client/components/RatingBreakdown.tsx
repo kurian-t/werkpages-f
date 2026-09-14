@@ -50,6 +50,11 @@ export function RatingRowBar({
   return (
     <div className="flex items-center gap-3">
       <span
+        /* Named, because the width class is not stable: the ranked views widen this label from
+           w-44 to w-64, and a test keyed on the narrow one silently matched nothing there - the
+           overlap check compared an empty list against an empty list and passed without testing
+           anything. */
+        data-testid="breakdown-row-label"
         className={`flex-shrink-0 text-xs text-muted-foreground leading-tight ${
           stacked ? "w-64" : "w-44"
         }`}

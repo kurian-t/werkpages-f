@@ -88,15 +88,32 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
   // Compute fixed-position dropdown coordinates from the container's viewport rect.
   // This makes the dropdown escape any overflow:hidden/auto ancestor (e.g. modal scroll containers).
   useEffect(() => {
-    if (!open || !containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    setDropdownStyle({
-      position: "fixed",
-      top: rect.bottom + 4,
-      left: rect.left,
-      width: rect.width,
-      zIndex: 9999,
-    });
+    if (!open) return;
+    let raf = 0;
+    const place = () => {
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      /*
+        A zero-width measurement means layout has not settled yet - the field swaps between its
+        card and input forms, and the list can open across that moment. Writing it through gives
+        the portalled list width:0: an element that exists, holds every option, and cannot be seen
+        or clicked. Better to wait a frame and measure again than to place it somewhere useless.
+      */
+      if (rect.width === 0) {
+        raf = requestAnimationFrame(place);
+        return;
+      }
+      setDropdownStyle({
+        position: "fixed",
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 9999,
+      });
+    };
+    place();
+    return () => cancelAnimationFrame(raf);
   }, [open, suggestions]);
 
   useEffect(() => {
