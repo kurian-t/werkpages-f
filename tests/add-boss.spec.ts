@@ -435,17 +435,22 @@ test.describe("Editing the company on the add-manager form", () => {
    */
   async function pickCompany(page: any): Promise<string> {
     /*
-      Typed, not filled.
+      Waits for the lookup itself, not for the dropdown to happen to appear.
 
-      The picker ignores the first render when it already has a value, so that arriving with a
-      company pre-filled does not pop the dropdown open unasked. fill() sets the whole value in one
-      operation, and on a slower machine it can land before React's first effect runs - so that
-      first run sees "Acme" sitting there, reads it as pre-filled, and never asks for suggestions.
-      Green here, red in CI. Real keystrokes arrive after mount, the way a person's would.
+      The options only exist once /api/companies/suggest has answered, and that is a 300ms debounce
+      plus a round trip - on a loaded CI machine sharing one preview server between workers, long
+      enough that a bare "is the option visible yet" was the whole test. Waiting on the response
+      ties the assertion to the thing it actually depends on, and when it does fail it says whether
+      the request was never made or came back with nothing.
     */
-    const input = page.getByLabel(/Company/i).first();
-    await input.click();
-    await input.pressSequentially("Acme", { delay: 30 });
+    const suggested = page.waitForResponse(
+      (r: any) => /\/api\/companies\/suggest/.test(r.url()),
+      { timeout: 15_000 },
+    );
+    const companyInput = page.getByLabel(/Company/i).first();
+    await companyInput.click();
+    await companyInput.pressSequentially("Acme", { delay: 30 });
+    await suggested;
     const option = page.getByRole("option").first();
     await expect(option).toBeVisible({ timeout: 10_000 });
     const chosen = (await option.innerText()).split("\n")[0].trim();

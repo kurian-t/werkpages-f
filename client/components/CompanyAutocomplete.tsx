@@ -72,7 +72,18 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
   const dropdownRef = useRef<HTMLUListElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const justSelectedRef = useRef(false);
-  const firstRunRef = useRef(true);
+  /*
+    Whether this field has been edited by the person using it, as opposed to filled in by the
+    parent.
+
+    Set from the input's own change handler, so it is true before the effect that reads it runs.
+    It replaces a first-render flag, which asked the same question by proxy - "is this the first
+    effect run?" - on the reasoning that nobody can type before mount. True of a person; not true
+    of the render cycle. A value set in one operation rather than key by key can land before the
+    first effect flushes, and that run then read a freshly-entered company as a pre-filled one and
+    refused to search it.
+  */
+  const touchedRef = useRef(false);
 
   // Compute fixed-position dropdown coordinates from the container's viewport rect.
   // This makes the dropdown escape any overflow:hidden/auto ancestor (e.g. modal scroll containers).
@@ -91,19 +102,15 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    // A non-empty value on the first render was put there by the parent, not typed - nobody can
-    // type before mount. Searching it pops the dropdown open over a field nobody has touched,
-    // which is what a form pre-filled from the URL used to do.
+    // A non-empty value nobody has touched was put there by the parent. Searching it pops the
+    // dropdown open over a field the reader has not been near, which is what a form pre-filled
+    // from the URL used to do.
     //
-    // This has to sit here rather than inside the debounce: an empty initial value returns early
-    // below, so a guard further down would still be armed and would swallow the user's first
-    // real keystroke instead.
-    if (firstRunRef.current) {
-      firstRunRef.current = false;
-      if (value.trim().length > 0) {
-        setOpen(false);
-        return;
-      }
+    // This has to sit here rather than inside the debounce: an empty value returns early below,
+    // so a guard further down would swallow the reader's first real keystroke instead.
+    if (!touchedRef.current && value.trim().length > 0) {
+      setOpen(false);
+      return;
     }
 
     const trimmed = value.trim();
@@ -285,6 +292,9 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
         onChange={e => {
           setSelectedDomain(null);
           setTyping(true);
+          // Before the effect that reads it, so a value entered in one go is still recognised as
+          // the reader's rather than the parent's.
+          touchedRef.current = true;
           // Typing invalidates the selection. Same lifecycle as the logo above it.
           onCompanyIdChange?.(undefined);
           onChange(e.target.value);
