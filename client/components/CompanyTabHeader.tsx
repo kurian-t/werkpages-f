@@ -1,5 +1,5 @@
 import React from "react";
-import { MessageSquare, Star, TrendingDown, TrendingUp, Users } from "lucide-react";
+import { Building2, MessageSquare, Star, TrendingDown, TrendingUp, Users } from "lucide-react";
 
 /**
  * The header every tab on a company page opens with.
@@ -18,7 +18,7 @@ export interface TabMetric {
   value: string;
   label: string;
   /** Which glyph sits in front of it. Omitted where a figure needs no icon. */
-  icon?: "managers" | "rated" | "reviews";
+  icon?: "managers" | "rated" | "reviews" | "companies";
 }
 
 /** The best and worst scoring category, summarised in one line each. */
@@ -202,6 +202,7 @@ export function CompanyTabHeader({
             <div className={`flex flex-wrap items-center gap-x-6 gap-y-2 ${hasHeading ? "mt-4" : "mt-0"}`}>
               {metrics.map((m) => (
                 <span key={m.label} className="flex items-center gap-1.5">
+                  {m.icon === "companies" && <Building2 size={15} aria-hidden="true" className="text-muted-foreground" />}
                   {m.icon === "managers" && <Users size={15} aria-hidden="true" className="text-muted-foreground" />}
                   {m.icon === "rated" && <Star size={15} aria-hidden="true" className="text-muted-foreground" />}
                   {m.icon === "reviews" && <MessageSquare size={15} aria-hidden="true" className="text-muted-foreground" />}
@@ -270,8 +271,13 @@ export function CompanyTabHeader({
         </div>
         {/* The rating, what it is made of, and the control for it - one block, kept together on
             the right so the eyebrow has the left of the row to itself. Capped so the button below
-            takes the width of the figure it belongs to rather than the width of the page. */}
-        <div className="w-full max-w-[200px] flex-shrink-0">{scoreBlock}</div>
+            takes the width of the figure it belongs to rather than the width of the page.
+
+            Centred until the row stops wrapping. On a phone this block drops onto a line of its
+            own, and left-aligning a 200px column under a full-width heading reads as a stray
+            element rather than the page's main action. From sm up the row holds and it returns to
+            the right, where it belongs opposite the eyebrow. */}
+        <div className="mx-auto w-full max-w-[200px] flex-shrink-0 sm:mx-0">{scoreBlock}</div>
       </div>
 
         {/*

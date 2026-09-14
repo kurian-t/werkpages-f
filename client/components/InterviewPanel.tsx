@@ -238,18 +238,13 @@ export function InterviewPanel({ companySlug, companyName, onAddInterview, onEdi
         bringing this back is a rendering decision rather than a rebuild.
       */}
 
-      {/* A second call to action at the foot, for the reader who came to a view after the data. */}
-      {!mine && (
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={onAddInterview}
-            className="rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2e0562]/90"
-          >
-            Share your experience
-          </button>
-        </div>
-      )}
+      {/*
+        The second "Share your experience" that used to sit here is gone.
+
+        The header already carries it, and on a locked tab - which is where most people meet this
+        page - there is nothing between the two but the lock notice, so the same sentence appeared
+        twice within one screen. The workplace tab asks once; this one now matches it.
+      */}
 
       {/*
         The experiences behind the averages, the way the workplace tab lists the ratings behind

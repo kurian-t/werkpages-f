@@ -1,11 +1,10 @@
 import API_BASE from "@/lib/api";
-import { topRatedTitleClearance } from "@/lib/topRated";
 import { CompanyTile } from "@/components/CompanyTile";
-import { TopRatedPill } from "@/components/TopRatedPill";
+import { CompanyTabHeader } from "@/components/CompanyTabHeader";
 import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Layout } from "@/components/Layout";
-import { Star, Building2, Users, MessageSquare, ArrowLeft, Lock } from "lucide-react";
+import { ArrowLeft, Lock } from "lucide-react";
 import { IndustryTileIcon } from "@/components/IndustryTileIcon";
 import { companyPath, companyPathByName } from "@/lib/urls";
 import { useQuery } from "@tanstack/react-query";
@@ -33,28 +32,53 @@ interface IndustryProfileData {
   companies: CompanyEntry[];
 }
 
-function CategoryBreakdown({ categoryAverages }: { categoryAverages: Record<string, number> }) {
-  const entries = Object.entries(categoryAverages)
+/*
+  The industry's ratings, in the shape the rest of the site states ratings in.
+
+  This was a card of its own - "How this industry rates across the 10 categories" - with its own
+  bar style and its own heading, sitting above the company list. Three different presentations of
+  the same idea across three pages taught a reader nothing and made the industry page look like a
+  different product. It now uses CompanyTabHeader, the same component the workplace and interview
+  tabs use, so an average reads the same way wherever it appears.
+*/
+function IndustryRatings({ data }: { data: IndustryProfileData }) {
+  const entries = Object.entries(data.categoryAverages ?? {})
     .filter(([, v]) => typeof v === "number" && !isNaN(v))
-    .sort(([, a], [, b]) => b - a);
+    .map(([label, value]) => ({ label, value }));
   if (entries.length === 0) return null;
+
+  /*
+    One sorted list, split - never two independent slices. Taking a top three and a bottom three
+    from a short list returns the same rows in both, and a category then appears as a strength and
+    a weakness at once.
+  */
+  const sorted = [...entries].sort((a, b) => b.value - a.value);
+  const cut = Math.max(3, sorted.length - 3);
+
   return (
-    <div className="mb-8 rounded-2xl border border-border bg-card p-5 sm:p-6">
-      <h2 className="mb-4 text-sm font-semibold text-foreground">How this industry rates across the 10 categories</h2>
-      <div className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
-        {entries.map(([label, value]) => (
-          <div key={label} className="flex items-center gap-3">
-            <span className="w-1/2 flex-shrink-0 truncate text-xs text-muted-foreground" title={label}>{label}</span>
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-              <div className="h-full rounded-full bg-[#2e0562]" style={{ width: `${Math.max(0, Math.min(100, (value / 5) * 100))}%` }} />
-            </div>
-            <span className="w-8 flex-shrink-0 text-right text-xs font-semibold text-foreground">{value.toFixed(1)}</span>
-          </div>
-        ))}
-      </div>
-    </div>
+    <CompanyTabHeader
+      eyebrow="Industry ratings"
+      subtitle={`How managers are rated across ${data.industry}`}
+      score={data.avgRating ?? null}
+      countLabel="review"
+      countValue={data.totalReviews ?? 0}
+      scoreLabel="industry rating"
+      metrics={[
+        { icon: "companies",
+          value: String(data.companyCount ?? 0),
+          label: (data.companyCount ?? 0) === 1 ? "company" : "companies" },
+        { icon: "managers",
+          value: String(data.managerCount ?? 0),
+          label: (data.managerCount ?? 0) === 1 ? "manager" : "managers" },
+      ]}
+      highlights={[
+        ...sorted.slice(0, 3).map((e) => ({ direction: "up" as const, label: e.label, value: e.value })),
+        ...sorted.slice(cut).map((e) => ({ direction: "down" as const, label: e.label, value: e.value })),
+      ]}
+    />
   );
 }
+
 
 
 
@@ -108,17 +132,16 @@ export default function IndustryProfile() {
                 <h1 className="text-[24px] sm:text-[30px] font-semibold leading-tight tracking-tight text-foreground">
                   {data.industry}
                 </h1>
-                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1"><Building2 size={13} /> {data.companyCount} {data.companyCount === 1 ? "company" : "companies"}</span>
-                  <span className="flex items-center gap-1"><Users size={13} /> {data.managerCount} {data.managerCount === 1 ? "manager" : "managers"}</span>
-                  <span className="flex items-center gap-1"><MessageSquare size={13} /> {data.totalReviews} {data.totalReviews === 1 ? "review" : "reviews"}</span>
-                  {data.avgRating != null && (
-                    <span className="flex items-center gap-1"><Star size={13} className="fill-amber-400 text-amber-400" /> {Number(data.avgRating).toFixed(1)} avg</span>
-                  )}
-                  {/* After the score here, rather than above it: this header is a single line of
-                      stats, and the badge reads as one more fact on that line. */}
-                  <TopRatedPill rating={data.avgRating} reviewCount={data.totalReviews} variant="inline" />
-                </div>
+                {/*
+                  Identity only: the icon and the name, the way a company page carries a logo and a
+                  name.
+
+                  The company, manager and review counts and the average used to sit here as four
+                  stats. The ratings header below now states all of them, in the shape the rest of
+                  the site states them - so keeping them here printed the same figures twice within
+                  one screen. The top-rated badge goes with them: it qualifies the average, and the
+                  average is no longer on this line.
+                */}
               </div>
             </div>
           )}
@@ -126,6 +149,19 @@ export default function IndustryProfile() {
       </section>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+        {/*
+          Full content width, above the two-column layout.
+
+          It used to sit inside the right-hand column, so its closing rule started level with the
+          sidebar and stopped short - a line that looked like a mistake rather than a division. The
+          company page puts its equivalent header here, with everything else below the rule; this
+          now matches, and the search reads as part of what follows rather than as a neighbour of
+          the ratings.
+        */}
+        {!isLoading && !isError && data && Object.keys(data.categoryAverages ?? {}).length > 0 && (
+          <IndustryRatings data={data} />
+        )}
+
         <div className="flex flex-col gap-8 lg:flex-row">
 
           {/* Sidebar - mirrors the /companies layout */}
@@ -157,9 +193,6 @@ export default function IndustryProfile() {
 
           {/* Main content */}
           <div className="flex-1 min-w-0">
-        {!isLoading && !isError && data && Object.keys(data.categoryAverages ?? {}).length > 0 && (
-          <CategoryBreakdown categoryAverages={data.categoryAverages} />
-        )}
 
         {!isLoading && !isError && data && companies.length === 0 && (
           <p className="text-center text-sm text-muted-foreground">No companies in this industry yet.</p>
