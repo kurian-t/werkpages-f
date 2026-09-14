@@ -278,6 +278,33 @@ export default function BossProfile() {
       };
     };
 
+    /*
+      Reattaches each reviewed segment to the career-history row it came from.
+
+      Only ghost rows carry careerHistoryId - the segments endpoint returns company, role, dates
+      and ratings, and no id - so the admin edit and delete controls, which are gated on that id,
+      vanished from every company the manager had actually been reviewed at. On a real profile that
+      is nearly all of them, which made an admin-only feature look deleted.
+
+      Matched on company, and on the start date when more than one entry shares a company: somebody
+      who returned to a former employer has two rows there, and editing the wrong one silently
+      rewrites the wrong stretch of their history. Where that cannot be resolved the id is left off
+      and the controls stay hidden, which is the safe way to be unsure.
+    */
+    const idForSegment = (seg: any): number | null => {
+      const key = (seg.company ?? "").toLowerCase().trim();
+      const candidates = history.filter(
+        (ch: any) => (ch.company ?? "").toLowerCase().trim() === key && ch.id != null,
+      );
+      if (candidates.length === 1) return candidates[0].id;
+      const sameStart = candidates.filter(
+        (ch: any) =>
+          ch.startDate && seg.startDate &&
+          String(ch.startDate).slice(0, 7) === String(seg.startDate).slice(0, 7),
+      );
+      return sameStart.length === 1 ? sameStart[0].id : null;
+    };
+
     if (careerSegments.length === 0) {
       // No reviews at all - show ghost nodes from career history so the timeline isn't empty
       if (history.length > 0) return [...history].reverse().map(toGhost);
@@ -296,6 +323,7 @@ export default function BossProfile() {
       const ghosts = ghostEntries.map(toGhost);
       const enriched = careerSegments.map((s: any) => ({
         ...s,
+        careerHistoryId: idForSegment(s),
         logoUrl: s.company?.toLowerCase().trim() === managerCompanyKey
           ? (manager.companyLogoUrl ?? undefined)
           : s.logoUrl,
@@ -319,6 +347,7 @@ export default function BossProfile() {
 
     return careerSegments.map((s: any) => ({
       ...s,
+      careerHistoryId: idForSegment(s),
       logoUrl: s.company?.toLowerCase().trim() === managerCompanyKey
         ? (manager.companyLogoUrl ?? undefined)
         : s.logoUrl,

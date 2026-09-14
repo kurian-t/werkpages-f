@@ -153,8 +153,16 @@ export function CompanyTabHeader({
       {/* Under the figure it refers to, and the full width of it: a control the width of its own
           label leaves a ragged right edge against the block above, and the button is the one thing
           here you are meant to act on. */}
+      {/*
+        Above the lock overlay, not under it.
+
+        The overlay washes the whole header with bg-background/75 to say the figures behind it are
+        withheld. The button is not one of those figures - it is the way out of the lock - and
+        leaving it under the wash drew it in the same faded grey the disabled controls use, so the
+        one control on the page that works looked like the one control that doesn't.
+      */}
       {action && (
-        <div className="mt-4 w-full [&>button]:w-full [&>div]:w-full [&>div>button]:w-full">
+        <div className="relative z-20 mt-4 w-full [&>button]:w-full [&>div]:w-full [&>div>button]:w-full">
           {action}
         </div>
       )}

@@ -182,7 +182,14 @@ function roleConfidence(reviewCount: number): string {
 }
 
 // ── Role item - independent collapsible card inside a company card ────────────
-function RoleItem({ role, companyAvg }: { role: CareerSegment; companyAvg: number }) {
+function RoleItem({
+  role, companyAvg, onEditCareerEntry, onDeleteCareerEntry,
+}: {
+  role: CareerSegment;
+  companyAvg: number;
+  onEditCareerEntry?: (entry: { entryId: number; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
+  onDeleteCareerEntry?: (entryId: number) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const delta    = role.averageRating - companyAvg;
   const abs      = Math.abs(delta);
@@ -200,8 +207,43 @@ function RoleItem({ role, companyAvg }: { role: CareerSegment; companyAvg: numbe
         border: "1px solid #e2e8f0",
         background: "#f8fafc",
         overflow: "hidden",
+        position: "relative",
       }}
     >
+      {/*
+        The same admin controls the ghost rows carry, on a reviewed row.
+
+        They used to exist only in the ghost branch, so an admin lost the ability to correct a
+        career entry the moment anybody reviewed that company - which on a real profile is all of
+        them, and made an admin-only feature look as though it had been removed.
+
+        Outside the expand button rather than inside it: the whole header is a button, and a button
+        nested in a button is invalid markup whose clicks go to the wrong handler.
+      */}
+      {(onEditCareerEntry || onDeleteCareerEntry) && role.careerHistoryId != null && (
+        <div className="absolute right-2.5 top-2.5 z-10 flex items-center gap-2">
+          {onEditCareerEntry && (
+            <button
+              type="button"
+              onClick={() => onEditCareerEntry({ entryId: role.careerHistoryId!, company: role.company, role: role.role, startDate: role.startDate, endDate: role.endDate })}
+              aria-label={`Edit ${role.company} career entry`}
+              className="text-[10px] text-slate-400 hover:text-slate-600 transition-colors leading-none"
+            >
+              Edit
+            </button>
+          )}
+          {onDeleteCareerEntry && (
+            <button
+              type="button"
+              onClick={() => onDeleteCareerEntry(role.careerHistoryId!)}
+              aria-label={`Delete ${role.company} career entry`}
+              className="text-[10px] text-red-400 hover:text-red-600 transition-colors leading-none"
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      )}
       <button
         onClick={() => setExpanded(v => !v)}
         className="w-full text-left px-3 py-2.5"
@@ -403,7 +445,8 @@ function CompanyCard({
                     )}
                   </div>
                 )
-                : <RoleItem key={j} role={role} companyAvg={node.avg} />
+                : <RoleItem key={j} role={role} companyAvg={node.avg}
+                    onEditCareerEntry={onEditCareerEntry} onDeleteCareerEntry={onDeleteCareerEntry} />
             ))}
           </div>
         </div>
