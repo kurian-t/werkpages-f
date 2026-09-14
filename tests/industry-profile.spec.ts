@@ -40,19 +40,26 @@ async function mockProfile(page: any, opts: { hasContributed?: boolean; profile?
 }
 
 test.describe("Industry profile page (/industries/:slug)", () => {
-  test("renders header stats and the 10-category breakdown", async ({ page }) => {
+  test("states the industry's ratings the way the rest of the site does", async ({ page }) => {
+    /*
+      The page used to lead with four stats on the title line - companies, managers, reviews, the
+      average - and then a card of its own, "How this industry rates across the 10 categories",
+      with its own bar style. Both are gone: the title line carries identity only, and the ratings
+      are stated through the same header the workplace and interview tabs use, so an average reads
+      the same wherever it appears.
+    */
     await mockProfile(page);
     await page.goto("/industries/technology");
 
     await expect(page.getByRole("heading", { name: "Technology" })).toBeVisible({ timeout: 10_000 });
-    // Scoped to the hero: the search sidebar now also renders an "N companies" count.
-    await expect(page.locator("section").getByText("2 companies")).toBeVisible();
-    await expect(page.locator("section").getByText("5 managers")).toBeVisible();
+    await expect(page.getByText(/Industry ratings/i)).toBeVisible();
+    await expect(page.getByText(/How managers are rated across Technology/i)).toBeVisible();
 
-    await expect(page.getByText(/how this industry rates across the 10 categories/i)).toBeVisible();
-    // A couple of the category rows + their values
-    await expect(page.getByText("Communication Style")).toBeVisible();
-    await expect(page.getByText("Perceived Professional Demeanor")).toBeVisible();
+    // The counts moved into that header's metrics row rather than onto the title line.
+    await expect(page.getByText("managers", { exact: true }).first()).toBeVisible();
+
+    // The bespoke card and the stats it duplicated are gone.
+    await expect(page.getByText(/how this industry rates across the 10 categories/i)).toHaveCount(0);
   });
 
   test("unlocked (contributed): company tiles show real ratings and a Top rated badge", async ({ page }) => {

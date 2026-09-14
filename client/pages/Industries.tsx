@@ -21,11 +21,19 @@ interface IndustryEntry {
 
 /** Matches Companies.tsx and IndustryProfile.tsx - one threshold across every card type. */
 
-// The Industries hero illustration.
+/*
+  The Industries hero illustration.
+
+  Same classes as the Companies and Managers heroes, because the artwork is now the same shape they
+  are. The original was 900x931 with the drawing floating in it - sized by height it came out a
+  third narrower than its siblings, sized by width it stood 165px taller and took the whole header
+  with it. v2 is that drawing cropped to its own bounds at 3:2 (874x583); nothing is lost but the
+  sky above the clouds, and it can now be sized exactly as the other two are.
+*/
 function IndustryHeroImage({ imgClass }: { imgClass: string }) {
   return (
     <div className="w-fit">
-      <img src="/industry-insights-v1.webp" alt="" width="900" height="931"
+      <img src="/industry-insights-v2.webp" alt="" width="874" height="583"
            className={imgClass} fetchPriority="high" decoding="async" />
     </div>
   );
@@ -58,7 +66,7 @@ export default function Industries() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           {/* Small/medium: image above text */}
           <div className="flex flex-col items-center lg:hidden py-6 gap-3">
-            <IndustryHeroImage imgClass="w-[330px] max-w-full h-auto" />
+            <IndustryHeroImage imgClass="max-h-[220px] w-auto" />
             <div className="text-center">
               <h1 className="text-[22px] font-semibold leading-snug tracking-tight text-foreground">
                 Compare workplace experiences by industry
@@ -71,7 +79,7 @@ export default function Industries() {
           {/* Large: image left, text right */}
           <div className="hidden lg:flex items-center gap-12 py-10">
             <div className="flex-shrink-0">
-              <IndustryHeroImage imgClass="w-[450px] h-auto" />
+              <IndustryHeroImage imgClass="h-[300px] w-auto" />
             </div>
             <div>
               <h1 className="text-[32px] font-semibold leading-snug tracking-tight text-foreground">
