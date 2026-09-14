@@ -434,7 +434,18 @@ test.describe("Editing the company on the add-manager form", () => {
    * test that hard-codes a company silently stops exercising the pick if that list ever changes.
    */
   async function pickCompany(page: any): Promise<string> {
-    await page.getByLabel(/Company/i).first().fill("Acme");
+    /*
+      Typed, not filled.
+
+      The picker ignores the first render when it already has a value, so that arriving with a
+      company pre-filled does not pop the dropdown open unasked. fill() sets the whole value in one
+      operation, and on a slower machine it can land before React's first effect runs - so that
+      first run sees "Acme" sitting there, reads it as pre-filled, and never asks for suggestions.
+      Green here, red in CI. Real keystrokes arrive after mount, the way a person's would.
+    */
+    const input = page.getByLabel(/Company/i).first();
+    await input.click();
+    await input.pressSequentially("Acme", { delay: 30 });
     const option = page.getByRole("option").first();
     await expect(option).toBeVisible({ timeout: 10_000 });
     const chosen = (await option.innerText()).split("\n")[0].trim();
