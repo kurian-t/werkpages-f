@@ -171,9 +171,9 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
                 rated yet should find one, the same as any other search, and be able to open the
                 profile and rate them. A re-search is preferred because it returns the real row; the
                 tile below is built from the create response for when that read comes back empty -
-                the row exists either way, so falling back to a "Manager added! Your manager was
-                added to the database" notice both announced our plumbing and left them with
-                nothing to click.
+                the row exists either way. Nothing here may reveal that one was written: the
+                notice this replaced announced our plumbing to a reader who had asked a question,
+                and left them nothing to click.
               */
               const justCreated = {
                 id: ghostRow?.id,

@@ -321,7 +321,7 @@ test.describe("CompanyProfile - locked insights buttons", () => {
 // ─── CompanyProfile - ghost added "Sign in to rate" button ────────────────────
 
 test.describe("CompanyProfile - ghost added sign in button", () => {
-  test("after ghost creation with no retry results shows Manager added and Sign in to rate", async ({ page }) => {
+  test("after ghost creation with no retry results the manager shows as a locked tile", async ({ page }) => {
     await page.route("**/api/auth/me", (route: any) =>
       route.fulfill({ status: 401, json: { error: "Unauthorized" } })
     );
@@ -346,7 +346,7 @@ test.describe("CompanyProfile - ghost added sign in button", () => {
     );
     // Ghost creation succeeds
     await page.route(/\/api\/managers\/ghost/, (route: any) =>
-      route.fulfill({ status: 200, json: { success: true } })
+      route.fulfill({ status: 200, json: { id: 4242, name: "Mia Chen", created: true } })
     );
 
     await page.goto("/companies/acme-corp");
@@ -357,12 +357,10 @@ test.describe("CompanyProfile - ghost added sign in button", () => {
     await page.locator('input[placeholder="Last name"]').fill("Chen");
     await page.locator('input[placeholder="Job title"]').fill("Manager");
     await page.getByRole("button", { name: /^Search$/ }).click();
-    // Ghost was added → shows "Manager added!" (line 259/720-732)
-    await expect(page.getByText(/manager added/i)).toBeVisible({ timeout: 10000 });
-    // "Sign in to rate" button (line 727)
-    await expect(page.getByRole("button", { name: /sign in to rate/i })).toBeVisible({ timeout: 3000 });
-    await page.getByRole("button", { name: /sign in to rate/i }).click();
-    await expect(page).toHaveURL(/\/signin/, { timeout: 5000 });
+    // The manager comes back as a locked tile. Nothing says a row was written - the reader
+    // searched for somebody and found them, which is the whole point of the flow.
+    await expect(page.getByText("Mia Chen").first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/manager added/i)).toHaveCount(0);
   });
 });
 

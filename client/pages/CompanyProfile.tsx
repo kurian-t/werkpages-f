@@ -345,7 +345,6 @@ export default function CompanyProfile() {
   const [searchResults, setSearchResults] = useState<any[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchHasContributed, setSearchHasContributed] = useState(false);
-  const [ghostAdded, setGhostAdded] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [renameMode, setRenameMode] = useState(false);
   const [newName, setNewName] = useState("");
@@ -373,7 +372,6 @@ export default function CompanyProfile() {
     setLastName("");
     setTitle("");
     setSearchResults(null);
-    setGhostAdded(false);
     setSearchHasContributed(false);
     setSearchError(null);
   };
@@ -384,13 +382,11 @@ export default function CompanyProfile() {
     if (nameError) {
       setSearchError(nameError);
       setSearchResults([]);
-      setGhostAdded(false);
       setSearchLoading(false);
       return;
     }
     setSearchError(null);
     setSearchLoading(true);
-    setGhostAdded(false);
     try {
       const geo = await fetchGeo();
       if (user) {
@@ -419,8 +415,9 @@ export default function CompanyProfile() {
           const ghostKey = "rmm_anon_ghost_created";
           if (!localStorage.getItem(ghostKey)) {
             let ghostCreated = false;
+            let ghostRow: { id?: number | string } | null = null;
             try {
-              await axios.post(`${API_BASE}/api/managers/ghost`, {
+              const ghostRes = await axios.post(`${API_BASE}/api/managers/ghost`, {
                 name: `${firstName.trim()} ${lastName.trim()}`,
                 company: data?.name ?? "",
                 title: title.trim(),
@@ -428,6 +425,7 @@ export default function CompanyProfile() {
                 state: geo.state,
                 city: geo.city,
               });
+              ghostRow = ghostRes.data ?? null;
               localStorage.setItem(ghostKey, "true");
               ghostCreated = true;
             } catch {
@@ -440,14 +438,26 @@ export default function CompanyProfile() {
                   params: { search, limit: 8, offset: 0 },
                 });
                 const retryData = retryRes.data.data ?? [];
-                if (retryData.length > 0) {
-                  setSearchResults(retryData);
-                } else {
-                  setGhostAdded(true);
-                  setSearchResults([]);
-                }
+                /*
+                  The manager we just created, shown as an ordinary locked tile.
+
+                  Nothing here may reveal that a row was written. Somebody searching for a manager
+                  nobody has rated yet should simply find one, open the profile and rate them - the
+                  same as any other search. The re-search is preferred because it returns the real
+                  row; this is the fallback for when that read comes back empty.
+                */
+                const justCreated = {
+                  id: ghostRow?.id,
+                  name: `${firstName.trim()} ${lastName.trim()}`,
+                  company: data?.name ?? "",
+                  title: title.trim(),
+                  overallRating: 0,
+                  reviewsCount: 0,
+                };
+                setSearchResults(
+                  retryData.length > 0 ? retryData : (justCreated.id != null ? [justCreated] : []),
+                );
               } catch {
-                setGhostAdded(true);
                 setSearchResults([]);
               }
             } else {
@@ -1079,19 +1089,6 @@ export default function CompanyProfile() {
                     </div>
                   )}
                 </>
-              ) : ghostAdded ? (
-                <div className="rounded-xl border border-border bg-background p-6 text-center">
-                  <p className="text-sm font-semibold text-foreground">Manager added!</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Your manager was added to the database. Search again to see their profile.
-                  </p>
-                  <button
-                    onClick={() => navigate("/signin", { state: { returnTo: window.location.pathname } })}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
-                  >
-                    Sign in to rate
-                  </button>
-                </div>
               ) : (
                 <div className="rounded-xl border border-border bg-background/50 py-16 text-center px-6">
                   <p className="text-lg font-semibold text-foreground">No results found</p>

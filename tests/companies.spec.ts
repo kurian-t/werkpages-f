@@ -338,7 +338,7 @@ test.describe("Company profile page", () => {
     await expect(page.getByRole("link", { name: /add a manager/i })).toBeVisible();
   });
 
-  test("anonymous first search with no results auto-adds ghost and shows manager added message", async ({ page }) => {
+  test("anonymous first search with no results returns the manager as a locked tile", async ({ page }) => {
     await mockCompanyRoutes(page);
     await page.addInitScript(() => {
       localStorage.removeItem("rmm_anon_ghost_created");
@@ -347,7 +347,7 @@ test.describe("Company profile page", () => {
       route.fulfill({ json: { data: [] } })
     );
     await page.route("**/api/managers/ghost", (route) =>
-      route.fulfill({ json: { ok: true } })
+      route.fulfill({ json: { id: 4242, name: "Alex Johnson", created: true } })
     );
     await page.goto("/companies/Acme%20Corp");
 
@@ -356,8 +356,13 @@ test.describe("Company profile page", () => {
     await page.getByPlaceholder(/job title/i).fill("Engineering Manager");
     await page.getByRole("button", { name: /^search$/i }).click();
 
-    await expect(page.getByText(/manager added!/i)).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByRole("button", { name: /sign in to rate/i })).toBeVisible();
+    /*
+      The reader is never told a row was written. They searched for a manager and they found one -
+      an ordinary locked tile, indistinguishable from a manager who was already here.
+    */
+    await expect(page.getByText("Alex Johnson").first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/manager added/i)).toHaveCount(0);
+    await expect(page.getByText(/added to the database/i)).toHaveCount(0);
   });
 
   test("anonymous second search with no results shows no results found", async ({ page }) => {
