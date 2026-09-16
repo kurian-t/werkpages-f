@@ -1,5 +1,6 @@
 import API_BASE from "@/lib/api";
 import { validateManagerName } from "@/lib/managerName";
+import { searchForManager } from "@/lib/managerSearch";
 import { TopRatedPill } from "@/components/TopRatedPill";
 import { CompanyTile } from "@/components/CompanyTile";
 import { Stars } from "@/components/Stars";
@@ -388,86 +389,19 @@ export default function CompanyProfile() {
     setSearchError(null);
     setSearchLoading(true);
     try {
-      const geo = await fetchGeo();
-      if (user) {
-        const res = await axios.post(`${API_BASE}/api/managers/find-or-create`, {
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          title: title.trim(),
-          company: data?.name ?? "",
-          country: geo.country,
-          state: geo.state,
-          city: geo.city,
-        });
-        setSearchResults(res.data.data ?? []);
-        setSearchHasContributed(res.data.hasContributed ?? false);
-        queryClient.invalidateQueries({ queryKey: ["company-profile-slug", companySlug] });
-      } else {
-        const search = `${firstName.trim()} ${lastName.trim()}`;
-        const res = await axios.get(`${API_BASE}/api/managers`, {
-          params: { search, limit: 8, offset: 0 },
-        });
-        const anonData = res.data.data ?? [];
-        setSearchHasContributed(false);
-        if (anonData.length > 0) {
-          setSearchResults(anonData);
-        } else {
-          const ghostKey = "rmm_anon_ghost_created";
-          if (!localStorage.getItem(ghostKey)) {
-            let ghostCreated = false;
-            let ghostRow: { id?: number | string } | null = null;
-            try {
-              const ghostRes = await axios.post(`${API_BASE}/api/managers/ghost`, {
-                name: `${firstName.trim()} ${lastName.trim()}`,
-                company: data?.name ?? "",
-                title: title.trim(),
-                country: geo.country,
-                state: geo.state,
-                city: geo.city,
-              });
-              ghostRow = ghostRes.data ?? null;
-              localStorage.setItem(ghostKey, "true");
-              ghostCreated = true;
-            } catch {
-              // Ghost creation failed - leave results empty
-            }
-            if (ghostCreated) {
-              queryClient.invalidateQueries({ queryKey: ["company-profile-slug", companySlug] });
-              try {
-                const retryRes = await axios.get(`${API_BASE}/api/managers`, {
-                  params: { search, limit: 8, offset: 0 },
-                });
-                const retryData = retryRes.data.data ?? [];
-                /*
-                  The manager we just created, shown as an ordinary locked tile.
-
-                  Nothing here may reveal that a row was written. Somebody searching for a manager
-                  nobody has rated yet should simply find one, open the profile and rate them - the
-                  same as any other search. The re-search is preferred because it returns the real
-                  row; this is the fallback for when that read comes back empty.
-                */
-                const justCreated = {
-                  id: ghostRow?.id,
-                  name: `${firstName.trim()} ${lastName.trim()}`,
-                  company: data?.name ?? "",
-                  title: title.trim(),
-                  overallRating: 0,
-                  reviewsCount: 0,
-                };
-                setSearchResults(
-                  retryData.length > 0 ? retryData : (justCreated.id != null ? [justCreated] : []),
-                );
-              } catch {
-                setSearchResults([]);
-              }
-            } else {
-              setSearchResults([]);
-            }
-          } else {
-            setSearchResults([]);
-          }
-        }
-      }
+      const outcome = await searchForManager({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        title: title.trim(),
+        // The company is the page itself - never typed, so never ambiguous.
+        companyPayload: async () => ({ company: data?.name ?? "", companyId: data?.id ?? null }),
+        companyName: data?.name ?? "",
+        isLoggedIn: !!user,
+      });
+      setSearchResults(outcome.results);
+      setSearchHasContributed(outcome.hasContributed);
+      // A search can have created a manager at this company, so the profile's own counts are stale.
+      queryClient.invalidateQueries({ queryKey: ["company-profile-slug", companySlug] });
     } catch {
       setSearchResults([]);
     } finally {

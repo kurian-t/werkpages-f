@@ -1,5 +1,10 @@
-import API_BASE from "@/lib/api";
 import { validateManagerName } from "@/lib/managerName";
+import {
+  captureSearch as sharedCaptureSearch,
+  captureKey,
+  searchForManager,
+  CAPTURE_DEBOUNCE_MS,
+} from "@/lib/managerSearch";
 import { useState, useEffect, useRef } from "react";
 import { useCompanySelection } from "@/hooks/useCompanySelection";
 import { useNavigate } from "react-router-dom";
@@ -9,7 +14,6 @@ import LockedManagerCard from "@/components/LockedManagerCard";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
 import { useAuth } from "@/hooks/useAuth";
 import { fetchGeo } from "@/lib/geo";
-import axios from "axios";
 
 const INPUT_CLASS =
   "rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] shadow-sm placeholder:text-muted-foreground";
@@ -46,28 +50,22 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
   useEffect(() => { userRef.current = user; }, [user]);
 
   /**
-   * Forwards an unmatched search to the admin queue.
-   *
-   * A name on its own is not worth an admin's time: there is nothing to tell two people of that
-   * name apart. A name with a company, or a name with a job title, is a real lead, and those were
-   * being thrown away because the endpoint demanded all four fields. Fire-and-forget - the person
-   * searching should never wait on, or see, our bookkeeping.
+   * Builds the one shape {@link managerSearch} works in. The company is the only part that differs
+   * between the three surfaces, so it arrives as a resolver rather than a value.
    */
-  const captureSearch = async (
+  const searchInput = (fn: string, ln: string, t: string) => ({
+    firstName: fn,
+    lastName: ln,
+    title: t,
+    companyPayload: company.payload,
+    companyName: company.name,
+    isLoggedIn: !!userRef.current,
+  });
+
+  const captureSearch = (
     fn: string, ln: string, t: string,
     geo: { country?: string; state?: string; city?: string },
-  ) => {
-    const { company: companyName, companyId } = await company.payload();
-    if (!companyName && !t.trim()) return;
-    axios.post(`${API_BASE}/api/managers/anonymous-capture`, {
-      name: `${fn} ${ln}`,
-      company: companyName || null,
-      companyId,
-      title: t.trim() || null,
-      country: geo.country,
-      state: geo.state,
-    }).catch(() => {});
-  };
+  ) => sharedCaptureSearch(searchInput(fn, ln, t), geo as any);
 
   /**
    * Captures a search the person never completed.
@@ -89,7 +87,7 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
     if (!fn || !ln) return;
     if (!c && !t) return;  // a bare name tells an admin nothing
 
-    const key = `${fn}|${ln}|${t}|${c}`.toLowerCase();
+    const key = captureKey({ firstName: fn, lastName: ln, title: t, companyName: c });
     if (lastCapturedRef.current === key) return;
     lastCapturedRef.current = key;
 
@@ -98,7 +96,7 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
         const geo = await fetchGeo().catch(() => ({}) as Awaited<ReturnType<typeof fetchGeo>>);
         await captureSearch(fn, ln, t, geo);
       })();
-    }, 1500);  // let them finish typing before deciding they have stopped
+    }, CAPTURE_DEBOUNCE_MS);  // let them finish typing before deciding they have stopped
     return () => clearTimeout(timer);
   }, [firstName, lastName, title, company.name]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -116,92 +114,10 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
     // Persist search params so we can restore them if the user rates and returns
     sessionStorage.setItem("rmm_find_search", JSON.stringify({ firstName: fn, lastName: ln, title: t, company: c }));
 
-    const geo = await fetchGeo();
-
     try {
-      if (userRef.current) {
-        const res = await axios.post(`${API_BASE}/api/managers/find-or-create`, {
-          firstName: fn,
-          lastName:  ln,
-          title:     t,
-          ...(await company.payload()),
-          country:   geo.country,
-          state:     geo.state,
-          city:      geo.city,
-        });
-        setResults(res.data.data ?? []);
-        setHasContributed(res.data.hasContributed ?? false);
-      } else {
-        const search = `${fn} ${ln}`;
-        const res = await axios.get(`${API_BASE}/api/managers`, {
-          params: { search, limit: 8, offset: 0 },
-        });
-        const data = res.data.data ?? [];
-        setHasContributed(false);
-        if (data.length > 0) {
-          setResults(data);
-        } else {
-          const ghostKey = "rmm_anon_ghost_created";
-          if (!localStorage.getItem(ghostKey)) {
-            let ghostCreated = false;
-            let ghostRow: { id?: number | string } | null = null;
-            // Capture before attempting the ghost. If ghost creation fails for any reason, the
-            // search itself is still worth keeping - previously a failure here lost it entirely.
-            await captureSearch(fn, ln, t, geo);
-            try {
-              const ghostRes = await axios.post(`${API_BASE}/api/managers/ghost`, {
-                name: `${fn} ${ln}`,
-                ...(await company.payload()),
-                title: t,
-                country: geo.country,
-                state: geo.state,
-                city: geo.city,
-              });
-              ghostRow = ghostRes.data ?? null;
-              localStorage.setItem(ghostKey, "true");
-              ghostCreated = true;
-            } catch {
-              // Ghost creation failed - leave results empty
-            }
-            if (ghostCreated) {
-              /*
-                The manager we just created, shown as an ordinary locked tile.
-
-                This is the feature, not a side effect: somebody searching for a manager nobody has
-                rated yet should find one, the same as any other search, and be able to open the
-                profile and rate them. A re-search is preferred because it returns the real row; the
-                tile below is built from the create response for when that read comes back empty -
-                the row exists either way. Nothing here may reveal that one was written: the
-                notice this replaced announced our plumbing to a reader who had asked a question,
-                and left them nothing to click.
-              */
-              const justCreated = {
-                id: ghostRow?.id,
-                name: `${fn} ${ln}`,
-                company: c,
-                title: t,
-                overallRating: 0,
-                reviewsCount: 0,
-              };
-              try {
-                const retryRes = await axios.get(`${API_BASE}/api/managers`, {
-                  params: { search, limit: 8, offset: 0 },
-                });
-                const retryData = retryRes.data.data ?? [];
-                setResults(retryData.length > 0 ? retryData : (justCreated.id != null ? [justCreated] : []));
-              } catch {
-                setResults(justCreated.id != null ? [justCreated] : []);
-              }
-            } else {
-              setResults([]);
-            }
-          } else {
-            // Ghost slot already used - silently forward to admin queue and show nothing
-            await captureSearch(fn, ln, t, geo);
-            setResults([]);
-          }
-        }
-      }
+      const outcome = await searchForManager(searchInput(fn, ln, t));
+      setResults(outcome.results);
+      setHasContributed(outcome.hasContributed);
     } catch (err: any) {
       const msg = err?.response?.data?.message;
       const isServerError = !err?.response || err?.response?.status >= 500;

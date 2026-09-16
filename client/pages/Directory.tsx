@@ -1,5 +1,5 @@
 import API_BASE from "@/lib/api";
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
@@ -9,6 +9,7 @@ import LockedManagerCard from "@/components/LockedManagerCard";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { captureSearch, captureKey, searchForManager, CAPTURE_DEBOUNCE_MS } from "@/lib/managerSearch";
 import { fetchGeo } from "@/lib/geo";
 import axios from "axios";
 
@@ -61,25 +62,61 @@ export default function Directory() {
     track("directory_searched", { query_length: combined.length });
   }, [allFilled, firstName, lastName, searchTitle, searchCompany, track]);
 
-  const useFindOrCreate = !!(appliedSearch && appliedTitle && appliedSearchCompany && user);
+  // Name + title + company is a search for one person. Anything less is browsing the directory,
+  // which is a different query entirely. Signed-in or not no longer branches here — the shared
+  // search owns that, which is what stopped the two halves drifting.
+  const isFullSearch = !!(appliedSearch && appliedTitle && appliedSearchCompany);
+
+  /**
+   * Captures a search the person never completed, exactly as /find does.
+   *
+   * Somebody who types a name and a company here and then gives up used to leave nothing behind:
+   * only /find recorded partial searches, so the same act on this page was silently discarded.
+   */
+  const lastCapturedRef = useRef<string>("");
+  useEffect(() => {
+    const fn = firstName.trim();
+    const ln = lastName.trim();
+    const t  = searchTitle.trim();
+    const c  = searchCompany.trim();
+    if (!fn || !ln) return;
+    if (!c && !t) return;  // a bare name tells an admin nothing
+
+    const key = captureKey({ firstName: fn, lastName: ln, title: t, companyName: c });
+    if (lastCapturedRef.current === key) return;
+    lastCapturedRef.current = key;
+
+    const timer = setTimeout(() => {
+      void (async () => {
+        const geo = await fetchGeo().catch(() => ({}) as Awaited<ReturnType<typeof fetchGeo>>);
+        await captureSearch({
+          firstName: fn, lastName: ln, title: t,
+          companyPayload: async () => ({ company: c, companyId: null }),
+          companyName: c,
+          isLoggedIn: !!user,
+        }, geo);
+      })();
+    }, CAPTURE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [firstName, lastName, searchTitle, searchCompany]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data, isFetching: fetching, isLoading, isError } = useQuery({
-    queryKey: ["managers-directory", page, appliedSearch, appliedTitle, appliedSearchCompany, selectedCompany, sortBy, useFindOrCreate],
+    queryKey: ["managers-directory", page, appliedSearch, appliedTitle, appliedSearchCompany, selectedCompany, sortBy, isFullSearch],
     queryFn: async () => {
-      if (useFindOrCreate) {
+      // A full search - name, title and company - is the same act as /find, so it runs the same
+      // code. Signed in it resolves server-side; signed out it looks up, creates the ghost once per
+      // browser and returns a locked tile. Both branches used to live here in a second copy.
+      if (isFullSearch) {
         const [first, ...rest] = appliedSearch.split(" ");
-        const last = rest.join(" ");
-        const geo = await fetchGeo();
-        const res = await axios.post(`${API_BASE}/api/managers/find-or-create`, {
+        const outcome = await searchForManager({
           firstName: first,
-          lastName: last,
+          lastName: rest.join(" "),
           title: appliedTitle,
-          company: appliedSearchCompany,
-          country: geo.country,
-          state: geo.state,
-          city: geo.city,
+          companyPayload: async () => ({ company: appliedSearchCompany, companyId: null }),
+          companyName: appliedSearchCompany,
+          isLoggedIn: !!user,
         });
-        return { data: res.data.data ?? [], total: (res.data.data ?? []).length, hasContributed: res.data.hasContributed };
+        return { data: outcome.results, total: outcome.results.length, hasContributed: outcome.hasContributed };
       }
       const offset = (page - 1) * PAGE_SIZE;
       const params: any = { limit: PAGE_SIZE, offset };
@@ -87,31 +124,6 @@ export default function Directory() {
       if (selectedCompany) params.company = selectedCompany;
       if (sortBy) params.sortBy = sortBy;
       const res = await axios.get(`${API_BASE}/api/managers`, { params });
-
-      // Anonymous full-name search with no results → create a ghost (same as /find)
-      const isFullSearch = !!(appliedSearch && appliedTitle && appliedSearchCompany);
-      if (!user && isFullSearch && (res.data.data ?? []).length === 0) {
-        const ghostKey = "rmm_anon_ghost_created";
-        if (!localStorage.getItem(ghostKey)) {
-          try {
-            const geo = await fetchGeo();
-            await axios.post(`${API_BASE}/api/managers/ghost`, {
-              name: appliedSearch,
-              company: appliedSearchCompany,
-              title: appliedTitle,
-              country: geo.country,
-              state: geo.state,
-              city: geo.city,
-            });
-            localStorage.setItem(ghostKey, "true");
-            const retry = await axios.get(`${API_BASE}/api/managers`, { params });
-            return retry.data;
-          } catch {
-            // Ghost creation failed - return empty results
-          }
-        }
-      }
-
       return res.data;
     },
     placeholderData: keepPreviousData,

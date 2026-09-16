@@ -286,19 +286,19 @@ export default function Index() {
           <div className="mx-auto mt-5 grid max-w-5xl gap-6 sm:grid-cols-3">
 
             <div className="flex flex-col items-center text-center">
-              <img src="/final-icon-v1.webp" alt="" width="91" height="96" loading="lazy" decoding="async" className="h-12 w-12 mb-3" />
+              <img src="/final-icon-v1.webp" alt="" width="91" height="96" loading="lazy" decoding="async" className="h-12 w-auto mb-3" />
               <h3 className="text-[15px] font-semibold text-foreground">Think of a manager you've had</h3>
               <p className="mt-1 text-[13px] text-muted-foreground">Good or bad, both matter.</p>
             </div>
 
             <div className="flex flex-col items-center text-center sm:border-x sm:px-6">
-              <img src="/final-icon-v2.webp" alt="" width="138" height="96" loading="lazy" decoding="async" className="h-12 w-15 mb-3" />
+              <img src="/final-icon-v2.webp" alt="" width="138" height="96" loading="lazy" decoding="async" className="h-12 w-auto mb-3" />
               <h3 className="text-[15px] font-semibold text-foreground">Rate them in 2 minutes</h3>
               <p className="mt-1 text-[13px] text-muted-foreground">Star ratings only. Posted anonymously, takes 2 minutes.</p>
             </div>
 
             <div className="flex flex-col items-center text-center">
-              <img src="/final-icon-v3.webp" alt="" width="92" height="96" loading="lazy" decoding="async" className="h-12 w-12 mb-3" />
+              <img src="/final-icon-v3.webp" alt="" width="92" height="96" loading="lazy" decoding="async" className="h-12 w-auto mb-3" />
               <h3 className="text-[15px] font-semibold text-foreground">Help the next person decide</h3>
               <p className="mt-1 text-[13px] text-muted-foreground">Your rating gives the next person the full picture before they say yes.</p>
             </div>

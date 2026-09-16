@@ -2531,6 +2531,29 @@ export default function BossProfile() {
           <CareerTimeline
             segments={effectiveCareerSegments}
             onEditCareerEntry={user?.role === "admin" ? (entry) => {
+              /*
+                A card without a career_history row is edited through the manager's own panel.
+
+                Three things produce a card - a career_history row, reviews grouped into a segment,
+                and a synthetic node built from the manager row when there is neither - and only the
+                first has an id the career-history endpoint can act on. Gating the control on that
+                id made it appear on some cards and not others for reasons a reader cannot see.
+
+                Where there is no row, the company and title the card is showing came from the
+                manager record, so the existing admin editor is exactly the right thing to open: it
+                edits those same two fields, and it is already built, tested and wired up.
+              */
+              if (entry.entryId == null) {
+                setAdminEditForm({
+                  name: manager.name,
+                  title: entry.role || manager.title,
+                  company: entry.company || manager.company,
+                  linkedinUrl: manager.linkedinUrl ?? "",
+                });
+                adminEditCompany.set(entry.company || manager.company, manager.companyId ?? undefined);
+                setAdminEditing(true);
+                return;
+              }
               setAdminCareerEditEntry({
                 entryId:   entry.entryId,
                 company:   entry.company,

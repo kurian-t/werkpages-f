@@ -187,7 +187,7 @@ function RoleItem({
 }: {
   role: CareerSegment;
   companyAvg: number;
-  onEditCareerEntry?: (entry: { entryId: number; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
+  onEditCareerEntry?: (entry: { entryId: number | null; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
   onDeleteCareerEntry?: (entryId: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -220,19 +220,25 @@ function RoleItem({
         Outside the expand button rather than inside it: the whole header is a button, and a button
         nested in a button is invalid markup whose clicks go to the wrong handler.
       */}
-      {(onEditCareerEntry || onDeleteCareerEntry) && role.careerHistoryId != null && (
+      {(onEditCareerEntry || onDeleteCareerEntry) && (
         <div className="absolute right-2.5 top-2.5 z-10 flex items-center gap-2">
           {onEditCareerEntry && (
             <button
               type="button"
-              onClick={() => onEditCareerEntry({ entryId: role.careerHistoryId!, company: role.company, role: role.role, startDate: role.startDate, endDate: role.endDate })}
+              onClick={() => onEditCareerEntry({ entryId: role.careerHistoryId ?? null, company: role.company, role: role.role, startDate: role.startDate, endDate: role.endDate })}
               aria-label={`Edit ${role.company} career entry`}
               className="text-[10px] text-slate-400 hover:text-slate-600 transition-colors leading-none"
             >
               Edit
             </button>
           )}
-          {onDeleteCareerEntry && (
+          {/*
+            Delete acts on a career_history row, so it is offered only where one exists. A card
+            derived from reviews or from the manager row has nothing to delete - removing it would
+            mean deleting the manager or their reviews, which is a different act with its own
+            controls elsewhere.
+          */}
+          {onDeleteCareerEntry && role.careerHistoryId != null && (
             <button
               type="button"
               onClick={() => onDeleteCareerEntry(role.careerHistoryId!)}
@@ -316,7 +322,7 @@ function CompanyCard({
   node, hasLeft, hasRight, onEditCareerEntry, onDeleteCareerEntry,
 }: {
   node: CompanyNode; hasLeft: boolean; hasRight: boolean;
-  onEditCareerEntry?: (entry: { entryId: number; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
+  onEditCareerEntry?: (entry: { entryId: number | null; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
   onDeleteCareerEntry?: (entryId: number) => void;
 }) {
   const top     = cardTopY(node.avg);
@@ -410,12 +416,12 @@ function CompanyCard({
                   >
                     <div className="flex items-start justify-between gap-1">
                       <span className="text-xs font-semibold text-slate-500 leading-snug">{role.role}</span>
-                      {(onEditCareerEntry || onDeleteCareerEntry) && role.careerHistoryId != null && (
+                      {(onEditCareerEntry || onDeleteCareerEntry) && (
                         <div className="flex items-center gap-2 flex-shrink-0 ml-1">
                           {onEditCareerEntry && (
                             <button
                               type="button"
-                              onClick={() => onEditCareerEntry({ entryId: role.careerHistoryId!, company: role.company, role: role.role, startDate: role.startDate, endDate: role.endDate })}
+                              onClick={() => onEditCareerEntry({ entryId: role.careerHistoryId ?? null, company: role.company, role: role.role, startDate: role.startDate, endDate: role.endDate })}
                               /* Named by its row. A timeline of five jobs otherwise offers five
                                  buttons all called "Edit", which tells a screen-reader user
                                  nothing about which one they are on. */
@@ -425,7 +431,7 @@ function CompanyCard({
                               Edit
                             </button>
                           )}
-                          {onDeleteCareerEntry && (
+                          {onDeleteCareerEntry && role.careerHistoryId != null && (
                             <button
                               type="button"
                               onClick={() => onDeleteCareerEntry(role.careerHistoryId!)}
@@ -762,7 +768,7 @@ export function CareerTimeline({
   onDeleteCareerEntry,
 }: {
   segments: CareerSegment[];
-  onEditCareerEntry?: (entry: { entryId: number; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
+  onEditCareerEntry?: (entry: { entryId: number | null; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
   onDeleteCareerEntry?: (entryId: number) => void;
 }) {
   // Only include real reviewed segments in insight/consistency calculations - ghost segments (reviewCount 0) have no rating data
