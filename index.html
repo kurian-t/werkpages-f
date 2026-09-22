@@ -6,6 +6,21 @@
 
     <title>Werkpages – Anonymous Manager Reviews & Ratings</title>
 
+    <!--
+      Werkpages is deliberately kept out of search for now.
+
+      It serves the same managers, companies and reviews as RateMyManagers, out of the same
+      database. Indexed, it would not be a second site - it would be a duplicate of the one
+      actually taking traffic, competing with it for the same queries.
+
+      This tag is here as well as the one the app renders because a crawler sees the served HTML
+      before it runs any JavaScript, and this is the copy that does not depend on hydration.
+
+      To launch in search, remove this tag AND set SITE_HIDDEN_FROM_SEARCH to false in
+      client/components/PageMeta.tsx AND restore the Sitemap line in public/robots.txt.
+    -->
+    <meta name="robots" content="noindex,nofollow" />
+
     <!-- No hero preload here. index.html is shared by every route in this SPA, so preloading
          one page's illustration downloads it for visitors who never see that page - this
          previously pulled a 2.3 MB PNG on every single route, for an image no page renders

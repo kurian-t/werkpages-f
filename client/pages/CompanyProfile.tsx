@@ -1,3 +1,4 @@
+import { SITE_HIDDEN_FROM_SEARCH } from "@/components/PageMeta";
 import API_BASE from "@/lib/api";
 import { validateManagerName } from "@/lib/managerName";
 import { searchForManager } from "@/lib/managerSearch";
@@ -580,8 +581,10 @@ export default function CompanyProfile() {
     <Helmet>
       <title>{pageTitle}</title>
       <meta name="description" content={pageDescription} />
-      {isThin && <meta name="robots" content="noindex,follow" />}
-      <link rel="canonical" href={canonicalUrl} />
+      {/* One or the other - see BossProfile. A noindex page must not also claim to be canonical. */}
+      {isThin || SITE_HIDDEN_FROM_SEARCH
+        ? <meta name="robots" content="noindex,follow" />
+        : <link rel="canonical" href={canonicalUrl} />}
       <meta property="og:title" content={pageTitle} />
       <meta property="og:description" content={pageDescription} />
       <meta property="og:url" content={canonicalUrl} />

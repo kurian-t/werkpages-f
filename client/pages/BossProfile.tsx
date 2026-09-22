@@ -9,6 +9,7 @@ import { companyLogoDomain, toNameCase, toJobTitleCase } from "@/lib/utils";
 import { RatingBreakdown } from "@/components/RatingBreakdown";
 import { gateKey } from "@/lib/gateKey";
 import { Helmet } from "react-helmet-async";
+import { NoIndex, SITE_HIDDEN_FROM_SEARCH } from "@/components/PageMeta";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Star, Edit2, X, Trash2, Flag, Check, ChevronDown, ArrowLeft } from "lucide-react";
@@ -1732,6 +1733,13 @@ export default function BossProfile() {
   if (isManagerError || !manager) {
     return (
       <Layout>
+        {/*
+          A soft 404 otherwise: the SPA is served statically, so this URL answers 200 with a
+          "not found" page and Google files it under Soft 404. It cannot set a status code from
+          here, but it can decline to be indexed, which is what actually keeps these out of the
+          index and off the crawl budget.
+        */}
+        <NoIndex title="Manager Not Found | Werkpages" />
         <section className="py-16 text-center">
           <h1 className="text-3xl font-bold text-foreground">Manager Not Found</h1>
           <p className="mt-2 text-muted-foreground">The manager you're looking for doesn't exist.</p>
@@ -1749,9 +1757,40 @@ export default function BossProfile() {
   const pageTitle = manager
     ? `${manager.name} – ${manager.title} at ${manager.company} | Werkpages`
     : "Manager Profile | Werkpages";
-  const pageDescription = manager
-    ? `Read anonymous employee reviews of ${manager.name}, ${manager.title} at ${manager.company}. Share your experience or browse workplace leadership ratings.`
-    : "";
+
+  /*
+    The snippet is the whole job on a name query.
+
+    Somebody googling a manager by name is the site's single fastest-growing source of
+    impressions, and the description they were shown promised "anonymous employee reviews of
+    <name>" whether or not a single review existed. On a profile with none, that is a promise the
+    page cannot keep: Search Console showed one such profile taking 482 impressions and **zero**
+    clicks in a day. A snippet that overpromises does not just fail to earn the click, it teaches
+    Google the result is not worth showing.
+
+    So the two states say different things, and both say something true:
+
+      - rated:   lead with the score and the sample size, which is the thing being searched for;
+      - unrated: say plainly that nobody has reviewed them yet and name what the page DOES offer -
+                 the role, the employer, and the invitation to be the first. Honest and specific
+                 beats generic and hopeful, and it is the same content that makes the page worth
+                 indexing rather than thin.
+  */
+  const snippetRating = manager
+    ? Number((managerCategoryAverages as any)?.overallRating ?? (manager as any)?.overallRating ?? 0)
+    : 0;
+  const snippetReviews = manager
+    ? (contextReviews.length || Number((manager as any)?.reviewsCount ?? (manager as any)?.reviews ?? 0))
+    : 0;
+
+  const pageDescription = !manager
+    ? ""
+    : snippetReviews > 0
+      ? `${manager.name} is rated ${snippetRating.toFixed(1)} out of 5 from ${snippetReviews} `
+        + `anonymous ${snippetReviews === 1 ? "review" : "reviews"} by people who reported to them `
+        + `as ${manager.title} at ${manager.company}. See the ratings by category.`
+      : `No one has reviewed ${manager.name}, ${manager.title} at ${manager.company}, yet. `
+        + `If you worked with them, you can be the first — anonymously, in about two minutes.`;
   // Keep review-less (thin, near-duplicate) manager pages out of Google's index until they have
   // real content; "follow" so link equity still flows. Matches the sitemap's reviews_count > 0 rule.
   const managerReviewCount = contextReviews.length || Number((manager as any)?.reviewsCount ?? (manager as any)?.reviews ?? 0);
@@ -1763,8 +1802,17 @@ export default function BossProfile() {
       <Helmet>
         <title>{pageTitle}</title>
         <meta name="description" content={pageDescription} />
-        {managerIsThin && <meta name="robots" content="noindex,follow" />}
-        <link rel="canonical" href={canonicalUrl} />
+        {/*
+          One or the other, never both.
+
+          This emitted noindex AND a canonical on a thin page, which says "do not index this" and
+          "this is the preferred URL for this content" at the same time. Google reconciles that
+          however it likes, and "Duplicate, Google chose different canonical than user" is what it
+          looks like when it disagrees.
+        */}
+        {managerIsThin || SITE_HIDDEN_FROM_SEARCH
+          ? <meta name="robots" content="noindex,follow" />
+          : <link rel="canonical" href={canonicalUrl} />}
         <meta property="og:title" content={pageTitle} />
         <meta property="og:description" content={pageDescription} />
         <meta property="og:url" content={canonicalUrl} />

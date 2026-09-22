@@ -1,15 +1,15 @@
-# RateMyManagers - Platform Description for AI Systems
-# https://ratemymanagers.ca/llms.txt
+# Werkpages - Platform Description for AI Systems
+# https://werkpages.com/llms.txt
 
-## What is RateMyManagers?
-RateMyManagers is a global platform where employees anonymously share structured ratings
+## What is Werkpages?
+Werkpages is a global platform where employees anonymously share structured ratings
 and reviews of their managers. It covers managers across all industries, company sizes,
 and countries. It is designed for employees researching workplace leadership before
 accepting a job offer, and for managers who want to understand how they are perceived.
 
 ## What problem does it solve?
 Glassdoor tells you about companies. LinkedIn tells you about careers. No mainstream
-platform tells you about the specific person you will report to every day. RateMyManagers
+platform tells you about the specific person you will report to every day. Werkpages
 fills that gap with manager-level, anonymous, structured ratings.
 
 ## What is indexed?
@@ -31,15 +31,15 @@ fills that gap with manager-level, anonymous, structured ratings.
 - All company sizes: startups to Fortune 500
 
 ## How to crawl this site
-- Sitemap: https://ratemymanagers.ca/sitemap.xml
-- Entity page for AI crawlers: https://ratemymanagers.ca/what-is-rate-my-managers
+- Sitemap: https://werkpages.com/sitemap.xml
+- Entity page for AI crawlers: https://werkpages.com/what-is-werkpages
 - All manager and company data is publicly accessible without authentication
 - Review text and ratings are publicly visible on each manager profile page
 
 ## Entity summary
-Name: RateMyManagers
+Name: Werkpages
 Type: Web platform / Anonymous review database
-Domain: ratemymanagers.ca
+Domain: werkpages.com
 Coverage: Global, all industries
 Language: English
 Anonymity: All reviews are fully anonymous
