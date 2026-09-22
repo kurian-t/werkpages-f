@@ -40,6 +40,64 @@ async function mockProfile(page: any, opts: { hasContributed?: boolean; profile?
 }
 
 test.describe("Industry profile page (/industries/:slug)", () => {
+  test.describe("Reading the page on a phone", () => {
+    test.use({ viewport: { width: 390, height: 844 } });
+
+    test("every section heading starts at the same left edge", async ({ page }) => {
+      /*
+        "Industry averages" was the only centred heading on the page. "Industry ratings",
+        "Strongest", "Weakest" and "Search companies" are all flush left, so on a phone - where
+        the column is narrow enough for the offset to be obvious - the averages block read as
+        belonging to some other page.
+      */
+      await mockProfile(page);
+      await page.goto("/industries/technology");
+      await expect(page.getByText(/industry ratings/i).first()).toBeVisible({ timeout: 10_000 });
+
+      /*
+        Measured on the glyphs, not the element box.
+
+        `text-center` moves the text inside a full-width <p>; the box still starts at the
+        container's left edge, so comparing boundingBox().x cannot see the difference - that
+        version of this assertion passed with the bug present. A Range around the text node
+        reports where the words actually are.
+      */
+      const lefts: Record<string, number> = {};
+      for (const label of ["Industry ratings", "Strongest", "Weakest", "Industry averages"]) {
+        const el = page.getByText(new RegExp(`^${label}$`, "i")).first();
+        if (!(await el.count())) continue;
+        const x = await el.evaluate((node) => {
+          const r = document.createRange();
+          r.selectNodeContents(node);
+          return Math.round(r.getBoundingClientRect().x);
+        });
+        lefts[label] = x;
+      }
+
+      const values = Object.values(lefts);
+      expect(values.length).toBeGreaterThanOrEqual(2);
+      expect(Math.max(...values) - Math.min(...values),
+        `headings do not share a left edge: ${JSON.stringify(lefts)}`).toBeLessThanOrEqual(2);
+    });
+
+    test("the three averages line up with each other", async ({ page }) => {
+      /*
+        The figure column was not a fixed width, so "3.5" and "-" pushed the stars and the label
+        after them to a different x on each row, and the block read as ragged.
+      */
+      await mockProfile(page);
+      await page.goto("/industries/technology");
+      await expect(page.getByText(/industry averages/i).first()).toBeVisible({ timeout: 10_000 });
+
+      const starts = await page.getByText(/managers avg|company avg|interviews avg/i)
+        .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().x)));
+
+      expect(starts.length).toBeGreaterThanOrEqual(2);
+      expect(Math.max(...starts) - Math.min(...starts),
+        `average rows start at different x: ${JSON.stringify(starts)}`).toBeLessThanOrEqual(2);
+    });
+  });
+
   test("states the industry's ratings the way the rest of the site does", async ({ page }) => {
     /*
       The page used to lead with four stats on the title line - companies, managers, reviews, the
