@@ -41,7 +41,7 @@ import {
 import { LocationValue, EMPTY_LOCATION, declaredPayload, orUserGeo } from "@/lib/location";
 import { fetchGeo } from "@/lib/geo";
 import { useFormDraft, clearFormDraft } from "@/hooks/useFormDraft";
- 
+
 const RATING_CATEGORIES = [
   "Communication Style",
   "Perceived Approachability",
