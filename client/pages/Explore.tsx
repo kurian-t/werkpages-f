@@ -152,13 +152,21 @@ export default function Explore() {
               <button
                 key={s.id}
                 onClick={() => setMode(s.id)}
-                className={`flex flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all ${
+                /*
+                  whitespace-nowrap, and padding that gives way before the word does.
+
+                  Three equal-width buttons each carrying an icon and a label: on a narrow phone
+                  the remaining room was narrower than "Manager", so the label broke mid-word and
+                  rendered as "Manage" over "r". A label is one word; the padding is what should
+                  shrink, and the icon must not be allowed to steal room from the text.
+                */
+                className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border px-2 py-2.5 text-sm font-semibold transition-all sm:gap-2 sm:px-4 ${
                   active
                     ? "border-[#2e0562] bg-[#2e0562] text-white shadow-sm"
                     : "border-border bg-background text-foreground hover:bg-[#d5cde0]"
                 }`}
               >
-                <s.Icon size={16} /> {s.label}
+                <s.Icon size={16} className="shrink-0" aria-hidden="true" /> {s.label}
               </button>
             );
           })}

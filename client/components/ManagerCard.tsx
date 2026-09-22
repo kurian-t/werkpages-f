@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { Star } from "lucide-react";
 import { logoDevUrl as buildLogoDevUrl } from "@/lib/logo";
 import { TopRatedPill } from "@/components/TopRatedPill";
+import { Stars } from "@/components/Stars";
+import { ManagerTile } from "@/components/ManagerTile";
 
 interface Manager {
   id: number;
@@ -148,6 +150,18 @@ export function CompanyLogoImg({ company, logoUrl, sizeClass, eager = false }: {
   const [src, setSrc] = useState<string | null>(firstUntried);
   const initial = company.trim().charAt(0).toUpperCase();
 
+  // useState reads its argument once per instance, so a reused instance keeps the previous
+  // company's logo no matter what props arrive. Callers should key this by company - and where one
+  // forgets, this resyncs rather than displaying a logo belonging to somebody else, which is a
+  // worse failure than no logo at all.
+  const shownFor = useRef(preferred);
+  useEffect(() => {
+    if (shownFor.current !== preferred) {
+      shownFor.current = preferred;
+      setSrc(firstUntried);
+    }
+  }, [preferred, firstUntried]);
+
   const handleError = () => {
     if (src) rememberLogoFailure(src);
     if (src !== logoDevUrl && !failedLogos.has(logoDevUrl)) setSrc(logoDevUrl);
@@ -209,14 +223,8 @@ export function CompanyRow({ company, title, industry, logoUrl, logoSize = "md",
 export default function ManagerCard({ boss, isPending = false, to }: ManagerCardProps) {
   const rating = Number(boss.overallRating);
   return (
-    <Link
-      to={to ?? `/manager/${boss.id}`}
-      className={`group relative flex h-[210px] w-full min-w-0 flex-col rounded-2xl border bg-card p-4 shadow-sm transition-all hover:shadow-md min-[420px]:w-[200px] sm:p-5 ${
-        isPending
-          ? "border-amber-300 hover:border-amber-400 hover:shadow-amber-100"
-          : "border-border hover:border-[#2e0562]/30 hover:shadow-[#2e0562]/5"
-      }`}
-    >
+    // The shared box, not this file's own copy of it. See ManagerTile.
+    <ManagerTile to={to ?? `/manager/${boss.id}`} tone={isPending ? "pending" : "default"}>
       {/* Top rated - absolute top-right, matching the company cards exactly. The shared component
           rather than a local copy of the markup: this file kept its own, which is how it ended up
           being the one surface that awarded the badge off a single five-star review. */}
@@ -248,19 +256,14 @@ export default function ManagerCard({ boss, isPending = false, to }: ManagerCard
         <div className="mt-auto min-w-0 pt-3">
           {rating > 0 ? (
             <div className="flex min-w-0 flex-col items-start">
-              <div className="flex max-w-full flex-nowrap items-center gap-0.5 whitespace-nowrap">
-                {[1, 2, 3, 4, 5].map((s) => (
-                  <Star
-                    key={s}
-                    size={12}
-                    aria-hidden="true"
-                    className={`flex-shrink-0 ${s <= Math.round(rating) ? "fill-amber-400 text-amber-400" : "fill-none text-border"}`}
-                  />
-                ))}
-                <span className="ml-1 flex-shrink-0 whitespace-nowrap text-sm font-semibold leading-none text-foreground">
-                  {rating.toFixed(1)}
-                </span>
-              </div>
+              {/*
+                The shared Stars, not a local five-star loop.
+
+                This one rounded, so 4.5 drew five solid stars - indistinguishable from a
+                perfect score, with the number beside it saying otherwise. Every copy of this
+                loop in the product had the same bug, which is what copies do.
+              */}
+              <Stars rating={rating} />
               <div className="mt-1.5 whitespace-nowrap text-[11px] leading-none text-muted-foreground">
                 {(boss.reviews || 0).toLocaleString()} {boss.reviews === 1 ? "review" : "reviews"}
               </div>
@@ -268,6 +271,6 @@ export default function ManagerCard({ boss, isPending = false, to }: ManagerCard
           ) : null}
         </div>
       )}
-    </Link>
+    </ManagerTile>
   );
 }

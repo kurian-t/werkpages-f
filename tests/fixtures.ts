@@ -1,4 +1,4 @@
-import { Page } from "@playwright/test";
+import { Page, expect } from "@playwright/test";
 
 // ─── IDs ─────────────────────────────────────────────────────────────────────
 
@@ -793,4 +793,202 @@ export async function clickWriteAReview(page: Page) {
     .getByRole("button", { name: /write a review/i })
     .first()
     .click();
+}
+
+// ─── Review form step navigation ──────────────────────────────────────────────
+
+/*
+  The review form is three steps, in this order:
+
+    1. "Manager information"  - the role and company this particular review is about
+    2. "Work timeline"        - worked from / worked until
+    3. "Rate your experience" - the ten star categories, the identity card, and the
+                                first-hand-experience attestation
+
+  The stars used to be on step 1. They were moved to the last step deliberately, so that nobody is
+  asked for ten ratings before being shown what the form is for.
+
+  The specs went on encoding the old order, and it took out most of the suite: rateAllFiveStars()
+  ran while the form was still on step 1, found no star buttons, clicked nothing and returned
+  without complaint. The form then walked to the end with reviewAllRated false, so Submit was
+  permanently disabled and every test that submits a review timed out clicking it - including
+  specs about auth and coverage that only pass through the form on their way somewhere else.
+
+  That is why the order lives in these helpers and nowhere else. A silent no-op helper is worse
+  than a broken one; if the steps move again, they move here, once.
+*/
+
+/** Clicks Next and waits until the requested step is actually the one on screen. */
+async function clickNextTo(page: Page, step: 2 | 3) {
+  await page.getByRole("button", { name: /^next$/i }).click();
+  await expect(page.getByText(new RegExp(`step ${step} of 3`, "i"))).toBeVisible();
+}
+
+/**
+ * Advances step 1 (manager information) → step 2 (work timeline).
+ *
+ * Step 1 is prefilled from the manager being reviewed, so there is nothing to type in the ordinary
+ * case; Next is gated only on a duplicate or invalid role title.
+ */
+export async function advanceToDatesStep(page: Page) {
+  await clickNextTo(page, 2);
+}
+
+export type ReviewDates = {
+  fromMonth?: string;
+  fromYear?: string;
+  /** Omit for a current role - the "I currently work here" box is checked instead. */
+  until?: { month: string; year: string };
+};
+
+/**
+ * Fills step 2 (work timeline) with a valid range and advances to step 3 (ratings).
+ * Defaults to a current role starting January 2023.
+ */
+export async function fillDatesAndAdvance(page: Page, opts: ReviewDates = {}) {
+  const { fromMonth = "01", fromYear = "2023", until } = opts;
+  await page.getByLabel("From month").selectOption(fromMonth);
+  await page.getByLabel("From year").selectOption(fromYear);
+  if (until) {
+    await page.getByLabel("Until month").selectOption(until.month);
+    await page.getByLabel("Until year").selectOption(until.year);
+  } else {
+    await page.getByRole("checkbox", { name: /current/i }).check();
+  }
+  await clickNextTo(page, 3);
+}
+
+/**
+ * Walks an already-open review form from step 1 to step 3 and fills everything Submit is gated on:
+ * all ten ratings, and the attestation. Leaves the form on step 3 with Submit enabled.
+ */
+export async function completeReviewToSubmit(page: Page, opts: ReviewDates = {}) {
+  await advanceToDatesStep(page);
+  await fillDatesAndAdvance(page, opts);
+  await rateAllFiveStars(page);
+  await attestFirstHandExperience(page);
+}
+
+/** Opens the review form from the manager profile and fills it to a submittable state. */
+export async function openAndCompleteReview(page: Page, opts: ReviewDates = {}) {
+  await clickWriteAReview(page);
+  await completeReviewToSubmit(page, opts);
+}
+
+// ─── Header controls across viewports ─────────────────────────────────────────
+
+/*
+  The header puts its controls in two places.
+
+  The desktop bar is `hidden md:flex` and the menu toggle is `md:hidden`, so on a phone the auth
+  buttons and the account menu live inside the drawer behind "Open menu" - one tap further in,
+  the ordinary responsive pattern.
+
+  Tests that reached straight for the desktop control passed on the two desktop projects and
+  failed on Mobile Chrome, which is where most of that project's red came from. It was never a
+  broken mobile site: the homepage renders its heading, its sign-in buttons and its directory
+  link at phone width perfectly well.
+
+  Use these rather than naming the control directly, so a spec runs on every project.
+*/
+
+/** The header control by that accessible name, wherever the current viewport puts it. */
+export function headerControl(page: Page, name: string | RegExp) {
+  return typeof name === "string"
+    ? page.getByRole("button", { name, exact: true })
+    : page.getByRole("button", { name });
+}
+
+/**
+ * Clicks a header control, opening the mobile drawer first when that is where it is.
+ *
+ * Throws if the control cannot be reached either way - it never silently does nothing.
+ */
+export async function clickHeaderControl(page: Page, name: string | RegExp) {
+  await page.getByRole("banner").first().waitFor({ state: "visible", timeout: 10_000 });
+  const control = headerControl(page, name).first();
+  if (await control.isVisible().catch(() => false)) {
+    await control.click();
+    return;
+  }
+  await page.getByRole("button", { name: "Open menu" }).click();
+  await control.click();
+}
+
+/**
+ * Opens the drawer when the viewport is the narrow one, so the header's controls are on screen.
+ *
+ * Call it after the page loads, then locate controls normally - that keeps them plain Locators,
+ * which the assertions need (`.toHaveCount(0)` on a signed-out header, for one).
+ *
+ * A no-op on the desktop projects, where the controls were never hidden.
+ */
+export async function revealHeader(page: Page) {
+  /*
+    Wait for the header before asking whether it is collapsed.
+
+    Without this the check runs before the page has hydrated, finds no toggle, and concludes there
+    is nothing to open - then every later assertion looks for a control still behind a closed
+    drawer. A helper that quietly decides it has nothing to do is the worst kind, so the wait is
+    the point of this line, not a nicety.
+  */
+  await page.getByRole("banner").first().waitFor({ state: "visible", timeout: 10_000 });
+  const toggle = page.getByRole("button", { name: "Open menu" });
+  if (await toggle.isVisible().catch(() => false)) await toggle.click();
+}
+
+/**
+ * The header's "this person is signed in" marker.
+ *
+ * The wide viewport shows an account button named for the user; the drawer shows a "Logged in as
+ * <name>" line above Account Settings and Sign Out. Scoped to the header so it cannot match the
+ * name where it appears in page content.
+ */
+export function signedInMarker(page: Page, username: string) {
+  /*
+    filter({ visible: true }) rather than .first(): both copies are in the DOM at once, and on a
+    phone the desktop one comes first and is hidden. Taking the first match therefore asserted
+    against the copy this viewport does not show.
+  */
+  return page
+    .getByRole("banner")
+    .getByText(new RegExp(username, "i"))
+    .filter({ visible: true })
+    .first();
+}
+
+/**
+ * Signs out through the header, wherever the control lives.
+ *
+ * On a wide viewport Sign Out is inside the account dropdown, so the account button is opened
+ * first; in the drawer it is already on screen.
+ */
+export async function signOutFromHeader(page: Page, username: string) {
+  await revealHeader(page);
+  const account = page.getByRole("button", { name: new RegExp(username, "i") }).first();
+  if (await account.isVisible().catch(() => false)) await account.click();
+  await page.getByRole("button", { name: /sign out/i }).click();
+}
+
+/**
+ * Brings the account menu's items on screen.
+ *
+ * On a wide viewport they are behind the account button; in the drawer they are already listed,
+ * so revealing the header is enough.
+ */
+export async function openAccountMenu(page: Page, username: string) {
+  await revealHeader(page);
+  const account = page.getByRole("button", { name: new RegExp(username, "i") }).first();
+  if (await account.isVisible().catch(() => false)) await account.click();
+}
+
+/**
+ * Opens the directory's filter sidebar when the viewport keeps it behind the "Filters" button.
+ *
+ * The sidebar is `hidden lg:block`, so below that width the name search and the rating filter are
+ * one tap in. A no-op on the wide projects, where the sidebar is always on screen.
+ */
+export async function openDirectoryFilters(page: Page) {
+  const toggle = page.getByRole("button", { name: "Filters", exact: true });
+  if (await toggle.isVisible().catch(() => false)) await toggle.click();
 }

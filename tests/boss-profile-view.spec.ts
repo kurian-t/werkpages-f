@@ -34,8 +34,9 @@ test.describe("BossProfile - view states", () => {
         .getByRole("button", { name: /write a review/i })
         .first()
         .click();
-      // Form opens (step 1 - ratings)
-      await expect(page.getByRole("heading", { name: /rate a manager/i })).toBeVisible({
+      // Form opens on step 1, "Write a Review" - the manager information. The ratings are the
+      // last of the three steps.
+      await expect(page.getByRole("heading", { name: /write a review/i })).toBeVisible({
         timeout: 5_000,
       });
     });
@@ -433,9 +434,19 @@ test.describe("BossProfile - locked 'Rate a manager' buttons", () => {
     await breakdownHelperText.scrollIntoViewIfNeeded();
     await expect(breakdownHelperText).toBeAttached({ timeout: 5_000 });
 
-    // Category names are inside the blur-sm div - they are in the DOM but must not be
-    // interactable (pointer-events-none). A contributor sees them clearly (tested below).
-    await expect(page.locator('[class*="blur-sm"]').getByText("Communication Style")).toBeAttached();
+    /*
+      Category names are in the DOM but blurred, and not interactable (pointer-events-none). A
+      contributor sees them clearly (tested below).
+
+      The category is drawn twice for a locked reader now - once in the Strongest / Weakest block
+      and once in the breakdown beneath it - so assert that *every* place it appears is a blurred
+      one. Naming a single occurrence would pass while a second, unblurred copy leaked the seed
+      value, which is the exact thing this test exists to catch.
+    */
+    const name = page.getByText("Communication Style", { exact: true });
+    const blurred = page.locator('[class*="blur-sm"]').getByText("Communication Style", { exact: true });
+    await expect(name.first()).toBeAttached();
+    expect(await blurred.count()).toBe(await name.count());
   });
 
   test("contributor sees all Performance Breakdown categories (no lock overlay)", async ({ page }) => {

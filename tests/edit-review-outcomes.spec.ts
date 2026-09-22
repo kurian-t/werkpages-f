@@ -39,7 +39,12 @@ async function openEditor(page: any) {
   */
   await page.getByRole("button", { name: "Edit Your Review" }).click();
   await page.getByRole("button", { name: /Engineering Manager at Acme Corp/ }).click();
-  await expect(page.getByRole("heading", { name: /update your ratings|rate a manager/i }))
+  /*
+    The editor opens on step 1, "Update Your Review" - the role and company this review is about.
+    "Update your ratings" is the heading on step 3, where the stars now live; asserting it here
+    waited for a step the editor had not reached yet.
+  */
+  await expect(page.getByRole("heading", { name: /update your review/i }))
     .toBeVisible({ timeout: 10_000 });
 }
 

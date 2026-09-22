@@ -1,16 +1,20 @@
 import API_BASE from "@/lib/api";
 import { CompanyTile } from "@/components/CompanyTile";
 import { CompanyTabHeader } from "@/components/CompanyTabHeader";
+import { RatingColumns } from "@/components/RatingColumns";
 import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Layout } from "@/components/Layout";
-import { ArrowLeft, Lock } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { IndustryTileIcon } from "@/components/IndustryTileIcon";
 import { companyPath, companyPathByName } from "@/lib/urls";
 import { useQuery } from "@tanstack/react-query";
 import { CompanyLogoImg } from "@/components/ManagerCard";
 import { useAuth } from "@/hooks/useAuth";
 import axios from "axios";
+import { Pagination, paginate } from "@/components/Pagination";
+
+const PAGE_SIZE = 20;
 
 interface CompanyEntry {
   name: string;
@@ -28,6 +32,11 @@ interface IndustryProfileData {
   managerCount: number;
   totalReviews: number;
   avgRating?: number;
+  /** The same industry rated as a place to work and as a place to interview. */
+  workplaceRating?: number | string | null;
+  workplaceCount?: number;
+  interviewRating?: number | string | null;
+  interviewCount?: number;
   categoryAverages: Record<string, number>;
   companies: CompanyEntry[];
 }
@@ -41,7 +50,11 @@ interface IndustryProfileData {
   different product. It now uses CompanyTabHeader, the same component the workplace and interview
   tabs use, so an average reads the same way wherever it appears.
 */
-function IndustryRatings({ data }: { data: IndustryProfileData }) {
+/** Ratings arrive as a number or a numeric string depending on the driver; null means none. */
+const num = (v: unknown): number | null =>
+  v == null || v === "" || isNaN(Number(v)) ? null : Number(v);
+
+function IndustryRatings({ data, hideCount }: { data: IndustryProfileData; hideCount: boolean }) {
   const entries = Object.entries(data.categoryAverages ?? {})
     .filter(([, v]) => typeof v === "number" && !isNaN(v))
     .map(([label, value]) => ({ label, value }));
@@ -59,10 +72,48 @@ function IndustryRatings({ data }: { data: IndustryProfileData }) {
     <CompanyTabHeader
       eyebrow="Industry ratings"
       subtitle={`How managers are rated across ${data.industry}`}
+      /*
+        Three averages, not one.
+
+        This page rated three separate things and showed only the managers' average, under a
+        label - "industry rating" - that read as a summary of all of it. The other two were in
+        the payload and nowhere on the page.
+      */
+      averages={
+        <div>
+          <p className="mb-2 text-center text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Industry averages
+          </p>
+          <RatingColumns
+            layout="rows"
+            columns={[
+              { label: "managers avg",   value: num(data.avgRating),       count: data.totalReviews ?? 0 },
+              { label: "company avg",    value: num(data.workplaceRating), count: data.workplaceCount ?? 0 },
+              { label: "interviews avg", value: num(data.interviewRating), count: data.interviewCount ?? 0 },
+            ]}
+          />
+        </div>
+      }
       score={data.avgRating ?? null}
+      /*
+        "manager opinion", not "review".
+
+        This average is AVG(managers.overall_rating) over the industry - manager reviews only.
+        Workplace ratings and interview experiences are separate datasets with separate gates and
+        neither is in it. Labelling the number "industry rating" over a count of bare "reviews"
+        invited exactly the reading it should not: that it summarises everything known about the
+        industry.
+      */
       countLabel="review"
       countValue={data.totalReviews ?? 0}
-      scoreLabel="industry rating"
+      scoreLabel="avg manager rating"
+      /*
+        The industry's average stays public - this page is deliberately not gated. What is not
+        shown to somebody who has yet to rate a manager is how few reviews it rests on: "2
+        reviews (limited data, interpret cautiously)" is the least inviting thing the page can
+        say to the one reader it is trying to turn into a contributor.
+      */
+      hideCount={hideCount}
       metrics={[
         { icon: "companies",
           value: String(data.companyCount ?? 0),
@@ -88,6 +139,7 @@ export default function IndustryProfile() {
   const { user } = useAuth();
   const isLocked = !(user?.hasContributed ?? false);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["industry-profile", slug],
@@ -104,9 +156,13 @@ export default function IndustryProfile() {
   // Filters the companies already loaded for this industry, rather than searching all
   // companies - searching inside Technology should not surface a bank.
   const query = search.trim().toLowerCase();
-  const visible = query
+  const matching = query
     ? companies.filter(co => co.name.toLowerCase().includes(query))
     : companies;
+
+  // Paged like the companies listing. paginate() clamps, so narrowing the search while on a later
+  // page lands on the last page with results rather than on an empty grid.
+  const { visible, totalPages, safePage } = paginate(matching, page, PAGE_SIZE);
 
   return (
     <Layout>
@@ -159,7 +215,7 @@ export default function IndustryProfile() {
           the ratings.
         */}
         {!isLoading && !isError && data && Object.keys(data.categoryAverages ?? {}).length > 0 && (
-          <IndustryRatings data={data} />
+          <IndustryRatings data={data} hideCount={isLocked} />
         )}
 
         <div className="flex flex-col gap-8 lg:flex-row">
@@ -184,7 +240,7 @@ export default function IndustryProfile() {
                 />
                 {!isLoading && !isError && (
                   <p className="mt-2 text-xs text-muted-foreground">
-                    {visible.length.toLocaleString()} {visible.length === 1 ? "company" : "companies"}
+                    {matching.length.toLocaleString()} {matching.length === 1 ? "company" : "companies"}
                   </p>
                 )}
               </div>
@@ -198,22 +254,18 @@ export default function IndustryProfile() {
           <p className="text-center text-sm text-muted-foreground">No companies in this industry yet.</p>
         )}
 
-        {companies.length > 0 && isLocked && (
-          <div className="mb-6 rounded-2xl border border-border bg-card p-5 text-center">
-            <Lock size={18} className="mx-auto mb-2 text-muted-foreground opacity-50" />
-            <p className="text-sm font-semibold text-foreground">Rate a manager to unlock ratings</p>
-            <p className="mt-1 text-xs text-muted-foreground">Company ratings become visible after you submit your first review.</p>
-            <button
-              onClick={() => navigate("/add")}
-              className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#2e0562] px-4 py-2 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors"
-            >
-              ⭐ Rate a manager
-            </button>
-          </div>
-        )}
+        {/*
+          No lock banner above the companies.
+
+          The industry's own ratings are public - they are right there at the top of this page -
+          so a card announcing that ratings are locked contradicted the page it sat on. What is
+          actually gated here is each company's score, and the tiles below say so themselves, one
+          per company, where the withheld number is. The banner added a second, louder voice
+          saying the same thing about figures the reader could already see.
+        */}
 
         {/* Distinguish "industry is empty" (above) from "your search matched nothing". */}
-        {!isLoading && !isError && companies.length > 0 && visible.length === 0 && (
+        {!isLoading && !isError && companies.length > 0 && matching.length === 0 && (
           <p className="text-center text-sm text-muted-foreground">
             No companies match "{search.trim()}".
           </p>
@@ -222,7 +274,10 @@ export default function IndustryProfile() {
         {visible.length > 0 && (
           <div className="grid grid-cols-2 auto-rows-[minmax(180px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
             {visible.map((co) => (
+              /* Keyed by identity: without it React reuses tiles by position across pages, and
+                 CompanyLogoImg keeps the previous company's logo. See Companies.tsx. */
               <CompanyTile
+                key={co.slug ?? co.name}
                 company={co}
                 isLocked={isLocked}
                 onClick={() => navigate(co.slug ? companyPath(data?.slug, co.slug) : companyPathByName(co.name))}
@@ -230,6 +285,8 @@ export default function IndustryProfile() {
             ))}
           </div>
         )}
+
+        <Pagination page={safePage} totalPages={totalPages} onChange={setPage} />
           </div>
         </div>
       </div>

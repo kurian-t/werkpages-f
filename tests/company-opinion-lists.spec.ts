@@ -153,7 +153,7 @@ test.describe("The workplace ratings behind the average", () => {
   test("every rating that makes up the average is listed, with its own score", async ({ page }) => {
     await open(page, { tab: "?tab=company" });
 
-    await expect(page.getByRole("heading", { name: /Opinions on Red Hat/i }))
+    await expect(page.getByRole("heading", { name: /Opinions on working at Red Hat/i }))
       .toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("CoolLynx30")).toBeVisible();
     await expect(page.getByText("QuietOtter77")).toBeVisible();
@@ -208,7 +208,7 @@ test.describe("The workplace ratings behind the average", () => {
     await expect(sort).toBeVisible({ timeout: 10_000 });
 
     const firstScore = () =>
-      page.locator("h2:has-text('Opinions on Red Hat')")
+      page.locator("h2:has-text('Opinions on working at Red Hat')")
         .locator("xpath=../..").locator(".rounded-xl").first();
 
     await sort.selectOption("highest");
@@ -222,12 +222,20 @@ test.describe("The workplace ratings behind the average", () => {
     await expect(firstScore()).toContainText("4.8");
   });
 
-  test("a company nobody has rated shows no list at all", async ({ page }) => {
-    // Not an empty panel with a heading over nothing - the summary above already says it.
+  test("a company nobody has rated says so, rather than vanishing", async ({ page }) => {
+    /*
+      CHANGED DELIBERATELY. This used to assert the section was absent entirely.
+
+      Gated, empty and failed are three different answers and each gets said. Returning nothing
+      collapsed all three into a page with a hole in it: somebody who had not rated a workplace
+      lost the heading, the sort control and any explanation along with the cards, which reads as
+      a broken page rather than an empty or a locked one.
+    */
     await open(page, { ratings: [], tab: "?tab=company" });
 
     await expect(page.getByRole("tab", { name: "Company" })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole("heading", { name: /Opinions on Red Hat/i })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: /Opinions on working at Red Hat/i })).toBeVisible();
+    await expect(page.getByText(/Nobody has written about working at Red Hat yet/i)).toBeVisible();
   });
 });
 
@@ -292,10 +300,13 @@ test.describe("The interview experiences behind the average", () => {
     await expect(firstCard()).toContainText("Software Engineer");
   });
 
-  test("a company nobody has interviewed at shows no list at all", async ({ page }) => {
+  test("a company nobody has interviewed at says so, rather than vanishing", async ({ page }) => {
+    // Same reasoning as the workplace list above: an empty company is an answer, not an absence.
     await open(page, { interviews: [], tab: "?tab=hiring" });
 
     await expect(page.getByRole("tab", { name: "Interviewing" })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole("heading", { name: /Opinions on interviews/i })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: /Opinions on interviews/i })).toBeVisible();
+    await expect(page.getByText(/No individual experiences have been shared for Red Hat yet/i))
+      .toBeVisible();
   });
 });

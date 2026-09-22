@@ -154,6 +154,11 @@ export function CompanyField({
           editing={editing}
           onEditStart={() => setEditing(true)}
           onEditDone={() => { setTyping(false); setEditing(false); }}
+          /* Named for its field, like every other collapsible field on these forms. Several can be
+             open at once, and controls that all announce themselves as "Edit details" tell a
+             screen-reader user nothing about which one they are on. */
+          editLabel="Edit company details"
+          doneLabel="Done editing company"
         >
           {picker}
         </FormSubjectCard>

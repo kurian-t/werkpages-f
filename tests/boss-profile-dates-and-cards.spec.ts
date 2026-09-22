@@ -5,7 +5,7 @@ import {
   TEST_MANAGER_ID,
   mockManagerPage,
   clickWriteAReview,
-  rateAllFiveStars,
+  advanceToDatesStep,
 } from "./fixtures";
 
 /**
@@ -29,8 +29,7 @@ async function openForm(page: any, opts: Record<string, unknown> = {}) {
   await mockManagerPage(page, { loggedIn: true, user: MOCK_USER, hasContributed: true, ...opts });
   await page.goto(URL);
   await clickWriteAReview(page);
-  await rateAllFiveStars(page);
-  await page.getByRole("button", { name: /^next$/i }).click();
+  await advanceToDatesStep(page);
   await expect(page.getByLabel("From month")).toBeVisible({ timeout: 10_000 });
 }
 

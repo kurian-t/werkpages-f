@@ -140,9 +140,28 @@
     line-height: 1.6;
   }
 
+  /*
+    Long strings wrap; words do not break in half.
+
+    This was `overflow-wrap: anywhere` plus `word-break: break-word`, and between them they are
+    why buttons rendered as "Manage" over "r" on a phone. Two separate reasons:
+
+      - `anywhere` does not only permit a break inside a word, it also drops the element's
+        min-content width below the longest word. A flex item is then free to shrink narrower
+        than its own label, and the label has to break to fit. `break-word` allows the same
+        break but keeps min-content at the longest word, so flex stops shrinking there.
+
+      - `word-break: break-word` is deprecated and modern engines translate it back into
+        `overflow-wrap: anywhere`, which would reinstate exactly the behaviour above. It has to
+        go, not sit alongside.
+
+    What is kept: a single unbroken string longer than its container - a URL, a 40-character
+    company name - still breaks rather than overflowing the card. That is what the rule was
+    added for, and it still works, because a word that cannot fit on a line of its own is
+    precisely the case `break-word` covers.
+  */
   :where(p, span, li, h1, h2, h3, h4, h5, h6, a, button, label, td, th) {
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    overflow-wrap: break-word;
   }
 
   pre,

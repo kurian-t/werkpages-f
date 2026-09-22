@@ -15,7 +15,21 @@ export default function Admin() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const [activeTab, setActiveTab] = useState<"pending-managers" | "live-profiles" | "approvals" | "bans" | "merge" | "companies" | "pending-companies" | "ai-suggestions">("pending-managers");
+  /*
+    Whether automatic manager creation is currently paused site-wide.
+
+    Anonymous searches auto-create publicly visible managers, capped by two rolling ceilings. When
+    either holds, searches silently fall back to the pending queue - no user is shown an error,
+    which is deliberate but means a pause is otherwise invisible. This banner is the only place it
+    surfaces, and the counts are also how the real baseline gets learned: the ceilings were sized
+    against total daily volume rather than measured against the anonymous-ghost slice.
+  */
+  const [ghostStatus, setGhostStatus] = useState<{
+    lastHour: number; lastDay: number; maxPerHour: number; maxPerDay: number;
+    paused: boolean; trippedBy: string | null;
+  } | null>(null);
+
+  const [activeTab, setActiveTab] = useState<"pending-managers" | "live-profiles" | "captured-drafts" | "approvals" | "bans" | "merge" | "companies" | "pending-companies" | "ai-suggestions">("pending-managers");
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
   const [aiSuggestionsTotal, setAiSuggestionsTotal] = useState(0);
   const [aiSuggestionsLoading, setAiSuggestionsLoading] = useState(false);
@@ -25,6 +39,14 @@ export default function Admin() {
   // Pending managers state
   const [pendingManagers, setPendingManagers] = useState<any[]>([]);
   const [pendingManagersLoading, setPendingManagersLoading] = useState(true);
+
+  /*
+    Contribution forms somebody filled in but never submitted. Only the forms with no domain row to
+    create appear here - the manager forms capture into pending_approval rows, which have their own
+    queue above, and listing them twice would mean reviewing one submission in two places.
+  */
+  const [capturedDrafts, setCapturedDrafts] = useState<any[]>([]);
+  const [capturedDraftsLoading, setCapturedDraftsLoading] = useState(false);
 
   // Live profiles (ghost managers) state
   const [ghostManagers, setGhostManagers] = useState<any[]>([]);
@@ -203,6 +225,18 @@ export default function Admin() {
   };
 
   useEffect(() => { fetchPendingManagers(); }, []);
+
+  useEffect(() => {
+    // Polled rather than fetched once: an admin leaves this tab open, and a pause that began
+    // after they loaded the page is exactly the one worth seeing.
+    const load = () => axios
+      .get(`${API_BASE}/api/admin/ghost-creation-status`, { withCredentials: true })
+      .then(res => setGhostStatus(res.data))
+      .catch(() => {});   // never let a status probe break the panel
+    load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, []);
   useEffect(() => { fetchPendingEdits(); }, []);
   /*
     Companies invented by a workplace rating.
@@ -232,6 +266,29 @@ export default function Admin() {
   };
   useEffect(() => { if (activeTab === "pending-companies") fetchPendingCompanies(); }, [activeTab]);
 
+  const fetchCapturedDrafts = async () => {
+    setCapturedDraftsLoading(true);
+    try {
+      const res = await axios.get(`${API_BASE}/api/admin/captured-drafts`);
+      setCapturedDrafts(Array.isArray(res.data.data) ? res.data.data : []);
+    } catch {
+      toast.error("Failed to load captured drafts.");
+    } finally {
+      setCapturedDraftsLoading(false);
+    }
+  };
+
+  const markDraftReviewed = async (id: number) => {
+    try {
+      await axios.post(`${API_BASE}/api/admin/captured-drafts/${id}/reviewed`);
+      setCapturedDrafts(prev => prev.filter(d => d.id !== id));
+      toast.success("Marked as reviewed.");
+    } catch {
+      toast.error("Could not mark that draft as reviewed.");
+    }
+  };
+
+  useEffect(() => { if (activeTab === "captured-drafts") fetchCapturedDrafts(); }, [activeTab]);
   useEffect(() => { if (activeTab === "live-profiles") fetchGhostManagers(); }, [activeTab]);
   useEffect(() => { if (activeTab === "bans") fetchBanData(); }, [activeTab]);
   useEffect(() => {
@@ -509,6 +566,36 @@ export default function Admin() {
             </div>
           </div>
 
+          {ghostStatus && (ghostStatus.paused || ghostStatus.lastDay > 0) && (
+            <div className={`mb-6 rounded-xl border p-4 ${
+              ghostStatus.paused
+                ? "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30"
+                : "border-border bg-card"
+            }`}>
+              <div className="flex items-start gap-3">
+                <Shield size={18} className={ghostStatus.paused ? "mt-0.5 text-red-600" : "mt-0.5 text-muted-foreground"} />
+                <div className="min-w-0">
+                  <p className={`text-sm font-semibold ${ghostStatus.paused ? "text-red-700 dark:text-red-400" : "text-foreground"}`}>
+                    {ghostStatus.paused
+                      ? `Automatic manager creation is PAUSED (${ghostStatus.trippedBy} ceiling reached)`
+                      : "Automatic manager creation is active"}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {ghostStatus.lastHour} in the last hour (limit {ghostStatus.maxPerHour}) ·{" "}
+                    {ghostStatus.lastDay} in the last 24h (limit {ghostStatus.maxPerDay})
+                  </p>
+                  {ghostStatus.paused && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Searches are still recorded — they are going to the pending queue below instead
+                      of publishing. Nobody is seeing an error. This clears itself as older
+                      creations age out of the window.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Site stats */}
           <div className="mb-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div className="rounded-xl border border-border bg-card p-4 text-center">
@@ -609,6 +696,21 @@ export default function Admin() {
               {pendingCompanies.length > 0 && (
                 <span className="ml-2 inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-xs font-bold text-white">
                   {pendingCompanies.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("captured-drafts")}
+              className={`whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                activeTab === "captured-drafts"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Unfinished Forms
+              {capturedDrafts.length > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-sky-500 px-1.5 py-0.5 text-xs font-bold text-white">
+                  {capturedDrafts.length}
                 </span>
               )}
             </button>
@@ -834,6 +936,58 @@ export default function Admin() {
                       >
                         <XCircle size={16} />
                         Reject
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* ── Unfinished forms (captured drafts) ── */}
+          {activeTab === "captured-drafts" && (
+            <div className="space-y-4" data-testid="captured-drafts-panel">
+              <p className="text-sm text-muted-foreground">
+                Contribution forms somebody filled in but never submitted — usually because they were
+                sent to sign in at the last step and did not come back. Nothing here is published or
+                counted anywhere; it is kept so the work is not simply lost. Marking one as reviewed
+                clears it from this queue without deleting it.
+              </p>
+              {capturedDraftsLoading ? (
+                <p className="text-sm text-muted-foreground">Loading...</p>
+              ) : capturedDrafts.length === 0 ? (
+                <div className="rounded-2xl border border-border bg-background p-8 text-center">
+                  <CheckCircle size={32} className="mx-auto mb-3 text-accent" />
+                  <p className="text-muted-foreground">No unfinished forms to opinion.</p>
+                </div>
+              ) : (
+                capturedDrafts.map((draft) => (
+                  <div key={draft.id} className="rounded-2xl border border-border bg-background p-6 shadow-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-foreground">
+                          {draft.kind === "company_rating" ? "Workplace rating"
+                            : draft.kind === "interview" ? "Interview experience"
+                            : "Manager opinion"}
+                          {draft.companyName ? ` · ${draft.companyName}` : ""}
+                          {draft.managerName ? ` · ${draft.managerName}` : ""}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {draft.author ? `${draft.author} · ` : "Not signed in · "}
+                          {new Date(draft.createdAt).toLocaleString()}
+                        </p>
+                        {/* The answers verbatim. Every form carries different fields, so this shows
+                            what was actually captured rather than guessing at a layout per kind. */}
+                        <pre className="mt-3 max-h-64 overflow-auto rounded-lg border border-border bg-muted/30 p-3 text-xs text-foreground">
+                          {JSON.stringify(draft.payload, null, 2)}
+                        </pre>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => markDraftReviewed(draft.id)}
+                        className="flex-shrink-0 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
+                      >
+                        Mark reviewed
                       </button>
                     </div>
                   </div>

@@ -1,15 +1,12 @@
 import { test, expect } from "./base";
 import {
   TEST_MANAGER_ID,
-  TEST_COMPANY_SLUG,
   TEST_MANAGER_SLUG,
   MOCK_MANAGER,
-  MOCK_USER,
   MOCK_EXISTING_REVIEW,
   RATING_CATEGORIES,
   mockManagerPage,
-  rateAllFiveStars,
-  clickWriteAReview,
+  advanceToDatesStep,
 } from "./fixtures";
 
 const FULL_RATINGS = Object.fromEntries(RATING_CATEGORIES.map((c) => [c, 5]));
@@ -379,7 +376,10 @@ test.describe("Duplicate review - conflict UI after auth", () => {
     // The existing review is for "Engineering Manager" at "Acme Corp" - same as
     // the manager's default title/company. Opening "Add Another Role" pre-fills
     // that same title+company, so isDuplicateTitle is true from the start.
-    // Next must be disabled even after all stars are rated.
+    //
+    // This used to add "even after all stars are rated", because the stars shared step 1 with the
+    // role. They are on step 3 now, so the duplicate has to be caught before anyone can reach
+    // them - the assertion below is the stronger one: step 1 does not let you past at all.
     await mockManagerPage(page, {
       loggedIn: true,
       existingUserReviews: [MOCK_EXISTING_REVIEW],
@@ -395,8 +395,8 @@ test.describe("Duplicate review - conflict UI after auth", () => {
       page.getByText(/you've already reviewed this role at this company/i)
     ).toBeVisible({ timeout: 5_000 });
 
-    // Next must be disabled even after rating everything
-    await rateAllFiveStars(page);
+    // Step 1 refuses to advance, so the ratings on step 3 are unreachable while the role is a
+    // duplicate of one already reviewed.
     await expect(page.getByRole("button", { name: /^next$/i })).toBeDisabled();
   });
 
@@ -418,12 +418,12 @@ test.describe("Duplicate review - conflict UI after auth", () => {
 
     // The form defaults to the same title+company as the existing review, so
     // isDuplicateTitle is true. Change the title first to clear it.
-    await page.getByRole("button", { name: /edit details/i }).click();
-    await page.getByPlaceholder("e.g. Engineering Manager").fill("Senior Software Engineer");
-    await page.getByRole("button", { name: /done editing/i }).click();
+    await page.getByRole("button", { name: /edit title details/i }).click();
+    // The review form uses the shared ManagerIdentityFields now, which owns this placeholder.
+    await page.getByPlaceholder(/e\.g\.,? Engineering Manager/).fill("Senior Software Engineer");
+    await page.getByRole("button", { name: /done editing title/i }).click();
 
-    await rateAllFiveStars(page);
-    await page.getByRole("button", { name: /^next$/i }).click();
+    await advanceToDatesStep(page);
 
     // Enter a date range that overlaps with 2021-01–2022-12
     await page.getByLabel("From month").selectOption("06");

@@ -1,4 +1,6 @@
 import React from "react";
+import { Stars } from "@/components/Stars";
+import { RatingHighlights } from "@/components/RatingHighlights";
 import { Building2, MessageSquare, Star, TrendingDown, TrendingUp, Users } from "lucide-react";
 
 /**
@@ -43,12 +45,14 @@ export function CompanyTabHeader({
   metrics = [],
   locked = false,
   metricsPublic = false,
+  hideCount = false,
   scoreLabel,
   counts = [],
   highlights = [],
   highlightsFootnote,
   action,
   lockedOverlay,
+  averages,
 }: {
   /** e.g. "Workplace experience" - rendered uppercase. Omitted where the page already says it. */
   eyebrow?: string;
@@ -73,9 +77,32 @@ export function CompanyTabHeader({
   locked?: boolean;
   /** Set when this tab's metrics are counts of things, not ratings, and so are not gated. */
   metricsPublic?: boolean;
+  /**
+   * Drop the "N opinions (limited data, interpret cautiously)" line under the score.
+   *
+   * <p>Independent of {@link locked}, and deliberately so: a surface can state its average
+   * publicly and still not want to advertise how thin the sample behind it is. The industry page
+   * does exactly that - its ratings are open to everybody, but a reader who has not contributed
+   * is not shown "2 opinions".
+   */
+  hideCount?: boolean;
   /** The tab's own control, right-aligned on the eyebrow row. */
   action?: React.ReactNode;
-  /** Rendered over the gated figures, saying what unlocks them. Each tab words its own ask. */
+  /**
+   * A block of averages in place of the single score - see RatingColumns.
+   *
+   * <p>For a surface that rates more than one thing. When given, `score` and `scoreLabel` are
+   * not drawn: two presentations of the same figures on one row is how a header ends up saying
+   * the same thing twice.
+   */
+  averages?: React.ReactNode;
+  /**
+   * Rendered over the gated figures, saying what unlocks them. Each tab words its own ask.
+   *
+   * <p>Pass a {@link LockedOverlay} - it brings the scrim and the positioning with it. This used
+   * to be bare content that the header wrapped in its own centred, scrimmed box, which meant
+   * every other locked surface in the product wrapped its own, slightly differently.
+   */
   lockedOverlay?: React.ReactNode;
 }) {
   const hasScore = score != null && score > 0;
@@ -119,33 +146,43 @@ export function CompanyTabHeader({
               role="img"
               aria-label={showValue ? `${score!.toFixed(1)} out of 5 stars` : "rating hidden until you contribute"}
             >
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Star
-                  key={i}
-                  size={13}
-                  aria-hidden="true"
-                  className={
-                    locked
-                      ? "fill-amber-300/40 text-amber-300/40"
-                      : showValue && i < Math.floor(score!)
-                        ? "fill-amber-400 text-amber-400"
-                        : "text-border"
-                  }
-                />
-              ))}
+              {/*
+                Locked keeps its washed-out row - a placeholder, not a score. Unlocked draws the
+                shared Stars, which fills by halves: this loop used Math.floor, so 4.9 showed
+                four stars and understated the score as badly as rounding overstated it.
+              */}
+              {locked || !showValue
+                ? Array.from({ length: 5 }).map((_, i) => (
+                    <Star key={i} size={13} aria-hidden="true"
+                          className={locked ? "fill-amber-300/40 text-amber-300/40" : "text-border"} />
+                  ))
+                : <Stars rating={score!} size={13} showValue={false} />}
             </div>
             {scoreLabel && <span className="text-sm text-muted-foreground">{scoreLabel}</span>}
           </div>
 
           {/* Narrow on purpose: the caveat wraps under the stars in a column rather than running
               the width of the row, so the score and what qualifies it read as one object. */}
-          <p className="mt-0.5 max-w-[11rem] text-xs leading-snug text-muted-foreground">
+          {!hideCount && (
+          /*
+            Blurred with the score it qualifies.
+
+            It sits under the lock overlay's wash, which dimmed it without hiding a character -
+            so a locked reader could read "2 manager opinions (limited data, interpret
+            cautiously)" perfectly well. The sample size is part of what contributing buys, and
+            it is the least persuasive thing this header can say to somebody deciding whether to
+            add the third.
+          */
+          <p className={`mt-0.5 max-w-[11rem] text-xs leading-snug text-muted-foreground ${
+            locked ? "blur-sm select-none" : ""
+          }`}>
               {countValue > 0
                 ? `${countValue.toLocaleString()} ${countValue === 1 ? countLabel : countLabel + "s"}${
                     countValue < 3 ? " (limited data, interpret cautiously)" : ""
                   }`
                 : `No ${countLabel}s yet`}
           </p>
+          )}
 
         </div>
       </div>
@@ -154,14 +191,16 @@ export function CompanyTabHeader({
           label leaves a ragged right edge against the block above, and the button is the one thing
           here you are meant to act on. */}
       {/*
-        Above the lock overlay, not under it.
+        Not rendered at all while the lock overlay is up.
 
-        The overlay washes the whole header with bg-background/75 to say the figures behind it are
-        withheld. The button is not one of those figures - it is the way out of the lock - and
-        leaving it under the wash drew it in the same faded grey the disabled controls use, so the
-        one control on the page that works looked like the one control that doesn't.
+        The overlay carries the unlock control itself now, centred in the notice, which is where
+        a reader looks the moment they are told they cannot see something. Keeping this one as
+        well put the same ask on the row twice - "Rate a manager" beside "Rate a manager" - and
+        the two were different sizes and colours into the bargain.
+
+        Once unlocked it comes back: it is the tab's own control, not a lock affordance.
       */}
-      {action && (
+      {action && !(locked && lockedOverlay) && (
         <div className="relative z-20 mt-4 w-full [&>button]:w-full [&>div]:w-full [&>div>button]:w-full">
           {action}
         </div>
@@ -194,9 +233,17 @@ export function CompanyTabHeader({
           )}
           {subtitle && <p className="mt-1 text-[13px] text-foreground">{subtitle}</p>}
           {/*
-            What the company is made of, on the left with the heading. These are counts of rows -
-            how many managers, how many of them anyone has rated, how many opinions there are - so
-            they describe the place rather than judge it, and the gate does not withhold them.
+            What the company is made of, on the left with the heading: how many managers, how many
+            of them anyone has rated, how many opinions there are.
+
+            Withheld while locked, not dimmed. These sit under the overlay's bg-background/75
+            wash, which greyed "1 manager" without hiding a character of it - a figure presented
+            as withheld and then handed over anyway, which is worse than either showing it or
+            not. The same blurred pill the locked company tiles use stands in, and the real count
+            never reaches the page: a blur is a visual effect, still readable in devtools and
+            still announced by a screen reader.
+
+            `metricsPublic` is the opt-out for a tab whose counts genuinely are not gated.
           */}
           {metrics.length > 0 && (
             <div className={`flex flex-wrap items-center gap-x-6 gap-y-2 ${hasHeading ? "mt-4" : "mt-0"}`}>
@@ -206,8 +253,18 @@ export function CompanyTabHeader({
                   {m.icon === "managers" && <Users size={15} aria-hidden="true" className="text-muted-foreground" />}
                   {m.icon === "rated" && <Star size={15} aria-hidden="true" className="text-muted-foreground" />}
                   {m.icon === "reviews" && <MessageSquare size={15} aria-hidden="true" className="text-muted-foreground" />}
-                  <span className="text-sm font-semibold text-foreground tabular-nums">{m.value}</span>
-                  <span className="text-sm text-muted-foreground">{m.label}</span>
+                  {locked && !metricsPublic ? (
+                    <span
+                      aria-hidden="true"
+                      data-testid="withheld-metric"
+                      className="inline-block h-2.5 w-20 rounded-full bg-[#6d5091]/20 blur-[3px]"
+                    />
+                  ) : (
+                    <>
+                      <span className="text-sm font-semibold text-foreground tabular-nums">{m.value}</span>
+                      <span className="text-sm text-muted-foreground">{m.label}</span>
+                    </>
+                  )}
                 </span>
               ))}
             </div>
@@ -218,45 +275,8 @@ export function CompanyTabHeader({
             replacement for the breakdown below - it answers "what is it like here" before the
             reader has to scroll, which is the question they arrived with.
           */}
-          {highlights.length > 0 && (
-            <div className={`mt-4 flex flex-wrap gap-x-6 gap-y-4 ${locked ? "select-none" : ""}`}>
-              {(["up", "down"] as const).map((dir) => {
-                const rows = highlights.filter((h) => h.direction === dir);
-                if (rows.length === 0) return null;
-                return (
-                  <div key={dir} className="min-w-0">
-                    {/* Heading above the block, not inside it - it names the group, and a label
-                        sharing a border with the rows reads as one of them. */}
-                    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      {dir === "up" ? "Strongest" : "Weakest"}
-                    </p>
-                    {/* The glyph in a square tile, the same shape and size a company logo takes
-                        beside its name and title. Not a card around the whole group - the rows are
-                        part of the header, and the square is what carries the icon. */}
-                    <div className="flex items-center gap-2.5">
-                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-border bg-card">
-                        {dir === "up"
-                          ? <TrendingUp size={18} aria-hidden="true" className="text-green-600" />
-                          : <TrendingDown size={18} aria-hidden="true" className="text-amber-500" />}
-                      </div>
-                      <div className="min-w-0">
-                        {rows.map((h) => (
-                          <p key={h.label} className="flex items-baseline gap-3 text-[11px] leading-relaxed">
-                            <span className={`w-48 flex-shrink-0 truncate text-muted-foreground ${locked ? "blur-sm" : ""}`}>
-                              {h.label}
-                            </span>
-                            <span className={`w-7 flex-shrink-0 text-right font-semibold text-foreground tabular-nums ${locked ? "blur-sm" : ""}`}>
-                              {h.value.toFixed(1)}
-                            </span>
-                          </p>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          {/* The shared block, so a manager profile states these identically. */}
+          <RatingHighlights highlights={highlights} locked={locked} className="mt-4" />
 
           {/*
             What those categories rest on. Hidden for now, deliberately not deleted: the sentence
@@ -277,7 +297,28 @@ export function CompanyTabHeader({
             own, and left-aligning a 200px column under a full-width heading reads as a stray
             element rather than the page's main action. From sm up the row holds and it returns to
             the right, where it belongs opposite the eyebrow. */}
-        <div className="mx-auto w-full max-w-[200px] flex-shrink-0 sm:mx-0">{scoreBlock}</div>
+        {/*
+          One score, or a block of them.
+
+          The industry page rates three separate things and had been showing only the managers'
+          average under a label that read as a summary of all of it. A tab that genuinely has
+          one number keeps the single score; one that has three passes them here and gets the
+          width to lay them out.
+        */}
+        <div className={`mx-auto w-full flex-shrink-0 sm:mx-0 ${averages
+            /*
+              Centred against the column opposite, not pinned to its top.
+
+              The left side carries an eyebrow, a subtitle and its counts before the category
+              rows begin, so a top-aligned block of three averages started level with the
+              eyebrow and ran out long before the left column did. self-center only - the
+              parent stays items-start, because every other tab's single score does belong at
+              the top.
+            */
+            ? "sm:ml-auto sm:w-auto sm:max-w-[240px] sm:self-center"
+            : "max-w-[200px]"}`}>
+          {averages ?? scoreBlock}
+        </div>
       </div>
 
         {/*
@@ -288,11 +329,7 @@ export function CompanyTabHeader({
           swallowed the click, so a locked reader was shown an instruction and then prevented from
           following it. Nothing inside here is interactive, so letting clicks through costs nothing.
         */}
-        {locked && lockedOverlay && (
-          <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center rounded-xl bg-background/75 text-center">
-            {lockedOverlay}
-          </div>
-        )}
+        {locked && lockedOverlay}
       </div>
 
       <div className="mt-6 border-t border-border" />

@@ -708,36 +708,15 @@ test.describe("AddBoss - Regenerate button and location editing", () => {
     await expect(page.getByText(/posting anonymously/i)).toBeVisible({ timeout: 3000 });
   });
 
-  test("clicking 'Edit location' shows country/state selects", async ({ page }) => {
-    await setupAddBoss(page);
-    await page.goto("/add");
-    await expect(page.getByText(/who is this manager/i)).toBeVisible({ timeout: 8000 });
-    // Geo pre-fills location - "Edit location" button should appear
-    const editLocBtn = page.getByRole("button", { name: /edit location/i });
-    if (await editLocBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await editLocBtn.click();
-      // Country select should appear
-      await expect(page.locator("select[name='country']")).toBeVisible({ timeout: 3000 });
-    }
-  });
+  /*
+    Two tests about the country/state selects behind "Edit location" were here. Those selects are
+    gone - one free-form LocationField replaced them across every form - and manager-location.spec
+    .ts covers what took their place, including that the old controls are no longer rendered.
 
-  test("clicking 'Done editing' in location section hides the select", async ({ page }) => {
-    await setupAddBoss(page);
-    await page.goto("/add");
-    await expect(page.getByText(/who is this manager/i)).toBeVisible({ timeout: 8000 });
-    const editLocBtn = page.getByRole("button", { name: /edit location/i });
-    if (await editLocBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await editLocBtn.click();
-      await expect(page.locator("select[name='country']")).toBeVisible({ timeout: 3000 });
-      // Click "Done editing"
-      const doneBtn = page.getByRole("button", { name: /done editing/i });
-      if (await doneBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await doneBtn.click();
-        // Should revert to chip view
-        await expect(page.getByText(/location/i).first()).toBeVisible({ timeout: 3000 });
-      }
-    }
-  });
+    Both were written as `if (await ...isVisible()) { ... }`, so they would have gone on passing
+    while asserting nothing at all once the control disappeared. They are removed rather than
+    re-pointed for that reason: a test that cannot fail is not coverage.
+  */
 });
 
 // ─── SignUp.tsx - phone number validation path ────────────────────────────────

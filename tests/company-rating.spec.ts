@@ -219,17 +219,33 @@ test.describe("The company rating form", () => {
     await page.goto("/companies/red-hat/rate");
   }
 
+  /*
+    The form is three steps - company information, then the period, then the ratings - and the
+    ratings are last. rate-company-form.spec.ts walks the same form in detail; this only needs to
+    reach the step the questions below are on.
+  */
+  async function goToRatingsStep(page: any) {
+    await expect(page.getByText(/Step 1 of 3 · Red Hat/)).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("button", { name: "Next" }).click();
+    await page.getByLabel("From month").selectOption("03");
+    await page.getByLabel("From year").selectOption({ index: 3 });
+    await page.getByRole("checkbox", { name: /current/i }).check();
+    await page.getByRole("button", { name: "Next" }).click();
+    await expect(page.getByText(/Step 3 of 3 · Red Hat/)).toBeVisible();
+  }
+
   test("it asks about the company, and says it is not about the manager", async ({ page }) => {
     await openForm(page);
     // The form is headed "Rate a Workplace" now, with the company named in the step line and in
     // its own field, rather than spelled into the heading.
     await expect(page.getByRole("heading", { name: "Rate a Workplace" }))
       .toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/Step 1 of 2 · Red Hat/)).toBeVisible();
+    await expect(page.getByText(/Step 1 of 3 · Red Hat/)).toBeVisible();
   });
 
   test("all ten categories are asked, and none of them are the manager's job", async ({ page }) => {
     await openForm(page);
+    await goToRatingsStep(page);
     await expect(page.getByText("Work–life balance")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Compensation & benefits")).toBeVisible();
     await expect(page.getByText("Senior leadership")).toBeVisible();
@@ -242,30 +258,34 @@ test.describe("The company rating form", () => {
   test("the overall rating is asked, not derived", async ({ page }) => {
     // Somebody's summary judgement is not the mean of the ten above.
     await openForm(page);
+    await goToRatingsStep(page);
     await expect(page.getByText("Overall, how was working here?")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/not an average/)).toBeVisible();
   });
 
-  test("advancing with anything unrated is refused", async ({ page }) => {
+  test("submitting with anything unrated is refused", async ({ page }) => {
     /*
       No N/A. A corpus where half the ratings skipped career growth cannot be sliced by it.
 
-      The form is two steps now, so the refusal happens at Next rather than at Submit - the
-      unrated rows never reach the second step, let alone the server. The guarantee is the same
-      one; it is enforced a screen earlier.
+      The ratings are the last of the three steps, so the refusal happens at Submit. The
+      guarantee is unchanged - nothing half-answered reaches the server - it is just enforced on
+      the step that asks the question rather than on the way off it.
     */
     await openForm(page);
-    await expect(page.getByText("Work–life balance")).toBeVisible({ timeout: 10_000 });
+    await goToRatingsStep(page);
+    await page.locator('input[name="attestation"]').check();
 
-    await page.getByRole("button", { name: "Next" }).click();
+    await page.getByRole("button", { name: /submit rating|update rating/i }).click();
 
-    await expect(page.getByText(/Step 1 of 2/)).toBeVisible();
-    await expect(page.getByText("Required").first()).toBeVisible();
+    await expect(page.getByText(/Step 3 of 3/)).toBeVisible();
+    // exact, or this also matches the step's own "All 10 categories are required."
+    await expect(page.getByText("Required", { exact: true }).first()).toBeVisible();
   });
 
   test("there is no free-text field", async ({ page }) => {
     // Same structural guarantee the interview form makes.
     await openForm(page);
+    await goToRatingsStep(page);
     await expect(page.getByText("Work–life balance")).toBeVisible({ timeout: 10_000 });
     await expect(page.locator("textarea")).toHaveCount(0);
   });

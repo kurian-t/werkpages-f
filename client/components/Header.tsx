@@ -361,6 +361,18 @@ export function Header() {
                   Resume
                 </Link>
               )}
+              {user?.role === "admin" && (
+                /* Admin Panel reached the drawer only on the desktop bar; the admin-gated link
+                   here points at Resume. Same destination and label as the account menu above. */
+                <Link
+                  to="/admin"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="flex items-center gap-2 rounded px-4 py-2 text-sm font-medium text-blue-600 transition-colors hover:bg-blue-50"
+                >
+                  <Shield size={16} aria-hidden="true" />
+                  Admin Panel
+                </Link>
+              )}
               {user && (
                 <Link
                   to={isBanned ? "#" : "/add"}
@@ -380,6 +392,41 @@ export function Header() {
               )}
 
               {/* Mobile Auth */}
+              {user && (
+                /*
+                  The signed-in half of this block was simply missing.
+
+                  The account menu - who you are, Account Settings, Sign Out - is `hidden md:flex`
+                  in the bar above, and nothing put it in the drawer. So on a phone a signed-in
+                  person had no way to sign out and no way to reach their settings from the
+                  header at all: the only account control they were offered was "Add Manager".
+
+                  Being unable to sign out is the part that matters. On a shared or borrowed
+                  phone it is the difference between leaving and not being able to.
+
+                  Same items as the desktop menu, in the same order, so the two do not drift.
+                */
+                <div className="border-t border-border pt-3 mt-3">
+                  <p className="px-4 pb-1 text-xs text-muted-foreground">
+                    Logged in as <span className="font-medium text-foreground">{user.username}</span>
+                  </p>
+                  <Link
+                    to="/settings"
+                    onClick={() => setIsMenuOpen(false)}
+                    className="w-full flex items-center gap-2 rounded px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent/10"
+                  >
+                    <Settings size={16} aria-hidden="true" />
+                    Account Settings
+                  </Link>
+                  <button
+                    onClick={() => { setIsMenuOpen(false); handleLogout(); }}
+                    className="w-full flex items-center gap-2 rounded px-4 py-2 text-left text-sm font-medium text-foreground transition-colors hover:bg-accent/10"
+                  >
+                    <LogOut size={16} aria-hidden="true" />
+                    Sign Out
+                  </button>
+                </div>
+              )}
               {!user && (
                 <>
                   <div className="border-t border-border pt-3 mt-3">

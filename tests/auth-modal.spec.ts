@@ -6,6 +6,8 @@ import {
   rateAllFiveStars,
   clickWriteAReview,
   attestFirstHandExperience,
+  advanceToDatesStep,
+  fillDatesAndAdvance,
 } from "./fixtures";
 
 test.describe("Auth modal - social-first flow", () => {
@@ -16,12 +18,9 @@ test.describe("Auth modal - social-first flow", () => {
   async function openAuthModal(page: any) {
     await page.goto(`/manager/${TEST_MANAGER_ID}`);
     await clickWriteAReview(page);
+    await advanceToDatesStep(page);
+    await fillDatesAndAdvance(page, { fromMonth: "01", fromYear: "2023" });
     await rateAllFiveStars(page);
-    await page.getByRole("button", { name: /^next$/i }).click();
-    await page.getByLabel("From month").selectOption("01");
-    await page.getByLabel("From year").selectOption("2023");
-    await page.getByRole("checkbox", { name: /current/i }).check();
-    await page.getByRole("button", { name: /^next$/i }).click();
     await attestFirstHandExperience(page);
     await page.getByRole("button", { name: /submit review/i }).click();
   }
@@ -71,10 +70,17 @@ test.describe("Auth modal - social-first flow", () => {
     await expect(backBtn).toBeVisible({ timeout: 3_000 });
     await backBtn.click();
 
-    // Social buttons visible again
+    /*
+      Social buttons visible again.
+
+      10s, not 3s: this step re-renders the modal back to the social picker, and under a loaded
+      parallel run firefox intermittently took longer than three seconds to paint it. It passed
+      alone and failed in the full suite, which is a timeout that is too tight rather than a
+      behaviour that is wrong.
+    */
     await expect(
       page.getByRole("button", { name: /continue with google/i })
-    ).toBeVisible({ timeout: 3_000 });
+    ).toBeVisible({ timeout: 10_000 });
   });
 
   test("email signup form submit button is disabled until all fields valid and Turnstile completes", async ({

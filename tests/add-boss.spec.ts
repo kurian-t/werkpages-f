@@ -30,23 +30,15 @@ test.describe("AddBoss - 3-step flow", () => {
     await expect(page.locator('input[name="lastName"]')).toBeVisible();
   });
 
-  test("step 1: country pre-fills from inferred geo", async ({ page }) => {
-    /*
-      The location used to be shown as a chip that had to be opened with "Edit location" before the
-      fields appeared. It is a plain country select now, so what is worth asserting is the same
-      thing it always was - that the guess arrives filled in rather than leaving somebody to find
-      their own country in a list of two hundred.
-    */
-    await mockAddBossPage(page);
-    await page.goto("/add");
+  /*
+    "step 1: country pre-fills from inferred geo" was here.
 
-    // Settled, so it shows as a summary card naming the detected country.
-    await expect(page.getByText("United States").first()).toBeVisible({ timeout: 5_000 });
-
-    // The select is behind the card's own edit control, the same pattern the company field uses.
-    await page.getByRole("button", { name: /Edit details/i }).first().click();
-    await expect(page.locator('select[name="country"]')).toHaveValue("United States");
-  });
+    There is no country select any more: the separate country/province/city controls were replaced
+    by the one free-form LocationField that the manager, workplace and interview forms all share.
+    manager-location.spec.ts covers the replacement, including "the prefilled location is shown in
+    full, and can be changed" for the geo guess this test was asserting, and "no separate country,
+    province or city controls are rendered" for the controls that went.
+  */
 
   test("step 1: Next is disabled until required fields are filled", async ({
     page,
@@ -340,23 +332,33 @@ test.describe("AddBoss - 3-step flow", () => {
     await page.goto("/add");
 
     /*
-      The work is restored; the company is not.
+      The whole draft is restored, company included.
 
-      CHANGED DELIBERATELY. This used to assert the draft's company came back too. It does not any
-      more: arriving at /add with no ?company= is a deliberate fresh start, and somebody who
-      abandoned a draft about one employer last week should not find it waiting when they come to
-      add someone somewhere else. The company is whatever the URL says, and nothing else.
+      This asserted the opposite for a while - that arriving at /add with no ?company= was a fresh
+      start and the employer should not come back. That is no longer the rule. Anything the form
+      asked for belongs in the draft: a draft that keeps only some of the answers is worse than
+      one that keeps none, because the gaps are not obvious and somebody re-types a field they
+      already filled in without noticing the rest survived.
 
-      An auth round-trip is the exception - there the draft is the in-flight form - but that is a
-      different arrival, carrying signupEmail or verified.
+      See the save side in AddBoss.tsx, which writes company and location into the draft for the
+      same reason.
     */
+    /*
+      The name is a collapsible field, so a restored draft arrives as a card reading "Drafted
+      Manager" rather than as two open inputs. Open it to read the values back out - the card
+      alone would not prove which half went where.
+    */
+    await expect(page.getByText("Drafted Manager").first()).toBeVisible({ timeout: 5_000 });
+    await page.getByRole("button", { name: /edit name details/i }).click();
+
     await expect(
       page.locator('input[name="firstName"]')
     ).toHaveValue("Drafted", { timeout: 5_000 });
     await expect(
       page.locator('input[name="lastName"]')
     ).toHaveValue("Manager");
-    await expect(page.getByLabel(/Company/i).first()).toHaveValue("");
+    // The company is a CompanyField card rather than a bare input, so read it as text.
+    await expect(page.getByTestId("company-field")).toContainText("Draft Corp");
   });
 
   test("cancel button closes the form", async ({ page }) => {
@@ -424,7 +426,13 @@ test.describe("AddBoss - 3-step flow", () => {
  * not: the field must stay a plain input under the cursor while somebody is still using it.
  */
 test.describe("Editing the company on the add-manager form", () => {
-  /* Scoped: the country field on this same step is also a card with an "Edit details" control. */
+  /*
+    Scoped: other fields on this step are cards with their own edit controls too.
+
+    The controls are named for their field now - "Edit company details", not "Edit details" - so a
+    screen-reader user, and a locator, can tell which of several open cards they are on. The
+    visible text on the button is unchanged; it is the accessible name that carries the field.
+  */
   const field = (page: any) => page.getByTestId("company-field");
 
   /**
@@ -455,7 +463,7 @@ test.describe("Editing the company on the add-manager form", () => {
     await expect(option).toBeVisible({ timeout: 10_000 });
     const chosen = (await option.innerText()).split("\n")[0].trim();
     await option.click();
-    await expect(field(page).getByRole("button", { name: /Edit details/i }))
+    await expect(field(page).getByRole("button", { name: /edit company details/i }))
       .toBeVisible({ timeout: 10_000 });
     return chosen;
   }
@@ -474,7 +482,7 @@ test.describe("Editing the company on the add-manager form", () => {
 
     await expect(input).toBeFocused();
     await expect(input).toHaveValue("Ac");
-    await expect(field(page).getByRole("button", { name: /Edit details/i })).toHaveCount(0);
+    await expect(field(page).getByRole("button", { name: /edit company details/i })).toHaveCount(0);
   });
 
   test("picking a company settles it into a card with its logo", async ({ page }) => {
@@ -495,11 +503,11 @@ test.describe("Editing the company on the add-manager form", () => {
     await mockAddBossPage(page);
     await page.goto("/add");
     await pickCompany(page);
-    await field(page).getByRole("button", { name: /Edit details/i }).click();
+    await field(page).getByRole("button", { name: /edit company details/i }).click();
 
     await page.getByLabel(/Company/i).first().fill("A");
 
-    await expect(field(page).getByRole("button", { name: "Done editing" })).toBeVisible();
+    await expect(field(page).getByRole("button", { name: /done editing company/i })).toBeVisible();
     await expect(page.getByText(/at least 2 characters/i)).toBeVisible();
   });
 
@@ -507,22 +515,22 @@ test.describe("Editing the company on the add-manager form", () => {
     await mockAddBossPage(page);
     await page.goto("/add");
     await pickCompany(page);
-    await field(page).getByRole("button", { name: /Edit details/i }).click();
+    await field(page).getByRole("button", { name: /edit company details/i }).click();
 
     await page.getByLabel(/Company/i).first().fill("");
 
-    await expect(field(page).getByRole("button", { name: "Done editing" })).toBeVisible();
+    await expect(field(page).getByRole("button", { name: /done editing company/i })).toBeVisible();
   });
 
   test("Done editing returns to the card", async ({ page }) => {
     await mockAddBossPage(page);
     await page.goto("/add");
     await pickCompany(page);
-    await field(page).getByRole("button", { name: /Edit details/i }).click();
+    await field(page).getByRole("button", { name: /edit company details/i }).click();
 
-    await field(page).getByRole("button", { name: "Done editing" }).click();
+    await field(page).getByRole("button", { name: /done editing company/i }).click();
 
-    await expect(field(page).getByRole("button", { name: /Edit details/i })).toBeVisible();
-    await expect(field(page).getByRole("button", { name: "Done editing" })).toHaveCount(0);
+    await expect(field(page).getByRole("button", { name: /edit company details/i })).toBeVisible();
+    await expect(field(page).getByRole("button", { name: /done editing company/i })).toHaveCount(0);
   });
 });

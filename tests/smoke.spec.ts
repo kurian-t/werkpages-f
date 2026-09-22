@@ -4,12 +4,26 @@ test.describe("Smoke tests", () => {
   test("homepage loads and has key content", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveTitle(/Werkpages/i);
-    // Hero section or main CTA should be visible
+
+    /*
+      The hero, asserted through what every viewport shows.
+
+      This used to be `getByRole("link", {name: /directory/i}).or(getByText(/rate.*manager/i))`.
+      The link's accessible name is "Just browsing? Search managers without signing in →", which
+      does not contain "directory" - only its href does - so the first half never matched, and
+      `.first()` on the second half picked a desktop-only panel that is hidden at phone width.
+      A homepage smoke test failing on mobile looked alarming and meant nothing.
+
+      The h1 is the page's key content by definition, and it is the same element on both.
+    */
     await expect(
-      page.getByRole("link", { name: /directory/i }).or(
-        page.getByText(/rate.*manager/i).first()
-      )
+      page.getByRole("heading", { level: 1, name: /manager/i })
     ).toBeVisible({ timeout: 10_000 });
+    // filter to the visible one: the header keeps a desktop copy of this link in the DOM at
+    // phone width, and it is the first in document order.
+    await expect(
+      page.locator('a[href="/directory"]').filter({ visible: true }).first()
+    ).toBeVisible();
   });
 
   test("directory page loads and shows search/filter UI", async ({ page }) => {

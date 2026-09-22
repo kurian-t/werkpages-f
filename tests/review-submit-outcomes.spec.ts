@@ -7,6 +7,8 @@ import {
   mockManagerPage,
   rateAllFiveStars,
   clickWriteAReview,
+  advanceToDatesStep,
+  fillDatesAndAdvance,
 } from "./fixtures";
 
 /**
@@ -28,12 +30,9 @@ const CONTRIBUTOR = { ...MOCK_USER, hasContributed: true };
 /** Fills the form to the point where Submit is live. */
 async function fillToSubmit(page: any) {
   await clickWriteAReview(page);
+  await advanceToDatesStep(page);
+  await fillDatesAndAdvance(page, { fromMonth: "01", fromYear: "2023" });
   await rateAllFiveStars(page);
-  await page.getByRole("button", { name: /^next$/i }).click();
-  await page.getByLabel("From month").selectOption("01");
-  await page.getByLabel("From year").selectOption("2023");
-  await page.getByRole("checkbox", { name: /current/i }).check();
-  await page.getByRole("button", { name: /^next$/i }).click();
   await expect(page.getByText(/step 3 of 3/i)).toBeVisible();
   // The first-hand-experience attestation gates Submit. It is the one thing on this step that has
   // to be a deliberate act, so nothing here can reach the server without it.

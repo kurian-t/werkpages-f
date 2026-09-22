@@ -237,11 +237,8 @@ export function RatingBreakdown({
             <RatingRowBar key={r.key} label={r.label} value={r.value} stacked={ranked} />
           ))}
         </div>
-        {locked && lockedOverlay && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center rounded-xl bg-background/60 text-center">
-            {lockedOverlay}
-          </div>
-        )}
+        {/* The shared overlay brings its own scrim and positioning. See LockedNotice. */}
+        {locked && lockedOverlay}
       </div>
     </div>
   );

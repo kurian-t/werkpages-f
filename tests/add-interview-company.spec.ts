@@ -93,7 +93,7 @@ test.describe("Choosing a company on the interview form", () => {
     */
     await expect(page.getByTestId("company-field").getByText("Red Hat")).toBeVisible();
 
-    await page.getByRole("button", { name: /Edit details/i }).first().click();
+    await page.getByRole("button", { name: /edit company details/i }).first().click();
     await page.getByPlaceholder("e.g. Acme Corp").fill("Redis");
     await page.getByText("Redis", { exact: true }).click();
     await expect(page.getByRole("heading", { name: /Your interview at Redis/ })).toBeVisible();

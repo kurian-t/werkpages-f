@@ -132,7 +132,9 @@ async function completeRatingsStep(page: any) {
 async function completeProcessStep(page: any) {
   await page.getByRole("button", { name: "Received an offer" }).click();
   await page.getByRole("button", { name: "Average", exact: true }).click();
-  await page.getByLabel("Year").selectOption("2025");
+  // The date is a month-and-year period now; the pair only reports a value with both halves.
+  await page.getByLabel("From month").selectOption("03");
+  await page.getByLabel("From year").selectOption("2025");
   await page.getByLabel("How long did it take?").selectOption("2_4_weeks");
   await page.getByLabel("Role").fill("Engineering");
 }
@@ -310,7 +312,7 @@ test.describe("Getting hired tab", () => {
     await openHiringTab(page);
 
     // .last(): the header keeps a hidden copy of this footnote, so the visible caveat is the second.
-    await expect(page.getByText(/Limited data — interpret cautiously/).last()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Limited data, interpret cautiously/).last()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Not enough reports to break down yet")).toHaveCount(0);
     await expect(page.getByText("Interview insights are locked")).toHaveCount(0);
   });
@@ -453,6 +455,7 @@ test.describe("Adding an interview experience", () => {
     await completeProcessStep(page);
     await page.getByRole("button", { name: "Next" }).click();
     await completeRatingsStep(page);
+    await page.locator('input[name="attestation"]').check();
     await page.getByRole("button", { name: "Share experience" }).click();
 
     await expect(page.getByText(/already reviewed an interview at this company/i)).toBeVisible();
@@ -481,6 +484,7 @@ test.describe("Adding an interview experience", () => {
 
     await page.getByRole("button", { name: "Next" }).click();
     await completeRatingsStep(page);
+    await page.locator('input[name="attestation"]').check();
     await page.getByRole("button", { name: "Share experience" }).click();
 
     await expect.poll(() => posted?.rounds).toEqual(["phone", "panel"]);

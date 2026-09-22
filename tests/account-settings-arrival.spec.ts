@@ -129,7 +129,11 @@ test.describe("When the reviews cannot be loaded", () => {
     await page.route(/\/api\/users\/me\/reviews/, (r: any) => r.fulfill({ status: 500, json: {} }));
     await page.goto("/settings");
 
-    await expect(page.getByText(/Failed to load your reviews/i)).toBeVisible({ timeout: 10_000 });
+    // The toast renders twice - the visible card and the live region that announces it - so take
+    // the one actually on screen rather than tripping over strict mode.
+    await expect(
+      page.getByText(/Failed to load your reviews/i).filter({ visible: true }).first()
+    ).toBeVisible({ timeout: 10_000 });
   });
 });
 

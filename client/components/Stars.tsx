@@ -15,11 +15,20 @@ export function Stars({
   rating,
   size = 12,
   showValue = true,
+  valueClass = "text-sm",
 }: {
   rating: number;
   size?: number;
   /** The number beside the stars. Off where the surrounding layout prints it separately. */
   showValue?: boolean;
+  /**
+   * Type size for the number, so it scales with the stars.
+   *
+   * <p>It was fixed at text-sm, which meant shrinking `size` gave you small stars beside a
+   * full-size number - the two stopped reading as one object. A caller drawing a secondary
+   * rating shrinks both together.
+   */
+  valueClass?: string;
 }) {
   return (
     <div
@@ -27,18 +36,41 @@ export function Stars({
       role="img"
       aria-label={`${rating.toFixed(1)} out of 5 stars`}
     >
-      {[1, 2, 3, 4, 5].map((s) => (
-        <Star
-          key={s}
-          size={size}
-          aria-hidden="true"
-          className={`flex-shrink-0 ${
-            s <= Math.round(rating) ? "fill-amber-400 text-amber-400" : "fill-none text-border"
-          }`}
-        />
-      ))}
+      {/*
+        Half stars, because rounding lied.
+
+        The fill was `s <= Math.round(rating)`, so 4.5 drew five solid stars - identical to a
+        perfect 5.0 - and 4.6, 4.7 and 4.8 did too. A rating is the one thing on these cards
+        that must not overstate itself, and the number beside the stars said 4.5 while the
+        stars said full marks.
+
+        Each star fills by how much of it the rating covers, snapped to halves: conventional,
+        and it avoids a 62%-filled star that reads as a rendering fault rather than a score.
+      */}
+      {[1, 2, 3, 4, 5].map((s) => {
+        const covered = Math.max(0, Math.min(1, rating - (s - 1)));
+        const fill = covered >= 0.75 ? 1 : covered >= 0.25 ? 0.5 : 0;
+        return (
+          <span
+            key={s}
+            className="relative inline-flex flex-shrink-0"
+            style={{ width: size, height: size }}
+          >
+            <Star size={size} aria-hidden="true" className="absolute inset-0 fill-none text-border" />
+            {fill > 0 && (
+              // Clipped from the left, so a half star is the left half - the direction a rating fills.
+              <span
+                className="absolute inset-y-0 left-0 overflow-hidden"
+                style={{ width: `${fill * 100}%` }}
+              >
+                <Star size={size} aria-hidden="true" className="fill-amber-400 text-amber-400" />
+              </span>
+            )}
+          </span>
+        );
+      })}
       {showValue && (
-        <span className="ml-1 flex-shrink-0 whitespace-nowrap text-sm font-semibold leading-none text-foreground">
+        <span className={`ml-1 flex-shrink-0 whitespace-nowrap font-semibold leading-none text-foreground ${valueClass}`}>
           {rating.toFixed(1)}
         </span>
       )}

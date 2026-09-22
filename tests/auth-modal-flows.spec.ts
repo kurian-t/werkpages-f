@@ -1,5 +1,7 @@
 import { test, expect } from "./base";
-import { MOCK_USER, mockTurnstile } from "./fixtures";
+import { MOCK_USER, mockTurnstile,
+  clickHeaderControl,
+} from "./fixtures";
 
 /**
  * What the auth modal does after the form is filled in.
@@ -33,7 +35,8 @@ async function openModal(page: any, which: "Sign In" | "Sign Up") {
   await page.route(/\/api\/auth\/check-username/, (r: any) =>
     r.fulfill({ json: { available: true } }));
   await page.goto("/");
-  await page.getByRole("button", { name: which, exact: true }).first().click();
+  // On a phone this control is inside the drawer; the helper opens it when it needs to.
+  await clickHeaderControl(page, which);
   await expect(page.getByRole("dialog")).toBeVisible({ timeout: 10_000 });
 }
 

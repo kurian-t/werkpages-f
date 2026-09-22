@@ -1,4 +1,5 @@
 import { test, expect } from "./base";
+import { revealHeader } from "./fixtures";
 
 /**
  * Cancelling "Add a manager" returns you where you came from.
@@ -37,7 +38,9 @@ test.describe("Add a manager - cancel", () => {
   test("returns to the page you came from when no returnTo was given", async ({ page }) => {
     await mockApi(page);
     await page.goto("/companies");
-    await page.getByRole("link", { name: "Add Manager" }).first().click();
+    // In the drawer on a phone, in the bar on a desktop.
+    await revealHeader(page);
+    await page.getByRole("link", { name: "Add Manager" }).filter({ visible: true }).first().click();
     await expect(page).toHaveURL(/\/add$/);
 
     await page.getByRole("button", { name: "Cancel" }).click();
@@ -48,7 +51,9 @@ test.describe("Add a manager - cancel", () => {
   test("returns to a manager profile you came from, not the directory", async ({ page }) => {
     await mockApi(page);
     await page.goto("/industries/technology/companies/red-hat");
-    await page.getByRole("link", { name: "Add Manager" }).first().click();
+    // In the drawer on a phone, in the bar on a desktop.
+    await revealHeader(page);
+    await page.getByRole("link", { name: "Add Manager" }).filter({ visible: true }).first().click();
     await expect(page).toHaveURL(/\/add$/);
 
     await page.getByRole("button", { name: "Cancel" }).click();

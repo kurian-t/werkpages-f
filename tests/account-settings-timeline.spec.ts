@@ -25,7 +25,9 @@ async function openTimeline(page: any, reviews = [review()]) {
   await mockAccountSettingsPage(page, { reviews });
   await page.goto("/settings");
   await expect(page.getByText("Alex Johnson").first()).toBeVisible({ timeout: 10_000 });
-  await page.getByRole("button", { name: /^Edit$/ }).first().click();
+  // "Edit review" is the control's name on every viewport now: the visible word is hidden below
+  // sm, so naming it by that text only worked on a wide screen.
+  await page.getByRole("button", { name: "Edit review" }).first().click();
   await page.getByRole("button", { name: "Next" }).click();
   await expect(page.getByRole("heading", { name: "Work timeline" })).toBeVisible();
 }
@@ -261,8 +263,12 @@ test.describe("A suspended account", () => {
     await page.goto("/settings");
     await expect(page.getByText("Alex Johnson").first()).toBeVisible({ timeout: 10_000 });
 
-    await expect(page.getByRole("button", { name: /^Edit$/ }).first()).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Edit review" }).first()).toBeDisabled();
     await expect(page.getByTitle("Delete review")).toBeDisabled();
-    await expect(page.getByTitle("Your account has been suspended").first()).toBeVisible();
+    // filter to what this viewport actually shows: several controls carry the suspended title and
+    // the first in the DOM is not necessarily one that is on screen at phone width.
+    await expect(
+      page.getByTitle("Your account has been suspended").filter({ visible: true }).first()
+    ).toBeVisible();
   });
 });

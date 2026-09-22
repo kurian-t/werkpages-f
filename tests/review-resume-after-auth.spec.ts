@@ -53,7 +53,21 @@ const draft = (over: Record<string, unknown> = {}) => ({
 
 async function returnFromAuth(
   page: any,
-  { pending = draft(), existing = [] as unknown[] } = {},
+  {
+    pending = draft(),
+    existing = [] as unknown[],
+    /*
+      Routes registered here land after the page mocks - so they win, Playwright matching in
+      reverse registration order - and before the navigation that triggers the auto-submit.
+
+      That ordering is the point. Registering the review route after returnFromAuth() returned
+      raced the resume: on firefox the POST went out during the load and arrived before the
+      handler existed, so the capture stayed null and the test read it as "the draft was lost".
+      Chromium happened to lose that race the other way, which is why it only ever failed on one
+      browser.
+    */
+    beforeLoad,
+  }: { pending?: unknown; existing?: unknown[]; beforeLoad?: () => Promise<void> } = {},
 ) {
   await page.addInitScript(
     ([u, d]: [unknown, unknown]) => {
@@ -65,6 +79,7 @@ async function returnFromAuth(
   await mockManagerPage(page, {
     loggedIn: true, user: CONTRIBUTOR, existingUserReviews: existing as any,
   });
+  if (beforeLoad) await beforeLoad();
   await page.goto(`/manager/${TEST_MANAGER_ID}`);
 }
 
@@ -75,11 +90,14 @@ test.describe("Returning from sign-in with a review in progress", () => {
       required is the single most effective way to ensure somebody never contributes again.
     */
     let posted: any = null;
-    await returnFromAuth(page);
-    await page.route(new RegExp(`/api/managers/${TEST_MANAGER_ID}/reviews`), (r: any) => {
-      if (r.request().method() !== "POST") return r.fulfill({ json: { data: [], total: 0 } });
-      posted = r.request().postDataJSON();
-      return r.fulfill({ status: 201, json: { ...MOCK_EXISTING_REVIEW, disposition: "live" } });
+    await returnFromAuth(page, {
+      beforeLoad: async () => {
+        await page.route(new RegExp(`/api/managers/${TEST_MANAGER_ID}/reviews`), (r: any) => {
+          if (r.request().method() !== "POST") return r.fulfill({ json: { data: [], total: 0 } });
+          posted = r.request().postDataJSON();
+          return r.fulfill({ status: 201, json: { ...MOCK_EXISTING_REVIEW, disposition: "live" } });
+        });
+      },
     });
 
     await expect(async () => expect(posted).not.toBeNull()).toPass({ timeout: 15_000 });
@@ -89,11 +107,14 @@ test.describe("Returning from sign-in with a review in progress", () => {
 
   test("the draft is cleared once it has been submitted", async ({ page }) => {
     // Otherwise the next visit to any manager page would try to submit it again.
-    await returnFromAuth(page);
-    await page.route(new RegExp(`/api/managers/${TEST_MANAGER_ID}/reviews`), (r: any) =>
-      r.request().method() === "POST"
-        ? r.fulfill({ status: 201, json: { ...MOCK_EXISTING_REVIEW, disposition: "live" } })
-        : r.fulfill({ json: { data: [], total: 0 } }));
+    await returnFromAuth(page, {
+      beforeLoad: async () => {
+        await page.route(new RegExp(`/api/managers/${TEST_MANAGER_ID}/reviews`), (r: any) =>
+          r.request().method() === "POST"
+            ? r.fulfill({ status: 201, json: { ...MOCK_EXISTING_REVIEW, disposition: "live" } })
+            : r.fulfill({ json: { data: [], total: 0 } }));
+      },
+    });
 
     await expect(page.getByText(/is live/i)).toBeVisible({ timeout: 15_000 });
     expect(await page.evaluate(() => localStorage.getItem("rmm_pending_review"))).toBeNull();
@@ -108,10 +129,13 @@ test.describe("Returning from sign-in with a review in progress", () => {
       ...MOCK_EXISTING_REVIEW, id: `rv-${i}`, managerTitle: `Role ${i}`,
     }));
     let posted = false;
-    await returnFromAuth(page, { existing: five });
-    await page.route(new RegExp(`/api/managers/${TEST_MANAGER_ID}/reviews`), (r: any) => {
-      if (r.request().method() === "POST") posted = true;
-      return r.fulfill({ json: { data: five, total: 5 } });
+    await returnFromAuth(page, { existing: five,
+      beforeLoad: async () => {
+        await page.route(new RegExp(`/api/managers/${TEST_MANAGER_ID}/reviews`), (r: any) => {
+          if (r.request().method() === "POST") posted = true;
+          return r.fulfill({ json: { data: five, total: 5 } });
+        });
+      },
     });
 
     await expect(page.getByText(/limit of 5 reviews/i)).toBeVisible({ timeout: 15_000 });
@@ -146,10 +170,13 @@ test.describe("Returning from sign-in with a review in progress", () => {
     // The key is global while the draft belongs to one manager. Submitting it on whichever profile
     // happened to load next would file somebody's review against the wrong person.
     let posted = false;
-    await returnFromAuth(page, { pending: draft({ managerId: "some-other-manager" }) });
-    await page.route(new RegExp(`/api/managers/${TEST_MANAGER_ID}/reviews`), (r: any) => {
-      if (r.request().method() === "POST") posted = true;
-      return r.fulfill({ json: { data: [], total: 0 } });
+    await returnFromAuth(page, { pending: draft({ managerId: "some-other-manager" }),
+      beforeLoad: async () => {
+        await page.route(new RegExp(`/api/managers/${TEST_MANAGER_ID}/reviews`), (r: any) => {
+          if (r.request().method() === "POST") posted = true;
+          return r.fulfill({ json: { data: [], total: 0 } });
+        });
+      },
     });
 
     await expect(page.getByRole("heading", { name: MOCK_MANAGER.name, exact: true }))

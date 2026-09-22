@@ -24,7 +24,8 @@ test.describe("Editing a pending submission", () => {
     await mockAccountSettingsPage(page, { reviews: [], submittedManagers: [SUBMISSION] });
     await page.goto("/settings");
     await expect(page.getByText("Jane Smith")).toBeVisible({ timeout: 10_000 });
-    await page.getByRole("button", { name: /Edit/ }).first().click();
+    // Named for what it edits, on every viewport - see AccountSettings.
+    await page.getByRole("button", { name: /^Edit (review|submission)$/ }).first().click();
     await expect(page.getByRole("dialog")).toBeVisible();
   }
 

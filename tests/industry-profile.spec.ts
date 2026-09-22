@@ -72,16 +72,27 @@ test.describe("Industry profile page (/industries/:slug)", () => {
     await expect(page.getByText("4.8")).toBeVisible();
   });
 
-  test("locked (not contributed): ratings blurred, unlock banner shown, no Top rated badge", async ({ page }) => {
+  /*
+    This test previously asserted the opposite - that a locked reader is shown an unlock banner
+    above the company tiles. That banner has been removed deliberately.
+
+    The industry's own ratings are public and sit at the top of this very page, so a banner
+    announcing that ratings are locked contradicted what the reader could already see. What is
+    actually gated is each company's score, and each tile says so where its number would be. The
+    banner was a second, louder voice about figures that were not withheld.
+  */
+  test("locked (not contributed): no unlock banner, but the company tiles stay locked", async ({ page }) => {
     await mockProfile(page, { hasContributed: false });
     await page.goto("/industries/technology");
     await expect(page.getByRole("heading", { name: "TopCo" })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/rate a manager to unlock ratings/i)).toBeVisible();
-    await expect(page.getByText(/top rated/i)).toHaveCount(0);
 
-    // The unlock banner's CTA routes to the add-manager flow.
-    await page.getByRole("button", { name: /rate a manager/i }).click();
-    await expect(page).toHaveURL(/\/add/);
+    // The banner is gone - both its words and the shared card it would render as.
+    await expect(page.getByText(/rate a manager to unlock ratings/i)).toHaveCount(0);
+    await expect(page.getByTestId("locked-panel")).toHaveCount(0);
+
+    // The tiles are still gated: no score, no badge.
+    await expect(page.getByText("4.8")).toHaveCount(0);
+    await expect(page.getByText(/top rated/i)).toHaveCount(0);
   });
 
   test("clicking a company tile navigates to that company", async ({ page }) => {

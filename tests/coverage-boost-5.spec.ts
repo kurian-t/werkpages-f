@@ -26,6 +26,7 @@ import {
   mockManagerPage,
   mockAdminPage,
   mockAddBossPage,
+  openDirectoryFilters,
 } from "./fixtures";
 
 // ─── Companies - clear autocomplete ──────────────────────────────────────────
@@ -107,7 +108,7 @@ test.describe("CompanyProfile - fake name validation", () => {
     await page.goto("/companies/acme-corp");
     await expect(page.getByText(/acme corp/i).first()).toBeVisible({ timeout: 10000 });
     // Use a fake name part ("test") - triggers FAKE_NAME_PARTS check (line 35-36)
-    await page.locator('input[placeholder="First name"]').fill("Test");
+    await page.locator('input[placeholder="First name"]').filter({ visible: true }).first().fill("Test");
     await page.locator('input[placeholder="Last name"]').fill("Person");
     await page.locator('input[placeholder="Job title"]').fill("Engineer");
     await page.getByRole("button", { name: /^Search$/ }).click();
@@ -136,7 +137,7 @@ test.describe("CompanyProfile - fake name validation", () => {
     await page.goto("/companies/acme-corp");
     await expect(page.getByText(/acme corp/i).first()).toBeVisible({ timeout: 10000 });
     // "john doe" is in FAKE_FULL_NAMES (line 38-39)
-    await page.locator('input[placeholder="First name"]').fill("John");
+    await page.locator('input[placeholder="First name"]').filter({ visible: true }).first().fill("John");
     await page.locator('input[placeholder="Last name"]').fill("Doe");
     await page.locator('input[placeholder="Job title"]').fill("Engineer");
     await page.getByRole("button", { name: /^Search$/ }).click();
@@ -177,7 +178,7 @@ test.describe("CompanyProfile - anonymous search with results", () => {
     );
     await page.goto("/companies/acme-corp");
     await expect(page.getByText(/acme corp/i).first()).toBeVisible({ timeout: 10000 });
-    await page.locator('input[placeholder="First name"]').fill("Sarah");
+    await page.locator('input[placeholder="First name"]').filter({ visible: true }).first().fill("Sarah");
     await page.locator('input[placeholder="Last name"]').fill("Johnson");
     await page.locator('input[placeholder="Job title"]').fill("Engineering Manager");
     await page.getByRole("button", { name: /^Search$/ }).click();
@@ -229,7 +230,7 @@ test.describe("CompanyProfile - ghost creation retry returns results", () => {
     await expect(page.getByText(/acme corp/i).first()).toBeVisible({ timeout: 10000 });
     await page.evaluate(() => localStorage.removeItem("rmm_anon_ghost_created"));
 
-    await page.locator('input[placeholder="First name"]').fill("Greg");
+    await page.locator('input[placeholder="First name"]').filter({ visible: true }).first().fill("Greg");
     await page.locator('input[placeholder="Last name"]').fill("Davis");
     await page.locator('input[placeholder="Job title"]').fill("Manager");
     await page.getByRole("button", { name: /^Search$/ }).click();
@@ -269,7 +270,7 @@ test.describe("CompanyProfile - ghost creation retry returns results", () => {
     await expect(page.getByText(/acme corp/i).first()).toBeVisible({ timeout: 10000 });
     await page.evaluate(() => localStorage.removeItem("rmm_anon_ghost_created"));
 
-    await page.locator('input[placeholder="First name"]').fill("Paula");
+    await page.locator('input[placeholder="First name"]').filter({ visible: true }).first().fill("Paula");
     await page.locator('input[placeholder="Last name"]').fill("Martin");
     await page.locator('input[placeholder="Job title"]').fill("Manager");
     await page.getByRole("button", { name: /^Search$/ }).click();
@@ -353,7 +354,7 @@ test.describe("CompanyProfile - ghost added sign in button", () => {
     await expect(page.getByText(/acme corp/i).first()).toBeVisible({ timeout: 10000 });
     await page.evaluate(() => localStorage.removeItem("rmm_anon_ghost_created"));
 
-    await page.locator('input[placeholder="First name"]').fill("Mia");
+    await page.locator('input[placeholder="First name"]').filter({ visible: true }).first().fill("Mia");
     await page.locator('input[placeholder="Last name"]').fill("Chen");
     await page.locator('input[placeholder="Job title"]').fill("Manager");
     await page.getByRole("button", { name: /^Search$/ }).click();
@@ -410,6 +411,8 @@ test.describe("Directory - sort and filter interactions", () => {
   test("changing sort to Top Rated covers sortBy path", async ({ page }) => {
     await setupDirectory(page);
     await page.goto("/directory");
+    // Below lg the search and rating filters sit behind "Filters".
+    await openDirectoryFilters(page);
     await expect(page.getByText("Manager 1", { exact: true })).toBeVisible({ timeout: 10000 });
     // Change sort (line 334 - setSortBy; line 151 - return filtered)
     await page.selectOption('select', 'rating');
@@ -420,6 +423,8 @@ test.describe("Directory - sort and filter interactions", () => {
   test("setting min rating then clearing it covers clear button", async ({ page }) => {
     await setupDirectory(page);
     await page.goto("/directory");
+    // Below lg the search and rating filters sit behind "Filters".
+    await openDirectoryFilters(page);
     await expect(page.getByText("Manager 1", { exact: true })).toBeVisible({ timeout: 10000 });
     // Click a rating star filter (e.g., 3 stars)
     await page.getByRole("button", { name: /3 stars/i }).click();
@@ -433,6 +438,8 @@ test.describe("Directory - sort and filter interactions", () => {
   test("logged-in user without contribution sees Rate a manager unlock button", async ({ page }) => {
     await setupDirectory(page, { loggedIn: true, hasContributed: false });
     await page.goto("/directory");
+    // Below lg the search and rating filters sit behind "Filters".
+    await openDirectoryFilters(page);
     await expect(page.getByText("Manager 1", { exact: true })).toBeVisible({ timeout: 10000 });
     // "Rate a manager" button shown for !hasContributed users (line 413)
     await expect(page.getByText(/rate a manager to unlock ratings/i)).toBeVisible({ timeout: 5000 });
@@ -467,9 +474,11 @@ test.describe("Directory - sort and filter interactions", () => {
       route.fulfill({ status: 401, json: { error: "Unauthorized" } })
     );
     await page.goto("/directory");
+    // Below lg the search and rating filters sit behind "Filters".
+    await openDirectoryFilters(page);
     await expect(page.getByText("Manager 1", { exact: true })).toBeVisible({ timeout: 10000 });
     // Fill all 4 required fields (allFilled = firstName && lastName>=2 && title && company>=2)
-    await page.locator('input[placeholder="First name"]').fill("Nonexistent");
+    await page.locator('input[placeholder="First name"]').filter({ visible: true }).first().fill("Nonexistent");
     await page.locator('input[placeholder="Last name"]').fill("Manager");
     await page.locator('input[placeholder="Job title"]').fill("Engineer");
     await page.locator('input[placeholder="Company"]').fill("NoSuchCo");
@@ -521,6 +530,8 @@ test.describe("Directory - chevron pagination buttons", () => {
   test("ChevronRight button navigates to next page", async ({ page }) => {
     await setupPagination(page);
     await page.goto("/directory");
+    // Below lg the search and rating filters sit behind "Filters".
+    await openDirectoryFilters(page);
     await expect(page.getByText("Manager 1", { exact: true })).toBeVisible({ timeout: 10000 });
     // Click ChevronRight (next page, line 457) - last button in pagination container
     await page.locator('div.mt-10.flex button').last().click();
@@ -530,6 +541,8 @@ test.describe("Directory - chevron pagination buttons", () => {
   test("ChevronLeft button navigates back to previous page", async ({ page }) => {
     await setupPagination(page);
     await page.goto("/directory");
+    // Below lg the search and rating filters sit behind "Filters".
+    await openDirectoryFilters(page);
     await expect(page.getByText("Manager 1", { exact: true })).toBeVisible({ timeout: 10000 });
     // Go to page 2 via numbered button
     await page.getByRole("button", { name: "2", exact: true }).click();
@@ -843,23 +856,10 @@ test.describe("AddBoss - draft restore and form interactions", () => {
     await expect(page.locator('input[type="radio"][value="retired"]')).toBeChecked({ timeout: 3000 });
   });
 
-  test("changing country select covers country onChange", async ({ page }) => {
-    await mockAddBossPage(page, { loggedIn: false });
-    await page.goto("/add");
-    await expect(page.getByText(/who is this manager/i)).toBeVisible({ timeout: 10000 });
-    // Fill step 1 fields
-    await page.getByPlaceholder(/e.g., Satya/i).fill("Jane");
-    await page.getByPlaceholder(/e.g., Nadella/i).fill("Doe");
-    await page.getByPlaceholder(/e.g., Engineering Manager/i).fill("Engineer");
-    // The company field is CompanyField now, which owns its own placeholder; the name
-    // attribute is what stayed stable across that change.
-    await page.locator('input[name="company"]').fill("Acme Corp");
-    // Geo settles the country into a summary card; its edit control reveals the select.
-    await page.getByRole("button", { name: /Edit details/i }).first().click();
-    await expect(page.locator('select[name="country"]')).toBeVisible({ timeout: 5000 });
-    await page.selectOption('select[name="country"]', 'Canada');
-    await expect(page.locator('select[name="country"]')).toHaveValue("Canada", { timeout: 3000 });
-  });
+  /*
+    "changing country select covers country onChange" was here. There is no country select any
+    more - see manager-location.spec.ts, which covers the LocationField that replaced it.
+  */
 
   test("handleBack from timeline navigates back to info step", async ({ page }) => {
     await mockAddBossPage(page, { loggedIn: false });

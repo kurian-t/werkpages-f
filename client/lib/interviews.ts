@@ -189,7 +189,14 @@ export interface InterviewReview {
   roleCategory: string | null;
   country: string | null;
   city: string | null;
-  interviewYear: number;
+  interviewYear: number;  /** Month the process started, "YYYY-MM". Null on rows written before the range existed. */
+  interviewedFrom?: string | null;
+  interviewedUntil?: string | null;  /** Where the interviewing happened, on the same ladder every other contribution uses. */
+  declaredCountry?: string | null;
+  declaredState?: string | null;
+  declaredCity?: string | null;
+  declaredPrecision?: "country" | "state" | "city" | "exact" | null;
+  companyLocationId?: number | null;
 }
 
 export interface InterviewDraft {
@@ -209,7 +216,18 @@ export interface InterviewDraft {
   country?: string | null;
   /** Inferred alongside the country, never asked for. Cleared if the country is changed. */
   city?: string | null;
+  /**
+   * Derived from {@link interviewedFrom} on the server, and kept because it backs the
+   * one-experience-per-company-per-year rule and every existing filter.
+   */
   interviewYear: number | null;
+  /** Month the process started, "YYYY-MM" — the same range the other two forms ask for. */
+  interviewedFrom?: string | null;
+  /**
+   * Month it finished. No longer asked for — a process is measured in weeks and "how long did it
+   * take?" records that — but kept for rows written while the form asked.
+   */
+  interviewedUntil?: string | null;
 }
 
 // ── Display helpers ─────────────────────────────────────────────────────────
@@ -435,7 +453,22 @@ export function toInterviewPayload(draft: InterviewDraft): Record<string, unknow
   const payload: Record<string, unknown> = {
     overallRating: draft.overallRating,
     outcome: draft.outcome,
-    interviewYear: draft.interviewYear,
+    /*
+      Derived from the range when there is one, exactly as the server derives it. Sending the
+      untouched default alongside a range that says otherwise put the two in disagreement, and the
+      body is what the one-per-company-per-year rule reads.
+    */
+    interviewYear: draft.interviewedFrom
+      ? Number(draft.interviewedFrom.slice(0, 4))
+      : draft.interviewYear,
+    interviewedFrom: draft.interviewedFrom || null,
+    /*
+      Always null. A hiring process is measured in weeks - "how long did it take?" records that -
+      so an end month was a second question whose answer was almost always the first one's, and a
+      field nobody needs is a field somebody still has to fill in. The column stays for the rows
+      that already have one.
+    */
+    interviewedUntil: null,
   };
 
   for (const category of INTERVIEW_CATEGORIES) {

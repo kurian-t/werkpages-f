@@ -224,8 +224,9 @@ test.describe("Notifications page", () => {
       route.fulfill({ status: 200, json: { success: true } })
     );
     await page.goto("/notifications");
-    // NotificationList renders twice (mobile + desktop); .nth(1) picks the visible desktop copy
-    await expect(page.getByText(/manager approved/i).nth(1)).toBeVisible({ timeout: 8000 });
+    // NotificationList renders twice, mobile and desktop. Filter to whichever copy this
+    // viewport actually shows rather than hard-coding the desktop index.
+    await expect(page.getByText(/manager approved/i).filter({ visible: true }).first()).toBeVisible({ timeout: 8000 });
   });
 
   test("brand-new notification renders without crashing", async ({ page }) => {
@@ -250,8 +251,8 @@ test.describe("Notifications page", () => {
       route.fulfill({ status: 200, json: { success: true } })
     );
     await page.goto("/notifications");
-    // NotificationList renders twice (mobile + desktop); .nth(1) picks the visible desktop copy
-    await expect(page.getByText(/brand new notif/i).nth(1)).toBeVisible({ timeout: 8000 });
+    // Same pair of copies as above.
+    await expect(page.getByText(/brand new notif/i).filter({ visible: true }).first()).toBeVisible({ timeout: 8000 });
   });
 });
 
@@ -639,9 +640,17 @@ test.describe("AddBoss extra coverage", () => {
   }
 
   test("add boss page loads with geo pre-filled", async ({ page }) => {
+    /*
+      This asserted `getByText(/add|manager|boss/i).first()` - a pattern that matches most of the
+      page, on an element that turned out to be hidden at phone width. It never checked the geo
+      the test is named for.
+    */
     await mockAddBoss(page, false);
     await page.goto("/add");
-    await expect(page.getByText(/add|manager|boss/i).first()).toBeVisible({ timeout: 8000 });
+
+    await expect(page.getByText(/who is this manager/i)).toBeVisible({ timeout: 8000 });
+    // The inferred location arrives filled in, rather than leaving somebody to find their own.
+    await expect(page.getByText(/SF|CA|United States/).first()).toBeVisible();
   });
 
   test("add boss page shows manager name field", async ({ page }) => {
@@ -661,7 +670,7 @@ test.describe("SignUp extra coverage", () => {
   test("signup form shows with all fields", async ({ page }) => {
     await mockUnauthenticated(page);
     await page.goto("/signup");
-    await expect(page.getByText(/create.*account|sign up/i).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/create.*account|sign up/i).filter({ visible: true }).first()).toBeVisible({ timeout: 5000 });
   });
 
   test("email field can be filled", async ({ page }) => {

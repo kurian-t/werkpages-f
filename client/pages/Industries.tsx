@@ -9,6 +9,9 @@ import { Star, Building2, Users, Briefcase } from "lucide-react";
 import { IndustryTileIcon } from "@/components/IndustryTileIcon";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
+import { Pagination, paginate } from "@/components/Pagination";
+
+const PAGE_SIZE = 20;
 
 interface IndustryEntry {
   industry: string;
@@ -42,6 +45,7 @@ function IndustryHeroImage({ imgClass }: { imgClass: string }) {
 export default function Industries() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["industry-listing"],
@@ -56,9 +60,13 @@ export default function Industries() {
   // Client-side filter: the taxonomy is fixed at 24 entries and they all arrive in one
   // response, so there is nothing to fetch per keystroke.
   const query = search.trim().toLowerCase();
-  const visible = query
+  const matching = query
     ? industries.filter(ind => ind.industry.toLowerCase().includes(query))
     : industries;
+
+  // Paged like every other listing. paginate() clamps the page itself, so narrowing the search
+  // while on a later page lands on the last page that has results rather than on an empty grid.
+  const { visible, totalPages, safePage } = paginate(matching, page, PAGE_SIZE);
 
   return (
     <Layout>
@@ -116,7 +124,8 @@ export default function Industries() {
                 />
                 {!isLoading && !isError && (
                   <p className="mt-2 text-xs text-muted-foreground">
-                    {visible.length.toLocaleString()} {visible.length === 1 ? "industry" : "industries"}
+                    {/* The whole result set, not the current page - this is a result count. */}
+                    {matching.length.toLocaleString()} {matching.length === 1 ? "industry" : "industries"}
                   </p>
                 )}
               </div>
@@ -140,7 +149,7 @@ export default function Industries() {
         )}
 
         {/* Distinguish "nothing classified yet" (above) from "your search matched nothing". */}
-        {!isLoading && !isError && industries.length > 0 && visible.length === 0 && (
+        {!isLoading && !isError && industries.length > 0 && matching.length === 0 && (
           <p className="text-center text-sm text-muted-foreground">
             No industries match "{search.trim()}".
           </p>
@@ -208,6 +217,8 @@ export default function Industries() {
             ))}
           </div>
         )}
+
+        <Pagination page={safePage} totalPages={totalPages} onChange={setPage} />
           </div>
         </div>
       </div>

@@ -5,6 +5,7 @@ import {
   TEST_MANAGER_ID,
   mockManagerPage,
   clickWriteAReview,
+  advanceToDatesStep,
 } from "./fixtures";
 
 /**
@@ -70,77 +71,56 @@ async function openWith(page: any, reviews: any[], manager: any = MOCK_MANAGER) 
   await expect(page.getByText(MOCK_MANAGER.name).first()).toBeVisible({ timeout: 10_000 });
 }
 
-test.describe("The sentence the page writes about a manager", () => {
+test.describe("What the page says about a manager's ratings", () => {
   /*
-    Six bands, chosen by the overall average. Each is asserted at a score inside its own band, so a
-    boundary that moves shows up as the wrong sentence rather than as nothing at all.
+    CHANGED DELIBERATELY. Eight tests here asserted a generated "Overview" sentence - six wording
+    bands chosen by the overall average, plus the reviewer count inside it.
+
+    That sentence is gone. The manager profile shows Strongest and Weakest categories through the
+    same RatingHighlights component the company page and the interview tab use; it said the same
+    thing as that block in a different voice and a different layout, on pages a reader moves
+    between constantly.
+
+    These replace it, keeping the two guarantees the old block actually made: that the page tells
+    the reader which categories stand out, and that the count backing it is worded exactly.
   */
 
-  test("a very high average is described as very high", async ({ page }) => {
-    await openWith(page, [reviewAt(4.8)]);
+  test("the categories that stand out are named, strongest and weakest", async ({ page }) => {
+    // A reader wants to know what this manager is like, not only what the average is.
+    await openWith(page, [reviewAt(4.0, { ratings: {
+      ...Object.fromEntries(CATEGORIES.map((c) => [c, 3])),
+      "Communication Style": 5,
+      "Feedback Style": 1,
+    } })]);
 
-    await expect(page.getByText(/very high scores across nearly all categories/i))
-      .toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Strongest", { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Weakest", { exact: true })).toBeVisible();
+    await expect(page.getByText("Communication Style").first()).toBeVisible();
+    await expect(page.getByText("Feedback Style").first()).toBeVisible();
   });
 
-  test("a good average is described as positive, not as very high", async ({ page }) => {
-    // The distinction the band boundary exists for: 4.2 is a good manager, 4.8 is a rare one, and
-    // one sentence for both would flatten the difference people come here to find.
+  test("one review is counted in the singular", async ({ page }) => {
+    // The count is the reader's cue for how much weight to give what is above it, so it has to be
+    // exact - "1 reviews" undercuts the care the rest of the block took.
     await openWith(page, [reviewAt(4.2)]);
 
-    await expect(page.getByText(/positive scores overall/i)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/very high scores/i)).toHaveCount(0);
+    await expect(page.getByText(/Based on 1 review(?!s)/)).toBeVisible({ timeout: 10_000 });
   });
 
-  test("a middling-good average is described as favourable but mixed", async ({ page }) => {
-    await openWith(page, [reviewAt(3.6)]);
-
-    await expect(page.getByText(/generally favourable scores/i)).toBeVisible({ timeout: 10_000 });
-  });
-
-  test("a mixed average says some categories were rated well and others were not", async ({ page }) => {
-    /*
-      The most common band and the one that has to be worded most carefully - it describes a real
-      person whom some people got on with and others did not, and it should read as neither an
-      endorsement nor a complaint.
-    */
-    await openWith(page, [reviewAt(3.2)]);
-
-    await expect(page.getByText(/mixed scores/i)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/needing improvement/i)).toBeVisible();
-  });
-
-  test("a low average is described as below average, with concerns named as concerns", async ({ page }) => {
-    await openWith(page, [reviewAt(2.4)]);
-
-    await expect(page.getByText(/below-average scores/i)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/areas of concern/i)).toBeVisible();
-  });
-
-  test("the lowest band says lower scores, and stops there", async ({ page }) => {
-    /*
-      Deliberately the flattest sentence of the six. This is a real named person with a bad
-      average, and the page's job at that point is to report the number rather than to editorialise
-      on top of it.
-    */
-    await openWith(page, [reviewAt(1.5)]);
-
-    await expect(page.getByText(/lower scores across several categories/i))
-      .toBeVisible({ timeout: 10_000 });
-  });
-
-  test("one reviewer is counted in the singular", async ({ page }) => {
-    // The count is the reader's cue for how much weight to give the sentence, so it has to be
-    // exact - "1 anonymous reviewers" undercuts the care the rest of the sentence took.
-    await openWith(page, [reviewAt(4.2)]);
-
-    await expect(page.getByText(/1 anonymous reviewer(?!s)/)).toBeVisible({ timeout: 10_000 });
-  });
-
-  test("several reviewers are counted in the plural", async ({ page }) => {
+  test("several reviews are counted in the plural", async ({ page }) => {
     await openWith(page, [reviewAt(4.2), reviewAt(4.2, { id: 2 }), reviewAt(4.2, { id: 3 })]);
 
-    await expect(page.getByText(/3 anonymous reviewers/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Based on 3 reviews/)).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("a thin sample is flagged rather than presented as settled", async ({ page }) => {
+    // Three ratings are worth showing and worth qualifying; hiding them would tell the reader
+    // less, and showing them bare would tell them more than the data supports.
+    await openWith(page, [reviewAt(4.2)]);
+
+    // .first(): the caveat is repeated by each block that shows a number from the same thin data.
+    await expect(page.getByText(/Limited data, interpret cautiously/).first())
+      .toBeVisible({ timeout: 10_000 });
   });
 
   test("a manager nobody has reviewed gets no summary at all", async ({ page }) => {
@@ -259,9 +239,19 @@ test.describe("Choosing which role a review is about", () => {
     await openWith(page, [], WITH_HISTORY);
     await clickWriteAReview(page);
     await page.getByLabel("Which role are you reviewing?").selectOption({ index: 1 });
-    await page.getByRole("button", { name: "Rate 5 stars" }).first().click();
-
     await expect(page.getByText("Team Lead").first()).toBeVisible();
+
+    /*
+      The dates are the point, so read them rather than the role name. Team Lead at Initech ran
+      2019-01 to 2021-06; the picker has to carry that period onto the timeline step instead of
+      leaving the current role's open-ended 2022-03.
+    */
+    await advanceToDatesStep(page);
+
+    await expect(page.getByLabel("From month")).toHaveValue("01");
+    await expect(page.getByLabel("From year")).toHaveValue("2019");
+    await expect(page.getByLabel("Until month")).toHaveValue("06");
+    await expect(page.getByLabel("Until year")).toHaveValue("2021");
   });
 
   test("picking a role they still hold marks the period as ongoing", async ({ page }) => {

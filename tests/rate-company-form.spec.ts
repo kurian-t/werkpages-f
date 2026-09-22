@@ -55,11 +55,49 @@ async function openForm(page: any, opts: Options = {}) {
   await expect(page.getByRole("heading", { name: "Rate a Workplace" })).toBeVisible({ timeout: 10_000 });
 }
 
-/** A complete period. The "still here" box removes the end date; it does not supply a start. */
+/*
+  A complete period. The "Current" box removes the end date; it does not supply a start.
+
+  The dates step uses the shared WorkTimelineFields control now - the same one the manager and
+  add-manager forms use - so the questions are "From"/"Until"/"Current" here as well. This form
+  used to carry its own month pickers labelled "Start"/"End" with an "I still work here" box, and
+  the identical question behaved differently depending on which page you were on.
+*/
 async function fillPeriod(page: any) {
-  await page.getByLabel("Start month").selectOption("03");
-  await page.getByLabel("Start year").selectOption({ index: 3 });
-  await page.getByLabel("I still work here").check();
+  await page.getByLabel("From month").selectOption("03");
+  await page.getByLabel("From year").selectOption({ index: 3 });
+  await page.getByRole("checkbox", { name: /current/i }).check();
+}
+
+/*
+  The form is three steps, in this order:
+
+    1. "Company information" - which company this rating is about
+    2. "When and where"      - the period worked there
+    3. "Rate your experience" - the ten categories, the summary rating and the attestation
+
+  The ratings used to be step 1 of 2. They are last now, in step with the manager review form -
+  nobody is asked for eleven ratings before being shown what the form is for. Keep the order in
+  these two helpers rather than spelled out in each test.
+*/
+
+/** Step 1 → step 2. Company information is prefilled from the company being rated. */
+async function goToDatesStep(page: any) {
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByText("Step 2 of 3 · Red Hat")).toBeVisible();
+}
+
+/** Step 1 → step 3, filling the period on the way. */
+async function goToRatingsStep(page: any) {
+  await goToDatesStep(page);
+  await fillPeriod(page);
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByText("Step 3 of 3 · Red Hat")).toBeVisible();
+}
+
+/** Ticks the first-hand-experience attestation, which gates submit. */
+async function attest(page: any) {
+  await page.locator('input[name="attestation"]').check();
 }
 
 /** Fills every star row on the ratings step, plus the summary rating. */
@@ -71,10 +109,10 @@ async function rateEverything(page: any, stars = 4) {
 }
 
 test.describe("Rating a workplace", () => {
-  test("the form opens on the ratings step, naming the company being rated", async ({ page }) => {
+  test("the form opens on company information, naming the company being rated", async ({ page }) => {
     await openForm(page);
 
-    await expect(page.getByText("Step 1 of 2 · Red Hat")).toBeVisible();
+    await expect(page.getByText("Step 1 of 3 · Red Hat")).toBeVisible();
     await expect(page.getByText("Company *")).toBeVisible();
     await expect(page.getByText("Red Hat").first()).toBeVisible();
   });
@@ -83,6 +121,7 @@ test.describe("Rating a workplace", () => {
     // Ten rows, no N/A. A corpus where half the ratings skipped career growth cannot be sliced
     // by career growth.
     await openForm(page);
+    await goToRatingsStep(page);
 
     for (const label of CATEGORY_LABELS) {
       await expect(page.getByText(label, { exact: true })).toBeVisible();
@@ -95,19 +134,25 @@ test.describe("Rating a workplace", () => {
       average of the ten rows erases exactly that. It is a separate question on purpose.
     */
     await openForm(page);
+    await goToRatingsStep(page);
 
     await expect(page.getByText("Overall, how was working here?")).toBeVisible();
     await expect(page.getByText("Your overall take, not an average of the ratings above.")).toBeVisible();
   });
 
-  test("an incomplete ratings step will not advance", async ({ page }) => {
+  test("an incomplete ratings step will not submit", async ({ page }) => {
+    // The ratings are the last step now, so the thing they block is the submission rather than a
+    // Next. Either way nothing half-answered reaches the server.
     await openForm(page);
+    await goToRatingsStep(page);
+    await attest(page);
 
-    await page.getByRole("button", { name: "Next" }).click();
+    await page.getByRole("button", { name: "Submit rating" }).click();
 
-    // Still on step one, with the page saying what is missing rather than silently doing nothing.
-    await expect(page.getByText("Step 1 of 2 · Red Hat")).toBeVisible();
-    await expect(page.getByText("Required").first()).toBeVisible();
+    // Still on the ratings step, saying what is missing rather than silently doing nothing.
+    await expect(page.getByText("Step 3 of 3 · Red Hat")).toBeVisible();
+    // exact, or this also matches the step's own "All 10 categories are required."
+    await expect(page.getByText("Required", { exact: true }).first()).toBeVisible();
   });
 
   test("a missing end date does not block the ratings step", async ({ page }) => {
@@ -117,42 +162,50 @@ test.describe("Rating a workplace", () => {
       precisely the thing that makes long forms get abandoned.
     */
     await openForm(page);
-    await rateEverything(page);
+    await goToDatesStep(page);
 
+    await expect(page.getByText("When did you work here?")).toBeVisible();
+
+    // A start and "still here" is a complete period; the absent end date does not hold it back.
+    await fillPeriod(page);
     await page.getByRole("button", { name: "Next" }).click();
 
-    await expect(page.getByText("Step 2 of 2 · Red Hat")).toBeVisible();
-    await expect(page.getByText("When did you work here?")).toBeVisible();
+    await expect(page.getByText("Step 3 of 3 · Red Hat")).toBeVisible();
   });
 
   test("the period is asked at month precision, and 'still here' replaces the end date", async ({ page }) => {
     // Nobody remembers the day, and asking for one invites invention.
     await openForm(page);
-    await rateEverything(page);
-    await page.getByRole("button", { name: "Next" }).click();
+    await goToDatesStep(page);
 
-    await expect(page.getByLabel("Start month")).toBeVisible();
-    await expect(page.getByLabel("End month")).toBeVisible();
+    await expect(page.getByLabel("From month")).toBeVisible();
+    await expect(page.getByLabel("Until month")).toBeVisible();
 
-    await page.getByLabel("I still work here").check();
-    await expect(page.getByText("now", { exact: true })).toBeVisible();
-    await expect(page.getByLabel("End month")).toHaveCount(0);
+    // "Current" only becomes available once a start is given - an end with no beginning is not a
+    // period, and the control refuses rather than validating after the fact.
+    await page.getByLabel("From month").selectOption("03");
+    await page.getByLabel("From year").selectOption({ index: 3 });
+    await page.getByRole("checkbox", { name: /current/i }).check();
+    // Checking "Current" removes the end question rather than disabling it.
+    await expect(page.getByLabel("Until month")).toHaveCount(0);
   });
 
-  test("Back returns to the ratings step with the answers still there", async ({ page }) => {
+  test("stepping back and forward keeps the ratings already given", async ({ page }) => {
     // Losing ten rows to one misclick is how somebody abandons a form and does not come back.
     await openForm(page);
+    await goToRatingsStep(page);
     await rateEverything(page, 5);
-    await page.getByRole("button", { name: "Next" }).click();
-    await expect(page.getByText("Step 2 of 2 · Red Hat")).toBeVisible();
 
     await page.getByRole("button", { name: "Back" }).click();
+    await expect(page.getByText("Step 2 of 3 · Red Hat")).toBeVisible();
 
-    await expect(page.getByText("Step 1 of 2 · Red Hat")).toBeVisible();
+    await page.getByRole("button", { name: "Next" }).click();
+
+    await expect(page.getByText("Step 3 of 3 · Red Hat")).toBeVisible();
     await expect(page.getByRole("button", { name: "Overall: 5 stars" }).locator("svg"))
       .toHaveClass(/fill-amber-400/);
     // Nothing is outstanding, so nothing was lost on the way back.
-    await expect(page.getByText("Required")).toHaveCount(0);
+    await expect(page.getByText("Required", { exact: true })).toHaveCount(0);
   });
 
   test("a complete rating submits and lands back on the company", async ({ page }) => {
@@ -165,9 +218,9 @@ test.describe("Rating a workplace", () => {
       posted = r.request().postDataJSON();
       return r.fulfill({ status: 200, json: { success: true } });
     });
+    await goToRatingsStep(page);
     await rateEverything(page, 4);
-    await page.getByRole("button", { name: "Next" }).click();
-    await fillPeriod(page);
+    await attest(page);
 
     await page.getByRole("button", { name: "Submit rating" }).click();
 
@@ -186,8 +239,8 @@ test.describe("Rating a workplace", () => {
         workedFrom: "2019-03-01", workedUntil: null, author: "CoolLynx30",
       },
     });
+    await goToRatingsStep(page);
     await rateEverything(page);
-    await page.getByRole("button", { name: "Next" }).click();
 
     await expect(page.getByRole("button", { name: "Update rating" })).toBeVisible();
   });
@@ -198,21 +251,21 @@ test.describe("Rating a workplace", () => {
       401 sends somebody to retype a form they were never signed in for.
     */
     await openForm(page, { status: 500 });
+    await goToRatingsStep(page);
     await rateEverything(page);
-    await page.getByRole("button", { name: "Next" }).click();
-    await fillPeriod(page);
+    await attest(page);
     await page.getByRole("button", { name: "Submit rating" }).click();
 
     await expect(page.getByRole("alert")).toContainText("Something went wrong");
     // Still on the form - the answers are not thrown away over a server fault.
-    await expect(page.getByText("Step 2 of 2 · Red Hat")).toBeVisible();
+    await expect(page.getByText("Step 3 of 3 · Red Hat")).toBeVisible();
   });
 
   test("a company that has gone says so, rather than blaming the reader", async ({ page }) => {
     await openForm(page, { status: 404 });
+    await goToRatingsStep(page);
     await rateEverything(page);
-    await page.getByRole("button", { name: "Next" }).click();
-    await fillPeriod(page);
+    await attest(page);
     await page.getByRole("button", { name: "Submit rating" }).click();
 
     await expect(page.getByRole("alert")).toContainText("couldn't find that company");
@@ -220,6 +273,7 @@ test.describe("Rating a workplace", () => {
 
   test("the identity is generated here and can be rerolled", async ({ page }) => {
     await openForm(page);
+    await goToRatingsStep(page);
 
     const shown = page.locator("text=Your rating will appear as:").locator("xpath=..");
     const before = await shown.innerText();
@@ -269,33 +323,34 @@ test.describe("Rating a workplace", () => {
       return r.fulfill({ status: 200, json: { success: true } });
     });
 
-    await rateEverything(page, 3);
+    await goToDatesStep(page);
+    await page.getByLabel("From month").selectOption("03");
+    await page.getByLabel("From year").selectOption({ index: 5 });
+    await page.getByLabel("Until month").selectOption("09");
+    await page.getByLabel("Until year").selectOption({ index: 3 });
     await page.getByRole("button", { name: "Next" }).click();
-    await page.getByLabel("Start month").selectOption("03");
-    await page.getByLabel("Start year").selectOption({ index: 5 });
-    await page.getByLabel("End month").selectOption("09");
-    await page.getByLabel("End year").selectOption({ index: 3 });
+
+    await rateEverything(page, 3);
+    await attest(page);
     await page.getByRole("button", { name: "Submit rating" }).click();
 
     await expect(page).toHaveURL(/\/companies\/red-hat$/, { timeout: 10_000 });
     expect(posted?.workedUntil).toMatch(/^\d{4}-09$/);
   });
 
-  test("the dates step refuses to submit without a start date", async ({ page }) => {
+  test("the dates step refuses to advance without a start date", async ({ page }) => {
     /*
       Per-step validation, from the other side. The ratings step filters the date errors out; this
-      step filters everything else out, so a missing start date is caught here rather than sending
-      an undated rating to the server.
+      step filters everything else out, so a missing start date is caught here rather than carried
+      to the end and turned into an undated rating.
     */
     await openForm(page);
-    await rateEverything(page);
-    await page.getByRole("button", { name: "Next" }).click();
-    await expect(page.getByText("Step 2 of 2 · Red Hat")).toBeVisible();
+    await goToDatesStep(page);
 
-    await page.getByRole("button", { name: "Submit rating" }).click();
+    await page.getByRole("button", { name: "Next" }).click();
 
     // Still on the dates step, saying what is missing.
-    await expect(page.getByText("Step 2 of 2 · Red Hat")).toBeVisible();
+    await expect(page.getByText("Step 2 of 3 · Red Hat")).toBeVisible();
     await expect(page.getByRole("alert").first()).toBeVisible();
   });
 
@@ -304,7 +359,7 @@ test.describe("Rating a workplace", () => {
     // for, so this navigates rather than quietly re-pointing the answers already given.
     await openForm(page);
 
-    await page.getByRole("button", { name: /Edit details/i }).click();
+    await page.getByRole("button", { name: /edit company details/i }).click();
     await page.getByPlaceholder("e.g. Acme Corp").fill("Canon");
     await page.getByText("Canonical").first().click();
 
@@ -315,10 +370,10 @@ test.describe("Rating a workplace", () => {
     // Somebody who opened this from the wrong company should not have to go and find the right one.
     await openForm(page);
 
-    await page.getByRole("button", { name: /Edit details/i }).click();
+    await page.getByRole("button", { name: /edit company details/i }).click();
 
     await expect(page.getByPlaceholder("e.g. Acme Corp")).toBeVisible();
-    await page.getByRole("button", { name: "Done editing" }).click();
+    await page.getByRole("button", { name: /done editing company/i }).click();
     await expect(page.getByPlaceholder("e.g. Acme Corp")).toHaveCount(0);
   });
 });

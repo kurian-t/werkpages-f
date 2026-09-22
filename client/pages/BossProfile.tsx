@@ -1,4 +1,9 @@
 import API_BASE from "@/lib/api";
+import { LockedOverlay, LockedPanelCard } from "@/components/LockedNotice";
+import { Stars } from "@/components/Stars";
+import { MIN_OPINIONS_FOR_CONFIDENCE } from "@/components/RatingColumns";
+import { OpinionCard, OpinionAuthor, LockedOpinions } from "@/components/OpinionCard";
+import { RatingHighlights } from "@/components/RatingHighlights";
 import { TopRatedPill } from "@/components/TopRatedPill";
 import { companyLogoDomain, toNameCase, toJobTitleCase } from "@/lib/utils";
 import { RatingBreakdown } from "@/components/RatingBreakdown";
@@ -29,6 +34,13 @@ import { StarRating } from "@/components/StarRating";
 import { generateUsername } from "@/lib/validators";
 import { CareerTimeline } from "@/components/CareerTimeline";
 import { COUNTRIES, getCountryFlag } from "@/lib/countries";
+import { AttestationCard } from "@/components/RatingFormParts";
+import {
+  ManagerIdentityFields, WorkTimelineFields, type ManagerField,
+} from "@/components/ManagerFormFields";
+import { LocationValue, EMPTY_LOCATION, declaredPayload, orUserGeo } from "@/lib/location";
+import { fetchGeo } from "@/lib/geo";
+import { useFormDraft, clearFormDraft } from "@/hooks/useFormDraft";
  
 const RATING_CATEGORIES = [
   "Communication Style",
@@ -156,6 +168,9 @@ function RuleList({ rules }: { rules: Rule[] }) {
     </ul>
   );
 }
+
+/** What a withheld score looks like: a plausible number, always blurred, never the real one. */
+const WITHHELD_SCORES = [4.2, 3.8, 4.5, 3.6, 4.0, 4.4, 3.9, 4.1, 3.7, 4.3];
 
 export default function BossProfile() {
   const { id, industrySlug: industryParam, companySlug, managerSlug } = useParams<{
@@ -453,14 +468,64 @@ export default function BossProfile() {
 
   const [sortBy, setSortBy] = useState("recent");
   const [expandedReviews, setExpandedReviews] = useState<Set<number>>(new Set());
-  const [reviewStep, setReviewStep] = useState<null | "identity" | "dates" | "ratings">(null);
+
+  /*
+    Rows for a locked reader when there is not a single review to show.
+
+    Ordinary rows through the ordinary card, so a placeholder cannot come out a different shape
+    from the real thing.
+
+    No written text on them, because these forms do not collect any - a rating is scores, tenure
+    and an author. Invented prose was both fabricated opinion and an instant tell: real cards
+    showed a compact three-line card and the placeholders carried a paragraph nothing else had.
+  */
+  /*
+    The readable half is this manager's own role and company - the same line a real card shows -
+    so a placeholder does not announce itself with "at a previous employer" where every real
+    card names the employer. Everything invented about it is blurred.
+  */
+  const LOCKED_REVIEW_PLACEHOLDERS: any[] = [
+    { id: -1, author: "quiet-harbour", verified: true, overallRating: 4.2, ratings: {},
+      managerTitle: manager?.title ?? "Manager", managerCompany: manager?.company ?? "",
+      workedFrom: "2022-03", workedUntil: "2024-08", createdAt: "2024-09-01T00:00:00Z" },
+    { id: -2, author: "amber-field", verified: true, overallRating: 3.6, ratings: {},
+      managerTitle: manager?.title ?? "Manager", managerCompany: manager?.company ?? "",
+      workedFrom: "2023-01", workedUntil: null, createdAt: "2024-06-01T00:00:00Z" },
+    { id: -3, author: "north-signal", verified: false, overallRating: 4.5, ratings: {},
+      managerTitle: manager?.title ?? "Manager", managerCompany: manager?.company ?? "",
+      workedFrom: "2019-06", workedUntil: "2022-11", createdAt: "2023-12-01T00:00:00Z" },
+    { id: -4, author: "pale-thicket", verified: true, overallRating: 3.9, ratings: {},
+      managerTitle: manager?.title ?? "Manager", managerCompany: manager?.company ?? "",
+      workedFrom: "2021-02", workedUntil: "2023-07", createdAt: "2023-08-01T00:00:00Z" },
+    { id: -5, author: "low-tideline", verified: false, overallRating: 4.1, ratings: {},
+      managerTitle: manager?.title ?? "Manager", managerCompany: manager?.company ?? "",
+      workedFrom: "2020-09", workedUntil: null, createdAt: "2023-04-01T00:00:00Z" },
+  ];
+
+  /*
+    The same three steps, in the same order, as the add-manager form: who this is about, when you
+    worked with them, then the ratings. It used to open on the star ratings and ask about the
+    manager and the period afterwards, so the identical contribution had two different shapes
+    depending on which page you started from.
+  */
+  const [reviewStep, setReviewStep] = useState<null | "details" | "dates" | "ratings">(null);
   const [editManagerStep, setEditManagerStep] = useState<null | "info">(null);
-  const [editReviewStep, setEditReviewStep] = useState<null | "ratings" | "dates" | "identity">(null);
+  /* The same three steps, in the same order, as every other contribution form. */
+  const [editReviewStep, setEditReviewStep] = useState<null | "details" | "dates" | "ratings">(null);
   const [editingEditRoleInline, setEditingEditRoleInline] = useState(false);
   const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
   const [pendingDeleteReviewId, setPendingDeleteReviewId] = useState<string | null>(null);
   const [showReviewDropdown, setShowReviewDropdown] = useState(false);
-  const [editingRoleInline, setEditingRoleInline] = useState(false);
+  /*
+    Which field of the shared block is open, one slot per flow. The old form had a single
+    "Edit details" toggle covering title and company together and no location field at all; every
+    field is its own pencil now, and both flows render the same component.
+  */
+  const [reviewOpenField, setReviewOpenField] = useState<ManagerField | null>(null);
+  const [editOpenField,   setEditOpenField]   = useState<ManagerField | null>(null);
+  /** Where the opinion happened. Carried per contribution, never copied from the manager on edit. */
+  const [reviewLocation, setReviewLocation] = useState<LocationValue>(EMPTY_LOCATION);
+  const [editLocation,   setEditLocation]   = useState<LocationValue>(EMPTY_LOCATION);
   const reviewDropdownRef = useRef<HTMLDivElement>(null);
   const [authorType] = useState<"anonymous">("anonymous");
   const [generatedName, setGeneratedName] = useState(() => generateUsername());
@@ -533,6 +598,14 @@ export default function BossProfile() {
   const [editWorkedFrom, setEditWorkedFrom] = useState({ month: "", year: "" });
   const [editWorkedUntil, setEditWorkedUntil] = useState({ month: "", year: "" });
   const [editCurrentlyWorking, setEditCurrentlyWorking] = useState(false);
+  /*
+    The manager's status, as this reviewer knew it. Seeded from the profile and sent with the
+    review; the manager's own status is then derived from the most current opinion, exactly as
+    their company and title already are.
+  */
+  const [reviewManagerStatus, setReviewManagerStatus] = useState<"active" | "retired">("active");
+  /* The same question on the edit form, so an edit can correct it like any other answer. */
+  const [editManagerStatus, setEditManagerStatus] = useState<"active" | "retired">("active");
   const [reviewManagerCompany, setReviewManagerCompany] = useState("");
   const [reviewManagerTitle, setReviewManagerTitle] = useState("");
   const [editManagerCompany, setEditManagerCompany] = useState("");
@@ -550,6 +623,43 @@ export default function BossProfile() {
   const [editModalTouched, setEditModalTouched] = useState(false);
   const [editAuthorType, setEditAuthorType] = useState<"username" | "real_name" | "anonymous">("username");
   const [editGeneratedName, setEditGeneratedName] = useState(() => generateUsername());
+
+  /*
+    The edit form, kept across a refresh.
+
+    Only the create form had a draft, so reloading mid-edit dropped the reader back on the manager
+    profile with everything they had changed gone - and no sign it had ever existed. The editor is
+    only open because somebody deliberately opened it; that is reason enough to keep what is in it.
+
+    Keyed by manager, and it carries which review is being edited: without that the form could
+    reopen against the wrong one of the five a person may have written.
+  */
+  const editDraftKey = `rmm_editing_review_${id || managerSlug || "unknown"}`;
+  useFormDraft(
+    editDraftKey,
+    {
+      editingReviewId, editReviewStep, editReviewData, editLocation,
+      editWorkedFrom, editWorkedUntil, editCurrentlyWorking,
+      editManagerCompany, editManagerTitle, editManagerStatus,
+      editAuthorType, editGeneratedName,
+    },
+    saved => {
+      // Nothing to reopen unless an edit was genuinely in progress.
+      if (!saved.editingReviewId || !saved.editReviewStep) return;
+      setEditingReviewId(saved.editingReviewId);
+      setEditReviewStep(saved.editReviewStep);
+      if (saved.editReviewData)       setEditReviewData(saved.editReviewData);
+      if (saved.editLocation)         setEditLocation(saved.editLocation);
+      if (saved.editWorkedFrom)       setEditWorkedFrom(saved.editWorkedFrom);
+      if (saved.editWorkedUntil)      setEditWorkedUntil(saved.editWorkedUntil);
+      if (saved.editCurrentlyWorking != null) setEditCurrentlyWorking(saved.editCurrentlyWorking);
+      if (saved.editManagerCompany)   setEditManagerCompany(saved.editManagerCompany);
+      if (saved.editManagerTitle)     setEditManagerTitle(saved.editManagerTitle);
+      if (saved.editManagerStatus)    setEditManagerStatus(saved.editManagerStatus);
+      if (saved.editAuthorType)       setEditAuthorType(saved.editAuthorType);
+      if (saved.editGeneratedName)    setEditGeneratedName(saved.editGeneratedName);
+    },
+  );
 
   // Admin direct-edit state
   const [adminEditing, setAdminEditing] = useState(false);
@@ -763,14 +873,21 @@ export default function BossProfile() {
       setModalRatings(initializeRatings());
       setReviewAttested(false);
       setReviewSubmitError(null);
+      /*
+        The location field opens populated from detected geography, shown in full and editable.
+        Submitting it unchanged is therefore a confirmation rather than an inference - which is what
+        makes it publishable at all. The private observed copy stays in geo_observations either way.
+      */
+      void fetchGeo().then(geo => setReviewLocation(prev => orUserGeo(prev, geo)));
       setReviewTitleError(null);
       setReviewDateError(null);
-      setEditingRoleInline(false);
+      setReviewOpenField(null);
       // Default to most recent career history entry
       setSelectedCareerRoleIdx(0);
       const ch0 = manager?.careerHistory?.[0];
       setReviewManagerTitle(ch0?.title ?? manager?.title ?? "");
       setReviewManagerCompany(ch0?.company ?? manager?.company ?? "");
+      setReviewManagerStatus(manager?.status === "retired" ? "retired" : "active");
       if (ch0?.startDate) {
         const [y, m] = ch0.startDate.split("-");
         setReviewWorkedFrom({ year: y ?? "", month: m ?? "" });
@@ -783,7 +900,15 @@ export default function BossProfile() {
         setReviewCurrentlyWorking(false);
       } else {
         setReviewWorkedUntil({ month: "", year: "" });
-        setReviewCurrentlyWorking(!ch0);
+        /*
+          Never pre-checked. This used to read `!ch0`, so a manager with no recorded roles opened
+          the form already claiming the reader still works with them - an answer nobody gave, on
+          the one field that decides whether the rating describes the present or the past.
+
+          A role WITH a start and no end still leaves this off: that is the manager's tenure, not
+          a statement about the reader's.
+        */
+        setReviewCurrentlyWorking(false);
       }
     }
   }, [reviewStep !== null]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -818,17 +943,17 @@ export default function BossProfile() {
     if (!reviewStep) return; // form was closed before data loaded
     if (atReviewLimit) {
       setReviewSubmitError("You've reached the limit of 5 reviews for this manager.");
-      setReviewStep("identity");
+      setReviewStep("ratings");
       return;
     }
     if (isDuplicateTitle) {
       setConflictAfterAuth(true);
-      setReviewStep("identity");
+      setReviewStep("ratings");
       return;
     }
     if (isManagerRoleOverlap) {
       setConflictAfterAuth(true);
-      setReviewStep("identity");
+      setReviewStep("ratings");
       return;
     }
     // All checks passed - submit. user is set in auth context, no overrideUser needed.
@@ -857,6 +982,8 @@ export default function BossProfile() {
             if (data.reviewCurrentlyWorking != null) setReviewCurrentlyWorking(data.reviewCurrentlyWorking);
             if (data.reviewManagerCompany != null)   setReviewManagerCompany(data.reviewManagerCompany);
             if (data.reviewManagerTitle != null)     setReviewManagerTitle(data.reviewManagerTitle);
+            if (data.reviewManagerStatus != null)    setReviewManagerStatus(data.reviewManagerStatus);
+            if (data.reviewLocation)       setReviewLocation(data.reviewLocation);
             if (data.draftToken)           reviewDraftTokenRef.current = data.draftToken;
             if (data.signupEmail) {
               setAuthFlowEmail(data.signupEmail);
@@ -865,19 +992,44 @@ export default function BossProfile() {
             }
             skipResetRef.current = true;
             if (isVerified) {
-              setReviewStep("ratings");
+              setReviewStep("details");
               setFromVerified(true);
               setAuthFlowStep("signin");
             } else if (data.signupEmail) {
-              setReviewStep("ratings");
+              setReviewStep("details");
               if (data.emailVerified) setFromVerified(true);
               setAuthFlowStep(data.emailVerified ? "signin" : "verify_email");
             } else if (user) {
-              // Returning from social OAuth - user is already authenticated, reopen form and validate
-              setReviewStep("identity");
-              setPendingAutoSubmit(user);
+              /*
+                Returning from social OAuth: the person left a complete review behind to go and
+                sign in, so reopen it on its last step and let the validation effect decide
+                whether it can be submitted or has hit a conflict.
+
+                Gated on the ratings being complete rather than on the draft carrying a step.
+                Drafts written before the step was recorded - and the OAuth round trip itself -
+                have no `reviewStep`, and requiring one here silently stopped the whole
+                conflict-after-auth flow from reopening.
+              */
+              const allRated = data.modalRatings
+                && Object.keys(data.modalRatings).length > 0
+                && Object.values(data.modalRatings as Record<string, number>).every(r => r >= 1);
+              if (allRated) {
+                setReviewStep("ratings");
+                setPendingAutoSubmit(user);
+              } else if (data.reviewStep) {
+                setReviewStep(data.reviewStep);
+              }
+            } else if (data.reviewStep) {
+              /*
+                A reload, most often. The form was open when this was saved, so it opens again, on
+                the step it was left on.
+
+                It used to restore the answers silently and leave the form shut, which put somebody
+                who refreshed mid-review back on the manager profile with no sign their work still
+                existed - indistinguishable from having lost it.
+              */
+              setReviewStep(data.reviewStep);
             }
-            // Otherwise: data is silently restored so the form is pre-filled when the user manually opens it
           }
         }
       }
@@ -891,19 +1043,31 @@ export default function BossProfile() {
   useEffect(() => {
     if (!reviewStep) return;
     if (isSubmittingReview) return; // don't re-persist while submitting - submit clears the draft
-    const hasData = Object.values(modalRatings).every(r => r > 0);
-    if (!hasData) return;
+    /*
+      Saved whenever the form is open, not only once every star is filled.
+
+      That old condition made sense while the ratings were the FIRST step - nothing existed to keep
+      until they were answered. They are the last step now, so it meant somebody on the manager or
+      the timeline step had nothing saved at all, and a refresh threw away everything they had done.
+      The form is only open because somebody deliberately opened it; that is reason enough to keep
+      what is in it.
+    */
     localStorage.setItem("rmm_pending_review", JSON.stringify({
       returnTo: id ? `/manager/${id}` : `/companies/${companySlug}/managers/${managerSlug}`,
       managerId: id || managerSlug,
+      // Where they were, so a reload reopens the form rather than dropping them on the profile.
+      reviewStep,
+      // Where the work happened. Not saved before, so a refresh silently reverted it to whatever
+      // the visitor's geography suggested.
+      reviewLocation,
       modalRatings, authorType, generatedName, reviewAttested,
       reviewWorkedFrom, reviewWorkedUntil, reviewCurrentlyWorking,
-      reviewManagerCompany, reviewManagerTitle,
+      reviewManagerCompany, reviewManagerTitle, reviewManagerStatus,
       ...(pendingVerificationEmail ? { signupEmail: pendingVerificationEmail, emailVerified: pendingEmailVerified } : {}),
       ...(reviewDraftTokenRef.current ? { draftToken: reviewDraftTokenRef.current } : {}),
       savedAt: Date.now(),
     }));
-  }, [reviewStep, isSubmittingReview, modalRatings, reviewAttested, reviewWorkedFrom, reviewWorkedUntil, reviewCurrentlyWorking, reviewManagerCompany, reviewManagerTitle, authorType, id, pendingVerificationEmail, pendingEmailVerified]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reviewStep, reviewLocation, isSubmittingReview, modalRatings, reviewAttested, reviewWorkedFrom, reviewWorkedUntil, reviewCurrentlyWorking, reviewManagerCompany, reviewManagerTitle, authorType, id, pendingVerificationEmail, pendingEmailVerified]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close review dropdown when clicking outside
   useEffect(() => {
@@ -958,6 +1122,22 @@ export default function BossProfile() {
     }
   });
 
+  /*
+    What the reviews section draws: the real ones where there are any, placeholders only when a
+    locked reader would otherwise be shown nothing at all.
+  */
+  /*
+    At least five cards while locked, however few real reviews there are.
+
+    A stack of one or two says the same discouraging thing "1 opinion hidden" said - managers do
+    not each collect dozens, and a short stack advertises that. Five reads as a body of opinion
+    worth unlocking. Real reviews lead; placeholders make up the difference behind them.
+  */
+  const MIN_LOCKED_CARDS = 5;
+  const reviewRows: any[] = !isLocked
+    ? sortedReviews
+    : [...sortedReviews,
+       ...LOCKED_REVIEW_PLACEHOLDERS.slice(0, Math.max(0, MIN_LOCKED_CARDS - sortedReviews.length))];
   const handleSubmitReport = async (overrideUser?: User) => {
     if (!reportReason) return;
 
@@ -1054,6 +1234,7 @@ export default function BossProfile() {
         ratings: modalRatings,
         managerCompany: reviewManagerCompany,
         managerTitle: reviewManagerTitle,
+        managerStatus: reviewManagerStatus,
         workedFrom: toYearMonth(reviewWorkedFrom.month, reviewWorkedFrom.year),
         workedUntil: reviewCurrentlyWorking ? null : toYearMonth(reviewWorkedUntil.month, reviewWorkedUntil.year),
         draftToken: dropOffToken,
@@ -1094,6 +1275,9 @@ export default function BossProfile() {
           managerTitle: reviewManagerTitle,
           workedFrom: toYearMonth(reviewWorkedFrom.month, reviewWorkedFrom.year),
           workedUntil: reviewCurrentlyWorking ? null : toYearMonth(reviewWorkedUntil.month, reviewWorkedUntil.year),
+          // Where THIS opinion happened. A contribution carries its own, so the manager moving
+          // branch later never rewrites where the opinion was formed.
+          ...declaredPayload(reviewLocation),
           ...(reviewDraftTokenRef.current ? { draftToken: reviewDraftTokenRef.current } : {}),
         }
       );
@@ -1113,7 +1297,7 @@ export default function BossProfile() {
             both on a screen they could not see. A dead button and no reason is the worst possible
             answer to "I spent two minutes on this".
           */
-          setReviewStep("ratings");
+          setReviewStep("details");
         } else if (msg.startsWith("review_cooldown:")) {
           const cooldownDate = msg.split(":")[1];
           const formatted = cooldownDate ? new Date(cooldownDate + "T00:00:00").toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" }) : "30 days after your deletion";
@@ -1129,7 +1313,7 @@ export default function BossProfile() {
           setReviewStep("dates");
         } else if (lower.includes("title")) {
           setReviewTitleError(msg);
-          setReviewStep("ratings");
+          setReviewStep("details");
         } else {
           setReviewSubmitError(msg);
         }
@@ -1418,8 +1602,15 @@ export default function BossProfile() {
           ratings: editReviewData,
           managerCompany: editManagerCompany,
           managerTitle: editManagerTitle,
+          managerStatus: editManagerStatus,
           workedFrom: toYearMonth(editWorkedFrom.month, editWorkedFrom.year),
           workedUntil: editCurrentlyWorking ? null : toYearMonth(editWorkedUntil.month, editWorkedUntil.year),
+          /*
+            The location is sent only when the form actually holds one, and the server treats an
+            absent declaredPrecision as "leave it alone". So an edit to the stars cannot move an
+            opinion, while a deliberate correction to the workplace can.
+          */
+          ...declaredPayload(editLocation),
         },
       );
     } catch (err: any) {
@@ -1432,7 +1623,7 @@ export default function BossProfile() {
             ratings step, the save is on the identity step, and setting the error alone left the
             author on a screen with no message and a Save that had quietly stopped working.
           */
-          setEditReviewStep("ratings");
+          setEditReviewStep("details");
         } else {
           setEditReviewSubmitError("Failed to update review. Please try again.");
         }
@@ -1443,7 +1634,7 @@ export default function BossProfile() {
           setEditReviewStep("dates");
         } else if (lower.includes("title")) {
           setEditReviewTitleError(msg);
-          setEditReviewStep("ratings");
+          setEditReviewStep("details");
         } else {
           setEditReviewSubmitError(msg);
         }
@@ -1480,6 +1671,9 @@ export default function BossProfile() {
       toast.success(`Your review of ${manager?.name} has been updated.`);
     }
 
+    // Finished, so the draft is finished with. Only here and on a deliberate exit: a failed save
+    // keeps it, because that is exactly when the answers are most worth not losing.
+    clearFormDraft(editDraftKey);
     setEditReviewStep(null);
   };
 
@@ -1516,6 +1710,7 @@ export default function BossProfile() {
 
     setPendingDeleteReviewId(null);
     setShowReviewDropdown(false);
+    clearFormDraft(editDraftKey);
     setEditReviewStep(null);
     setEditingReviewId(null);
     if (dbUserId) {
@@ -1765,29 +1960,27 @@ export default function BossProfile() {
                       : "-"}
                 </span>
                 <div>
-                  <div
-                    className="flex items-center gap-0.5"
-                    role="img"
-                    aria-label={`${Number(managerCategoryAverages.overallRating || manager.overallRating || 0).toFixed(1)} out of 5 stars`}
-                  >
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Star
-                        key={i}
-                        size={13}
-                        aria-hidden="true"
-                        className={
-                          isLocked
-                            ? "fill-amber-300/40 text-amber-300/40"
-                            : i < Math.floor(managerCategoryAverages.overallRating || manager.overallRating || 0)
-                              ? "fill-amber-400 text-amber-400"
-                              : "text-border"
-                        }
-                      />
-                    ))}
-                  </div>
+                  {/*
+                    The shared Stars, half-filled. This loop used Math.floor, so 4.9 drew four
+                    stars and understated the score exactly as rounding elsewhere overstated it.
+                    Locked keeps its washed-out placeholder row - a shape, not a score.
+                  */}
+                  {isLocked ? (
+                    <div className="flex items-center gap-0.5" role="img" aria-label="rating hidden until you contribute">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Star key={i} size={13} aria-hidden="true" className="fill-amber-300/40 text-amber-300/40" />
+                      ))}
+                    </div>
+                  ) : (
+                    <Stars
+                      rating={Number(managerCategoryAverages.overallRating || manager.overallRating || 0)}
+                      size={13}
+                      showValue={false}
+                    />
+                  )}
                   <p className={`mt-0.5 text-xs text-muted-foreground ${isLocked ? "blur-sm" : ""}`}>
                     {(contextReviews.length || manager.reviews || 0) > 0
-                      ? `${(contextReviews.length || manager.reviews || 0).toLocaleString()} ${(contextReviews.length || manager.reviews || 0) === 1 ? 'review' : 'reviews'}${(contextReviews.length || manager.reviews || 0) < 3 ? ' (limited data, interpret cautiously)' : ''}`
+                      ? `${(contextReviews.length || manager.reviews || 0).toLocaleString()} ${(contextReviews.length || manager.reviews || 0) === 1 ? 'review' : 'reviews'}${(contextReviews.length || manager.opinions || 0) < MIN_OPINIONS_FOR_CONFIDENCE ? ' (limited data, interpret cautiously)' : ''}`
                       : 'No reviews yet'}
                   </p>
                 </div>
@@ -1804,7 +1997,7 @@ export default function BossProfile() {
                           track("rate_button_clicked");
                           setReviewManagerCompany(manager.company);
                           setReviewManagerTitle(manager.title);
-                          setReviewStep("ratings");
+                          setReviewStep("details");
                         } else {
                           setShowReviewDropdown(v => !v);
                           setPendingDeleteReviewId(null);
@@ -1883,6 +2076,33 @@ export default function BossProfile() {
                                   setEditCurrentlyWorking(!!review.workedFrom && !review.workedUntil);
                                   setEditManagerCompany(review.managerCompany || manager.company);
                                   setEditManagerTitle(review.managerTitle || manager.title);
+                                  setEditManagerStatus(
+                                    (review.managerStatus ?? manager.status) === "retired" ? "retired" : "active");
+                                  /*
+                                    Opens with what the review already says, not with where the
+                                    manager works now. Editing an old opinion must not quietly
+                                    re-file it at the branch they transferred to since.
+                                  */
+                                  const stored: LocationValue = review.declaredPrecision ? {
+                                    country: review.declaredCountry ?? "",
+                                    state:   review.declaredState ?? "",
+                                    city:    review.declaredCity ?? "",
+                                    precision: review.declaredPrecision,
+                                    companyLocationId: review.companyLocationId ?? null,
+                                    corpusPlace: null,
+                                    label: "",
+                                  } : EMPTY_LOCATION;
+                                  setEditLocation(stored);
+                                  /*
+                                    Reviews written before the location field existed have none
+                                    stored, and an empty field on an edit form reads as "you
+                                    cleared this". Falling back to the visitor's own country and
+                                    state fills it with something true that they can see, change,
+                                    and confirm by submitting - the same rule the other two paths
+                                    follow. A stored location is never overwritten.
+                                  */
+                                  void fetchGeo().then(geo =>
+                                    setEditLocation(prev => orUserGeo(prev, geo)));
                                   setEditReviewData(fromApiRatings(review.ratings));
                                   const existingAuthor = review.author ?? "";
                                   if (existingAuthor === user?.username) {
@@ -1894,7 +2114,7 @@ export default function BossProfile() {
                                     setEditGeneratedName(existingAuthor || generateUsername());
                                   }
                                   setEditingEditRoleInline(false);
-                                  setEditReviewStep("ratings");
+                                  setEditReviewStep("details");
                                 }}
                                 className="flex-1 text-left px-4 py-2.5"
                               >
@@ -1939,7 +2159,7 @@ export default function BossProfile() {
                                 setShowReviewDropdown(false);
                                 setReviewManagerCompany(manager.company);
                                 setReviewManagerTitle(manager.title);
-                                setReviewStep("ratings");
+                                setReviewStep("details");
                               }}
                               className="w-full text-left px-4 py-3 text-sm font-medium text-primary hover:bg-primary/5 transition-colors flex items-center gap-2"
                             >
@@ -2281,157 +2501,44 @@ export default function BossProfile() {
         </section>
       )}
 
-      {/* Manager Summary */}
-      {isLocked ? (
-        <section className="border-b border-border py-8">
-          <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-            <div className="mb-5">
-              <h2 className="text-[17px] font-semibold text-foreground tracking-tight">Overview</h2>
-            </div>
-            <div className="relative">
-              <div className="blur-sm select-none pointer-events-none">
-                <p className="text-sm text-foreground leading-relaxed mb-6">
-                  Reviewers reported positive scores overall, with most categories reflecting a satisfying experience.
-                </p>
-                <div className="grid sm:grid-cols-2 gap-8">
-                  {["Key Strengths", "Lower-rated categories"].map(label => (
-                    <div key={label}>
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className={`h-2 w-2 rounded-full flex-shrink-0 ${label === "Key Strengths" ? "bg-emerald-500" : "bg-orange-400"}`} />
-                        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">{label}</p>
-                      </div>
-                      <div>
-                        {[1, 2, 3].map(i => (
-                          <div key={i} className="flex items-center justify-between py-2.5 border-b border-border/50 last:border-0">
-                            <div className="h-3 rounded bg-muted" style={{ width: `${55 + i * 12}%` }} />
-                            <span className="text-sm font-semibold tabular-nums ml-4 flex-shrink-0">4.{i}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center bg-background/60 rounded-lg px-4">
-                <p className="text-sm font-semibold text-foreground">Overview is locked</p>
-                <p className="mt-1 text-xs text-muted-foreground">Rate any manager to see the full summary.</p>
-                <button
-                  onClick={() => navigate("/add")}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-4 py-2 text-xs font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
-                >
-                  ⭐ Rate a manager
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-      ) : contextReviews.length === 0 ? (
-        <section className="border-b border-border py-8">
-          <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-            <div className="mb-5">
-              <h2 className="text-[17px] font-semibold text-foreground tracking-tight">Overview</h2>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Summarised from reviewer opinions. All ratings and observations reflect personal experiences, not verified facts.
-              </p>
-            </div>
-            <p className="text-sm text-muted-foreground leading-relaxed mb-6">
-              No reviews have been submitted yet. Once reviewers share their experiences, an overview summary will appear here.
-            </p>
-            <div className="grid sm:grid-cols-2 gap-8">
-              {["Key Strengths", "Lower-rated categories"].map(label => (
-                <div key={label}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className={`h-2 w-2 rounded-full flex-shrink-0 ${label === "Key Strengths" ? "bg-emerald-200" : "bg-orange-200"}`} />
-                    <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/50">{label}</p>
-                  </div>
-                  <div>
-                    {[1, 2, 3].map(i => (
-                      <div key={i} className="flex items-center justify-between py-2.5 border-b border-border/50 last:border-0">
-                        <div className="h-3 rounded bg-muted" style={{ width: `${55 + i * 12}%` }} />
-                        <span className="text-sm font-semibold text-muted-foreground/40 tabular-nums ml-4 flex-shrink-0">-</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      ) : null}
-      {!isLocked && contextReviews.length > 0 && (() => {
-        const overall = managerCategoryAverages.overallRating || 0;
-        const n = contextReviews.length;
-        const scored = RATING_CATEGORIES
-          .map(cat => ({ cat, score: Math.round((managerCategoryAverages[cat] || 0) * 10) / 10 }))
-          .filter(x => x.score > 0)
-          .sort((a, b) => b.score - a.score);
+      {/*
+        Strongest and weakest, stated exactly as a company page states them.
 
-        const strengths  = scored.filter(x => x.score >= 3.8).slice(0, 3);
-        const challenges = [...scored].reverse().filter(x => x.score < 3.2).slice(0, 3);
+        This was an "Overview": a generated sentence - "1 anonymous reviewer reported generally
+        favourable scores…" - above two lists headed "Key Strengths" and "Lower-rated
+        categories", with dot markers and its own type scale. It said the same thing as the
+        company header's Strongest/Weakest block, in a different voice and a different layout,
+        on two pages a reader moves between constantly. Same component now.
+      */}
+      <section className="border-b border-border py-8">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+          <RatingHighlights
+            locked={isLocked}
+            opinionCount={contextReviews.length || manager.reviews || 0}
+            highlights={(() => {
+            /*
+              One sorted list, split - never two independent top-3 and bottom-3 slices. With six
+              or fewer categories those slices overlap and a category shows as both a strength
+              and a weakness at once.
 
-        let headline = "";
-        const reviewLabel = n === 1 ? "1 anonymous reviewer" : `${n} anonymous reviewers`;
-        const reportedLabel = n === 1 ? `${reviewLabel} reported` : `${reviewLabel} reported`;
-        if      (overall >= 4.5) headline = `${reportedLabel} very high scores across nearly all categories.`;
-        else if (overall >= 4.0) headline = `${reportedLabel} positive scores overall, with most categories reflecting a satisfying working experience.`;
-        else if (overall >= 3.5) headline = `${reportedLabel} generally favourable scores, with most categories reflecting a positive but mixed experience.`;
-        else if (overall >= 3.0) headline = `${reportedLabel} mixed scores. Some categories were rated well, while others were noted as needing improvement.`;
-        else if (overall >= 2.0) headline = `${reportedLabel} below-average scores, with several categories noted as areas of concern.`;
-        else                     headline = `${reportedLabel} lower scores across several categories.`;
-
-        return (
-          <section className="border-b border-border py-8">
-            <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-              <div className="mb-5">
-                <h2 className="text-[17px] font-semibold text-foreground tracking-tight">Overview</h2>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  {n < 3
-                    ? "Based on a small number of opinions. Treat as indicative only until more reviews are submitted."
-                    : "Summarised from reviewer opinions. All ratings and observations reflect personal experiences, not verified facts."}
-                </p>
-              </div>
-              <p className="text-sm text-foreground leading-relaxed mb-6">{headline}</p>
-
-              {(strengths.length > 0 || challenges.length > 0) && (
-                <div className="grid sm:grid-cols-2 gap-8">
-                  {strengths.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="h-2 w-2 rounded-full bg-emerald-500 flex-shrink-0" />
-                        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Key Strengths</p>
-                      </div>
-                      <div>
-                        {strengths.map(({ cat, score }) => (
-                          <div key={cat} className="flex items-center justify-between py-2.5 border-b border-border/50 last:border-0">
-                            <span className="text-sm text-foreground">{cat}</span>
-                            <span className="text-sm font-semibold text-emerald-600 tabular-nums ml-4 flex-shrink-0">{score.toFixed(1)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {challenges.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="h-2 w-2 rounded-full bg-orange-400 flex-shrink-0" />
-                        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Lower-rated categories</p>
-                      </div>
-                      <div>
-                        {challenges.map(({ cat, score }) => (
-                          <div key={cat} className="flex items-center justify-between py-2.5 border-b border-border/50 last:border-0">
-                            <span className="text-sm text-foreground">{cat}</span>
-                            <span className="text-sm font-semibold text-orange-500 tabular-nums ml-4 flex-shrink-0">{score.toFixed(1)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </section>
-        );
-      })()}
+              Locked draws plausible placeholders: the blur needs a shape, and a gated reader
+              should see that there is a breakdown here rather than an empty band.
+            */
+            const scored = isLocked
+              ? RATING_CATEGORIES.map((cat, i) => ({ cat, score: [5, 4.6, 4.3, 3.6, 3.4, 3.1][i % 6] }))
+              : RATING_CATEGORIES
+                  .map(cat => ({ cat, score: Math.round((managerCategoryAverages[cat] || 0) * 10) / 10 }))
+                  .filter(x => x.score > 0);
+            if (scored.length === 0) return [];
+            const sorted = [...scored].sort((a, b) => b.score - a.score);
+            const cut = Math.max(3, sorted.length - 3);
+            return [
+              ...sorted.slice(0, 3).map(x => ({ direction: "up" as const, label: x.cat, value: x.score })),
+              ...sorted.slice(cut).map(x => ({ direction: "down" as const, label: x.cat, value: x.score })),
+            ];
+          })()} />
+        </div>
+      </section>
 
       {/* Category Averages - bar chart */}
       <section className="border-b border-border py-10">
@@ -2455,28 +2562,33 @@ export default function BossProfile() {
                   </div>
                 ))}
               </div>
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-4 bg-background/60 rounded-lg">
-                <p className="text-sm font-semibold text-foreground">+{RATING_CATEGORIES.length} categories locked</p>
-                <p className="mt-1 text-xs text-muted-foreground">Rate any manager to unlock the full breakdown</p>
-                <button
-                  onClick={() => navigate("/add")}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-4 py-2 text-xs font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
-                >
-                  ⭐ Rate a manager
-                </button>
-              </div>
+              <LockedOverlay
+                title={`+${RATING_CATEGORIES.length} categories locked`}
+                hint="Rate any manager to unlock the full breakdown"
+                cta={{ label: "⭐ Rate a manager", onClick: () => navigate("/add") }}
+              />
             </div>
           ) : contextReviews.length > 0 ? (
             <>
               {/*
-                No Strongest / Weakest cards above this any more.
+                Summary above, detail here.
 
-                They restated three high and three low categories in big rectangles, and the
-                breakdown beneath then listed the very same figures again - every number on this
-                section appeared twice, in two different visual languages. The filter does that job
-                now: same chart, same bars, same reading, just fewer rows. One thing to learn
-                instead of two, and the component does not mutate into something unrelated when the
-                reader narrows it.
+                Strongest and Weakest are stated in the section above this one, by the same
+                RatingHighlights block the company page uses. This is the full list: all ten
+                categories, in the order they are asked, with no way to narrow it.
+
+                That answers the objection this comment used to raise. An earlier pass put three
+                high and three low categories in big rectangles above a breakdown that then listed
+                the very same figures again - every number twice, in two different visual
+                languages, both presented as the main event. The answer then was to drop the cards
+                and let an All / Highest / Lower filter rank the categories in place.
+
+                It is the other way round now. Six of these ten do appear above as well, but as a
+                compact two-column summary rather than a second full statement of the same data:
+                one block says what stands out, this one shows everything. A filter here would be
+                a third way to ask a question already answered a screen higher, and it would hide
+                seven rows by default to do it - from the reader who scrolled down to this section
+                precisely because they wanted all of them.
               */}
               <div>
                 <RatingBreakdown
@@ -2484,14 +2596,16 @@ export default function BossProfile() {
                      printing "Rating breakdown / How people rated them across each category" a
                      line below it said the same thing twice in two voices. */
                   title={null}
-                  /* Three pills instead of every category at once - see RatingBreakdown. */
-                  filterable
+                  /* filterable is left off: RatingBreakdown offers the All / Highest / Lower
+                     pills, and its own default says why not to take them here - a surface that
+                     already ranks the categories elsewhere on the page should not offer a second
+                     way to do the same thing. Strongest / Weakest is that ranking. */
                   rows={RATING_CATEGORIES.map((c) => ({
                     key: c, label: c, value: managerCategoryAverages[c] || 0,
                   }))}
                 />
                 {/*
-                  "Based on 2 opinions · Limited data — interpret cautiously" rather than "Based on
+                  "Based on 2 opinions · Limited data, interpret cautiously" rather than "Based on
                   2 reviews. Low confidence." Same signal, said the way the rest of the site says
                   it: a reader is being told how much weight to give the number, not read a
                   statistic about it.
@@ -2499,7 +2613,7 @@ export default function BossProfile() {
                 <p className="mt-3 text-xs text-muted-foreground">
                   Based on {contextReviews.length} {contextReviews.length === 1 ? "opinion" : "opinions"}
                   {contextReviews.length < 5
-                    ? " · Limited data — interpret cautiously"
+                    ? " · Limited data, interpret cautiously"
                     : contextReviews.length < 20
                       ? " · Still a small sample"
                       : ""}
@@ -2573,16 +2687,11 @@ export default function BossProfile() {
             <h2 className="text-[17px] font-semibold text-foreground tracking-tight mb-4">Career Performance Trajectory</h2>
             <div className="relative rounded-xl border border-border overflow-hidden">
               <div className="h-40 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 blur-sm" />
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-4">
-                <p className="font-semibold text-foreground">See how this manager's ratings have changed over time</p>
-                <p className="mt-1 text-sm text-muted-foreground">Rate a manager to unlock the performance trajectory</p>
-                <button
-                  onClick={() => navigate("/add")}
-                  className="mt-4 rounded-lg bg-[#2e0562] px-5 py-2 text-sm font-semibold text-white hover:bg-[#2e0562]/90"
-                >
-                  ⭐ Rate a manager
-                </button>
-              </div>
+              <LockedOverlay
+                title="See how this manager's ratings have changed over time"
+                hint="Rate a manager to unlock the performance trajectory"
+                cta={{ label: "⭐ Rate a manager", onClick: () => navigate("/add") }}
+              />
             </div>
           </div>
         </section>
@@ -2596,7 +2705,17 @@ export default function BossProfile() {
               <h2 className="text-[17px] font-semibold text-foreground tracking-tight">
                 Reviews
                 {contextReviews.length > 0 && (
-                  <span className="ml-2 text-sm font-normal text-muted-foreground">{contextReviews.length}</span>
+                  /*
+                    Blurred with the ratings it counts.
+
+                    A manager does not collect dozens of reviews, so the true number is usually
+                    small - and printing "1" beside the heading is the single most discouraging
+                    thing this section can say to somebody deciding whether to write one. It is
+                    part of what contributing buys, not a label.
+                  */
+                  <span className={`ml-2 text-sm font-normal text-muted-foreground ${isLocked ? "blur-sm select-none" : ""}`}>
+                    {contextReviews.length}
+                  </span>
                 )}
               </h2>
               <p className="text-[13px] text-muted-foreground mt-0.5">Personal opinions shared by reviewers · profiles and work histories are self-reported</p>
@@ -2614,50 +2733,42 @@ export default function BossProfile() {
           </div>
 
           <div className="space-y-5">
-            {isLocked ? (
-              <div className="relative">
-                {/* Show 1 blurred review as teaser */}
-                {sortedReviews.length > 0 && (
-                  <div className="blur-sm select-none pointer-events-none rounded-xl border border-border bg-card p-5 shadow-sm">
-                    <div className="mb-3">
-                      <p className="text-[13px] font-semibold text-foreground">
-                        {sortedReviews[0].managerTitle} at {sortedReviews[0].managerCompany}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 mb-3">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Star key={i} size={12} className={i < Math.floor(sortedReviews[0].overallRating || 0) ? "fill-amber-400 text-amber-400" : "text-border"} />
-                      ))}
-                    </div>
-                    <p className="text-sm text-foreground line-clamp-3">{sortedReviews[0].text || "No written review."}</p>
-                  </div>
-                )}
-                <div className={`${sortedReviews.length > 0 ? "mt-3" : ""} rounded-xl border border-border bg-card p-8 text-center`}>
-                  <p className="text-sm font-semibold text-foreground">
-                    {sortedReviews.length > 0
-                      ? `${sortedReviews.length} review${sortedReviews.length === 1 ? "" : "s"} hidden`
-                      : "Reviews are locked"}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">Rate any manager to read what others think.</p>
-                  <button
-                    onClick={() => navigate("/add")}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
-                  >
-                    ⭐ Rate a manager to unlock
-                  </button>
-                </div>
-              </div>
-            ) : sortedReviews.length > 0 ? (
-              sortedReviews.map((review) => {
+            {/*
+              One list, locked or not.
+
+              The gate withholds the RATINGS, not the reviews: a locked reader gets the real
+              cards - the role, the dates, who wrote it, the words, and the breakdown toggle that
+              works - with every score blurred out. What it used to get instead was "1 review
+              hidden" above a single blurred teaser, which is an accurate sentence and a terrible
+              advertisement: it told them the thing behind the gate was one review, which is no
+              reason at all to write one.
+
+              Where there is not a single review to show, the same cards render from placeholder
+              rows with everything blurred, so the section still reads as a list of opinions
+              rather than an empty box.
+            */}
+            {reviewRows.length > 0 ? (
+              reviewRows.map((review: any, rowIndex: number) => {
+                /*
+                  The lead card keeps its author and date when it is genuinely somebody's - the
+                  proof that there are real people behind the blur. Without it the whole stack
+                  could be invention and a reader has no reason to think otherwise. Its score is
+                  withheld like every other: that is what contributing buys.
+                */
+                const revealIdentity = rowIndex === 0 && sortedReviews.length > 0;
                 const isExpanded = expandedReviews.has(review.id);
                 return (
-                <div
+                /*
+                  A placeholder row is treated exactly like a real one behind the gate.
+
+                  Blurring the whole card made the invented rows obvious at a glance - the fake
+                  ones were the smudged ones - which defeats the point of showing them. The
+                  handle and every score are withheld on both, so an invented contributor is
+                  never legible either way.
+                */
+                <OpinionCard
                   key={review.id}
-                  className={`rounded-xl border bg-card p-5 shadow-sm ${
-                    review.disposition === "held"
-                      ? "border-amber-300 ring-1 ring-amber-200"
-                      : "border-border"
-                  }`}
+                  tone={review.disposition === "held" ? "held" : "default"}
                 >
                   {/*
                     A held rating reaches this list only for its author or an admin - the public
@@ -2676,8 +2787,11 @@ export default function BossProfile() {
                     <p className="text-[13px] font-semibold text-foreground">
                       {review.managerTitle} at {review.managerCompany}
                     </p>
+                    {/* Tenure is contributed detail, withheld like the scores on every card but the lead one. */}
                     {(review.workedFrom || review.workedUntil) && (
-                      <p className="text-xs text-muted-foreground mt-0.5">
+                      <p className={`text-xs text-muted-foreground mt-0.5 ${
+                        isLocked && !revealIdentity ? "blur-sm select-none" : ""
+                      }`}>
                         {review.workedFrom ? new Date(review.workedFrom + "T00:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" }) : ""}
                         {" – "}
                         {review.workedUntil
@@ -2689,37 +2803,29 @@ export default function BossProfile() {
 
                   {/* Rating + reviewer row */}
                   <div className="flex items-center justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className="flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                        style={{ backgroundColor: getAvatarColor(review.author) }}
-                      >
-                        {getInitials(review.author)}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-sm font-medium text-foreground">{review.author}</span>
-                          {review.verified && (
-                            <span
-                              className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground cursor-help whitespace-nowrap flex-shrink-0"
-                              title="Submitted by a registered account holder. Identity is not independently verified."
-                            >
-                              ✓ Registered
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-muted-foreground">{getFormattedDate(review)}</p>
-                      </div>
-                    </div>
+                    {/*
+                      Who wrote it goes with the score, the same as on the workplace and
+                      interview cards - the three lists state a lock identically or they read as
+                      three different products. The review's words stay: they are the hook, and
+                      the thing contributing buys is the numbers.
+                    */}
+                    {/*
+                      The shared author block, same as the workplace and interview cards. Three
+                      copies of avatar-handle-badge-date is how the interview one quietly lost
+                      its avatar and nobody noticed until the two tabs were seen side by side.
+                    */}
+                    <OpinionAuthor
+                      name={review.author}
+                      when={getFormattedDate(review)}
+                      verified={review.verified}
+                      blurred={isLocked && !revealIdentity}
+                    />
 
-                    <div className="flex-shrink-0 flex items-center gap-1.5">
-                      <span className="text-lg font-bold text-foreground tabular-nums leading-none">{review.overallRating.toFixed(1)}</span>
-                      <div className="flex gap-0.5" role="img" aria-label={`${review.overallRating} out of 5`}>
-                        {Array.from({ length: 5 }).map((_, i) => (
-                          <Star key={i} size={12} aria-hidden="true"
-                            className={i < Math.round(review.overallRating) ? "fill-amber-400 text-amber-400" : "text-border"} />
-                        ))}
-                      </div>
+                    {/* The one thing the gate actually withholds. */}
+                    <div className={`flex-shrink-0 flex items-center gap-1.5 ${isLocked ? "blur-sm select-none" : ""}`}>
+                      <span className="text-lg font-bold text-foreground tabular-nums leading-none">{(review.overallRating ?? 0).toFixed(1)}</span>
+                      {/* The shared Stars: half-filled where the score is, not rounded up. */}
+                      <Stars rating={review.overallRating ?? 0} showValue={false} />
                     </div>
                   </div>
 
@@ -2745,9 +2851,16 @@ export default function BossProfile() {
                       {RATING_CATEGORIES.map((category) => (
                         <div key={category} className="flex items-center justify-between rounded-md bg-muted/40 px-2.5 py-1.5">
                           <span className="text-xs text-muted-foreground">{category}</span>
-                          <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                          {/* Per-category scores are ratings too - blurred with the rest. */}
+                          <div className={`flex items-center gap-1 flex-shrink-0 ml-2 ${isLocked ? "blur-sm select-none" : ""}`}>
                             <span className="text-xs font-semibold text-foreground tabular-nums">
-                              {review.ratings[category as keyof typeof review.ratings]}
+                              {/*
+                                A stand-in where there is no real score to blur - a placeholder
+                                row has none, and an opened breakdown full of dashes reads as a
+                                broken control rather than a withheld one.
+                              */}
+                              {review.ratings?.[category as keyof typeof review.ratings]
+                                ?? (isLocked ? WITHHELD_SCORES[RATING_CATEGORIES.indexOf(category) % WITHHELD_SCORES.length] : "–")}
                             </span>
                             <Star size={10} aria-hidden="true" className="fill-amber-400 text-amber-400" />
                           </div>
@@ -2755,7 +2868,7 @@ export default function BossProfile() {
                       ))}
                     </div>
                   )}
-                </div>
+                </OpinionCard>
                 );
               })
             ) : (
@@ -2765,6 +2878,15 @@ export default function BossProfile() {
                   Be the first to share your experience. Your perspective helps others make more informed career decisions.
                 </p>
               </div>
+            )}
+
+            {/* What is withheld and how to open it - after the cards it applies to. */}
+            {isLocked && (
+              <LockedPanelCard
+                title="Ratings are locked"
+                hint="Rate any manager to see the scores behind these reviews."
+                cta={{ label: "⭐ Rate a manager to unlock", onClick: () => navigate("/add") }}
+              />
             )}
           </div>
 
@@ -2790,7 +2912,7 @@ export default function BossProfile() {
               onClick={() => {
                 setReviewManagerCompany(manager.company);
                 setReviewManagerTitle(manager.title);
-                setReviewStep("ratings");
+                setReviewStep("details");
               }}
               disabled={isBanned}
               title={isBanned ? "Your account has been suspended" : ""}
@@ -2808,10 +2930,10 @@ export default function BossProfile() {
 
       {/* Write Review - Full-Screen Stepped Form */}
       {reviewStep && (() => {
-        const steps = ["ratings", "dates", "identity"] as const;
+        const steps = ["details", "dates", "ratings"] as const;
         const stepIdx = steps.indexOf(reviewStep) + 1;
-        const stepTitles = { ratings: "Rate your experience", dates: "Work timeline", identity: "Review attribution" };
-        const isLastStep = reviewStep === "identity";
+        const stepTitles = { details: "Manager information", dates: "Work timeline", ratings: "Rate your experience" };
+        const isLastStep = reviewStep === "ratings";
         const submitDisabled = !reviewAllRated || !reviewAttested || !reviewIsDateValid || isDuplicateTitle || isManagerRoleOverlap || isSubmittingReview || !!reviewTitleError || !!reviewDateError || !!reviewSubmitError || !!pendingAutoSubmit;
         return (
           <div className="fixed inset-0 z-50 flex flex-col bg-background">
@@ -2819,14 +2941,14 @@ export default function BossProfile() {
             <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
               <button
                 onClick={() => {
-                  if (reviewStep === "ratings") { localStorage.removeItem("rmm_pending_review"); setReviewStep(null); setModalRatings(initializeRatings()); }
-                  else if (reviewStep === "dates") setReviewStep("ratings");
-                  else if (reviewStep === "identity") { setReviewStep("dates"); setConflictAfterAuth(false); setShowCancelConfirm(false); }
+                  if (reviewStep === "details") { localStorage.removeItem("rmm_pending_review"); setReviewStep(null); setModalRatings(initializeRatings()); }
+                  else if (reviewStep === "dates") setReviewStep("details");
+                  else if (reviewStep === "ratings") { setReviewStep("dates"); setConflictAfterAuth(false); setShowCancelConfirm(false); }
                 }}
                 className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors min-w-[60px]"
               >
                 {reviewStep !== "ratings" && <ArrowLeft size={16} aria-hidden="true" />}
-                {reviewStep === "ratings" ? "Cancel" : "Back"}
+                {reviewStep === "details" ? "Cancel" : "Back"}
               </button>
               <div className="text-center">
                 <p className="text-sm font-semibold text-foreground">{stepTitles[reviewStep]}</p>
@@ -2854,7 +2976,7 @@ export default function BossProfile() {
               <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
 
                 {/* Draft restored banner */}
-                {showDraftBanner && reviewStep === "ratings" && (
+                {showDraftBanner && reviewStep === "details" && (
                   <div className="flex items-center justify-between gap-4 rounded-lg border border-[#2e0562]/30 bg-[#2e0562]/5 px-4 py-3 mb-6">
                     <p className="text-sm text-foreground">
                       <span className="font-medium">Draft Restored.</span> Pick up where you left off.
@@ -2866,15 +2988,29 @@ export default function BossProfile() {
                   </div>
                 )}
 
-                {/* Step 4: Identity */}
-                {reviewStep === "identity" && (
+                {/* Step 3: the ratings, plus how the review is signed */}
+                {reviewStep === "ratings" && (
                   <div className="space-y-6">
-                    {showReadyBanner && reviewAllRated && reviewIsDateValid && (
-                      <div className="flex items-center gap-2 rounded-lg border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-700">
-                        <Check size={16} className="flex-shrink-0" />
-                        You're signed in. Your review is ready to submit.
-                      </div>
-                    )}
+                    {/*
+                      The ratings, last - the same place the add-manager form asks for them, after
+                      who the review is about and when it happened. Asking for ten stars before
+                      either of those was the same contribution wearing a different shape depending
+                      on which page somebody started from.
+                    */}
+                    <div>
+                      <h2 className="text-[22px] font-semibold text-foreground">
+                        Rate {manager.name?.split(" ")[0] || "this manager"}
+                      </h2>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Rate them on each dimension. All 10 categories are required.
+                      </p>
+                    </div>
+
+                    {/*
+                      Who it is posted as, then the ground rules, then the ratings, then the
+                      attestation - the add-manager form's last step, in its order. Two forms
+                      asking the same thing should not put the same blocks in different places.
+                    */}
                     <div className="rounded-xl border border-border p-5 space-y-3">
                       <p className="text-sm font-semibold text-foreground">🔒 Posting Anonymously</p>
                       <div>
@@ -2891,92 +3027,79 @@ export default function BossProfile() {
                       <p className="text-xs text-muted-foreground">This name is randomly generated and cannot be linked back to you.</p>
                     </div>
 
-                    {/* First-hand-experience attestation - required before the review can be submitted */}
-                    <div className="rounded-xl border border-border p-5">
-                      <label className="flex items-start gap-3 cursor-pointer text-sm text-foreground">
-                        <input
-                          type="checkbox"
-                          name="attestation"
-                          checked={reviewAttested}
-                          onChange={e => setReviewAttested(e.target.checked)}
-                          className="mt-0.5 w-4 h-4 flex-shrink-0"
-                        />
-                        <span>
-                          I confirm that I have personally worked with or for this manager, and these
-                          ratings reflect my own experience and perceptions.
-                        </span>
-                      </label>
+                    {/* About your review - the add-manager form's panel, markup for markup. */}
+                    <div className="rounded-xl border border-border p-5 space-y-2">
+                      <p className="text-sm font-semibold text-foreground">About your review</p>
+                      <p className="text-xs text-muted-foreground">Your rating reflects your personal experience. All feedback is structured and opinion-based.</p>
+                      <ul className="mt-2 space-y-1">
+                        {[
+                          "One review per role / time period",
+                          "Duplicate or overlapping reviews are automatically blocked",
+                          "No written reviews, only structured ratings",
+                        ].map(item => (
+                          <li key={item} className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span className="w-1 h-1 rounded-full bg-muted-foreground/60 flex-shrink-0" />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
+
+
+                    <div className="space-y-6">
+                      {RATING_CATEGORIES.map((category) => (
+                        <div key={category} className="border-b border-border pb-6 last:border-b-0">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                            <label className="block text-sm font-semibold text-foreground">{category} *</label>
+                            <StarRating
+                              value={modalRatings[category] || 0}
+                              onChange={(value) => setModalRatings((prev) => ({ ...prev, [category]: value }))}
+                              required={true}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {showReadyBanner && reviewAllRated && reviewIsDateValid && (
+                      <div className="flex items-center gap-2 rounded-lg border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-700">
+                        <Check size={16} className="flex-shrink-0" />
+                        You're signed in. Your review is ready to submit.
+                      </div>
+                    )}
+                    {/* The same attestation every rating form asks, in this one's own words. */}
+                    <AttestationCard checked={reviewAttested} onChange={setReviewAttested}>
+                      I confirm that I have personally worked with or for this manager, and these
+                      ratings reflect my own experience and perceptions.
+                    </AttestationCard>
                   </div>
                 )}
 
-                {/* Step 2: Dates */}
+                {/* Step 2: when you worked with them */}
                 {reviewStep === "dates" && (
                   <div className="space-y-8">
-                    <div>
-                      <h2 className="text-[22px] font-semibold text-foreground">Work timeline</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">Help us understand when this working relationship occurred.</p>
-                    </div>
+                    {/* The same control the add form uses, so the same mistake reads the same way
+                        on either page rather than in two hand-written wordings. */}
+                    <WorkTimelineFields
+                      heading="Work timeline"
+                      subheading="Help us understand when this working relationship occurred."
+                      from={reviewWorkedFrom}
+                      until={reviewWorkedUntil}
+                      current={reviewCurrentlyWorking}
+                      onFromChange={setReviewWorkedFrom}
+                      onUntilChange={setReviewWorkedUntil}
+                      onCurrentChange={setReviewCurrentlyWorking}
+                      disableCurrentReason={isManagerRoleOverlap ? "overlap" : null}
+                      problem={
+                        isManagerRoleOverlap ? (
+                          <p className="text-xs text-red-600">You already have a review that overlaps this period. Each review must cover a distinct time range.</p>
+                        ) : reviewDateError ? (
+                          <p className="text-xs text-red-600">{reviewDateError}</p>
+                        ) : undefined
+                      }
+                    />
 
-                    {/* Work period */}
-                    <div>
-                      <p className="text-sm font-semibold text-foreground mb-1">When did you work with this manager? <span className="text-red-500">*</span></p>
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-2">From <span className="text-red-500">*</span></p>
-                          <div className="flex gap-2">
-                            <select aria-label="From month" value={reviewWorkedFrom.month} onChange={(e) => { const v = e.target.value; setReviewWorkedFrom(p => ({ ...p, month: v })); if (!v && !reviewWorkedFrom.year) { setReviewWorkedUntil({ month: "", year: "" }); setReviewCurrentlyWorking(false); } }} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]">
-                              <option value="">Month</option>
-                              {availableMonths(reviewWorkedFrom.year).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                            </select>
-                            <select aria-label="From year" value={reviewWorkedFrom.year} onChange={(e) => { const v = e.target.value; const clearedMonth = v === String(currentYear) && parseInt(reviewWorkedFrom.month) > currentMonth ? "" : reviewWorkedFrom.month; setReviewWorkedFrom({ month: clearedMonth, year: v }); if (!v && !clearedMonth) { setReviewWorkedUntil({ month: "", year: "" }); setReviewCurrentlyWorking(false); } }} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]">
-                              <option value="">Year</option>
-                              {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                            </select>
-                          </div>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-2">To</p>
-                          <div className="flex gap-2 items-center">
-                            {!reviewCurrentlyWorking && (
-                              <>
-                                <select aria-label="Until month" value={reviewWorkedUntil.month} onChange={(e) => setReviewWorkedUntil(p => ({ ...p, month: e.target.value }))} disabled={!reviewWorkedFrom.month && !reviewWorkedFrom.year} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] disabled:opacity-40 disabled:cursor-not-allowed">
-                                  <option value="">Month</option>
-                                  {availableMonths(reviewWorkedUntil.year).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                                </select>
-                                <select aria-label="Until year" value={reviewWorkedUntil.year} onChange={(e) => { const v = e.target.value; const clearedMonth = v === String(currentYear) && parseInt(reviewWorkedUntil.month) > currentMonth ? "" : reviewWorkedUntil.month; setReviewWorkedUntil({ month: clearedMonth, year: v }); }} disabled={!reviewWorkedFrom.month && !reviewWorkedFrom.year} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] disabled:opacity-40 disabled:cursor-not-allowed">
-                                  <option value="">Year</option>
-                                  {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                                </select>
-                              </>
-                            )}
-                            {(() => {
-                              const noFrom = !reviewWorkedFrom.month && !reviewWorkedFrom.year;
-                              const disableCurrent = noFrom || isManagerRoleOverlap;
-                              return (
-                                <label className={`flex items-center gap-2 text-sm text-foreground cursor-pointer ${disableCurrent ? "opacity-40 cursor-not-allowed" : ""}`}>
-                                  <input type="checkbox" checked={reviewCurrentlyWorking} onChange={(e) => { if (!disableCurrent) setReviewCurrentlyWorking(e.target.checked); }} disabled={disableCurrent} className="w-4 h-4" />
-                                  Current
-                                </label>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      </div>
-                      {(() => {
-                        const fromFilled = reviewWorkedFrom.month !== "" && reviewWorkedFrom.year !== "";
-                        const untilFilled = reviewWorkedUntil.month !== "" && reviewWorkedUntil.year !== "";
-                        const fromVal  = fromFilled  ? parseInt(reviewWorkedFrom.year) * 100 + parseInt(reviewWorkedFrom.month) : null;
-                        const untilVal = untilFilled ? parseInt(reviewWorkedUntil.year) * 100 + parseInt(reviewWorkedUntil.month) : null;
-                        if (isManagerRoleOverlap) return <p className="mt-3 text-xs text-red-600">You already have a review that overlaps this period. Each review must cover a distinct time range.</p>;
-                        if (fromFilled && untilFilled && fromVal! > untilVal!) return <p className="mt-3 text-xs text-red-600">Your 'From' date cannot be later than your 'To' date.</p>;
-                        if (fromFilled && !reviewCurrentlyWorking && !untilFilled) return <p className="mt-3 text-xs text-amber-700">Add a 'To' date or check 'Current' to mark this as ongoing.</p>;
-                        if (reviewDateError) return <p className="mt-3 text-xs text-red-600">{reviewDateError}</p>;
-                        return null;
-                      })()}
-                    </div>
-
-                    {/* Cross-user company conflict soft warning */}
+                {/* Cross-user company conflict soft warning */}
                     {crossUserCompanyConflict && !crossUserWarningDismissed && (
                       <div className="rounded-lg border border-amber-400 bg-amber-50 dark:bg-amber-950/30 px-4 py-3">
                         <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-1">Possible company mismatch</p>
@@ -2990,12 +3113,11 @@ export default function BossProfile() {
                   </div>
                 )}
 
-                {/* Step 1: Ratings */}
-                {reviewStep === "ratings" && (
+                {/* Step 1: who the review is about - the add form's first step, pre-filled */}
+                {reviewStep === "details" && (
                   <div className="space-y-6">
                     <div>
-                      <h2 className="text-[22px] font-semibold text-foreground">Rate a Manager</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">Takes just a minute. Your firsthand experience helps other job seekers make more informed decisions.</p>
+                      <h2 className="text-[22px] font-semibold text-foreground">Write a Review</h2>
                     </div>
 
                     {/* Role selector - lets reviewer pick which role they're reviewing */}
@@ -3019,7 +3141,7 @@ export default function BossProfile() {
                             if (!ch) return;
                             setReviewManagerTitle(ch.title ?? "");
                             setReviewManagerCompany(ch.company ?? "");
-                            setEditingRoleInline(false);
+                            setReviewOpenField(null);
                             if (ch.startDate) {
                               const [y, m] = ch.startDate.split("-");
                               setReviewWorkedFrom({ year: y ?? "", month: m ?? "" });
@@ -3053,123 +3175,45 @@ export default function BossProfile() {
                       </div>
                     )}
 
-                    {/* Manager role context - read-only with inline edit toggle */}
-                    <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
-                      {!editingRoleInline ? (
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-[17px] font-semibold text-foreground leading-snug">{manager.name}</p>
-                            <p className="text-sm text-muted-foreground mt-0.5">{reviewManagerTitle || manager.title}</p>
-                            <div className="flex items-center gap-2 mt-2">
-                              {(() => {
-                                const displayCompany = reviewManagerCompany || manager.company;
-                                const logoSrc = manager.companyLogoUrl
-                                  ?? buildLogoDevUrl(displayCompany);
-                                return (
-                                  <div key={displayCompany} className="h-5 w-5 rounded flex-shrink-0 overflow-hidden bg-white border border-border flex items-center justify-center">
-                                    <img
-                                      src={logoSrc}
-                                      alt={displayCompany}
-                                      className="h-full w-full object-contain"
-                                      onError={(e) => { e.currentTarget.parentElement!.style.display = "none"; }}
-                                    />
-                                  </div>
-                                );
-                              })()}
-                              <p className="text-sm font-medium text-foreground">{reviewManagerCompany || manager.company}</p>
-                            </div>
-                            {(isDuplicateTitle || reviewTitleError) && (
-                              <p className="mt-1.5 text-xs text-red-600">
-                                {reviewTitleError || "You've already reviewed this role at this company."}
-                              </p>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setEditingRoleInline(true)}
-                            className="flex-shrink-0 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-0.5"
-                          >
-                            <Edit2 size={12} aria-hidden="true" />
-                            Edit details
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div>
-                              <label className="block text-xs text-muted-foreground mb-1">Their title <span className="text-red-500">*</span></label>
-                              <input
-                                type="text"
-                                value={reviewManagerTitle}
-                                onChange={(e) => { setReviewManagerTitle(e.target.value); setReviewTitleError(null); setConflictAfterAuth(false); }}
-                                placeholder="e.g. Engineering Manager"
-                                maxLength={100}
-                                autoFocus
-                                className={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] ${reviewTitleError || isDuplicateTitle ? "border-red-500" : "border-border"}`}
-                              />
-                            </div>
-                            <div>
-                              {/* The shared company field - same control, same logo behaviour and
-                                  same edit lifecycle as every other form that asks for a company. */}
-                              <CompanyField
-                                label="Their company"
-                                value={reviewManagerCompany}
-                                onChange={val => { setReviewManagerCompany(val); setReviewTitleError(null); setConflictAfterAuth(false); }}
-                                logoUrl={manager.companyLogoUrl ?? undefined}
-                                logoUrlFor={manager.company}
-                                inputClassName={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] ${reviewTitleError || isDuplicateTitle ? "border-red-500" : "border-border"}`}
-                              />
-                            </div>
-                          </div>
-                          {isDuplicateTitle && !reviewTitleError && (
-                            <p className="text-xs text-red-600">You've already reviewed this role at this company. Change the title or company to add a different role.</p>
-                          )}
-                          {reviewTitleError && <p className="text-xs text-red-600">{reviewTitleError}</p>}
-                          <button
-                            type="button"
-                            onClick={() => setEditingRoleInline(false)}
-                            className="text-xs text-primary hover:underline"
-                          >
-                            Done editing
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    {/*
+                      The shared block, exactly as the add form renders it. The name is locked
+                      here: a reviewer is rating a specific person who already exists, and changing
+                      who that is from inside a review is a different review, not an edit.
 
-                    {/* About your review */}
-                    <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 space-y-2">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">About your review</p>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        Your rating reflects your personal experience. All feedback is structured and opinion-based.
-                      </p>
-                      <ul className="space-y-1">
-                        {[
-                          "One review per role / time period",
-                          "Duplicate or overlapping reviews are automatically blocked",
-                          "No written reviews, only structured ratings",
-                        ].map(item => (
-                          <li key={item} className="flex items-start gap-2 text-xs text-muted-foreground">
-                            <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-muted-foreground/50 flex-shrink-0" />
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                      Company and title are editable and they change THIS REVIEW ONLY -
+                      reviews.manager_company and manager_title snapshot per review, so one
+                      reviewer can never rewrite the profile everybody else sees.
+                    */}
+                    <ManagerIdentityFields
+                      value={{
+                        firstName: manager.name,
+                        lastName:  "",
+                        title:     reviewManagerTitle || manager.title,
+                        company:   reviewManagerCompany || manager.company,
+                        status:    reviewManagerStatus,
+                        location:  reviewLocation,
+                      }}
+                      onChange={next => {
+                        if (next.title !== undefined) { setReviewManagerTitle(next.title); setReviewTitleError(null); setConflictAfterAuth(false); }
+                        if (next.company !== undefined) { setReviewManagerCompany(next.company); setReviewTitleError(null); setConflictAfterAuth(false); }
+                        if (next.location !== undefined) setReviewLocation(next.location);
+                        if (next.status !== undefined) setReviewManagerStatus(next.status);
+                      }}
+                      lockName
+                      open={reviewOpenField}
+                      onOpen={setReviewOpenField}
+                      onClose={() => setReviewOpenField(null)}
+                      companyId={manager.companyId ?? undefined}
+                      companyName={reviewManagerCompany || manager.company}
+                      companyLogoUrl={manager.companyLogoUrl ?? undefined}
+                      idPrefix="review"
+                      titleError={(isDuplicateTitle || reviewTitleError) ? (
+                        <p className="mt-1.5 text-xs text-red-600">
+                          {reviewTitleError || "You've already reviewed this role at this company."}
+                        </p>
+                      ) : undefined}
+                    />
 
-                    <div className="space-y-3">
-                      {RATING_CATEGORIES.map((category) => (
-                        <div key={category} className="border-b border-border pb-4 last:border-b-0">
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                            <label className="block text-sm font-semibold text-foreground">{category}</label>
-                            <StarRating
-                              value={modalRatings[category] || 0}
-                              onChange={(value) => setModalRatings((prev) => ({ ...prev, [category]: value }))}
-                              required={true}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
                     <div ref={reviewSubmitAreaRef} />
                   </div>
                 )}
@@ -3244,7 +3288,7 @@ export default function BossProfile() {
                               setEditGeneratedName(existingAuthor || generateUsername());
                             }
                             setEditingEditRoleInline(false);
-                            setEditReviewStep("ratings");
+                            setEditReviewStep("details");
                           }}
                           className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#2e0562] px-4 py-3 font-medium text-white transition-all hover:bg-[#2e0562]/90"
                         >
@@ -3287,12 +3331,20 @@ export default function BossProfile() {
                     )}
                     <button
                       onClick={() => {
-                        if (reviewStep === "ratings") setReviewStep("dates");
-                        else if (reviewStep === "dates") setReviewStep("identity");
-                        else if (reviewStep === "identity") handleSubmitReview();
+                        if (reviewStep === "details") setReviewStep("dates");
+                        else if (reviewStep === "dates") setReviewStep("ratings");
+                        else if (reviewStep === "ratings") handleSubmitReview();
                       }}
                       disabled={
-                        (reviewStep === "ratings" && (!reviewAllRated || isDuplicateTitle)) ||
+                        /*
+                          Each step is gated on what that step asked for, and nothing else.
+
+                          The details step used to require every star to be filled, because the
+                          stars were on it. They are on the last step now, and demanding them here
+                          would refuse to advance over a question the reader has not been shown -
+                          the thing that makes a long form get abandoned.
+                        */
+                        (reviewStep === "details" && (isDuplicateTitle || !!reviewTitleError)) ||
                         (reviewStep === "dates" && (!reviewIsDateValid || !!reviewDateError)) ||
                         (isLastStep && submitDisabled)
                       }
@@ -3479,10 +3531,10 @@ export default function BossProfile() {
 
       {/* Edit Review - Full-Screen Stepped Form */}
       {editReviewStep && user && (() => {
-        const steps = ["ratings", "dates", "identity"] as const;
+        const steps = ["details", "dates", "ratings"] as const;
         const stepIdx = steps.indexOf(editReviewStep) + 1;
-        const stepTitles = { ratings: "Update ratings", dates: "Work timeline", identity: "Review attribution" };
-        const isLastStep = editReviewStep === "identity";
+        const stepTitles = { details: "Manager information", dates: "Work timeline", ratings: "Update your ratings" };
+        const isLastStep = editReviewStep === "ratings";
         const submitDisabled = !editReviewAllRated || !editReviewIsDateValid || isEditDuplicateTitle || isEditManagerRoleOverlap;
         return (
           <div className="fixed inset-0 z-50 flex flex-col bg-background">
@@ -3490,21 +3542,21 @@ export default function BossProfile() {
             <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
               <button
                 onClick={() => {
-                  if (editReviewStep === "ratings") { setEditReviewStep(null); setEditingReviewId(null); }
-                  else if (editReviewStep === "dates") setEditReviewStep("ratings");
-                  else if (editReviewStep === "identity") setEditReviewStep("dates");
+                  if (editReviewStep === "details") { clearFormDraft(editDraftKey); setEditReviewStep(null); setEditingReviewId(null); }
+                  else if (editReviewStep === "dates") setEditReviewStep("details");
+                  else if (editReviewStep === "ratings") setEditReviewStep("dates");
                 }}
                 className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors min-w-[60px]"
               >
                 {editReviewStep !== "ratings" && <ArrowLeft size={16} aria-hidden="true" />}
-                {editReviewStep === "ratings" ? "Cancel" : "Back"}
+                {editReviewStep === "details" ? "Cancel" : "Back"}
               </button>
               <div className="text-center">
                 <p className="text-sm font-semibold text-foreground">{stepTitles[editReviewStep]}</p>
                 <p className="text-xs text-muted-foreground">Step {stepIdx} of 3 · {manager.name}</p>
               </div>
               <button
-                onClick={() => { setEditReviewStep(null); setEditingReviewId(null); }}
+                onClick={() => { clearFormDraft(editDraftKey); setEditReviewStep(null); setEditingReviewId(null); }}
                 aria-label="Close"
                 className="text-muted-foreground hover:text-foreground transition-colors p-1 min-w-[60px] flex justify-end"
               >
@@ -3523,177 +3575,74 @@ export default function BossProfile() {
 
                 {/* Step 1: Identity */}
                 {/* Step 1: Ratings */}
-                {editReviewStep === "ratings" && (
+                {editReviewStep === "details" && (
                   <div className="space-y-6">
                     <div>
-                      <h2 className="text-[22px] font-semibold text-foreground">Update your ratings</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">Takes just a minute. Your firsthand experience helps other job seekers make more informed decisions.</p>
+                      <h2 className="text-[22px] font-semibold text-foreground">Update Your Review</h2>
                     </div>
 
-                    {/* Manager role context - read-only with inline edit toggle */}
-                    <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
-                      {!editingEditRoleInline ? (
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-[17px] font-semibold text-foreground leading-snug">{manager.name}</p>
-                            <p className="text-sm text-muted-foreground mt-0.5">{editManagerTitle || manager.title}</p>
-                            <div className="flex items-center gap-2 mt-2">
-                              {(() => {
-                                const displayCompany = editManagerCompany || manager.company;
-                                const logoSrc = manager.companyLogoUrl
-                                  ?? buildLogoDevUrl(displayCompany);
-                                return (
-                                  <div key={displayCompany} className="h-5 w-5 rounded flex-shrink-0 overflow-hidden bg-white border border-border flex items-center justify-center">
-                                    <img src={logoSrc} alt={displayCompany} className="h-full w-full object-contain" onError={(e) => { e.currentTarget.parentElement!.style.display = "none"; }} />
-                                  </div>
-                                );
-                              })()}
-                              <p className="text-sm font-medium text-foreground">{editManagerCompany || manager.company}</p>
-                            </div>
-                            {(isEditDuplicateTitle || editReviewTitleError) && (
-                              <p className="mt-1.5 text-xs text-red-600">{editReviewTitleError || "You've already reviewed this role at this company."}</p>
-                            )}
-                          </div>
-                          <button type="button" onClick={() => setEditingEditRoleInline(true)}
-                            className="flex-shrink-0 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-0.5">
-                            <Edit2 size={12} aria-hidden="true" />
-                            Edit details
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div>
-                              <label className="block text-xs text-muted-foreground mb-1">Their title <span className="text-red-500">*</span></label>
-                              <input type="text" value={editManagerTitle}
-                                onChange={(e) => { setEditManagerTitle(e.target.value); setEditReviewTitleError(null); }}
-                                placeholder="e.g. Engineering Manager" maxLength={100} autoFocus
-                                className={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] ${editReviewTitleError || isEditDuplicateTitle ? "border-red-500" : "border-border"}`}
-                              />
-                            </div>
-                            <div>
-                              {/* Same shared field as the rate form above. */}
-                              <CompanyField
-                                label="Their company"
-                                value={editManagerCompany}
-                                onChange={val => setEditManagerCompany(val)}
-                                logoUrl={manager.companyLogoUrl ?? undefined}
-                                logoUrlFor={manager.company}
-                                inputClassName={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] ${isEditDuplicateTitle ? "border-red-500" : "border-border"}`}
-                              />
-                            </div>
-                          </div>
-                          {isEditDuplicateTitle && !editReviewTitleError && (
-                            <p className="text-xs text-red-600">You already have a review for this role at this company. Change the title or company to review a different role.</p>
-                          )}
-                          {editReviewTitleError && <p className="text-xs text-red-600">{editReviewTitleError}</p>}
-                          <button type="button" onClick={() => setEditingEditRoleInline(false)} className="text-xs text-primary hover:underline">Done editing</button>
-                        </div>
-                      )}
-                    </div>
+                    {/*
+                      The same block the write flow renders, and the same one the add form renders.
+                      Editing opens with the original review's values already in it - including the
+                      location it was filed under, which must not be re-derived from wherever the
+                      manager works now.
+                    */}
+                    <ManagerIdentityFields
+                      value={{
+                        firstName: manager.name,
+                        lastName:  "",
+                        title:     editManagerTitle || manager.title,
+                        company:   editManagerCompany || manager.company,
+                        status:    editManagerStatus,
+                        location:  editLocation,
+                      }}
+                      onChange={next => {
+                        if (next.title !== undefined) { setEditManagerTitle(next.title); setEditReviewTitleError(null); }
+                        if (next.company !== undefined) { setEditManagerCompany(next.company); setEditReviewTitleError(null); editCompany.bind.onChange(next.company); }
+                        if (next.location !== undefined) setEditLocation(next.location);
+                        if (next.status !== undefined) setEditManagerStatus(next.status);
+                      }}
+                      lockName
+                      open={editOpenField}
+                      onOpen={setEditOpenField}
+                      onClose={() => setEditOpenField(null)}
+                      companyId={manager.companyId ?? undefined}
+                      companyName={editManagerCompany || manager.company}
+                      companyLogoUrl={manager.companyLogoUrl ?? undefined}
+                      onCompanyIdChange={editCompany.bind.onCompanyIdChange}
+                      onCompanySuggestionSelect={editCompany.bind.onSuggestionSelect}
+                      idPrefix="edit-review"
+                      titleError={(isEditDuplicateTitle || editReviewTitleError) ? (
+                        <p className="mt-1.5 text-xs text-red-600">
+                          {editReviewTitleError || "You've already reviewed this role at this company."}
+                        </p>
+                      ) : undefined}
+                    />
 
-                    {/* About your review */}
-                    <div className="rounded-lg border border-border bg-muted/20 px-4 py-3 space-y-2">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">About your review</p>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        Your rating reflects your personal experience. All feedback is structured and opinion-based.
-                      </p>
-                      <ul className="space-y-1">
-                        {[
-                          "One review per role / time period",
-                          "Duplicate or overlapping reviews are automatically blocked",
-                          "No written reviews, only structured ratings",
-                        ].map(item => (
-                          <li key={item} className="flex items-start gap-2 text-xs text-muted-foreground">
-                            <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-muted-foreground/50 flex-shrink-0" />
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <div className="space-y-3">
-                      {RATING_CATEGORIES.map((category) => (
-                        <div key={category} className="border-b border-border pb-4 last:border-b-0">
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                            <label className="block text-sm font-semibold text-foreground">{category}</label>
-                            <StarRating
-                              value={editReviewData[category] || 0}
-                              onChange={(value) => setEditReviewData((prev) => ({ ...prev, [category]: value }))}
-                              required={true}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
                   </div>
                 )}
 
                 {/* Step 2: Dates */}
                 {editReviewStep === "dates" && (
                   <div className="space-y-8">
-                    <div>
-                      <h2 className="text-[22px] font-semibold text-foreground">Work timeline</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">Help us understand when this working relationship occurred.</p>
-                    </div>
-
-                    {/* Work period */}
-                    <div>
-                      <p className="text-sm font-semibold text-foreground mb-1">When did you work with this manager? <span className="text-red-500">*</span></p>
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-2">From <span className="text-red-500">*</span></p>
-                          <div className="flex gap-2">
-                            <select aria-label="From month" value={editWorkedFrom.month} onChange={(e) => { const v = e.target.value; setEditWorkedFrom(p => ({ ...p, month: v })); if (!v && !editWorkedFrom.year) { setEditWorkedUntil({ month: "", year: "" }); setEditCurrentlyWorking(false); } }} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]">
-                              <option value="">Month</option>
-                              {availableMonths(editWorkedFrom.year).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                            </select>
-                            <select aria-label="From year" value={editWorkedFrom.year} onChange={(e) => { const v = e.target.value; const clearedMonth = v === String(currentYear) && parseInt(editWorkedFrom.month) > currentMonth ? "" : editWorkedFrom.month; setEditWorkedFrom({ month: clearedMonth, year: v }); if (!v && !clearedMonth) { setEditWorkedUntil({ month: "", year: "" }); setEditCurrentlyWorking(false); } }} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]">
-                              <option value="">Year</option>
-                              {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                            </select>
-                          </div>
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-2">To</p>
-                          <div className="flex gap-2 items-center">
-                            {!editCurrentlyWorking && (
-                              <>
-                                <select aria-label="Until month" value={editWorkedUntil.month} onChange={(e) => setEditWorkedUntil(p => ({ ...p, month: e.target.value }))} disabled={!editWorkedFrom.month && !editWorkedFrom.year} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] disabled:opacity-40 disabled:cursor-not-allowed">
-                                  <option value="">Month</option>
-                                  {availableMonths(editWorkedUntil.year).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                                </select>
-                                <select aria-label="Until year" value={editWorkedUntil.year} onChange={(e) => { const v = e.target.value; const clearedMonth = v === String(currentYear) && parseInt(editWorkedUntil.month) > currentMonth ? "" : editWorkedUntil.month; setEditWorkedUntil({ month: clearedMonth, year: v }); }} disabled={!editWorkedFrom.month && !editWorkedFrom.year} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] disabled:opacity-40 disabled:cursor-not-allowed">
-                                  <option value="">Year</option>
-                                  {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                                </select>
-                              </>
-                            )}
-                            {(() => {
-                              const noFrom = !editWorkedFrom.month && !editWorkedFrom.year;
-                              const disableCurrent = noFrom || isEditManagerRoleOverlap;
-                              return (
-                                <label className={`flex items-center gap-2 text-sm text-foreground cursor-pointer ${disableCurrent ? "opacity-40 cursor-not-allowed" : ""}`}>
-                                  <input type="checkbox" checked={editCurrentlyWorking} onChange={(e) => { if (!disableCurrent) setEditCurrentlyWorking(e.target.checked); }} disabled={disableCurrent} className="w-4 h-4" />
-                                  Current
-                                </label>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      </div>
-                      {(() => {
-                        const fromFilled  = editWorkedFrom.month !== "" && editWorkedFrom.year !== "";
-                        const untilFilled = editWorkedUntil.month !== "" && editWorkedUntil.year !== "";
-                        const fromVal  = fromFilled  ? parseInt(editWorkedFrom.year) * 100 + parseInt(editWorkedFrom.month) : null;
-                        const untilVal = untilFilled ? parseInt(editWorkedUntil.year) * 100 + parseInt(editWorkedUntil.month) : null;
-                        if (isEditManagerRoleOverlap) return <p className="mt-3 text-xs text-red-600">You already have a review that overlaps this period. Each review must cover a distinct time range.</p>;
-                        if (fromFilled && untilFilled && fromVal! > untilVal!) return <p className="mt-3 text-xs text-red-600">Your 'From' date cannot be later than your 'To' date.</p>;
-                        if (fromFilled && !editCurrentlyWorking && !untilFilled) return <p className="mt-3 text-xs text-amber-700">Add a 'To' date or check 'Current' to mark this as ongoing.</p>;
-                        if (editReviewDateError) return <p className="mt-3 text-xs text-red-600">{editReviewDateError}</p>;
-                        return null;
-                      })()}
-                    </div>
+                    <WorkTimelineFields
+                      heading="Work timeline"
+                      subheading="Help us understand when this working relationship occurred."
+                      from={editWorkedFrom}
+                      until={editWorkedUntil}
+                      current={editCurrentlyWorking}
+                      onFromChange={setEditWorkedFrom}
+                      onUntilChange={setEditWorkedUntil}
+                      onCurrentChange={setEditCurrentlyWorking}
+                      disableCurrentReason={isEditManagerRoleOverlap ? "overlap" : null}
+                      problem={
+                        isEditManagerRoleOverlap ? (
+                          <p className="text-xs text-red-600">You already have a review that overlaps this period. Each review must cover a distinct time range.</p>
+                        ) : editReviewDateError ? (
+                          <p className="text-xs text-red-600">{editReviewDateError}</p>
+                        ) : undefined
+                      }
+                    />
 
                     {/* Cross-user company conflict soft warning */}
                     {editCrossUserCompanyConflict && !editCrossUserWarningDismissed && (
@@ -3710,22 +3659,72 @@ export default function BossProfile() {
                 )}
 
                 {/* Step 3: Identity */}
-                {editReviewStep === "identity" && (
+                {editReviewStep === "ratings" && (
                   <div className="space-y-6">
+                    {/* The ratings last, behind who and when - the order every form uses. */}
                     <div>
-                      <h2 className="text-[22px] font-semibold text-foreground">Who wrote this review?</h2>
-                      <p className="mt-1 text-sm text-muted-foreground">This review will be posted under the same name you originally used.</p>
+                      <h2 className="text-[22px] font-semibold text-foreground">Update your ratings</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Rate them on each dimension. All 10 categories are required.
+                      </p>
                     </div>
-                    <div className="rounded-lg border border-[#2e0562] p-3 bg-[#2e0562]/5">
-                      <p className="font-medium text-foreground">
-                        {editAuthorType === "username" ? `@${user.username}` : editAuthorType === "real_name" ? `${user.firstName} ${user.lastName}` : editGeneratedName}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {editAuthorType === "username" ? "Your username" : editAuthorType === "real_name" ? "Your real name" : "Anonymous"}
-                      </p>
+                    {/*
+                      The add-manager form's identity card, markup for markup - a heading plus a
+                      differently-shaped panel made the same information read as a different
+                      question depending on which form you were on.
+
+                      No Regenerate here, and that is the only difference: an edit keeps the name
+                      the review already carries, because changing it would make one person look
+                      like two to anybody who had already read it.
+                    */}
+                    <div className="rounded-xl border border-border p-5 space-y-3">
+                      <p className="text-sm font-semibold text-foreground">🔒 Posting Anonymously</p>
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Your review will appear as:</p>
+                        <div className="flex items-center gap-3">
+                          <p className="font-medium text-foreground">
+                            {editAuthorType === "username" ? `@${user.username}` : editAuthorType === "real_name" ? `${user.firstName} ${user.lastName}` : editGeneratedName}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">This opinion keeps the name you originally posted it under.</p>
+                    </div>
+
+                    {/* About your review - the add-manager form's panel, markup for markup. */}
+                    <div className="rounded-xl border border-border p-5 space-y-2">
+                      <p className="text-sm font-semibold text-foreground">About your review</p>
+                      <p className="text-xs text-muted-foreground">Your rating reflects your personal experience. All feedback is structured and opinion-based.</p>
+                      <ul className="mt-2 space-y-1">
+                        {[
+                          "One review per role / time period",
+                          "Duplicate or overlapping reviews are automatically blocked",
+                          "No written reviews, only structured ratings",
+                        ].map(item => (
+                          <li key={item} className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span className="w-1 h-1 rounded-full bg-muted-foreground/60 flex-shrink-0" />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="space-y-6">
+                      {RATING_CATEGORIES.map((category) => (
+                        <div key={category} className="border-b border-border pb-6 last:border-b-0">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                            <label className="block text-sm font-semibold text-foreground">{category} *</label>
+                            <StarRating
+                              value={editReviewData[category] || 0}
+                              onChange={(value) => setEditReviewData((prev) => ({ ...prev, [category]: value }))}
+                              required={true}
+                            />
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
+
 
               </div>
             </div>
@@ -3741,12 +3740,13 @@ export default function BossProfile() {
                 <div className="flex gap-3">
                   <button
                     onClick={() => {
-                      if (editReviewStep === "ratings") setEditReviewStep("dates");
-                      else if (editReviewStep === "dates") setEditReviewStep("identity");
-                      else if (editReviewStep === "identity") handleEditReview();
+                      if (editReviewStep === "details") setEditReviewStep("dates");
+                      else if (editReviewStep === "dates") setEditReviewStep("ratings");
+                      else if (editReviewStep === "ratings") handleEditReview();
                     }}
                     disabled={
-                      (editReviewStep === "ratings" && (!editReviewAllRated || isEditDuplicateTitle)) ||
+                      // Only what this step asked about - the ratings are two steps further on.
+                      (editReviewStep === "details" && isEditDuplicateTitle) ||
                       (editReviewStep === "dates" && !editReviewIsDateValid) ||
                       (isLastStep && submitDisabled)
                     }

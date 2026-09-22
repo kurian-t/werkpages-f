@@ -9,6 +9,8 @@ import {
   rateAllFiveStars,
   clickWriteAReview,
   attestFirstHandExperience,
+  advanceToDatesStep,
+  fillDatesAndAdvance,
 } from "./fixtures";
 
 test.describe("Authenticated review actions", () => {
@@ -20,17 +22,12 @@ test.describe("Authenticated review actions", () => {
 
     await clickWriteAReview(page);
 
-    // Step 1: rate all categories
+    // Steps 1 and 2, then the ratings on step 3
+    await advanceToDatesStep(page);
+    await fillDatesAndAdvance(page, { fromMonth: "01", fromYear: "2023" });
     await rateAllFiveStars(page);
-    await page.getByRole("button", { name: /^next$/i }).click();
 
-    // Step 2: dates
-    await page.getByLabel("From month").selectOption("01");
-    await page.getByLabel("From year").selectOption("2023");
-    await page.getByRole("checkbox", { name: /current/i }).check();
-    await page.getByRole("button", { name: /^next$/i }).click();
-
-    // Step 3: identity - shows anonymous posting card
+    // Step 3: ratings and identity - shows anonymous posting card
     await expect(page.getByText(/posting anonymously/i)).toBeVisible({ timeout: 3_000 });
     await attestFirstHandExperience(page);
     await expect(
@@ -54,12 +51,9 @@ test.describe("Authenticated review actions", () => {
     await page.goto(`/manager/${TEST_MANAGER_ID}`);
 
     await clickWriteAReview(page);
+    await advanceToDatesStep(page);
+    await fillDatesAndAdvance(page, { fromMonth: "01", fromYear: "2023" });
     await rateAllFiveStars(page);
-    await page.getByRole("button", { name: /^next$/i }).click();
-    await page.getByLabel("From month").selectOption("01");
-    await page.getByLabel("From year").selectOption("2023");
-    await page.getByRole("checkbox", { name: /current/i }).check();
-    await page.getByRole("button", { name: /^next$/i }).click();
 
     await expect(page.getByText(/posting anonymously/i)).toBeVisible({ timeout: 3_000 });
     const attestation = page.locator('input[name="attestation"]');
@@ -243,9 +237,8 @@ test.describe("Manager profile auto-update - review submission fields", () => {
     await page.goto(`/manager/${TEST_MANAGER_ID}`);
     await clickWriteAReview(page);
 
-    // Step 1: rate all categories
-    await rateAllFiveStars(page);
-    await page.getByRole("button", { name: /^next$/i }).click();
+    // Step 1: manager information - prefilled from the manager, nothing to answer
+    await advanceToDatesStep(page);
 
     // Step 2: dates
     await page.getByLabel("From month").selectOption("01");
@@ -259,7 +252,8 @@ test.describe("Manager profile auto-update - review submission fields", () => {
     }
     await page.getByRole("button", { name: /^next$/i }).click();
 
-    // Step 3: submit
+    // Step 3: the ratings live here, then submit
+    await rateAllFiveStars(page);
     await attestFirstHandExperience(page);
     await page.getByRole("button", { name: /^submit review$/i }).click();
     await expect(
@@ -387,12 +381,9 @@ test.describe("Manager profile auto-update - review submission fields", () => {
 
     // Submit a review
     await clickWriteAReview(page);
+    await advanceToDatesStep(page);
+    await fillDatesAndAdvance(page, { fromMonth: "03", fromYear: "2024" });
     await rateAllFiveStars(page);
-    await page.getByRole("button", { name: /^next$/i }).click();
-    await page.getByLabel("From month").selectOption("03");
-    await page.getByLabel("From year").selectOption("2024");
-    await page.getByRole("checkbox", { name: /current/i }).check();
-    await page.getByRole("button", { name: /^next$/i }).click();
     await attestFirstHandExperience(page);
     await page.getByRole("button", { name: /^submit review$/i }).click();
     await expect(

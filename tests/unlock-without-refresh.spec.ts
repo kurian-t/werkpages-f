@@ -49,20 +49,24 @@ test.describe("Unlocking without a refresh", () => {
         : r.fulfill({ json: {} }));
 
     await page.goto(`/companies/${SLUG}/rate`);
-    // The form refuses an incomplete draft: an overall score, every category, and a start date.
+
+    /*
+      Three steps, and the ratings are the last of them: the subject of the form and the period
+      are asked before the questions about them, so nobody is given eleven stars to fill in
+      before being shown what the form is for.
+    */
+    await page.getByRole("button", { name: "Next" }).click();          // company → period
+    await page.getByLabel("From month").selectOption("03");
+    await page.getByLabel("From year").selectOption({ index: 1 });
+    await page.getByRole("checkbox", { name: /current/i }).check();
+    await page.getByRole("button", { name: "Next" }).click();          // period → ratings
+
+    // The form refuses an incomplete draft: an overall score and every category.
     const stars = page.getByRole("button", { name: /: 5 stars$/ });
     await stars.first().waitFor({ state: "visible", timeout: 10_000 });
     const count = await stars.count();
     for (let i = 0; i < count; i++) await stars.nth(i).click();
-
-    // The period moved to a second step - the subject of the form is asked before the questions
-    // about it, so the dates now sit behind Next rather than under the ratings.
-    await page.getByRole("button", { name: "Next" }).click();
-    await page.getByLabel(/I still work here/i).check();
-    // Month before year: the pair only reports a value once both halves are set.
-    const selects = page.locator("select");
-    await selects.nth(0).selectOption({ index: 1 });
-    await selects.nth(1).selectOption({ index: 1 });
+    await page.locator('input[name="attestation"]').check();
 
     const submit = page.getByRole("button", { name: /^Submit rating$/ });
     await submit.waitFor({ state: "visible", timeout: 10_000 });

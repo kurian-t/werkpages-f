@@ -7,6 +7,7 @@ import {
   MOCK_USER, MOCK_ADMIN_USER, MOCK_MANAGER, MOCK_COMPANY_PROFILE,
   MOCK_COMPANY_LISTING, TEST_COMPANY_SLUG, TEST_MANAGER_SLUG,
   mockTurnstile,
+  openDirectoryFilters,
 } from "./fixtures";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -182,7 +183,8 @@ test.describe("CompanyProfile - additional coverage", () => {
     await mockCompanyProfilePage(page, { loggedIn: true, hasContributed: true });
     await page.goto(`/companies/${TEST_COMPANY_SLUG}`);
     await expect(page.getByText(/acme corp/i).first()).toBeVisible({ timeout: 8000 });
-    const firstInput = page.getByPlaceholder(/first name/i).first();
+    // The search form has a desktop and a mobile copy; take the one on screen.
+    const firstInput = page.getByPlaceholder(/first name/i).filter({ visible: true }).first();
     if (await firstInput.isVisible({ timeout: 3000 }).catch(() => false)) {
       await firstInput.fill("Alex");
       const lastInput = page.getByPlaceholder(/last name/i).first();
@@ -226,13 +228,17 @@ test.describe("Directory - additional coverage", () => {
   test("page loads and renders manager list", async ({ page }) => {
     await mockDirectoryPage(page);
     await page.goto("/directory");
+    // Below lg the search and rating filters sit behind "Filters".
+    await openDirectoryFilters(page);
     await expect(page.getByText(/alex johnson/i).first()).toBeVisible({ timeout: 8000 });
   });
 
   test("full-name search submits and shows results (unauthenticated)", async ({ page }) => {
     await mockDirectoryPage(page);
     await page.goto("/directory");
-    await page.getByPlaceholder(/first name/i).fill("Alex");
+    // Below lg the search and rating filters sit behind "Filters".
+    await openDirectoryFilters(page);
+    await page.getByPlaceholder(/first name/i).filter({ visible: true }).first().fill("Alex");
     await page.getByPlaceholder(/last name/i).fill("Johnson");
     await page.getByPlaceholder(/job title/i).fill("Manager");
     await page.getByPlaceholder(/company/i).fill("Acme Corp");
@@ -243,7 +249,9 @@ test.describe("Directory - additional coverage", () => {
   test("find-or-create fires for authenticated user full search", async ({ page }) => {
     await mockDirectoryPage(page, { loggedIn: true });
     await page.goto("/directory");
-    await page.getByPlaceholder(/first name/i).fill("Alex");
+    // Below lg the search and rating filters sit behind "Filters".
+    await openDirectoryFilters(page);
+    await page.getByPlaceholder(/first name/i).filter({ visible: true }).first().fill("Alex");
     await page.getByPlaceholder(/last name/i).fill("Johnson");
     await page.getByPlaceholder(/job title/i).fill("Manager");
     await page.getByPlaceholder(/company/i).fill("Acme Corp");
@@ -254,6 +262,8 @@ test.describe("Directory - additional coverage", () => {
   test("clicking a min-rating star applies rating filter", async ({ page }) => {
     await mockDirectoryPage(page);
     await page.goto("/directory");
+    // Below lg the search and rating filters sit behind "Filters".
+    await openDirectoryFilters(page);
     await expect(page.getByText(/alex johnson/i).first()).toBeVisible({ timeout: 8000 });
     const starFilter = page.getByRole("button", { name: /3 stars and up/i }).first();
     if (await starFilter.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -270,6 +280,8 @@ test.describe("Directory - additional coverage", () => {
       route.fulfill({ json: { data: [] } })
     );
     await page.goto("/directory");
+    // Below lg the search and rating filters sit behind "Filters".
+    await openDirectoryFilters(page);
     // react-query retries 3x before isError settles - use longer timeout
     await expect(page.getByText(/something went wrong/i).first()).toBeVisible({ timeout: 15000 });
   });

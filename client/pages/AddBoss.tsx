@@ -10,30 +10,22 @@ import { toast } from "sonner";
 import axios from "axios";
 import { validateProfileUrl, generateUsername } from "@/lib/validators";
 import { COUNTRIES } from "@/lib/countries";
+import { LocationValue, EMPTY_LOCATION, declaredPayload, orUserGeo } from "@/lib/location";
 import { fetchGeo } from "@/lib/geo";
 import { AuthFlowModal } from "@/components/AuthFlowModal";
-import { CompanyField } from "@/components/CompanyField";
-import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
 import { FormSubjectCard } from "@/components/RatingFormParts";
+import {
+  ManagerIdentityFields, WorkTimelineFields, RuleList,
+  type ManagerField, type MonthYear, type Rule, type RuleState,
+} from "@/components/ManagerFormFields";
 import { CompanyLogoImg } from "@/components/ManagerCard";
 import { useCompanySelection } from "@/hooks/useCompanySelection";
-import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import type { AuthFlowStep } from "@/components/AuthFlowModal";
 import type { User } from "@/contexts/AuthContext";
 
-const MONTHS = [
-  { value: "01", label: "Jan" }, { value: "02", label: "Feb" },
-  { value: "03", label: "Mar" }, { value: "04", label: "Apr" },
-  { value: "05", label: "May" }, { value: "06", label: "Jun" },
-  { value: "07", label: "Jul" }, { value: "08", label: "Aug" },
-  { value: "09", label: "Sep" }, { value: "10", label: "Oct" },
-  { value: "11", label: "Nov" }, { value: "12", label: "Dec" },
-];
 const currentYear = new Date().getFullYear();
 const currentMonth = new Date().getMonth() + 1;
-const YEARS = Array.from({ length: 47 }, (_, i) => String(currentYear - i));
 
-const availableMonths = (_selectedYear: string) => MONTHS;
 
 const toYMVal = (m: string, y: string) => (m && y ? parseInt(y) * 100 + parseInt(m) : null);
 const nowVal = currentYear * 100 + currentMonth;
@@ -55,75 +47,6 @@ const RATING_CATEGORIES = [
 ];
 
 // ── Shared components ─────────────────────────────────────────────────────────
-
-interface DateSelectsProps {
-  label: string;
-  value: { month: string; year: string };
-  onChange: (v: { month: string; year: string }) => void;
-  disabled?: boolean;
-}
-function DateSelects({ label, value, onChange, disabled }: DateSelectsProps) {
-  return (
-    <div className="flex gap-2 items-center">
-      <select
-        disabled={disabled}
-        value={value.month}
-        onChange={e => onChange({ ...value, month: e.target.value })}
-        className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] disabled:opacity-40 disabled:cursor-not-allowed"
-        aria-label={`${label} month`}
-        autoComplete="off"
-      >
-        <option value="">Month</option>
-        {availableMonths(value.year).map(m => (
-          <option key={m.value} value={m.value}>{m.label}</option>
-        ))}
-      </select>
-      <select
-        disabled={disabled}
-        value={value.year}
-        onChange={e => {
-          const y = e.target.value;
-          const clearedMonth =
-            (!y || y === String(currentYear)) && parseInt(value.month) > currentMonth
-              ? ""
-              : value.month;
-          onChange({ month: clearedMonth, year: y });
-        }}
-        className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] disabled:opacity-40 disabled:cursor-not-allowed"
-        aria-label={`${label} year`}
-        autoComplete="off"
-      >
-        <option value="">Year</option>
-        {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-      </select>
-    </div>
-  );
-}
-
-type RuleState = "met" | "pending" | "violated";
-interface Rule { label: string; state: RuleState }
-
-function RuleList({ rules }: { rules: Rule[] }) {
-  return (
-    <ul className="mt-2 space-y-1">
-      {rules.map(rule => (
-        <li
-          key={rule.label}
-          className={`flex items-center gap-2 text-xs ${
-            rule.state === "met"      ? "text-accent" :
-            rule.state === "violated" ? "text-destructive" :
-                                        "text-muted-foreground"
-          }`}
-        >
-          {rule.state === "met"      ? <Check size={12} className="shrink-0" /> :
-           rule.state === "violated" ? <X     size={12} className="shrink-0" /> :
-                                       <span className="w-3 h-3 shrink-0 rounded-full border border-current inline-block" />}
-          {rule.label}
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -176,11 +99,22 @@ export default function AddBoss() {
   // silent auto-save below, which would otherwise store a review the user never attested to.
   const [attested, setAttested] = useState(false);
 
+  /*
+    No `company` here, deliberately.
+
+    It used to live in both this object and `useCompanySelection`, and only the selection reaches
+    the server - the request's `company` is built from it, while the field on screen rendered this
+    copy. Arriving from a company page filled one and left the other empty, so the form displayed
+    "Discord", passed its own validation, and submitted nothing; the reader was told the company
+    was missing while looking straight at it.
+
+    Seeding both fixed that instance. Keeping two copies is what allowed it, so there is now one:
+    `companySelection` owns the company, and everything here reads it from there.
+  */
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
     title: "",
-    company: searchParams.get("company") ?? "",
     country: "",
     state: "",
     linkedinUrl: "",
@@ -201,6 +135,9 @@ export default function AddBoss() {
         country: prev.country || geo.country,
         state: prev.state || (geo.state ?? ""),
       }));
+      // The visible, editable value. Shown in full so that submitting it unchanged is a
+      // confirmation rather than an inference - which is what lets it be published at all.
+      setWorkLocation(prev => orUserGeo(prev, geo));
     });
     return () => { cancelled = true; };
   }, []);
@@ -216,24 +153,46 @@ export default function AddBoss() {
   const [workedUntil, setWorkedUntil] = useState({ month: "", year: "" });
   const [currentlyWorking, setCurrentlyWorking] = useState(false);
   const [formTouched, setFormTouched] = useState(false);
-  const [editingLocation, setEditingLocation] = useState(false);
+  /*
+    One slot, not one flag per field. Every populated field collapses to a line with a pencil, and
+    exactly one may be open at a time - two half-edited fields on screen is how somebody loses the
+    one they were not looking at.
+  */
+  const [openField, setOpenField] = useState<ManagerField | null>(null);
+  // The location the person will actually submit. Prefilled from geo below, shown to them
+  // in full, and therefore confirmed by submitting it unchanged.
+  const [workLocation, setWorkLocation] = useState<LocationValue>(EMPTY_LOCATION);
   const [detectedCountry, setDetectedCountry] = useState<string | null>(null);
 
   const [authorType] = useState<"anonymous">("anonymous");
   const [generatedName, setGeneratedName] = useState(() => generateUsername());
 
-  const [editingCompany, setEditingCompany] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
 
   // Owns the company identity and the rule that typing invalidates it, so this form no longer
   // carries its own copy of either. formData keeps the text, because the form's validation,
   // drafts and session restore all read it from there.
-  const companySelection = useCompanySelection();
+  /*
+    The company, owned here and nowhere else.
+
+    Seeded from the query string so arriving from a company page - /add?company=Discord - fills it.
+    Everything on this form reads the company from this selection: the field, the validation, the
+    draft, and all three request bodies.
+  */
+  const companySelection = useCompanySelection(searchParams.get("company") ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const readyBannerRef = useRef<HTMLDivElement>(null);
   const ghostCaptureAttemptedRef = useRef(false);
   const autoSubmitStatusRef = useRef<'idle' | 'pending' | 'success' | 'failed'>('idle');
   const autoSavedManagerIdRef = useRef<number | null>(null);
+  /*
+    The same id, in state, so it reaches the draft.
+
+    The draft has to record that a manager was already written, or a reload would auto-save a
+    second one. The ref cannot do that job on its own: it does not re-render, so the effect that
+    writes the draft never sees it change.
+  */
+  const [autoSavedManagerId, setAutoSavedManagerId] = useState<number | null>(null);
   const [fromVerified, setFromVerified] = useState(false);
   const [showDraftBanner, setShowDraftBanner] = useState(false);
   const [showReadyBanner, setShowReadyBanner] = useState(false);
@@ -254,7 +213,7 @@ export default function AddBoss() {
   const firstNameValid = formData.firstName.trim().length > 0;
   const lastNameValid  = formData.lastName.trim().length > 0;
   const titleValid     = formData.title.trim().length > 0;
-  const companyValid   = formData.company.trim().length >= 2;
+  const companyValid   = companySelection.name.trim().length >= 2;
   const countryValid   = formData.country.trim().length > 0;
   const linkedinValid  = !formData.linkedinUrl || validateProfileUrl(formData.linkedinUrl).valid;
   const unratedCount   = Object.values(ratings).filter(r => r < 1).length;
@@ -288,7 +247,9 @@ export default function AddBoss() {
 
   const clearDraft = () => {
     localStorage.removeItem("rmm_pending_manager");
-    setFormData({ firstName: "", lastName: "", title: "", company: "", country: "", state: "", linkedinUrl: "", status: "active" });
+    setFormData({ firstName: "", lastName: "", title: "", country: "", state: "", linkedinUrl: "", status: "active" });
+    companySelection.clear();
+    setWorkLocation(EMPTY_LOCATION);
     setRatings(initializeRatings());
     setAttested(false);
     setWorkedFrom({ month: "", year: "" });
@@ -326,14 +287,26 @@ export default function AddBoss() {
             */
             const isAuthReturn = isVerified || !!data.signupEmail;
             const { company: draftCompany, ...restOfDraft } = data.formData as Record<string, unknown>;
-            setFormData(prev => ({
-              ...prev,
-              ...restOfDraft,
-              company: isAuthReturn ? ((draftCompany as string) ?? prev.company) : prev.company,
-            }));
-            if (isAuthReturn && typeof draftCompany === "string" && draftCompany) {
-              companySelection.set(draftCompany);
+            setFormData(prev => ({ ...prev, ...restOfDraft }));
+            /*
+              The URL wins; otherwise the draft's company comes back with the rest of it.
+
+              This used to restore the company ONLY on an auth round-trip, to stop a week-old
+              abandoned draft about Facebook greeting somebody who clicked "Add Manager" to add
+              someone else. But the name, the title and the ratings from that same draft were
+              restored regardless - so the company was the one answer that vanished, which reads as
+              a bug rather than as a considered clean slate, and a plain refresh lost it.
+
+              Arriving with ?company= still takes precedence: that is a deliberate statement about
+              which company is being added, and it is already seeded into the selection.
+            */
+            const companyFromUrl = searchParams.get("company");
+            if (!companyFromUrl && typeof draftCompany === "string" && draftCompany) {
+              companySelection.set(draftCompany, typeof data.companyId === "number" ? data.companyId : undefined);
             }
+            // Where the work happened, as they left it. Never re-derived from visitor geography on
+            // a restore - that would quietly move an answer somebody had already given.
+            if (data.workLocation) setWorkLocation(data.workLocation);
           }
           if (data.ratings)     setRatings(data.ratings);
           if (data.workedFrom)  setWorkedFrom(data.workedFrom);
@@ -342,6 +315,16 @@ export default function AddBoss() {
           if (data.currentlyWorking != null) setCurrentlyWorking(data.currentlyWorking);
           if (data.generatedName) setGeneratedName(data.generatedName);
           if (data.draftToken) draftTokenRef.current = data.draftToken;
+          /*
+            A manager was already written for this draft, before the reload. Recording it here
+            stops the auto-save running a second time - it returns early unless the status is idle
+            - and lets Submit go to the manager that exists rather than creating another.
+          */
+          if (data.autoSavedManagerId != null) {
+            autoSavedManagerIdRef.current = data.autoSavedManagerId;
+            setAutoSavedManagerId(data.autoSavedManagerId);
+            autoSubmitStatusRef.current = "success";
+          }
           if (data.signupEmail) {
             setAuthFlowEmail(data.signupEmail);
             setPendingVerificationEmail(data.signupEmail);
@@ -369,20 +352,34 @@ export default function AddBoss() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const hasData = formData.firstName || formData.lastName || formData.company || formData.title ||
+    const hasData = formData.firstName || formData.lastName || companySelection.name || formData.title ||
       Object.values(ratings).some(r => r > 0) || workedFrom.month;
     if (!hasData) return;
     localStorage.setItem("rmm_pending_manager", JSON.stringify({
       returnTo: "/add",
-      formData, ratings,
+      // Written back under formData.company, where it has always lived on disk, so a draft saved
+      // by an older build still restores and one saved here still opens in an older tab.
+      formData: { ...formData, company: companySelection.name },
+      /*
+        The company's identity and the location, both of which were simply not saved.
+
+        A refresh put the name back and left these two empty - so the company had to be picked
+        again, and the location silently reverted to whatever the visitor's geography suggested.
+        Anything the form asks for belongs in the draft; a draft that keeps only some of the
+        answers is worse than one that keeps none, because the gaps are not obvious.
+      */
+      companyId: companySelection.id ?? null,
+      workLocation,
+      ratings,
       workedFrom, workedUntil, currentlyWorking,
       authorType, generatedName,
       step,
+      ...(autoSavedManagerId != null ? { autoSavedManagerId } : {}),
       ...(draftTokenRef.current ? { draftToken: draftTokenRef.current } : {}),
       ...(pendingVerificationEmail ? { signupEmail: pendingVerificationEmail, emailVerified: pendingEmailVerified } : {}),
       savedAt: Date.now(),
     }));
-  }, [formData, ratings, workedFrom, workedUntil, currentlyWorking, authorType, generatedName, step, pendingVerificationEmail, pendingEmailVerified]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [formData, companySelection.name, companySelection.id, workLocation, ratings, workedFrom, workedUntil, currentlyWorking, authorType, generatedName, step, pendingVerificationEmail, pendingEmailVerified, autoSavedManagerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Early ghost capture (works for all users, including unauthenticated) ─────
   useEffect(() => {
@@ -397,6 +394,7 @@ export default function AddBoss() {
         title: formData.title.trim(),
         country: formData.country,
         state: formData.state.trim() || null,
+        ...declaredPayload(workLocation),
       }).catch(() => {});
     })();
   }, [step1Valid]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -411,6 +409,20 @@ export default function AddBoss() {
     if (autoSubmitStatusRef.current !== "idle") return;
     const allRated = Object.values(ratings).every(r => r >= 1);
     if (!allRated) return;
+    /*
+      And the answers behind this step, which this never checked.
+
+      Being on the ratings step is not proof of having walked through the earlier ones - a restored
+      draft sets `step` directly, and drops the company on any visit that is not an auth
+      round-trip. So ticking the attestation fired a background POST carrying an empty company, the
+      server refused it with "Missing required fields", and the reader saw a validation failure
+      naming a question that was two steps behind them and no longer on screen.
+
+      This is the write; it has to hold the same bar as the button.
+    */
+    if (!step1Valid) return;
+    const timelineComplete = revFromValid && revOrderValid && (currentlyWorking || revUntilValid);
+    if (!timelineComplete) return;
 
     autoSubmitStatusRef.current = "pending";
     (async () => {
@@ -432,7 +444,7 @@ export default function AddBoss() {
             author: generatedName,
             overallRating: Object.values(ratings).reduce((a, b) => a + b, 0) / Object.values(ratings).length,
             ratings: toApiRatings(ratings),
-            managerCompany: formData.company.trim(),
+            managerCompany: companySelection.name.trim(),
             managerTitle: formData.title.trim(),
             text: null,
             workedFrom: toYearMonth(workedFrom.month, workedFrom.year),
@@ -440,6 +452,7 @@ export default function AddBoss() {
           },
         });
         autoSavedManagerIdRef.current = res.data.id;
+        setAutoSavedManagerId(res.data.id);
         autoSubmitStatusRef.current = "success";
         markContributed();
         queryClient.removeQueries({ queryKey: ["managers-directory"] });
@@ -447,7 +460,18 @@ export default function AddBoss() {
         queryClient.removeQueries({ queryKey: ["stats"] });
         queryClient.removeQueries({ queryKey: ["company-listing"] });
         queryClient.invalidateQueries({ queryKey: ["has-contributed"] });
-        localStorage.removeItem("rmm_pending_manager");
+        /*
+          The draft stays.
+
+          It used to be deleted here, the moment this background write succeeded - while the person
+          was still sitting on the form with more to do. A reload after that point met an empty
+          form and no way back to anything they had written, which is the one thing the draft
+          exists to prevent.
+
+          Finishing is what clears it: submitting, or closing the form deliberately. A silent write
+          is neither. The id recorded above is what keeps a reload from creating a second manager -
+          it comes back with the draft, and the effect above will not run again once it is set.
+        */
       } catch {
         autoSubmitStatusRef.current = "failed";
       }
@@ -491,27 +515,44 @@ export default function AddBoss() {
     overall_working_experience: uiRatings["Overall Working Experience"],
   });
 
+  /*
+    Each step's rules, named so that submit can run them too.
+
+    They were inline in handleNext, which meant they only ever ran on the way forward. A person who
+    reached the last step by any other route - a restored draft carries `step` - was submitted
+    without them ever being checked.
+  */
+  const infoErrors = () => {
+    const errs: string[] = [];
+    if (!firstNameValid) errs.push("First name is required");
+    if (!lastNameValid)  errs.push("Last name is required");
+    if (!titleValid)     errs.push("Title is required");
+    if (companySelection.name.trim().length === 0) errs.push("Company is required");
+    else if (!companyValid) errs.push("Company must be at least 2 characters");
+    if (!countryValid)   errs.push("Country is required");
+    if (formData.linkedinUrl && !linkedinValid) {
+      errs.push(validateProfileUrl(formData.linkedinUrl).error!);
+    }
+    return errs;
+  };
+
+  const timelineErrors = () => {
+    const errs: string[] = [];
+    if (!revFromValid) errs.push("Your start date is required and must not be in the future");
+    if (!currentlyWorking && !revUntilValid) errs.push(formData.status === "retired" ? "Your end date is required" : "Your end date is required (or check 'Current')");
+    if (!revOrderValid) errs.push("Your end date cannot be before your start date");
+    return errs;
+  };
+
   const handleNext = () => {
     setFormTouched(true);
     setErrors([]);
     if (step === "info") {
-      const errs: string[] = [];
-      if (!firstNameValid) errs.push("First name is required");
-      if (!lastNameValid)  errs.push("Last name is required");
-      if (!titleValid)     errs.push("Title is required");
-      if (formData.company.trim().length === 0) errs.push("Company is required");
-      else if (!companyValid) errs.push("Company must be at least 2 characters");
-      if (!countryValid)   errs.push("Country is required");
-      if (formData.linkedinUrl && !linkedinValid) {
-        errs.push(validateProfileUrl(formData.linkedinUrl).error!);
-      }
+      const errs = infoErrors();
       if (errs.length > 0) { setErrors(errs); return; }
       setStep("timeline");
     } else if (step === "timeline") {
-      const errs: string[] = [];
-      if (!revFromValid) errs.push("Your start date is required and must not be in the future");
-      if (!currentlyWorking && !revUntilValid) errs.push(formData.status === "retired" ? "Your end date is required" : "Your end date is required (or check 'Current')");
-      if (!revOrderValid) errs.push("Your end date cannot be before your start date");
+      const errs = timelineErrors();
       if (errs.length > 0) { setErrors(errs); return; }
       setStep("ratings");
     }
@@ -520,6 +561,23 @@ export default function AddBoss() {
   const handleSubmit = async () => {
     setFormTouched(true);
     setErrors([]);
+
+    /*
+      Re-check the steps behind this one, and go back to the first that is wrong.
+
+      Reaching the ratings step is not proof the earlier ones were answered. A restored draft sets
+      `step` directly, and it deliberately drops the company on any visit that is not an auth
+      round-trip - so the form reopened two steps past the company question with the company blank
+      and nothing on screen saying so. Submitting posted a body the server refused with "Missing
+      required fields", a sentence that names nothing and points nowhere.
+
+      The guard belongs here rather than in the restore alone: any future path that sets the step
+      gets it for free, and the reader is told which answer is missing and shown the question.
+    */
+    const earlier = infoErrors();
+    if (earlier.length > 0) { setErrors(earlier); setStep("info"); return; }
+    const timeline = timelineErrors();
+    if (timeline.length > 0) { setErrors(timeline); setStep("timeline"); return; }
 
     if (unratedCount > 0) {
       setErrors([`Please rate all categories (${unratedCount} remaining)`]);
@@ -543,13 +601,14 @@ export default function AddBoss() {
           title: formData.title.trim(),
           country: formData.country,
           state: formData.state.trim() || null,
+          ...declaredPayload(workLocation),
           status: formData.status,
           draftToken: draftTokenRef.current,
           review: {
             author: generatedName,
             overallRating: Object.values(ratings).reduce((a, b) => a + b, 0) / Object.values(ratings).length,
             ratings: toApiRatings(ratings),
-            managerCompany: formData.company.trim(),
+            managerCompany: companySelection.name.trim(),
             managerTitle: formData.title.trim(),
             workedFrom: toYearMonth(workedFrom.month, workedFrom.year),
             workedUntil: currentlyWorking ? null : toYearMonth(workedUntil.month, workedUntil.year),
@@ -594,6 +653,7 @@ export default function AddBoss() {
         status: formData.status,
         country: formData.country,
         state: formData.state.trim() || null,
+        ...declaredPayload(workLocation),
         linkedinUrl: formData.linkedinUrl.trim() || null,
         startDate: toYearMonth(workedFrom.month, workedFrom.year),
         endDate: formData.status === "retired" ? toYearMonth(workedUntil.month, workedUntil.year) : null,
@@ -604,7 +664,7 @@ export default function AddBoss() {
           overallRating:
             Object.values(ratings).reduce((a, b) => a + b, 0) / Object.values(ratings).length,
           ratings: toApiRatings(ratings),
-          managerCompany: formData.company.trim(),
+          managerCompany: companySelection.name.trim(),
           managerTitle: formData.title.trim(),
           text: null,
           workedFrom: toYearMonth(workedFrom.month, workedFrom.year),
@@ -765,201 +825,66 @@ export default function AddBoss() {
                   <p className="mt-1 text-sm text-muted-foreground">Enter their name, title, and company. An admin will review the submission before it goes live.</p>
                 </div>
 
-
-
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-2">First Name *</label>
-                    <input type="text" name="firstName" value={formData.firstName} onChange={handleInputChange}
-                      placeholder="e.g., Satya" maxLength={50}
-                      className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-2">Last Name *</label>
-                    <input type="text" name="lastName" value={formData.lastName} onChange={handleInputChange}
-                      placeholder="e.g., Nadella" maxLength={50}
-                      className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]" />
-                  </div>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-2">Title *</label>
-                    {/*
-                      Suggesting spellings other people already used is what stops "Sr. Mgr" and
-                      "Snr Manager" being invented in the first place. Free text still goes through
-                      - plenty of real titles are company-specific.
-                    */}
-                    <RoleAutocomplete
-                      name="title"
-                      value={formData.title}
-                      onChange={val => { touch(); setFormData(prev => ({ ...prev, title: val })); if (errors.length > 0) setErrors([]); }}
-                      placeholder="e.g., Engineering Manager"
-                      maxLength={100}
-                      className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]" />
-                  </div>
-                  <div>
-                    {/* htmlFor: the field is CompanyField's input, which owns that id. */}
-                    <label htmlFor="company-field" className="block text-sm font-semibold text-foreground mb-2">Company *</label>
-                    {/*
-                      Arriving from a company page the company is settled, so the field shows it
-                      rather than asking again - logo then name, with the edit on the right. Editing
-                      swaps in the picker in place, exactly as the manager review's card does.
-                    */}
-                    {/*
-                      A company is a company however it arrived. Gating this on "came from a company
-                      page" meant picking one here left it as a bare text box, while the same value
-                      on the other forms showed as a card - the same field looking like two things.
-                    */}
-                    {/* The shared company field - one implementation of a pattern that was
-                        hand-rolled on four forms and had to be bug-fixed on each separately. */}
-                    <CompanyField
-                      label={null}
-                      value={formData.company}
-                      onChange={val => {
-                        touch();
-                        setFormData(prev => ({ ...prev, company: val }));
-                        // Keep the selection's own copy of the text in step, so payload() resolves
-                        // against what the user is actually looking at.
-                        companySelection.bind.onChange(val);
-                        if (errors.length > 0) setErrors([]);
-                      }}
-                      onCompanyIdChange={companySelection.bind.onCompanyIdChange}
-                      onSuggestionSelect={companySelection.bind.onSuggestionSelect}
-                      hint={formData.company.trim().length === 1 ? (
-                        <p className="mt-1 text-xs text-amber-600">Company name must be at least 2 characters</p>
-                      ) : undefined}
-                    />
-                  </div>
-                </div>
-
-                {/* Country + State - read-only chip when pre-filled, editable on request */}
-                <div className="space-y-4">
-                  {/*
-                    One country field, behaving like every other one: the value with its flag, the
-                    pencil on the right, and the select swapping in place with "Done editing". The
-                    choice applies the moment it is made - Done only collapses the card.
-                  */}
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-2">Country *</label>
-                    {formData.country ? (
-                      <FormSubjectCard
-                        layout="inline"
-                        name={formData.country}
-                        logo={
-                          <span aria-hidden="true" className="text-base leading-none">
-                            {COUNTRIES.find(c => c.value === formData.country)?.flag ?? ""}
-                          </span>
-                        }
-                        editing={editingLocation}
-                        onEditStart={() => setEditingLocation(true)}
-                        onEditDone={() => setEditingLocation(false)}
-                      >
-                        <select
-                          name="country"
-                          value={formData.country}
-                          onChange={e => {
-                            touch();
-                            setFormData(prev => ({
-                              ...prev,
-                              country: e.target.value,
-                              // The detected state belongs to the detected country. Say Brazil after
-                              // geo said Canada and we simply do not know the province.
-                              state: e.target.value === detectedCountry ? prev.state : "",
-                            }));
-                            if (errors.length > 0) setErrors([]);
-                          }}
-                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
-                        >
-                          {COUNTRIES.map(c => (
-                            <option key={c.value} value={c.value}>{c.flag} {c.value}</option>
-                          ))}
-                        </select>
-                      </FormSubjectCard>
-                    ) : (
-                      <select
-                        name="country"
-                        value={formData.country}
-                        onChange={e => {
-                          touch();
-                          setFormData(prev => ({ ...prev, country: e.target.value }));
-                          if (errors.length > 0) setErrors([]);
-                        }}
-                        className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
-                      >
-                        <option value="">Select...</option>
-                        {COUNTRIES.map(c => (
-                          <option key={c.value} value={c.value}>{c.flag} {c.value}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-foreground mb-3">Manager Status *</label>
-                  <div className="space-y-2">
-                    <label className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${formData.status === "active" ? "border-[#2e0562] bg-[#2e0562]/5" : "border-border hover:bg-accent/5"}`}>
-                      <input type="radio" name="status" value="active" checked={formData.status === "active"} onChange={() => handleStatusChange("active")} className="w-4 h-4" />
-                      <div>
-                        <p className="font-medium text-foreground">Currently Active</p>
-                        <p className="text-xs text-muted-foreground">Manager is actively leading</p>
-                      </div>
-                    </label>
-                    <label className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${formData.status === "retired" ? "border-[#2e0562] bg-[#2e0562]/5" : "border-border hover:bg-accent/5"}`}>
-                      <input type="radio" name="status" value="retired" checked={formData.status === "retired"} onChange={() => handleStatusChange("retired")} className="w-4 h-4" />
-                      <div>
-                        <p className="font-medium text-foreground">Retired / No longer in this role</p>
-                        <p className="text-xs text-muted-foreground">Manager has stepped down or left</p>
-                      </div>
-                    </label>
-                  </div>
-                </div>
+                {/*
+                  The shared block. The same component renders the fields on the review form, so a
+                  field added here appears there with no further edits - which is the whole point of
+                  having one form instead of three.
+                */}
+                <ManagerIdentityFields
+                  value={{
+                    firstName: formData.firstName,
+                    lastName:  formData.lastName,
+                    title:     formData.title,
+                    company:   companySelection.name,
+                    status:    formData.status,
+                    location:  workLocation,
+                  }}
+                  onChange={next => {
+                    touch();
+                    if (next.location !== undefined) setWorkLocation(next.location);
+                    // Company is pulled out rather than merged: the selection owns it, and writing
+                    // a second copy into formData is exactly what let the two disagree.
+                    const { location, company, ...rest } = next;
+                    if (company !== undefined) companySelection.bind.onChange(company);
+                    if (Object.keys(rest).length > 0) {
+                      setFormData(prev => ({ ...prev, ...rest }));
+                    }
+                    if (errors.length > 0) setErrors([]);
+                  }}
+                  lockName={false}
+                  open={openField}
+                  onOpen={setOpenField}
+                  onClose={() => setOpenField(null)}
+                  companyId={companySelection.id}
+                  companyName={companySelection.name}
+                  onCompanyIdChange={companySelection.bind.onCompanyIdChange}
+                  onCompanySuggestionSelect={companySelection.bind.onSuggestionSelect}
+                  idPrefix="addboss"
+                  companyHint={companySelection.name.trim().length === 1 ? (
+                    <p className="mt-1 text-xs text-amber-600">Company name must be at least 2 characters</p>
+                  ) : undefined}
+                />
               </div>
             )}
 
             {/* ── Step 2: Work Timeline ─────────────────────────────────────── */}
             {step === "timeline" && (
               <div className="space-y-8">
-                <div>
-                  <h2 className="text-[22px] font-semibold text-foreground">Work timeline</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">When did you work with {formData.firstName || "this manager"}?</p>
-                </div>
-
-                <div className="grid gap-6 sm:grid-cols-2">
-                  <div>
-                    <p className="text-sm font-medium text-foreground mb-1">From *</p>
-                    <DateSelects label="From" value={workedFrom} onChange={v => { touch(); setWorkedFrom(v); }} />
-                    {showRevFrom && <RuleList rules={revFromRules} />}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground mb-1">To{!currentlyWorking ? " *" : ""}</p>
-                    <div className="flex gap-3 items-start flex-wrap">
-                      {!currentlyWorking && (
-                        <div>
-                          <DateSelects label="To" value={workedUntil} onChange={v => { touch(); setWorkedUntil(v); }} />
-                          {showRevUntil && <RuleList rules={revUntilRules} />}
-                        </div>
-                      )}
-                      {formData.status !== "retired" && (
-                        <label className="flex items-center gap-2 text-sm mt-1 cursor-pointer text-foreground">
-                          <input
-                            type="checkbox"
-                            checked={currentlyWorking}
-                            onChange={e => {
-                              touch();
-                              setCurrentlyWorking(e.target.checked);
-                              if (e.target.checked) setWorkedUntil({ month: "", year: "" });
-                            }}
-                            className="w-4 h-4"
-                          />
-                          Current
-                        </label>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                {/* The same timeline control the review form uses, so the same mistake produces
+                    the same message on either page. */}
+                <WorkTimelineFields
+                  heading="Work timeline"
+                  subheading={`When did you work with ${formData.firstName || "this manager"}?`}
+                  from={workedFrom}
+                  until={workedUntil}
+                  current={currentlyWorking}
+                  onFromChange={v => { touch(); setWorkedFrom(v); }}
+                  onUntilChange={v => { touch(); setWorkedUntil(v); }}
+                  onCurrentChange={v => { touch(); setCurrentlyWorking(v); }}
+                  allowCurrent={formData.status !== "retired"}
+                />
+                {showRevFrom  && <RuleList rules={revFromRules} />}
+                {showRevUntil && <RuleList rules={revUntilRules} />}
               </div>
             )}
 

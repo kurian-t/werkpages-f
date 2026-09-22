@@ -722,7 +722,13 @@ test.describe("Resume Builder", () => {
     expect(entryW).toBeGreaterThan(0);
   });
 
-  test("dragging the bottom resize handle saves a height override on release", async ({ page }) => {
+  test("dragging the bottom resize handle saves a height override on release", async ({ page, isMobile }) => {
+    /*
+      The handle appears on hover and is driven here with page.mouse. A touch device has no hover
+      state to reveal it, so this is a desktop interaction - skipped rather than left failing, the
+      same way the desktop header tests are.
+    */
+    test.skip(!!isMobile, "Resize handle is revealed on hover; touch devices have no hover state");
     await setupContributorSession(page, true);
     await page.route("**/api/resumes/mine", route => route.fulfill({ json: { data: MOCK_RESUME } }));
     await page.goto("/resume");

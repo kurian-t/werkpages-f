@@ -13,16 +13,19 @@ import { gateKey } from "@/lib/gateKey";
 import { CompanyTabHeader } from "@/components/CompanyTabHeader";
 import { YourContributionMenu } from "@/components/YourContributionMenu";
 import { CompanyRatingList } from "@/components/CompanyRatingList";
-import { Star, Building2, Users, MessageSquare, ChevronLeft, PlusCircle, Lock, Pencil } from "lucide-react";
+import { Star, Building2, Users, MessageSquare, ChevronLeft, PlusCircle, Pencil } from "lucide-react";
 import { IndustryIcon } from "@/components/IndustryIcon";
 import { companyPath, managerPath } from "@/lib/urls";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
-import { ManagerAvatar, CompanyLogoImg, CompanyRow } from "@/components/ManagerCard";
+import { CompanyLogoImg } from "@/components/ManagerCard";
+import { LockedOverlay, LockedPanelCard } from "@/components/LockedNotice";
 import { useAuth } from "@/hooks/useAuth";
 import LockedManagerCard from "@/components/LockedManagerCard";
 import ManagerCard from "@/components/ManagerCard";
+import { TILE_GRID } from "@/components/ManagerTile";
+import PendingSubmissions, { useMyPendingSubmissions } from "@/components/PendingSubmissions";
 import { fetchGeo } from "@/lib/geo";
 import { InterviewPanel } from "@/components/InterviewPanel";
 import { useCompanyInterviews } from "@/hooks/useCompanyInterviews";
@@ -90,38 +93,6 @@ const GHOST_SLOTS = [
   { initials: "SC", name: "Sarah Chen",     role: "Director of Engineering",  color: "bg-sky-500",    rating: "3.8", reviews: 7  },
   { initials: "MT", name: "Michael Torres", role: "VP of Operations",         color: "bg-emerald-600",rating: "4.7", reviews: 21 },
 ];
-function GhostManagerCard({ index, company, logoUrl, isLoggedIn }: { index: number; company: string; logoUrl?: string; isLoggedIn: boolean }) {
-  const slot = GHOST_SLOTS[index % GHOST_SLOTS.length];
-  return (
-    <div className="flex flex-col rounded-2xl border border-border bg-card p-5 shadow-sm select-none pointer-events-none relative overflow-hidden">
-      {/* Badge - identical to LockedManagerCard */}
-      <div className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-500">
-        <Lock size={10} />
-        {"Rate to unlock"}
-      </div>
-      {/* Avatar - same size as LockedManagerCard's default ManagerAvatar, blurred */}
-      <div className={`h-16 w-16 rounded-2xl ${slot.color} flex items-center justify-center blur-sm`}>
-        <span className="text-xl font-bold text-white">{slot.initials}</span>
-      </div>
-      {/* Blurred name */}
-      <h3 className="mt-3 text-[15px] font-semibold text-foreground leading-tight blur-sm pr-16">{slot.name}</h3>
-      {/* Company row - logo + name visible, role blurred - matches CompanyRow layout */}
-      <div className="mt-2 mb-auto flex items-center gap-2">
-        <CompanyLogoImg company={company} logoUrl={logoUrl} sizeClass="h-8 w-8 rounded-md flex-shrink-0" />
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-foreground leading-tight truncate">{company}</p>
-          <p className="text-xs text-muted-foreground truncate blur-sm">{slot.role}</p>
-        </div>
-      </div>
-      <div className="mt-4 flex items-center gap-1 blur-sm select-none">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <span key={i} className={`text-base leading-none ${i <= Math.round(parseFloat(slot.rating)) ? "text-amber-400" : "text-muted-foreground/25"}`}>★</span>
-        ))}
-        <span className="ml-1 text-sm font-semibold text-foreground">{slot.rating}</span>
-      </div>
-    </div>
-  );
-}
 const SIDEBAR_INPUT =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]";
 
@@ -221,6 +192,7 @@ function CompanyRatingPanel({
         eyebrow="Workplace experience"
         subtitle={`What employees experienced working at ${companyName}`}
         score={rating?.overallRating ?? null}
+        // Workplace ratings only - the managers and interview tabs count their own.
         countLabel="review"
         countValue={rating?.ratingCount ?? 0}
         locked={isLocked}
@@ -234,14 +206,17 @@ function CompanyRatingPanel({
           overlay through the same change, which left two sibling tabs explaining the same gate and
           the third staying silent.
         */
+        /*
+          A pill, not a button: this header's action slot holds "Rate this workplace" and is
+          deliberately rendered above the overlay so it stays clickable. A second identical
+          button centred on top of it would be the same ask twice.
+        */
         lockedOverlay={
-          <>
-            <Lock size={20} className="mb-1.5 text-muted-foreground opacity-70" aria-hidden="true" />
-            <p className="text-sm font-semibold text-foreground">Workplace ratings are locked</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Rate a workplace to unlock them
-            </p>
-          </>
+          <LockedOverlay
+            title="Workplace ratings are locked"
+            hint="Rate a workplace to unlock them"
+            cta={{ label: "⭐ Rate this workplace", onClick: onRate }}
+          />
         }
         /*
           The same three highest and three lowest the manager tab shows. The HighLowCards that used
@@ -319,12 +294,16 @@ function CompanyRatingPanel({
       */}
 
       {/*
-        What the average is made of. Only once it is unlocked: the individual ratings are the data
-        the gate exists to protect, and showing them beneath a blurred summary would be the same
-        surface opting out of the gate twice over.
+        What the average is made of - rendered in every state, exactly as the interviews tab
+        renders its own accounts.
+
+        It used to be mounted only for an unlocked reader, so the entire section - sort control,
+        heading and all - vanished for everybody else and the tab looked like it simply had no
+        opinions, while its sibling one click away said its accounts were locked and offered the
+        way in. The rows themselves are withheld by the server now, not by this condition.
       */}
-      {!isLocked && !noRatings && companySlug && (
-        <CompanyRatingList companySlug={companySlug} companyName={companyName} />
+      {companySlug && (
+        <CompanyRatingList companySlug={companySlug} companyName={companyName} onRate={onRate} />
       )}
     </div>
   );
@@ -450,6 +429,20 @@ export default function CompanyProfile() {
   // the same query key the panel uses with no filters applied, so React Query serves both from
   // one request rather than fetching twice.
   const { data: interviewStats } = useCompanyInterviews(data?.slug ?? "");
+
+  /*
+    Your own pending submissions at THIS company, shown exactly as the directory shows them.
+
+    A pending manager is invisible to everybody else and must stay that way - this is not a hole
+    in the approval filter, it is the submitter seeing their own row. Without it, adding a manager
+    from a company page ended with the page looking completely unchanged, so the obvious next move
+    was to add them again.
+
+    Scoped on the company id rather than the name. The two are not interchangeable: a manager
+    filed as "Revvity Inc." belongs on the Revvity page, and no amount of string matching is a
+    safe way to decide that.
+  */
+  const pendingHere = useMyPendingSubmissions(data?.id);
 
   /**
    * Three tabs, three questions.
@@ -863,23 +856,28 @@ export default function CompanyProfile() {
           eyebrow="Manager opinions"
           subtitle={`What people experienced reporting to managers at ${data.name}`}
           score={data.avgRating ?? null}
+          // Manager reviews only - the workplace and interview tabs count their own.
           countLabel="review"
           countValue={data.totalReviews ?? 0}
           locked={isLocked}
           /*
-            The heading only - the grid below supplies the call to action.
+            Names the gate and offers the way out.
 
-            The redesign moved this tab onto CompanyTabHeader without carrying its overlay across,
-            so a locked reader got a blurred dash with nothing naming the gate. Restoring the whole
-            overlay put "Rate a manager to unlock ratings" on the page twice, because the locked
-            manager cards underneath already say it. The header names what is locked; the grid says
-            what to do about it; neither repeats the other.
+            The redesign moved this tab onto CompanyTabHeader without carrying its overlay
+            across, so a locked reader got a blurred dash with nothing saying why. It then spent
+            a while stating the lock as bare centred text with nothing to click - the one thing
+            the manager profile never does. The header's own action is suppressed while locked,
+            so this is the only "Rate a manager" on the row.
           */
           lockedOverlay={
-            <>
-              <Lock size={20} className="mb-1.5 text-muted-foreground opacity-70" aria-hidden="true" />
-              <p className="text-sm font-semibold text-foreground">Company insights are locked</p>
-            </>
+            <LockedOverlay
+              title="Company insights are locked"
+              hint="Rate a manager to unlock them"
+              cta={{
+                label: "⭐ Rate a manager",
+                onClick: () => navigate(`/add?company=${encodeURIComponent(data.name)}&returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`),
+              }}
+            />
           }
           /*
             Just how many managers there are. The review count is deliberately not repeated here -
@@ -983,6 +981,10 @@ export default function CompanyProfile() {
             <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground mb-4">
               Managers at {data.name}
             </h2>
+            <PendingSubmissions
+              submissions={pendingHere}
+              dividerBelow={data.managers.length > 0 || searchResults !== null}
+            />
             {searchResults !== null ? (
               searchError ? (
                 <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-5 text-center">
@@ -990,7 +992,7 @@ export default function CompanyProfile() {
                 </div>
               ) : searchResults.length > 0 ? (
                 <>
-                  <div className="grid grid-cols-2 auto-rows-[minmax(210px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
+                  <div className={TILE_GRID}>
                     {searchResults.map((boss: any) =>
                       resultsUnlocked ? (
                         <ManagerCard
@@ -1011,16 +1013,15 @@ export default function CompanyProfile() {
                     )}
                   </div>
                   {!resultsUnlocked && (
-                    <div className="mt-6 rounded-xl border border-border bg-background p-5 text-center">
-                      <p className="text-sm font-semibold text-foreground">Rate a manager to unlock ratings</p>
-                      <p className="mt-1 text-xs text-muted-foreground">It's anonymous and takes 2 minutes.</p>
-                      <button
-                        onClick={() => navigate(`/add?company=${encodeURIComponent(data.name)}&returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`)}
-                        className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
-                      >
-                        ⭐ Rate a manager
-                      </button>
-                    </div>
+                    <LockedPanelCard
+                      className="mt-6"
+                      title="Rate a manager to unlock ratings"
+                      hint="It's anonymous and takes 2 minutes."
+                      cta={{
+                        label: "⭐ Rate a manager",
+                        onClick: () => navigate(`/add?company=${encodeURIComponent(data.name)}&returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`),
+                      }}
+                    />
                   )}
                 </>
               ) : (
@@ -1039,7 +1040,7 @@ export default function CompanyProfile() {
               )
             ) : isLocked ? (
               <>
-                <div className="grid grid-cols-2 auto-rows-[minmax(210px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
+                <div className={TILE_GRID}>
                   {data.managers.slice(0, 3).map((mgr) => (
                     /*
                       A ghost is live, so who they are is readable like any other live manager.
@@ -1049,30 +1050,57 @@ export default function CompanyProfile() {
                     */
                     <LockedManagerCard
                       key={mgr.id}
-                      boss={mgr as any}
+                      boss={{ ...mgr, company: mgr.company || data.name, companyLogoUrl: mgr.companyLogoUrl ?? data.logoUrl } as any}
                       isLoggedIn={!!user}
                       blurRating={mgr.approvalStatus === 'ghost'}
                     />
                   ))}
+                  {/*
+                    Everything past the third tile is gated the same way the first three are:
+                    ratings withheld, identity readable.
+
+                    These used to pass blurCompany, which greyed out the whole company row - so
+                    three tiles showed a name and nothing else, sitting beside six that named the
+                    employer, on a page whose heading is that employer. Hiding "Red Hat" from
+                    somebody reading the Red Hat page withholds nothing; it only makes the tiles
+                    look broken. Ratings are what the contribution gate is for.
+                  */}
                   {data.managers.slice(3).map((mgr) => (
-                    <LockedManagerCard key={mgr.id} boss={mgr as any} isLoggedIn={!!user} blurRating blurCompany />
+                    <LockedManagerCard
+                      key={mgr.id}
+                      boss={{ ...mgr, company: mgr.company || data.name, companyLogoUrl: mgr.companyLogoUrl ?? data.logoUrl } as any}
+                      isLoggedIn={!!user}
+                      blurRating
+                    />
                   ))}
+                  {/*
+                    The "there could be more here" slots, rendered by the same component as every
+                    real tile rather than by a lookalike of it. CompanyProfile used to carry its
+                    own GhostManagerCard - a copy of this card's markup, annotated with three
+                    comments claiming it matched - and it did not: the teasers were taller than
+                    the managers beside them.
+                  */}
                   {Array.from({ length: Math.max(0, 9 - data.managers.length) }, (_, i) => (
-                    <GhostManagerCard key={`ghost-${i}`} index={i} company={decoded} logoUrl={data.logoUrl} isLoggedIn={!!user} />
+                    <LockedManagerCard
+                      key={`ghost-${i}`}
+                      boss={{ id: -1 - i, name: "", company: data.name, companyLogoUrl: data.logoUrl }}
+                      isLoggedIn={!!user}
+                      blurRating
+                      teaser={GHOST_SLOTS[i % GHOST_SLOTS.length]}
+                    />
                   ))}
                 </div>
-                <div className="mt-6 rounded-xl border border-border bg-background p-5 text-center">
-                  <p className="text-sm font-semibold text-foreground">Rate a manager to unlock ratings</p>
-                  <p className="mt-1 text-xs text-muted-foreground">It's anonymous and takes 2 minutes.</p>
-                  <button
-                    onClick={() => navigate(`/add?company=${encodeURIComponent(data.name)}&returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`)}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
-                  >
-                    ⭐ Rate a manager
-                  </button>
-                </div>
+                <LockedPanelCard
+                  className="mt-6"
+                  title="Rate a manager to unlock ratings"
+                  hint="It's anonymous and takes 2 minutes."
+                  cta={{
+                    label: "⭐ Rate a manager",
+                    onClick: () => navigate(`/add?company=${encodeURIComponent(data.name)}&returnTo=/companies/${data.slug ?? encodeURIComponent(decoded)}`),
+                  }}
+                />
               </>
-            ) : data.managers.length === 0 ? (
+            ) : data.managers.length === 0 && pendingHere.length === 0 ? (
               <div className="rounded-xl border border-border bg-background/50 py-12 text-center">
                 <Building2 size={36} className="mx-auto mb-3 text-muted-foreground opacity-40" />
                 <p className="text-sm font-medium text-foreground">No managers listed yet</p>
@@ -1086,7 +1114,7 @@ export default function CompanyProfile() {
                 </Link>
               </div>
             ) : (
-              <div className="grid grid-cols-2 auto-rows-[minmax(210px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
+              <div className={TILE_GRID}>
                 {data.managers.map((mgr) => (
                   <ManagerCard
                     key={mgr.id}

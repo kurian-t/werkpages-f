@@ -425,6 +425,16 @@ export default function AccountSettings() {
                         disabled={isBanned}
                         className="rounded-lg bg-primary/10 px-3 py-2 text-primary hover:bg-primary/20 transition-colors flex items-center gap-1 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                         title={isBanned ? "Your account has been suspended" : ""}
+                        /*
+                          Named here rather than left to the text inside.
+
+                          The word "Edit" is `hidden sm:inline`, and the title was empty for
+                          anyone not banned - so on a phone this was an icon-only button with no
+                          accessible name at all, and on a desktop it was called "Edit" with no
+                          hint of what it edits. The label no longer changes with the width of
+                          the screen.
+                        */
+                        aria-label="Edit submission"
                       >
                         <Edit2 size={14} />
                         <span className="text-xs font-medium hidden sm:inline">Edit</span>
@@ -511,6 +521,10 @@ export default function AccountSettings() {
                               disabled={isBanned}
                               className="rounded-lg bg-primary/10 px-3 py-2 text-primary hover:bg-primary/20 transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                               title={isBanned ? "Your account has been suspended" : "Edit review"}
+                              /* Same reason as the submission button above: without this the
+                                 accessible name was "Edit" on a wide screen and "Edit review" on
+                                 a narrow one, for one and the same control. */
+                              aria-label="Edit review"
                             >
                               <Edit2 size={14} />
                               <span className="text-xs font-medium hidden sm:inline">Edit</span>

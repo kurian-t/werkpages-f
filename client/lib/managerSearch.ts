@@ -57,13 +57,24 @@ type Geo = Awaited<ReturnType<typeof fetchGeo>>;
  *
  * Fire-and-forget by design. The person searching should never wait on, or see, our bookkeeping.
  */
-export async function captureSearch(input: ManagerSearchInput, geo: Geo): Promise<void> {
+export async function captureSearch(
+  input: ManagerSearchInput,
+  geo: Geo,
+  /**
+   * An already-resolved company, when the caller has one.
+   *
+   * Resolving it can CREATE a company, so a search that resolved it here *and* again for the ghost
+   * paid for that round trip twice. Callers on the search path resolve once and pass it in; the
+   * debounced capture in the forms has nothing to reuse and still resolves its own.
+   */
+  resolved?: { company: string; companyId: number | null },
+): Promise<void> {
   const fn = input.firstName.trim();
   const ln = input.lastName.trim();
   const t  = input.title.trim();
   if (!fn || !ln) return;
 
-  const { company: companyName, companyId } = await input.companyPayload();
+  const { company: companyName, companyId } = resolved ?? await input.companyPayload();
   if (!companyName && !t) return;  // a bare name tells an admin nothing
 
   axios.post(`${API_BASE}/api/managers/anonymous-capture`, {
@@ -127,54 +138,96 @@ export async function searchForManager(input: ManagerSearchInput): Promise<Manag
   const found = lookup.data.data ?? [];
   if (found.length > 0) return { results: found, hasContributed: false };
 
+  /*
+    The company is resolved ONCE, here.
+
+    It used to be resolved inside captureSearch and again inside the ghost POST, and resolving it
+    can CREATE a company - so a single search made that round trip twice. Everything below reuses
+    this.
+  */
+  const companyFields = await input.companyPayload();
+
   // Slot already spent: forward to the admin queue and show nothing.
   if (localStorage.getItem(GHOST_KEY)) {
-    await captureSearch(input, geo);
+    void captureSearch(input, geo, companyFields);
     return { results: [], hasContributed: false };
   }
 
-  // Capture *before* attempting the ghost. If ghost creation fails for any reason the search is
-  // still worth keeping — a failure here used to lose it entirely.
-  await captureSearch(input, geo);
+  /*
+    Captured before the ghost is attempted, and deliberately NOT awaited.
 
-  let ghostRow: { id?: number | string } | null = null;
+    Before: `await captureSearch(...)`, which waited on a company-creation POST purely for
+    bookkeeping while the person sat looking at a spinner. The comment on captureSearch has always
+    said the searcher should never wait on it; now they do not. Ordering is preserved - the request
+    still leaves first - we simply stop blocking on its response.
+  */
+  void captureSearch(input, geo, companyFields);
+
+  let ghostRow: { id?: number | string; published?: boolean } | null = null;
   try {
     const ghostRes = await axios.post(`${API_BASE}/api/managers/ghost`, {
       name: search,
-      ...(await input.companyPayload()),
+      ...companyFields,
       title: t,
       country: geo.country,
       state: geo.state,
       city: geo.city,
+      // A deliberate search that found nobody, so the manager is auto-added live ('ghost') and
+      // shown back as a clickable tile. The add form posts to this same endpoint WITHOUT this
+      // flag, because a half-typed form must never publish anybody.
+      fromSearch: true,
     });
     ghostRow = ghostRes.data ?? null;
-    localStorage.setItem(GHOST_KEY, "true");
   } catch {
     return { results: [], hasContributed: false };  // ghost creation failed - an ordinary miss
   }
 
   /*
-    The manager we just created, shown as an ordinary locked tile.
+    `published` is the server telling us whether a PUBLIC manager exists, not merely that a row was
+    written. It is false when the site-wide ceiling is in force: the search still records a pending
+    row for an admin, but nothing public was created.
 
-    A re-search is preferred because it returns the real row; the tile below is built from the
-    create response for when that read comes back empty - the row exists either way.
+    Both behaviours below hang off it, and both are bugs if they do not:
+
+      - a tile built from an unpublished row links to a profile the server refuses to serve, which
+        is exactly the "Manager not found" outage;
+      - setting GHOST_KEY for a ghost that was never created burns this browser's one auto-add
+        forever, for something it never received.
   */
-  const justCreated = {
-    id: ghostRow?.id,
-    name: search,
-    company: input.companyName.trim(),
-    title: t,
-    overallRating: 0,
-    reviewsCount: 0,
-  };
-  const fallback = justCreated.id != null ? [justCreated] : [];
+  if (ghostRow?.published === false) return { results: [], hasContributed: false };
+
+  localStorage.setItem(GHOST_KEY, "true");
+
+  /*
+    The manager we just created, shown as an ordinary locked tile, built from the create response.
+
+    There used to be an unconditional second search here to fetch "the real row". It cost a whole
+    round trip to read back something we had just written and already held, on the one path where
+    somebody is actively waiting.
+
+    It survives as a FALLBACK, for the one case it actually covered: a create response that comes
+    back without an id. Then we have nothing to build a tile from and must go and look.
+  */
+  if (ghostRow?.id != null) {
+    return {
+      results: [{
+        id: ghostRow.id,
+        name: search,
+        company: input.companyName.trim(),
+        title: t,
+        overallRating: 0,
+        reviewsCount: 0,
+      }],
+      hasContributed: false,
+    };
+  }
+
   try {
     const retry = await axios.get(`${API_BASE}/api/managers`, {
       params: { search, limit: 8, offset: 0 },
     });
-    const retryData = retry.data.data ?? [];
-    return { results: retryData.length > 0 ? retryData : fallback, hasContributed: false };
+    return { results: retry.data.data ?? [], hasContributed: false };
   } catch {
-    return { results: fallback, hasContributed: false };
+    return { results: [], hasContributed: false };
   }
 }

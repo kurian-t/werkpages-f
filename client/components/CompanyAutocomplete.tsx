@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useAnchoredPosition } from "@/lib/anchoredDropdown";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import API_BASE from "@/lib/api";
@@ -67,7 +68,6 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
     a suggestion or by arriving already filled in.
   */
   const [typing, setTyping] = useState(false);
-  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLUListElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -85,36 +85,9 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
   */
   const touchedRef = useRef(false);
 
-  // Compute fixed-position dropdown coordinates from the container's viewport rect.
-  // This makes the dropdown escape any overflow:hidden/auto ancestor (e.g. modal scroll containers).
-  useEffect(() => {
-    if (!open) return;
-    let raf = 0;
-    const place = () => {
-      const el = containerRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      /*
-        A zero-width measurement means layout has not settled yet - the field swaps between its
-        card and input forms, and the list can open across that moment. Writing it through gives
-        the portalled list width:0: an element that exists, holds every option, and cannot be seen
-        or clicked. Better to wait a frame and measure again than to place it somewhere useless.
-      */
-      if (rect.width === 0) {
-        raf = requestAnimationFrame(place);
-        return;
-      }
-      setDropdownStyle({
-        position: "fixed",
-        top: rect.bottom + 4,
-        left: rect.left,
-        width: rect.width,
-        zIndex: 9999,
-      });
-    };
-    place();
-    return () => cancelAnimationFrame(raf);
-  }, [open, suggestions]);
+  // One shared implementation, so a list running off the edge of the screen is fixed for every
+  // control that has one rather than for whichever was reported.
+  const dropdownStyle = useAnchoredPosition(containerRef, open, [suggestions]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);

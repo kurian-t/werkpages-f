@@ -240,6 +240,9 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
                     blurRating={true}
                     blurTitle={true}
                     forceShowCompany={true}
+                    // A vertical list, not the tile grid - full width, its own height, exactly as
+                    // this surface has always rendered. See CLAUDE.md section 41.
+                    layout="stack"
                   />
                 )
               )}

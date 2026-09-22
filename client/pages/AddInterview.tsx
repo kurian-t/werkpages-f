@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
@@ -8,6 +8,18 @@ import { toast } from "sonner";
 import API_BASE from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { RoleAutocomplete } from "@/components/RoleAutocomplete";
+import { CollapsibleField } from "@/components/FormFields";
+import { LocationField } from "@/components/LocationField";
+import { AttestationCard } from "@/components/RatingFormParts";
+import { LocationValue, EMPTY_LOCATION, declaredPayload, orUserGeo } from "@/lib/location";
+import { MONTHS, YEARS, type MonthYear as MonthYearValue } from "@/components/ManagerFormFields";
+
+/** "2024-06" as the shared timeline control holds it, and back again. */
+const monthYearOf = (value: string | null | undefined): MonthYearValue => {
+  const [year, month] = (value ?? "").split("-");
+  return { month: month ?? "", year: year ?? "" };
+};
+const yearMonthString = (v: MonthYearValue) => (v.month && v.year ? `${v.year}-${v.month}` : "");
 import { CompanyField } from "@/components/CompanyField";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
 import { CompanyLogoImg } from "@/components/ManagerCard";
@@ -69,11 +81,26 @@ export default function AddInterview() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  /* Links a captured draft to the submission that follows, so finishing the form removes it. */
+  const draftTokenRef = useRef<string | null>(null);
+  /* Which collapsible field is open. One slot, so two are never half-edited at once. */
+  const [openField, setOpenField] = useState<"role" | "length" | "location" | null>(null);
+  /** First-hand experience, confirmed before anything is stored. */
+  const [attested, setAttested] = useState(false);
+  /*
+    The timeline control holds month and year separately; the draft holds one "YYYY-MM" string.
+    Keeping the parts here is what lets a half-entered date survive: composing the string on every
+    change turns "March, year not yet chosen" into "", which comes straight back as an empty
+    control, so the selection never sticks and the end date stays disabled.
+  */
+  const [fromParts, setFromParts]   = useState<MonthYearValue>({ month: "", year: "" });
+
   const currentYear = new Date().getFullYear();
 
   const [step, setStep] = useState<Step>("process");
   const [changingCompany, setChangingCompany] = useState(false);
-  const [editingCountry, setEditingCountry] = useState(false);
+  /** Where the interviewing happened, on the same ladder every other contribution uses. */
+  const [location, setLocation] = useState<LocationValue>(EMPTY_LOCATION);
   /*
     The handle this experience is signed with. Generated once on mount so it does not change under
     the reader mid-form, and replaced only when they ask for another.
@@ -159,6 +186,8 @@ export default function AddInterview() {
       country: existing.country,
       city: existing.city,
       interviewYear: existing.interviewYear,
+      interviewedFrom: existing.interviewedFrom ?? null,
+      interviewedUntil: existing.interviewedUntil ?? null,
       /*
         The rounds that were recorded, not an empty list.
 
@@ -170,6 +199,37 @@ export default function AddInterview() {
       */
       rounds: Array.isArray(existing.rounds) ? existing.rounds : [],
     });
+    // The timeline control reads the parts, so an existing experience has to fill those too -
+    // otherwise reopening one shows an empty period over a draft that has one.
+    /*
+      Rows written before the range existed have only a year. Showing January of it is what the
+      migration backfilled server-side, and an empty period over an experience that plainly has a
+      date reads as data loss.
+    */
+    setFromParts(monthYearOf(existing.interviewedFrom
+      ?? (existing.interviewYear ? `${existing.interviewYear}-01` : null)));
+    /*
+      Experiences written before the ladder existed carry a bare country and nothing else. Showing
+      it beats showing an empty field: the alternative reads as though the stored answer had been
+      cleared, on a form whose whole job is to open with what is already there.
+    */
+    setLocation(existing.declaredPrecision ? {
+      country: existing.declaredCountry ?? "",
+      state:   existing.declaredState ?? "",
+      city:    existing.declaredCity ?? "",
+      precision: existing.declaredPrecision,
+      companyLocationId: existing.companyLocationId ?? null,
+      corpusPlace: null,
+      label: "",
+    } : existing.country ? {
+      country: existing.country,
+      state: "",
+      city: existing.city ?? "",
+      precision: existing.city ? "city" : "country",
+      companyLocationId: null,
+      corpusPlace: null,
+      label: "",
+    } : EMPTY_LOCATION);
     setLoadedExisting(true);
   }, [existing, loadedExisting]);
 
@@ -199,6 +259,12 @@ export default function AddInterview() {
           // Never overwrite something already chosen.
           prev.country ? prev : { ...prev, country: geo.country, city: geo.city ?? null },
         );
+        /*
+          The location field opens populated, shown in full and editable, so submitting it unchanged
+          is a confirmation rather than an inference - the same rule the manager and workplace forms
+          follow. A stored location is never overwritten.
+        */
+        setLocation(prev => orUserGeo(prev, geo));
       })
       .catch(() => {
         // Geo is a convenience. Failing to resolve it just means the field starts empty.
@@ -263,16 +329,46 @@ export default function AddInterview() {
       return;
     }
 
+    /*
+      The account is asked for here, at the end, and nowhere earlier.
+
+      This page used to render a sign-in wall in place of the form, so a logged-out person never saw
+      a single field - out of step with every other contribution form, and impossible to capture
+      from: a form that never rendered has no answers to keep. Now they fill it in, and only the
+      write needs an account.
+    */
+    if (!user) {
+      if (!draftTokenRef.current) draftTokenRef.current = crypto.randomUUID();
+      // Fire-and-forget: capturing is a courtesy to somebody already leaving, and must never be
+      // the reason the redirect does not happen.
+      void axios.post(`${API_BASE}/api/companies/${activeSlug}/interviews/draft`, {
+        ...toInterviewPayload(draft),
+        author: generatedName,
+        ...declaredPayload(location),
+        draftToken: draftTokenRef.current,
+      }).catch(() => {});
+      const back = companySlug ? `/companies/${companySlug}/add-interview` : "/add-interview";
+      navigate(`/signin?returnTo=${encodeURIComponent(back)}`);
+      return;
+    }
+
     setSubmitting(true);
     try {
       if (editingId) {
-        await axios.put(`${API_BASE}/api/interviews/${editingId}`, { ...toInterviewPayload(draft), author: generatedName }, {
+        await axios.put(`${API_BASE}/api/interviews/${editingId}`, { ...toInterviewPayload(draft), author: generatedName, ...declaredPayload(location) }, {
           withCredentials: true,
         });
       } else {
         await axios.post(
           `${API_BASE}/api/companies/${activeSlug}/interviews`,
-          { ...toInterviewPayload(draft), author: generatedName },
+          {
+            ...toInterviewPayload(draft),
+            author: generatedName,
+            ...declaredPayload(location),
+            // Deletes the draft this came from, so an admin does not review work that was finished
+            // a minute later.
+            ...(draftTokenRef.current ? { draftToken: draftTokenRef.current } : {}),
+          },
           { withCredentials: true },
         );
       }
@@ -291,29 +387,11 @@ export default function AddInterview() {
     }
   };
 
-  if (!user) {
-    return (
-      <Layout>
-        <div className="mx-auto max-w-2xl px-4 py-16 text-center">
-          <p className="text-lg font-semibold text-foreground">Sign in to add an interview review</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Interview experiences are tied to an account so each person can post one per year.
-          </p>
-          <button
-            type="button"
-            onClick={() => navigate(`/signin?returnTo=${companySlug ? `/companies/${companySlug}/add-interview` : "/add-interview"}`)}
-            className="mt-4 rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2e0562]/90"
-          >
-            Sign in
-          </button>
-        </div>
-      </Layout>
-    );
-  }
-
   const stepIdx = STEPS.indexOf(step) + 1;
   const isLastStep = step === "ratings";
-  const nextDisabled = !stepComplete || submitting;
+  // The attestation gates the final step only: it is a claim about the whole account, and asking
+  // for it before the account exists would be asking somebody to vouch for a blank form.
+  const nextDisabled = !stepComplete || submitting || (isLastStep && !attested);
 
   return (
     <>
@@ -460,21 +538,73 @@ export default function AddInterview() {
                   </div>
                 </FormField>
 
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <FormField label="Year" required error={errors.interviewYear} htmlFor="interview-year">
-                    <select
-                      id="interview-year"
-                      value={draft.interviewYear ?? ""}
-                      onChange={(e) => update("interviewYear", Number(e.target.value))}
-                      className={INPUT}
-                    >
-                      {interviewYearOptions(currentYear).map((year) => (
-                        <option key={year} value={year}>{year}</option>
-                      ))}
-                    </select>
-                  </FormField>
+                {/*
+                  One month, not a range.
 
-                  <FormField label="Role" required error={errors.roleCategory} htmlFor="interview-role">
+                  A hiring process is measured in weeks - "how long did it take?" below already
+                  records that - so a start and an end were two questions where the answer is
+                  almost always the same month, and an end date nobody needed is an end date
+                  somebody has to fill in. Stored as interviewed_from; interviewed_until stays null.
+
+                  The parts are held here rather than composed into a string on every change: a
+                  half-entered date turns into "" and comes straight back as an empty control.
+                */}
+                <div>
+                  <p className="mb-2 block text-sm font-semibold text-foreground">
+                    When did you interview here? <span className="text-red-500">*</span>
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <select
+                      aria-label="From month"
+                      value={fromParts.month}
+                      onChange={e => {
+                        const next = { ...fromParts, month: e.target.value };
+                        setFromParts(next);
+                        update("interviewedFrom", yearMonthString(next));
+                      }}
+                      className={INPUT_SM}
+                    >
+                      <option value="">Month</option>
+                      {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                    </select>
+                    <select
+                      aria-label="From year"
+                      value={fromParts.year}
+                      onChange={e => {
+                        const next = { ...fromParts, year: e.target.value };
+                        setFromParts(next);
+                        update("interviewedFrom", yearMonthString(next));
+                      }}
+                      className={INPUT_SM}
+                    >
+                      <option value="">Year</option>
+                      {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
+                  {errors.interviewYear && (
+                    <p className="mt-2 text-xs text-red-600" role="alert">{errors.interviewYear}</p>
+                  )}
+                </div>
+
+                <div className="grid gap-5 sm:grid-cols-2">
+                  {/*
+                    The same shell the manager form's fields use: an answer collapses to a line with
+                    a pencil, and Done puts it back. This form used to render a bare box instead, so
+                    the same question behaved differently depending on which page you were on.
+                  */}
+                  <CollapsibleField
+                    id="interview-role"
+                    label="Role"
+                    required
+                    display={draft.roleCategory ?? ""}
+                    editing={openField === "role"}
+                    onEditStart={() => setOpenField("role")}
+                    onEditDone={() => setOpenField(null)}
+                    onRestore={previous => update("roleCategory", previous)}
+                    error={errors.roleCategory
+                      ? <p className="mt-1 text-xs text-red-600">{errors.roleCategory}</p>
+                      : undefined}
+                  >
                     {/*
                       Same typeahead as the manager title field, drawing on the same vocabulary -
                       a role someone interviewed for and a manager's title are the same kind of
@@ -488,65 +618,42 @@ export default function AddInterview() {
                       placeholder="e.g. Engineering Manager"
                       className={INPUT}
                     />
-                  </FormField>
+                  </CollapsibleField>
 
-                  <FormField
-                    label="Country"
+                  {/*
+                    The same location control every other contribution form uses, not a bare
+                    country list. interview_reviews has carried the full declared ladder since V68
+                    - country, state, city, and an exact workplace - and this form was throwing all
+                    but the country away, so an interview could never be filed against the branch
+                    it happened at while a review of a manager at the same company could.
+                  */}
+                  <LocationField
+                    value={location}
+                    onChange={setLocation}
+                    companyName={companyName ?? undefined}
+                    editing={openField === "location"}
+                    onEditStart={() => setOpenField("location")}
+                    onEditDone={() => setOpenField(null)}
+                    id="interview-location"
+                  />
+
+                  {/*
+                    A select collapses to its answer exactly as a text field does. The shell shows
+                    the label and restores the stored value, which are different things here:
+                    "2-4 weeks" is what a reader sees, "2_4_weeks" is what Cancel has to put back.
+                  */}
+                  <CollapsibleField
+                    id="interview-length"
+                    label="How long did it take?"
                     required
-                    htmlFor="interview-country"
-                    hint={draft.city && draft.country === inferredCountry ? `Looks like ${draft.city}` : undefined}
+                    display={draft.processLength ? PROCESS_LENGTH_LABELS[draft.processLength] : ""}
+                    value={draft.processLength ?? ""}
+                    editing={openField === "length"}
+                    onEditStart={() => setOpenField("length")}
+                    onEditDone={() => setOpenField(null)}
+                    onRestore={previous =>
+                      update("processLength", (previous || null) as ProcessLength | null)}
                   >
-                    {/*
-                      Inferred from geo, so it is shown rather than asked - the same card the
-                      company field uses, with the flag in the logo slot. Editing swaps the picker
-                      in place. Nothing inferred means nothing settled, so the picker stands alone.
-                    */}
-                    {draft.country ? (
-                      <FormSubjectCard
-                        layout="inline"
-                        name={draft.country}
-                        logo={
-                          <span aria-hidden="true" className="text-base leading-none">
-                            {COUNTRIES.find((c) => c.value === draft.country)?.flag ?? ""}
-                          </span>
-                        }
-                        editing={editingCountry}
-                        onEditStart={() => setEditingCountry(true)}
-                        onEditDone={() => setEditingCountry(false)}
-                      >
-                        {/*
-                          The choice takes effect the moment it is made - "Done editing" only
-                          collapses the card back. A control that needed confirming would lose
-                          somebody's answer when they moved on without pressing it.
-                        */}
-                        <select
-                          id="interview-country"
-                          value={draft.country ?? ""}
-                          onChange={(e) => update("country", e.target.value || null)}
-                          className={INPUT}
-                        >
-                          <option value="">Select...</option>
-                          {COUNTRIES.map((c) => (
-                            <option key={c.value} value={c.value}>{c.flag} {c.value}</option>
-                          ))}
-                        </select>
-                      </FormSubjectCard>
-                    ) : (
-                      <select
-                        id="interview-country"
-                        value={draft.country ?? ""}
-                        onChange={(e) => update("country", e.target.value || null)}
-                        className={INPUT}
-                      >
-                        <option value="">Select...</option>
-                        {COUNTRIES.map((c) => (
-                          <option key={c.value} value={c.value}>{c.flag} {c.value}</option>
-                        ))}
-                      </select>
-                    )}
-                  </FormField>
-
-                  <FormField label="How long did it take?" required htmlFor="interview-length">
                     <select
                       id="interview-length"
                       value={draft.processLength ?? ""}
@@ -558,7 +665,7 @@ export default function AddInterview() {
                         <option key={length} value={length}>{PROCESS_LENGTH_LABELS[length]}</option>
                       ))}
                     </select>
-                  </FormField>
+                  </CollapsibleField>
                 </div>
 
                 {/*
@@ -653,6 +760,16 @@ export default function AddInterview() {
                     onChange={(value) => update("overallRating", value)}
                   />
                 </div>
+                {/*
+                  The same attestation the manager and workplace forms ask, in this one's own
+                  words. Every rating form publishes somebody's account of a real process; asking
+                  on one and not the others meant the same claim was made under three different
+                  standards.
+                */}
+                <AttestationCard checked={attested} onChange={setAttested}>
+                  I confirm that I personally interviewed with this company, and these ratings
+                  reflect my own experience and perceptions.
+                </AttestationCard>
               </div>
             )}
 
@@ -687,6 +804,10 @@ function replaceAt<T>(list: T[], index: number, value: T): T[] {
 function removeAt<T>(list: T[], index: number): T[] {
   return list.filter((_, i) => i !== index);
 }
+
+/* The month/year pair, sized like the same pair on the other forms. */
+const INPUT_SM =
+  "rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]";
 
 const INPUT =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]";

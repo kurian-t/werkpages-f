@@ -53,17 +53,29 @@ async function openForm(page: any, { status = 200, code, signedIn = true }: Opti
 async function fillProcess(page: any) {
   await page.getByRole("button", { name: "Received an offer" }).click();
   await page.getByRole("button", { name: "Average", exact: true }).click();  // difficulty
-  await page.getByLabel("Year").selectOption("2025");
+  /*
+    The date is a month-and-year period now - "interviewedFrom" - not a bare year, matching the
+    other two contribution forms. Both halves have to be set: the pair only reports a value once
+    it has both, and interviewYear is derived from it on the server.
+  */
+  await page.getByLabel("From month").selectOption("03");
+  await page.getByLabel("From year").selectOption("2025");
   await page.getByLabel("Role").fill("Engineering Manager");
   await page.getByLabel("How long did it take?").selectOption("2_4_weeks");
 }
 
-/** Answers every question the ratings step asks. */
+/** Answers every question the ratings step asks, including the attestation that gates submit. */
 async function fillRatings(page: any, stars = 4) {
   for (const label of CATEGORY_LABELS) {
     await page.getByRole("button", { name: `${label}: ${stars} stars` }).click();
   }
   await page.getByRole("button", { name: `Overall: ${stars} stars` }).click();
+  /*
+    The first-hand-experience attestation. It is the one thing on this step that has to be a
+    deliberate act, and it holds "Share experience" disabled until it is - the same gate the
+    manager review and workplace rating forms carry.
+  */
+  await page.locator('input[name="attestation"]').check();
 }
 
 test.describe("Sharing an interview experience", () => {
@@ -137,8 +149,12 @@ test.describe("Sharing an interview experience", () => {
     await page.getByRole("button", { name: "Back" }).click();
 
     await expect(page.getByText(/Step 1 of 2/)).toBeVisible();
-    await expect(page.getByLabel("Year")).toHaveValue("2025");
-    await expect(page.getByLabel("Role")).toHaveValue("Engineering Manager");
+    await expect(page.getByLabel("From year")).toHaveValue("2025");
+    /*
+      Role is a collapsible field: once answered it shows as a card naming the role rather than as
+      an open box, so read it as text. The answer surviving the round trip is the point either way.
+    */
+    await expect(page.getByTestId("interview-role-value")).toHaveText("Engineering Manager");
   });
 
   test("an unrated category cannot submit", async ({ page }) => {
@@ -170,7 +186,8 @@ test.describe("Sharing an interview experience", () => {
 
     await expect(page).toHaveURL(/tab=hiring/, { timeout: 10_000 });
     expect(posted?.outcome).toBe("offer");
-    expect(posted?.interviewYear).toBe(2025);
+    // The period is what the form asks for and what the server derives interviewYear from.
+    expect(posted?.interviewedFrom).toBe("2025-03");
     // V65 gave interview experiences a handle, so a company with five of them no longer renders
     // as one unattributed voice repeated.
     expect(typeof posted?.author).toBe("string");
@@ -218,19 +235,44 @@ test.describe("Sharing an interview experience", () => {
     await expect(page.getByText(/Step 2 of 2/)).toBeVisible();
   });
 
-  test("somebody signed out is asked to sign in, not shown an empty form", async ({ page }) => {
-    // Experiences are tied to an account so the one-per-year rule can hold at all.
-    await openForm(page, { signedIn: false });
+  test("somebody signed out fills the form and is asked to sign in at submit", async ({ page }) => {
+    /*
+      CHANGED DELIBERATELY. This used to assert a sign-in wall in place of the form.
 
-    await expect(page.getByText("Sign in to add an interview review")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("Interview experiences are tied to an account")).toBeVisible();
+      Every contribution form on this site lets a logged-out person fill it in and asks for an
+      account at submit, capturing the draft on the way - nobody signs up for a form they have not
+      seen, and a wall captures nothing, so it loses the record that somebody wanted to contribute
+      at all. This form was the one exception; it is not any more.
+
+      The experience is still tied to an account, which is what makes the one-per-year rule
+      holdable. That check happens on the write, not at the door.
+    */
+    let captured: any = null;
+    await openForm(page, { signedIn: false });
+    await page.route("**/api/companies/*/interviews/draft", (r: any) => {
+      captured = r.request().postDataJSON();
+      return r.fulfill({ status: 200, json: { success: true } });
+    });
+
+    // The whole form is available without an account.
+    await fillProcess(page);
+    await page.getByRole("button", { name: "Next" }).click();
+    await fillRatings(page);
+    await page.locator('input[name="attestation"]').check();
+
+    await page.getByRole("button", { name: "Share experience" }).click();
+
+    // The answers are kept before they are sent away to sign in, not thrown on the floor.
+    await expect.poll(() => captured, { timeout: 10_000 }).not.toBeNull();
+    await expect(page).toHaveURL(/\/signin\?returnTo=/, { timeout: 10_000 });
   });
 
   test("Cancel leaves without storing anything", async ({ page }) => {
     await openForm(page);
     await fillProcess(page);
 
-    await page.getByRole("button", { name: "Cancel" }).click();
+    // exact: the collapsible fields each offer a "Cancel editing <field>" control too.
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
 
     await expect(page).toHaveURL(/\/companies\/red-hat/, { timeout: 10_000 });
   });

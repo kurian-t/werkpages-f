@@ -235,21 +235,24 @@ test.describe("BossProfile - complete edit review all steps", () => {
     await expect(page.getByText(/your reviews.*select to edit/i)).toBeVisible({ timeout: 5000 });
     // Click the review to open edit modal (step: ratings)
     await page.getByText(/engineering manager at acme corp/i).first().click();
-    // Wait for edit modal to open (ratings step)
+    // Wait for edit modal to open (step 1, manager information)
     await expect(page.getByRole("button", { name: /next/i })).toBeVisible({ timeout: 8000 });
-    // Step 1 (ratings): all pre-filled → click Next
+    // Step 1 (manager information): pre-filled from the review → click Next
     await page.getByRole("button", { name: /^Next$/ }).click();
     // Step 2 (dates): workedFrom and workedUntil should be pre-filled
-    // Check we moved to dates step (From year select visible)
     await expect(page.locator('select[aria-label="From year"]')).toBeVisible({ timeout: 5000 });
-    // Click Next again → step 3 identity
+    // Click Next again → step 3
     await page.getByRole("button", { name: /^Next$/ }).click();
-    // Step 3 (identity): "Who wrote this review?"
-    await expect(page.getByText(/who wrote this review/i)).toBeVisible({ timeout: 5000 });
+    /*
+      Step 3 is the ratings, and the attribution question is part of it. It used to be a step of
+      its own headed "Who wrote this review?"; that heading is gone, so the step is identified by
+      the one it actually carries.
+    */
+    await expect(page.getByRole("heading", { name: /update your ratings/i })).toBeVisible({ timeout: 5000 });
     // Click "Save Changes"
     await page.getByRole("button", { name: /save changes/i }).click();
     // Modal closes after successful edit
-    await expect(page.getByText(/who wrote this review/i)).not.toBeVisible({ timeout: 8000 });
+    await expect(page.getByRole("heading", { name: /update your ratings/i })).not.toBeVisible({ timeout: 8000 });
   });
 });
 

@@ -1,5 +1,11 @@
 import { test, expect } from "./base";
-import { MOCK_USER } from "./fixtures";
+import { MOCK_USER,
+  headerControl,
+  revealHeader,
+  signedInMarker,
+  signOutFromHeader,
+  openAccountMenu,
+} from "./fixtures";
 
 /**
  * What happens to a signed-in session between page loads.
@@ -14,8 +20,13 @@ import { MOCK_USER } from "./fixtures";
  * time it restarts, which is the kind of bug that looks like a mass logout incident.
  */
 
-const signedIn = (page: any) => page.getByRole("button", { name: new RegExp(MOCK_USER.username, "i") });
-const signedOut = (page: any) => page.getByRole("button", { name: "Sign In", exact: true }).first();
+/*
+  The header tells you which of the two states the session is in. Both controls sit in the drawer
+  on a phone, so these resolve through the viewport-aware helpers rather than naming the desktop
+  bar directly.
+*/
+const signedIn = (page: any) => signedInMarker(page, MOCK_USER.username);
+const signedOut = (page: any) => headerControl(page, "Sign In").first();
 
 /** Loads the site with a cached session, and `me` answering however the test needs. */
 async function load(page: any, me: (route: any) => unknown, cached: unknown = MOCK_USER) {
@@ -25,6 +36,8 @@ async function load(page: any, me: (route: any) => unknown, cached: unknown = MO
   await page.route("**/api/notifications**", (r: any) => r.fulfill({ json: { data: [], unread: 0 } }));
   await page.route("**/api/auth/me", me);
   await page.goto("/");
+  // On a phone the header's controls are behind the drawer; open it so both states are readable.
+  await revealHeader(page);
 }
 
 test.describe("Checking a cached session on load", () => {
@@ -43,7 +56,7 @@ test.describe("Checking a cached session on load", () => {
     await load(page, (r: any) => r.fulfill({ json: { ...MOCK_USER, role: "admin" } }));
     await expect(signedIn(page)).toBeVisible({ timeout: 10_000 });
 
-    await signedIn(page).click();
+    await openAccountMenu(page, MOCK_USER.username);
 
     await expect(page.getByRole("link", { name: /Admin Panel/i })).toBeVisible();
   });
@@ -139,6 +152,7 @@ test.describe("A cached session that cannot be read", () => {
     await page.addInitScript(() => localStorage.setItem("authUser", "{not json"));
     await page.route("**/api/auth/me", (r: any) => r.fulfill({ status: 401, json: {} }));
     await page.goto("/");
+    await revealHeader(page);
 
     await expect(signedOut(page)).toBeVisible({ timeout: 10_000 });
   });
@@ -147,6 +161,7 @@ test.describe("A cached session that cannot be read", () => {
     await page.addInitScript(() => localStorage.setItem("authUser", "{not json"));
     await page.route("**/api/auth/me", (r: any) => r.fulfill({ status: 401, json: {} }));
     await page.goto("/");
+    await revealHeader(page);
     await expect(signedOut(page)).toBeVisible({ timeout: 10_000 });
 
     const stored = await page.evaluate(() => localStorage.getItem("authUser"));
@@ -166,6 +181,7 @@ test.describe("A cached session that cannot be read", () => {
     let asked = 0;
     await page.route("**/api/auth/me", (r: any) => { asked++; return r.fulfill({ status: 401, json: {} }); });
     await page.goto("/");
+    await revealHeader(page);
     await expect(signedOut(page)).toBeVisible({ timeout: 10_000 });
 
     expect(asked).toBe(0);
@@ -183,9 +199,10 @@ test.describe("Signing out deliberately", () => {
     await expect(signedIn(page)).toBeVisible({ timeout: 10_000 });
     await page.route(/\/api\/auth\/signout/, (r: any) => r.abort("failed"));
 
-    await signedIn(page).click();
-    await page.getByRole("button", { name: /Sign Out/i }).click();
+    await signOutFromHeader(page, MOCK_USER.username);
 
+    // Signing out closes the account menu, and with it the drawer it sat in.
+    await revealHeader(page);
     await expect(signedOut(page)).toBeVisible({ timeout: 10_000 });
     expect(await page.evaluate(() => localStorage.getItem("authUser"))).toBeNull();
   });
@@ -195,9 +212,10 @@ test.describe("Signing out deliberately", () => {
     await expect(signedIn(page)).toBeVisible({ timeout: 10_000 });
     await page.route(/\/api\/auth\/signout/, (r: any) => r.fulfill({ status: 200, json: {} }));
 
-    await signedIn(page).click();
-    await page.getByRole("button", { name: /Sign Out/i }).click();
+    await signOutFromHeader(page, MOCK_USER.username);
 
+    // Signing out closes the account menu, and with it the drawer it sat in.
+    await revealHeader(page);
     await expect(signedOut(page)).toBeVisible({ timeout: 10_000 });
   });
 });

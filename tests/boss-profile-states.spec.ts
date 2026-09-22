@@ -213,16 +213,17 @@ test.describe("Managing a review you wrote", () => {
 });
 
 /**
- * The three pills over the rating breakdown.
+ * The rating breakdown: all ten categories, with nothing narrowing them.
  *
- * Ten categories at once is a wall, and the two a reader actually wants - what this manager is
- * best at and worst at - are buried in the middle of it. Three pills expose all three views
- * without hiding two of them behind a dropdown.
+ * The two a reader actually wants - what this manager is best at and worst at - are stated above
+ * this section by the shared Strongest / Weakest block. The breakdown itself then shows all ten,
+ * unfiltered: it is the thing somebody scrolled down for.
  */
-test.describe("Filtering the rating breakdown", () => {
+test.describe("The rating breakdown", () => {
   /*
-    Deliberately varied. The shared fixture rates every category 4, which makes "highest" and
-    "lower" indistinguishable - a filter that did nothing at all would pass against it.
+    Deliberately varied. The shared fixture rates every category 4, which would make a spread
+    indistinguishable from a flat one - and these assertions are about the rows that are shown,
+    so they should run against data where the rows differ.
   */
   const SPREAD: Record<string, number> = {
     "Communication Style": 3.0,
@@ -262,108 +263,34 @@ test.describe("Filtering the rating breakdown", () => {
       .toBeVisible({ timeout: 10_000 });
   }
 
-  test("all three views are offered without opening anything", async ({ page }) => {
-    // The argument for pills over a dropdown: with exactly three states, every one of them is
-    // visible and one click away.
+  /*
+    CHANGED DELIBERATELY. Eight tests for an All / Highest / Lower filter were here.
+
+    The pills are gone: the ten categories are the point of this section, and a filter that hid
+    seven of them by default asked the reader to go looking for what they came for. Strongest and
+    Weakest are stated above it by the shared RatingHighlights block instead - see
+    boss-profile-summary-and-sort.spec.ts, "What the page says about a manager's ratings".
+
+    What is left to guarantee here is that the breakdown shows all of it, in the order asked.
+  */
+
+  test("every category is shown, in the order they are asked", async ({ page }) => {
     await openBreakdown(page);
 
-    const tabs = page.getByRole("tablist", { name: "Filter categories" });
-    await expect(tabs).toBeVisible();
-    await expect(tabs.getByRole("tab")).toHaveCount(3);
+    for (const category of Object.keys(SPREAD)) {
+      await expect(breakdown(page).getByText(category, { exact: true })).toBeVisible();
+    }
   });
 
-  test("it opens on every category, in the order they are asked", async ({ page }) => {
+  test("nothing narrows the list - there is no filter to get lost in", async ({ page }) => {
+    // The regression this guards: re-introducing a control that hides most of the section by
+    // default, which is what the pills did.
     await openBreakdown(page);
 
-    await expect(page.getByRole("tab", { name: /^All/ })).toHaveAttribute("aria-selected", "true");
-    await expect(breakdown(page).getByText("Communication Style", { exact: true })).toBeVisible();
-    await expect(breakdown(page).getByText("Feedback Style", { exact: true })).toBeVisible();
+    await expect(page.getByRole("tablist", { name: "Filter categories" })).toHaveCount(0);
+    await expect(breakdown(page).getByRole("tab")).toHaveCount(0);
   });
 
-  test("Highest narrows to the three best, best first", async ({ page }) => {
-    await openBreakdown(page);
-
-    await page.getByRole("tab", { name: /^Highest/ }).click();
-
-    await expect(breakdown(page).getByText("Perceived Clarity of Expectations", { exact: true })).toBeVisible();
-    await expect(breakdown(page).getByText("Organization and Planning Style", { exact: true })).toBeVisible();
-    // And the weakest is no longer among them, which is the point of having asked.
-    await expect(breakdown(page).getByText("Feedback Style", { exact: true })).toHaveCount(0);
-  });
-
-  test("Lower narrows to the three worst", async ({ page }) => {
-    await openBreakdown(page);
-
-    await page.getByRole("tab", { name: /^Lower/ }).click();
-
-    await expect(breakdown(page).getByText("Feedback Style", { exact: true })).toBeVisible();
-    await expect(breakdown(page).getByText("Perceived Supportiveness", { exact: true })).toBeVisible();
-    await expect(breakdown(page).getByText("Perceived Clarity of Expectations", { exact: true })).toHaveCount(0);
-  });
-
-  test("no category is shown as both a strength and a weakness", async ({ page }) => {
-    // The overlap bug, asserted through the UI: a naive top-3 and bottom-3 over a short list
-    // returns the same rows in both, and a profile once listed three categories as both.
-    await openBreakdown(page);
-
-    await page.getByRole("tab", { name: /^Highest/ }).click();
-    const strengthRows = breakdown(page).getByTestId("breakdown-row-label");
-    await expect(strengthRows).toHaveCount(3);
-    const strengths = await strengthRows.allInnerTexts();
-
-    await page.getByRole("tab", { name: /^Lower/ }).click();
-    const weaknessRows = breakdown(page).getByTestId("breakdown-row-label");
-    await expect(weaknessRows).toHaveCount(3);
-    const weaknesses = await weaknessRows.allInnerTexts();
-
-    expect(strengths.filter((s) => weaknesses.includes(s))).toEqual([]);
-  });
-
-  test("going back to All restores every category", async ({ page }) => {
-    await openBreakdown(page);
-    await page.getByRole("tab", { name: /^Highest/ }).click();
-    await expect(breakdown(page).getByText("Feedback Style", { exact: true })).toHaveCount(0);
-
-    await page.getByRole("tab", { name: /^All/ }).click();
-
-    await expect(breakdown(page).getByText("Feedback Style", { exact: true })).toBeVisible();
-    await expect(breakdown(page).getByText("Perceived Clarity of Expectations", { exact: true })).toBeVisible();
-  });
-
-  test("the Strongest / Weakest cards are gone - the filter replaced them", async ({ page }) => {
-    /*
-      They restated three high and three low categories in big rectangles directly above a
-      breakdown that then listed the very same figures again. Every number appeared twice, in two
-      different visual languages. The pills do that job now within one chart, so a reader learns
-      one way of reading instead of two.
-    */
-    await openBreakdown(page);
-
-    await expect(page.getByText("Strongest Areas")).toHaveCount(0);
-    await expect(page.getByText("Weakest Areas")).toHaveCount(0);
-    await expect(page.getByRole("tablist", { name: "Filter categories" })).toBeVisible();
-  });
-
-  test("a ranked view is ordered, which is what tells the reader it is a ranking", async ({ page }) => {
-    /*
-      No 1/2/3 column. A sorted list of three already reads as a ranking - the order says it and
-      the bar lengths say it again - so numbering restates what is on screen and spends a column
-      of width doing it. What has to hold is the ordering itself, which is asserted here instead.
-    */
-    await openBreakdown(page);
-
-    await page.getByRole("tab", { name: /^Highest/ }).click();
-    await expect(breakdown(page).locator("span.tabular-nums")).toHaveCount(3);
-    const best = await breakdown(page).locator("span.tabular-nums").allInnerTexts();
-    const bestScores = best.map(Number).filter((n) => !Number.isNaN(n));
-    expect(bestScores).toEqual([...bestScores].sort((a, b) => b - a));
-
-    await page.getByRole("tab", { name: /^Lower/ }).click();
-    await expect(breakdown(page).locator("span.tabular-nums")).toHaveCount(3);
-    const worst = await breakdown(page).locator("span.tabular-nums").allInnerTexts();
-    const worstScores = worst.map(Number).filter((n) => !Number.isNaN(n));
-    expect(worstScores).toEqual([...worstScores].sort((a, b) => a - b));
-  });
 
   test("a locked reader is not offered controls over data they cannot see", async ({ page }) => {
     // Operating a filter over withheld placeholders answers nothing, and offering it implies the

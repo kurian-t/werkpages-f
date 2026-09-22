@@ -8,6 +8,9 @@ import ManagerCard from "@/components/ManagerCard";
 import LockedManagerCard from "@/components/LockedManagerCard";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { LockedPanelCard } from "@/components/LockedNotice";
+import { TILE_GRID } from "@/components/ManagerTile";
+import PendingSubmissions, { useMyPendingSubmissions } from "@/components/PendingSubmissions";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { captureSearch, captureKey, searchForManager, CAPTURE_DEBOUNCE_MS } from "@/lib/managerSearch";
 import { fetchGeo } from "@/lib/geo";
@@ -130,17 +133,9 @@ export default function Directory() {
   });
 
 
-  const { data: submittedData } = useQuery({
-    queryKey: ["my-submitted-managers"],
-    queryFn: async () => {
-      const res = await axios.get(`${API_BASE}/api/users/me/submitted-managers`);
-      return Array.isArray(res.data.data) ? res.data.data : [];
-    },
-    enabled: !!user,
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-  const submittedManagers: any[] = user ? (submittedData ?? []).filter((m: any) => m.approvalStatus === "pending_approval") : [];
+  // The shared hook, not a local copy of the query: the company profile shows the same tiles, and
+  // two fetches of the same list is two chances for the two pages to disagree about what is pending.
+  const submittedManagers = useMyPendingSubmissions();
 
   const hasContributed = user?.hasContributed ?? false;
 
@@ -369,7 +364,7 @@ export default function Directory() {
             )}
 
             {!error && isLoading && (
-              <div className="grid grid-cols-2 auto-rows-[minmax(210px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
+              <div className={TILE_GRID}>
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="h-full w-full rounded-2xl border border-border bg-card p-4 shadow-sm min-[420px]:w-[200px] sm:p-5">
                     <div className="flex items-center gap-3 mb-3">
@@ -394,22 +389,13 @@ export default function Directory() {
                 {filteredBosses.length > 0 || submittedManagers.length > 0 ? (
                   <>
                     {/* Pending submissions - only visible to the submitting user */}
-                    {submittedManagers.length > 0 && (
-                      <div className="mb-8">
-                        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
-                          Your Pending Submissions
-                        </p>
-                        <div className="grid grid-cols-2 auto-rows-[minmax(210px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
-                          {submittedManagers.map((boss: any) => (
-                            <ManagerCard key={`pending-${boss.id}`} boss={boss} isPending />
-                          ))}
-                        </div>
-                        {filteredBosses.length > 0 && <div className="mt-8 border-t border-border" />}
-                      </div>
-                    )}
+                    <PendingSubmissions
+                      submissions={submittedManagers}
+                      dividerBelow={filteredBosses.length > 0}
+                    />
 
                     {filteredBosses.length > 0 && (
-                      <div className="grid grid-cols-2 auto-rows-[minmax(210px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
+                      <div className={TILE_GRID}>
                         {filteredBosses.map((boss: any) =>
                           hasContributed ? (
                             <ManagerCard key={boss.id} boss={boss} />
@@ -426,16 +412,12 @@ export default function Directory() {
                     )}
 
                     {!hasContributed && filteredBosses.length > 0 && (
-                      <div className="mt-6 rounded-xl border border-border bg-card p-5 text-center">
-                        <p className="text-sm font-semibold text-foreground">Rate a manager to unlock ratings</p>
-                        <p className="mt-1 text-xs text-muted-foreground">It's anonymous and takes 2 minutes.</p>
-                        <button
-                          onClick={() => navigate("/add")}
-                          className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors shadow-sm"
-                        >
-                          ⭐ Rate a manager
-                        </button>
-                      </div>
+                      <LockedPanelCard
+                        className="mt-6"
+                        title="Rate a manager to unlock ratings"
+                        hint="It's anonymous and takes 2 minutes."
+                        cta={{ label: "⭐ Rate a manager", onClick: () => navigate("/add") }}
+                      />
                     )}
 
                     {!appliedSearch && minRating === 0 && totalPages > 1 && (

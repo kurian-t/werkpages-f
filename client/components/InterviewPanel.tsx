@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Briefcase, Lock, Star, TrendingUp } from "lucide-react";
+import { LockedOverlay } from "@/components/LockedNotice";
+import { Briefcase, Star, TrendingUp } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { toast } from "sonner";
@@ -151,16 +152,18 @@ export function InterviewPanel({ companySlug, companyName, onAddInterview, onEdi
           }
           highlightsFootnote={
             `Based on ${describeCount(data.reviewCount)}` +
-            (data.belowThreshold ? " · Limited data — interpret cautiously" : "")
+            (data.belowThreshold ? " · Limited data, interpret cautiously" : "")
           }
+          /*
+            A pill, not a button: this header's action slot holds "Share your experience" and is
+            rendered above the overlay so it stays clickable.
+          */
           lockedOverlay={
-            <>
-              <Lock size={20} className="mb-1.5 text-muted-foreground opacity-70" aria-hidden="true" />
-              <p className="text-sm font-semibold text-foreground">Interview insights are locked</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Share an interview experience to unlock them
-              </p>
-            </>
+            <LockedOverlay
+              title="Interview insights are locked"
+              hint="Share an interview experience to unlock them"
+              cta={{ label: "⭐ Share your experience", onClick: onAddInterview }}
+            />
           }
           action={
             mine ? (
@@ -221,7 +224,7 @@ export function InterviewPanel({ companySlug, companyName, onAddInterview, onEdi
       */}
       {!data.gated && data.belowThreshold && (
         <p className="text-xs text-muted-foreground">
-          {`Based on ${describeCount(data.reviewCount)} · Limited data — interpret cautiously`}
+          {`Based on ${describeCount(data.reviewCount)} · Limited data, interpret cautiously`}
         </p>
       )}
 

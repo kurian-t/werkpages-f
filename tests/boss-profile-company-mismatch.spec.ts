@@ -4,8 +4,7 @@ import {
   MOCK_USER,
   TEST_MANAGER_ID,
   mockManagerPage,
-  clickWriteAReview,
-  rateAllFiveStars,
+  advanceToDatesStep,
 } from "./fixtures";
 
 /**
@@ -60,8 +59,7 @@ async function openDates(page: any, segments: any[] = [SEGMENT_ELSEWHERE]) {
   await expect(page.getByText(MOCK_MANAGER.name).first()).toBeVisible({ timeout: 10_000 });
   await page.waitForTimeout(600);
   await page.getByRole("button", { name: /write a review/i }).first().click({ timeout: 15_000 });
-  await rateAllFiveStars(page);
-  await page.getByRole("button", { name: /^next$/i }).click();
+  await advanceToDatesStep(page);
   await expect(page.getByLabel("From month")).toBeVisible({ timeout: 10_000 });
 }
 

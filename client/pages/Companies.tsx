@@ -1,12 +1,14 @@
 import API_BASE from "@/lib/api";
+import { LockedPanelCard } from "@/components/LockedNotice";
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
-import { Building2, Users, MessageSquare, Lock, ChevronLeft, ChevronRight } from "lucide-react";
+import { Building2, Users, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { CompanyLogoImg } from "@/components/ManagerCard";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
 import { CompanyTile } from "@/components/CompanyTile";
+import { Pagination } from "@/components/Pagination";
 
 import { companyPath, companyPathByName } from "@/lib/urls";
 import { useAuth } from "@/hooks/useAuth";
@@ -166,22 +168,25 @@ export default function Companies() {
         {!isLoading && !isError && companies.length > 0 && (
           <>
             {isLocked && (
-              <div className="mb-6 rounded-2xl border border-border bg-card p-5 text-center">
-                <Lock size={18} className="mx-auto mb-2 text-muted-foreground opacity-50" />
-                <p className="text-sm font-semibold text-foreground">Rate a manager to unlock ratings</p>
-                <p className="mt-1 text-xs text-muted-foreground">Company ratings become visible after you submit your first review.</p>
-                <button
-                  onClick={() => navigate("/add")}
-                  className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#2e0562] px-4 py-2 text-sm font-semibold text-white hover:bg-[#2e0562]/90 transition-colors"
-                >
-                  ⭐ Rate a manager
-                </button>
-              </div>
+              <LockedPanelCard
+                className="mb-6"
+                title="Rate a manager to unlock ratings"
+                hint="Company ratings become visible after you submit your first review."
+                cta={{ label: "⭐ Rate a manager", onClick: () => navigate("/add") }}
+              />
             )}
 
             <div className="grid grid-cols-2 auto-rows-[minmax(180px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
               {displayed.map((co) => (
+                /*
+                  Keyed by identity, not by position. Without a key React reconciles this list by
+                  index, so paging keeps the same tile instance at each slot and only swaps its
+                  props - and CompanyLogoImg holds its resolved logo in useState, which is read
+                  once per instance. The visible result was page 7 showing page 6's logos against
+                  page 7's company names.
+                */
                 <CompanyTile
+                  key={co.slug ?? co.name}
                   company={co}
                   isLocked={isLocked}
                   showIndustry
@@ -190,50 +195,8 @@ export default function Companies() {
               ))}
             </div>
 
-            {totalPages > 1 && (
-              <div className="mt-8 flex items-center justify-center gap-1">
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="rounded-lg border border-border bg-background p-2 text-foreground transition-all hover:bg-muted/60 disabled:opacity-40 disabled:cursor-not-allowed"
-                  aria-label="Previous page"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1)
-                  .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
-                  .reduce<(number | "…")[]>((acc, p, idx, arr) => {
-                    if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push("…");
-                    acc.push(p);
-                    return acc;
-                  }, [])
-                  .map((p, idx) =>
-                    p === "…" ? (
-                      <span key={`ellipsis-${idx}`} className="px-2 text-muted-foreground">…</span>
-                    ) : (
-                      <button
-                        key={p}
-                        onClick={() => setPage(p as number)}
-                        className={`rounded-lg border px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-all ${
-                          page === p
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border bg-background text-foreground hover:bg-muted/60"
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    )
-                  )}
-                <button
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                  className="rounded-lg border border-border bg-background p-2 text-foreground transition-all hover:bg-muted/60 disabled:opacity-40 disabled:cursor-not-allowed"
-                  aria-label="Next page"
-                >
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-            )}
+            <Pagination page={page} totalPages={totalPages} onChange={setPage} />
+
           </>
         )}
           </div>{/* end flex-1 */}

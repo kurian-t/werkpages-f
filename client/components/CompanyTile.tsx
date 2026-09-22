@@ -1,5 +1,5 @@
-import { Users, MessageSquare } from "lucide-react";
-import { Stars, LockedStars } from "@/components/Stars";
+import { Users } from "lucide-react";
+import { RatingColumns } from "@/components/RatingColumns";
 import { CompanyLogoImg } from "@/components/ManagerCard";
 import { TopRatedPill } from "@/components/TopRatedPill";
 
@@ -21,7 +21,14 @@ export interface CompanyTileData {
   industry?: string;
   managerCount?: number;
   totalReviews?: number;
+  /** The managers' average. Named plainly on the tile, because it is not the company's score. */
   avgRating?: number | string | null;
+  /** What it is like to work there, rated separately by employees. */
+  workplaceRating?: number | string | null;
+  workplaceCount?: number;
+  /** What it is like to interview there, rated separately by candidates. */
+  interviewRating?: number | string | null;
+  interviewCount?: number;
 }
 
 
@@ -40,6 +47,10 @@ export function CompanyTile({
   const managers = company.managerCount ?? 0;
   const reviews = company.totalReviews ?? 0;
   const rating = company.avgRating == null ? null : Number(company.avgRating);
+  const workplace = company.workplaceRating == null ? null : Number(company.workplaceRating);
+  const interview = company.interviewRating == null ? null : Number(company.interviewRating);
+  const workplaceCount = company.workplaceCount ?? 0;
+  const interviewCount = company.interviewCount ?? 0;
 
   return (
     <button
@@ -79,34 +90,51 @@ export function CompanyTile({
         </div>
       </div>
 
-      {isLocked ? <LockedStars /> : rating != null && <Stars rating={rating} />}
-
       {/*
-        Zero is not worth printing. A tile that says "0 reviews" spends a line advertising an
-        absence; one that says "2 managers" and stops has said everything true about it. Each stat
-        stands or falls on its own, and the row disappears when neither has anything to report.
+        Three datasets, each with its own average and its own count directly beneath it.
 
-        The locked placeholders are exempt - they are a deliberate teaser, not a fact.
+        "Google 4.6 · 2 opinions" read as a verdict on Google backed by two reviews. The 4.6 is
+        the mean of the managers people rated there; the 2 counted manager reviews; and neither
+        said anything about working there or interviewing there, both separately rated and both
+        lower on this company. One number standing in for three was not a summary, it was the
+        wrong answer to the question a reader thought they were asking.
+
+        So each figure now names its population and carries its own sample size. A dataset
+        nobody has contributed to is omitted rather than printed as a dash - a company with no
+        workplace ratings has no workplace score, and a line saying so spends space on an
+        absence.
       */}
-      {(isLocked || managers > 0 || reviews > 0) && (
-        <div className="mt-3 flex flex-col items-start gap-1.5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:gap-3">
-          {(isLocked || managers > 0) && (
-            <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
-              <Users size={11} className="flex-shrink-0" />
-              {isLocked
-                ? <span className="inline-block h-2.5 w-14 rounded-full bg-[#6d5091]/20 blur-[3px]" />
-                : <span className="whitespace-nowrap">{managers} {managers === 1 ? "manager" : "managers"}</span>}
-            </span>
-          )}
-          {(isLocked || reviews > 0) && (
-            <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
-              <MessageSquare size={11} className="flex-shrink-0" />
-              {isLocked
-                ? <span className="inline-block h-2.5 w-14 rounded-full bg-[#6d5091]/20 blur-[3px]" />
-                : <span className="whitespace-nowrap">{reviews} {reviews === 1 ? "review" : "reviews"}</span>}
-            </span>
-          )}
-        </div>
+      {/*
+        Three datasets side by side, each a column: what it is, its average, how many opinions
+        it rests on.
+
+        "Google 4.6 · 2 opinions" read as a verdict on Google backed by two reviews. The 4.6 is
+        the mean of the managers people rated there; it says nothing about working there or
+        interviewing there, both separately rated and both different numbers on this company.
+        Stacked, the three read as a headline with two footnotes; in columns they read as three
+        answers to three questions, which is what they are.
+
+        One star rather than five: three five-star rows will not fit across a 200px tile, and a
+        row that has to wrap says less than a single star beside the number. The five-star form
+        is still what every rating uses everywhere it has the width - see Stars.
+      */}
+      <div className="mt-2">
+        <RatingColumns
+          locked={isLocked}
+          columns={[
+            { label: "Managers",  value: rating,    count: reviews },
+            { label: "Company",   value: workplace, count: workplaceCount },
+            { label: "Interview", value: interview, count: interviewCount },
+          ]}
+        />
+      </div>
+
+      {/* How many managers there are, which is not a rating and does not belong in the row above. */}
+      {!isLocked && managers > 0 && (
+        <p className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground">
+          <Users size={10} className="flex-shrink-0" />
+          {managers} {managers === 1 ? "manager" : "managers"}
+        </p>
       )}
     </button>
   );

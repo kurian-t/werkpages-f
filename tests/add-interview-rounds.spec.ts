@@ -121,7 +121,9 @@ test.describe("Recording the rounds of a process", () => {
 
     await page.getByRole("button", { name: "Received an offer" }).click();
     await page.getByRole("button", { name: "Average", exact: true }).click();
-    await page.getByLabel("Year").selectOption("2025");
+    // The date is a month-and-year period now; the pair only reports a value with both halves.
+    await page.getByLabel("From month").selectOption("03");
+    await page.getByLabel("From year").selectOption("2025");
     await page.getByLabel("Role").fill("Engineering Manager");
     await page.getByLabel("How long did it take?").selectOption("2_4_weeks");
     await page.getByRole("button", { name: "Next" }).click();
@@ -132,6 +134,8 @@ test.describe("Recording the rounds of a process", () => {
       await page.getByRole("button", { name: `${label}: 4 stars` }).click();
     }
     await page.getByRole("button", { name: "Overall: 4 stars" }).click();
+    // The attestation gates Share experience, as on every other contribution form.
+    await page.locator('input[name="attestation"]').check();
     await page.getByRole("button", { name: "Share experience" }).click();
 
     await expect(async () => expect(posted).not.toBeNull()).toPass({ timeout: 10_000 });
@@ -148,9 +152,10 @@ test.describe("Editing an experience already shared", () => {
     */
     await openForm(page, { edit: true });
 
-    await expect(page.getByLabel("Year")).toHaveValue("2024");
-    await expect(page.getByLabel("Role")).toHaveValue("Staff Engineer");
-    await expect(page.getByLabel("How long did it take?")).toHaveValue("2_4_weeks");
+    await expect(page.getByLabel("From year")).toHaveValue("2024");
+    await expect(page.getByTestId("interview-role-value")).toHaveText("Staff Engineer");
+    // A select collapses to its answer the same way a text field does, so read the card.
+    await expect(page.getByTestId("interview-length-value")).toHaveText("2–4 weeks");
     await expect(page.getByRole("button", { name: /Remove round/ })).toHaveCount(3);
   });
 
@@ -171,6 +176,7 @@ test.describe("Editing an experience already shared", () => {
       question: an edit asks for the one thing missing rather than saving a half-rated record.
     */
     await page.getByRole("button", { name: "Role relevance: 4 stars" }).click();
+    await page.locator('input[name="attestation"]').check();
     await page.getByRole("button", { name: "Share experience" }).click();
 
     await expect(async () => expect(method).toBe("PUT")).toPass({ timeout: 10_000 });

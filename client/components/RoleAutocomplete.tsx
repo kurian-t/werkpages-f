@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useAnchoredPosition } from "@/lib/anchoredDropdown";
 import { createPortal } from "react-dom";
 import API_BASE from "@/lib/api";
 
@@ -34,25 +35,14 @@ export function RoleAutocomplete({ id, value, onChange, placeholder, className, 
   const [suggestions, setSuggestions] = useState<RoleSuggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLUListElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const justSelectedRef = useRef(false);
 
-  // Position the dropdown from the input's viewport rect so it escapes any overflow:hidden
-  // ancestor - the add-manager form is inside a scrolling card.
-  useEffect(() => {
-    if (!open || !containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    setDropdownStyle({
-      position: "fixed",
-      top: rect.bottom + 4,
-      left: rect.left,
-      width: rect.width,
-      zIndex: 60,
-    });
-  }, [open, suggestions.length]);
+  // One shared implementation, so a list running off the edge of the screen is fixed for every
+  // control that has one rather than for whichever was reported.
+  const dropdownStyle = useAnchoredPosition(containerRef, open, [suggestions.length], 60);
 
   useEffect(() => {
     if (justSelectedRef.current) {
@@ -87,7 +77,7 @@ export function RoleAutocomplete({ id, value, onChange, placeholder, className, 
         setSuggestions([]);
         setOpen(false);
       }
-    }, 200);
+    }, 120);  // the endpoint answers in single-digit milliseconds; the wait was almost entirely this timer
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);

@@ -30,8 +30,22 @@ async function openWriteReviewForm(page: Page) {
   // Two "Write a Review" buttons may exist: action bar (top) + CTA section (below reviews).
   // .first() targets the action bar button.
   await page.getByRole("button", { name: /write a review/i }).first().click();
-  // h2 "Rate a Manager" appears in ratings step content (BossProfile.tsx line 2413)
-  await expect(page.getByRole("heading", { name: /rate a manager/i })).toBeVisible({ timeout: 8000 });
+  // The form opens on step 1, "Write a Review" - the manager information.
+  await expect(page.getByRole("heading", { name: /^write a review$/i })).toBeVisible({ timeout: 8000 });
+}
+
+/*
+  Step 1 → step 3.
+
+  The three steps are manager information, work timeline, then the ratings. The stars used to be
+  on step 1; they are last now, so everything below that touches a star has to walk there first.
+*/
+async function goToRatingsStep(page: Page) {
+  await page.getByRole("button", { name: /^next$/i }).click();
+  await expect(page.getByRole("heading", { name: /^work timeline$/i })).toBeVisible({ timeout: 5000 });
+  await fillDatesStep(page);
+  await page.getByRole("button", { name: /^next$/i }).click();
+  await expect(page.getByRole("heading", { name: /^rate alex$/i })).toBeVisible({ timeout: 5000 });
 }
 
 async function rateAllFourStars(page: Page) {
@@ -57,6 +71,7 @@ test.describe("BossProfile - write review modal", () => {
     await page.goto(`/companies/${TEST_COMPANY_SLUG}/managers/${TEST_MANAGER_SLUG}`);
     await expect(page.getByRole("heading", { name: /alex johnson/i }).first()).toBeVisible({ timeout: 10000 });
     await openWriteReviewForm(page);
+    await goToRatingsStep(page);
     await expect(page.getByRole("button", { name: "Rate 4 stars" }).first()).toBeVisible({ timeout: 5000 });
   });
 
@@ -67,7 +82,7 @@ test.describe("BossProfile - write review modal", () => {
     await openWriteReviewForm(page);
     // Header button says "Cancel" on ratings step (line 2262)
     await page.getByRole("button", { name: /^cancel$/i }).click();
-    await expect(page.getByRole("heading", { name: /rate a manager/i })).not.toBeVisible({ timeout: 3000 });
+    await expect(page.getByRole("heading", { name: /^write a review$/i })).not.toBeVisible({ timeout: 3000 });
   });
 
   test("X close button closes modal (line 2269)", async ({ page }) => {
@@ -77,7 +92,7 @@ test.describe("BossProfile - write review modal", () => {
     await openWriteReviewForm(page);
     // aria-label="Close" on the X button (line 2270)
     await page.getByRole("button", { name: /^close$/i }).click();
-    await expect(page.getByRole("heading", { name: /rate a manager/i })).not.toBeVisible({ timeout: 3000 });
+    await expect(page.getByRole("heading", { name: /^write a review$/i })).not.toBeVisible({ timeout: 3000 });
   });
 
   test("rating all categories enables Next → dates step (lines 2648-2649)", async ({ page }) => {
@@ -85,9 +100,8 @@ test.describe("BossProfile - write review modal", () => {
     await page.goto(`/companies/${TEST_COMPANY_SLUG}/managers/${TEST_MANAGER_SLUG}`);
     await expect(page.getByRole("heading", { name: /alex johnson/i }).first()).toBeVisible({ timeout: 10000 });
     await openWriteReviewForm(page);
-    await rateAllFourStars(page);
+    // Step 1 → step 2: the timeline is asked before the ratings now.
     await page.getByRole("button", { name: /^next$/i }).click();
-    // h2 "Work timeline" in dates step content (line 2333)
     await expect(page.getByRole("heading", { name: /^work timeline$/i })).toBeVisible({ timeout: 5000 });
   });
 
@@ -96,11 +110,10 @@ test.describe("BossProfile - write review modal", () => {
     await page.goto(`/companies/${TEST_COMPANY_SLUG}/managers/${TEST_MANAGER_SLUG}`);
     await expect(page.getByRole("heading", { name: /alex johnson/i }).first()).toBeVisible({ timeout: 10000 });
     await openWriteReviewForm(page);
-    await rateAllFourStars(page);
     await page.getByRole("button", { name: /^next$/i }).click();
     await expect(page.getByRole("heading", { name: /^work timeline$/i })).toBeVisible({ timeout: 5000 });
     await page.getByRole("button", { name: /^back$/i }).click();
-    await expect(page.getByRole("heading", { name: /rate a manager/i })).toBeVisible({ timeout: 3000 });
+    await expect(page.getByRole("heading", { name: /^write a review$/i })).toBeVisible({ timeout: 3000 });
   });
 
   test("dates → identity step shows Posting Anonymously (line 2312)", async ({ page }) => {
@@ -108,11 +121,9 @@ test.describe("BossProfile - write review modal", () => {
     await page.goto(`/companies/${TEST_COMPANY_SLUG}/managers/${TEST_MANAGER_SLUG}`);
     await expect(page.getByRole("heading", { name: /alex johnson/i }).first()).toBeVisible({ timeout: 10000 });
     await openWriteReviewForm(page);
+    await goToRatingsStep(page);
     await rateAllFourStars(page);
-    await page.getByRole("button", { name: /^next$/i }).click();
-    await expect(page.getByRole("heading", { name: /^work timeline$/i })).toBeVisible({ timeout: 5000 });
-    await fillDatesStep(page);
-    await page.getByRole("button", { name: /^next$/i }).click();
+    await page.locator('input[name="attestation"]').check();
     // Identity step: "Posting Anonymously" label (line 2312)
     await expect(page.getByText(/posting anonymously/i)).toBeVisible({ timeout: 5000 });
   });
@@ -126,15 +137,19 @@ test.describe("BossProfile - write review modal", () => {
     await page.goto(`/companies/${TEST_COMPANY_SLUG}/managers/${TEST_MANAGER_SLUG}`);
     await expect(page.getByRole("heading", { name: /alex johnson/i }).first()).toBeVisible({ timeout: 10000 });
     await openWriteReviewForm(page);
+    await goToRatingsStep(page);
     await rateAllFourStars(page);
-    await page.getByRole("button", { name: /^next$/i }).click();
-    await fillDatesStep(page);
-    await page.getByRole("button", { name: /^next$/i }).click();
     await expect(page.getByText(/posting anonymously/i)).toBeVisible({ timeout: 5000 });
     await page.locator('input[name="attestation"]').check();
     // Submit → anon → setAuthFlowStep("signup") → AuthFlowModal opens (line 904)
     await page.getByRole("button", { name: /submit review/i }).click();
-    await expect(page.getByText(/create account|sign up/i).first()).toBeVisible({ timeout: 10000 });
+    /*
+      The modal is identified by its social picker rather than by prose. "Create account" / "Sign
+      up" is wording that differs by viewport and step; "Continue with Google" is the control the
+      modal exists to offer, and it is the same one review-form.spec.ts waits for.
+    */
+    await expect(page.getByRole("button", { name: /continue with google/i }))
+      .toBeVisible({ timeout: 10000 });
   });
 
   test("409 role_limit_reached shows error on identity step (line 941)", async ({ page }) => {
@@ -152,10 +167,8 @@ test.describe("BossProfile - write review modal", () => {
     await page.goto(`/companies/${TEST_COMPANY_SLUG}/managers/${TEST_MANAGER_SLUG}`);
     await expect(page.getByRole("heading", { name: /alex johnson/i }).first()).toBeVisible({ timeout: 10000 });
     await openWriteReviewForm(page);
+    await goToRatingsStep(page);
     await rateAllFourStars(page);
-    await page.getByRole("button", { name: /^next$/i }).click();
-    await fillDatesStep(page);
-    await page.getByRole("button", { name: /^next$/i }).click();
     await expect(page.getByText(/posting anonymously/i)).toBeVisible({ timeout: 5000 });
     await page.locator('input[name="attestation"]').check();
     await page.getByRole("button", { name: /submit review/i }).click();
@@ -179,10 +192,8 @@ test.describe("BossProfile - write review modal", () => {
     await page.goto(`/companies/${TEST_COMPANY_SLUG}/managers/${TEST_MANAGER_SLUG}`);
     await expect(page.getByRole("heading", { name: /alex johnson/i }).first()).toBeVisible({ timeout: 10000 });
     await openWriteReviewForm(page);
+    await goToRatingsStep(page);
     await rateAllFourStars(page);
-    await page.getByRole("button", { name: /^next$/i }).click();
-    await fillDatesStep(page);
-    await page.getByRole("button", { name: /^next$/i }).click();
     await expect(page.getByText(/posting anonymously/i)).toBeVisible({ timeout: 5000 });
     await page.locator('input[name="attestation"]').check();
     await page.getByRole("button", { name: /submit review/i }).click();
@@ -227,47 +238,14 @@ test.describe("BossProfile - rating breakdown toggle", () => {
 
 // ─── BossProfile - Overview headlines ────────────────────────────────────────
 
-test.describe("BossProfile - overview headline variants", () => {
-  function makeOverviewReview(overallRating: number) {
-    return {
-      ...MOCK_EXISTING_REVIEW,
-      id: `review-ov-${overallRating}`,
-      overallRating,
-      ratings: Object.fromEntries(RATING_CATEGORIES.map((c) => [c, overallRating])),
-    };
-  }
+/*
+  "BossProfile - overview headline variants" was here: three tests asserting the generated Overview
+  sentence at 4.0, 3.0 and 1.0.
 
-  async function loadWithRating(page: Page, overallRating: number) {
-    await mockManagerPage(page, { loggedIn: true, hasContributed: true });
-    await page.route(
-      new RegExp(`/api/managers/${TEST_MANAGER_ID}/reviews$`),
-      (route: any) => {
-        if (route.request().method() === "GET") {
-          route.fulfill({ json: { data: [makeOverviewReview(overallRating)] } });
-        } else {
-          route.fallback();
-        }
-      }
-    );
-    await page.goto(`/companies/${TEST_COMPANY_SLUG}/managers/${TEST_MANAGER_SLUG}`);
-    await expect(page.getByRole("heading", { name: /alex johnson/i }).first()).toBeVisible({ timeout: 10000 });
-  }
-
-  test("overall 4.0 → positive scores headline (line 1886)", async ({ page }) => {
-    await loadWithRating(page, 4);
-    await expect(page.getByText(/positive scores overall/i)).toBeVisible({ timeout: 8000 });
-  });
-
-  test("overall 3.0 → mixed scores headline (line 1888)", async ({ page }) => {
-    await loadWithRating(page, 3);
-    await expect(page.getByText(/mixed scores/i)).toBeVisible({ timeout: 8000 });
-  });
-
-  test("overall 1.0 → lower scores headline (line 1890 else-branch)", async ({ page }) => {
-    await loadWithRating(page, 1);
-    await expect(page.getByText(/lower scores/i)).toBeVisible({ timeout: 8000 });
-  });
-});
+  That sentence is gone - the manager profile shows Strongest and Weakest through the shared
+  RatingHighlights component instead. boss-profile-summary-and-sort.spec.ts covers what replaced
+  it, under "What the page says about a manager's ratings".
+*/
 
 // ─── BossProfile - Report manager ────────────────────────────────────────────
 
@@ -381,8 +359,9 @@ test.describe("BossProfile - edit review flow", () => {
     await expect(page.getByText(/your reviews.*select to edit/i)).toBeVisible({ timeout: 3000 });
     // Click the review: "Engineering Manager at Acme Corp" (line 1579-1580)
     await page.getByText(/engineering manager at acme corp/i).first().click();
-    // Edit modal: h2 "Update your ratings" (line 2886)
-    await expect(page.getByRole("heading", { name: /update your ratings/i })).toBeVisible({ timeout: 5000 });
+    // The editor opens on step 1, "Update Your Review". "Update your ratings" is the heading on
+    // step 3, where the stars now live.
+    await expect(page.getByRole("heading", { name: /update your review/i })).toBeVisible({ timeout: 5000 });
   });
 
   test("edit review Cancel button closes modal (line 2850-2851)", async ({ page }) => {
@@ -395,9 +374,9 @@ test.describe("BossProfile - edit review flow", () => {
     await expect(page.getByRole("heading", { name: /alex johnson/i }).first()).toBeVisible({ timeout: 10000 });
     await page.getByRole("button", { name: /show review options/i }).click();
     await page.getByText(/engineering manager at acme corp/i).first().click();
-    await expect(page.getByRole("heading", { name: /update your ratings/i })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("heading", { name: /update your review/i })).toBeVisible({ timeout: 5000 });
     await page.getByRole("button", { name: /^cancel$/i }).click();
-    await expect(page.getByRole("heading", { name: /update your ratings/i })).not.toBeVisible({ timeout: 3000 });
+    await expect(page.getByRole("heading", { name: /update your review/i })).not.toBeVisible({ timeout: 3000 });
   });
 
   test("edit review Next → dates → identity → Save Changes submits PUT (lines 2883-3117)", async ({ page }) => {
@@ -420,14 +399,17 @@ test.describe("BossProfile - edit review flow", () => {
     await expect(page.getByRole("heading", { name: /alex johnson/i }).first()).toBeVisible({ timeout: 10000 });
     await page.getByRole("button", { name: /show review options/i }).click();
     await page.getByText(/engineering manager at acme corp/i).first().click();
-    await expect(page.getByRole("heading", { name: /update your ratings/i })).toBeVisible({ timeout: 5000 });
-    // Step 1 (ratings): all 10 pre-rated → Next enabled
+    await expect(page.getByRole("heading", { name: /update your review/i })).toBeVisible({ timeout: 5000 });
+    // Step 1 (manager information): pre-filled from the review → Next enabled
     await page.getByRole("button", { name: /^next$/i }).click();
     // Step 2 (dates): pre-filled from MOCK_EXISTING_REVIEW → Next enabled
     await expect(page.getByText(/work timeline/i).first()).toBeVisible({ timeout: 5000 });
     await page.getByRole("button", { name: /^next$/i }).click();
-    // Step 3 (identity): h2 "Who wrote this review?" (BossProfile.tsx line 3071)
-    await expect(page.getByRole("heading", { name: /who wrote this review/i })).toBeVisible({ timeout: 5000 });
+    /*
+      Step 3 is the ratings, with the attribution question folded into it. It used to be its own
+      step headed "Who wrote this review?"; that heading no longer exists.
+    */
+    await expect(page.getByRole("heading", { name: /update your ratings/i })).toBeVisible({ timeout: 5000 });
     await page.getByRole("button", { name: /save changes/i }).click();
     // Modal closes on success
     await expect(page.getByRole("heading", { name: /update your ratings/i })).not.toBeVisible({ timeout: 8000 });
@@ -526,7 +508,13 @@ test.describe("AddBoss - draft lifecycle", () => {
     // "Continue to Sign In" shown for anonymous (AddBoss.tsx line 942 - submit button text)
     await page.getByRole("button", { name: /continue to sign in/i }).click();
     // Auth modal (line 480: setAuthFlowStep("signup"))
-    await expect(page.getByText(/create account|sign up/i).first()).toBeVisible({ timeout: 10000 });
+    /*
+      The modal is identified by its social picker rather than by prose. "Create account" / "Sign
+      up" is wording that differs by viewport and step; "Continue with Google" is the control the
+      modal exists to offer, and it is the same one review-form.spec.ts waits for.
+    */
+    await expect(page.getByRole("button", { name: /continue with google/i }))
+      .toBeVisible({ timeout: 10000 });
   });
 });
 
@@ -547,7 +535,8 @@ test.describe("AccountSettings - review management", () => {
     const editBtn = page.getByTitle("Edit review").first();
     if (await editBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await editBtn.click();
-      // h2 "Update your ratings" (AccountSettings.tsx line 797)
+      // h2 "Update your ratings" (AccountSettings.tsx line 797). This is AccountSettings' own
+      // edit form, not the manager profile's - its heading did not move.
       await expect(page.getByRole("heading", { name: /update your ratings/i })).toBeVisible({ timeout: 5000 });
       // Close with X button
       await page.getByRole("button", { name: /^close$/i }).click();

@@ -8,6 +8,8 @@ import {
   rateAllFiveStars,
   clickWriteAReview,
   attestFirstHandExperience,
+  advanceToDatesStep,
+  fillDatesAndAdvance,
 } from "./fixtures";
 
 /**
@@ -34,12 +36,9 @@ async function openReviewForm(page: any) {
 
 /** Fills the whole form and submits, leaving the success path to run. */
 async function submitReview(page: any) {
+  await advanceToDatesStep(page);
+  await fillDatesAndAdvance(page, { fromMonth: "01", fromYear: "2023" });
   await rateAllFiveStars(page);
-  await page.getByRole("button", { name: /^next$/i }).click();
-  await page.getByLabel("From month").selectOption("01");
-  await page.getByLabel("From year").selectOption("2023");
-  await page.getByRole("checkbox", { name: /current/i }).check();
-  await page.getByRole("button", { name: /^next$/i }).click();
   await attestFirstHandExperience(page);
   await page.getByRole("button", { name: /submit review/i }).click();
 }
@@ -52,10 +51,15 @@ test.describe("What stops a review going in", () => {
       quietly counts its blanks as agreement.
     */
     await openReviewForm(page);
+    // The ratings are on the last step, so the refusal lands on Submit rather than on a Next.
+    await advanceToDatesStep(page);
+    await fillDatesAndAdvance(page, { fromMonth: "01", fromYear: "2023" });
+    await attestFirstHandExperience(page);
+
     // One category answered out of ten.
     await page.getByRole("button", { name: "Rate 5 stars" }).first().click();
 
-    await expect(page.getByRole("button", { name: /^next$/i })).toBeDisabled();
+    await expect(page.getByRole("button", { name: /^submit review$/i })).toBeDisabled();
   });
 
   test("an unattested review is refused with its own reason", async ({ page }) => {
@@ -65,12 +69,9 @@ test.describe("What stops a review going in", () => {
       "please complete the form".
     */
     await openReviewForm(page);
+    await advanceToDatesStep(page);
+    await fillDatesAndAdvance(page, { fromMonth: "01", fromYear: "2023" });
     await rateAllFiveStars(page);
-    await page.getByRole("button", { name: /^next$/i }).click();
-    await page.getByLabel("From month").selectOption("01");
-    await page.getByLabel("From year").selectOption("2023");
-    await page.getByRole("checkbox", { name: /current/i }).check();
-    await page.getByRole("button", { name: /^next$/i }).click();
 
     await expect(page.getByRole("button", { name: /submit review/i })).toBeDisabled();
   });

@@ -76,6 +76,12 @@ export function FormSubjectCard({
   editing = false,
   onEditStart,
   onEditDone,
+  onEditCancel,
+  editLabel,
+  doneLabel,
+  cancelLabel,
+  action,
+  nameTestId,
   children,
   layout = "stacked",
 }: {
@@ -88,6 +94,23 @@ export function FormSubjectCard({
   /** Omitted where nothing here can change. */
   onEditStart?: () => void;
   onEditDone?: () => void;
+  /** Restores what the field held when it was opened. Omitted where there is nothing to restore. */
+  onEditCancel?: () => void;
+  /**
+   * Accessible names for the two controls.
+   *
+   * <p>A form has several of these cards open at once, and buttons that all announce themselves as
+   * "Edit details" tell a screen-reader user nothing about which field they are on - and give a
+   * test no way to name one. The visible text stays as written, so the accessible name still
+   * contains what is on the control.
+   */
+  editLabel?: string;
+  doneLabel?: string;
+  cancelLabel?: string;
+  /** Shown where the edit control would be, for a card that cannot be edited at all. */
+  action?: React.ReactNode;
+  /** Scopes a test to the value itself rather than the card around it. */
+  nameTestId?: string;
   /** The fields, shown in place of the summary while editing. */
   children?: React.ReactNode;
   /**
@@ -111,40 +134,100 @@ export function FormSubjectCard({
             /* Logo then name on one row, the way a company reads everywhere else on the site. */
             <div className="flex min-w-0 items-center gap-2">
               {logo}
-              <span className="truncate text-sm font-semibold text-foreground">{name}</span>
+              <span data-testid={nameTestId} className="truncate text-sm font-semibold text-foreground">{name}</span>
             </div>
           ) : (
           <div className="min-w-0">
-            <p className="text-base font-semibold text-foreground">{name}</p>
+            <p data-testid={nameTestId} className="text-base font-semibold text-foreground">{name}</p>
             {detail && <p className="text-sm text-muted-foreground">{detail}</p>}
             {logo && <div className="mt-2 flex items-center gap-2">{logo}</div>}
           </div>
           )}
-          {onEditStart && (
+          {onEditStart ? (
             <button
               type="button"
               onClick={onEditStart}
+              aria-label={editLabel}
               className="mt-0.5 flex flex-shrink-0 items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
             >
               <Edit2 size={12} aria-hidden="true" />
               Edit details
             </button>
-          )}
+          ) : action}
         </div>
       ) : (
         <div className="space-y-3">
           {children}
           {onEditDone && (
-            <button
-              type="button"
-              onClick={onEditDone}
-              className="text-xs text-primary hover:underline"
-            >
-              Done editing
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onEditDone}
+                aria-label={doneLabel}
+                className="text-xs text-primary hover:underline"
+              >
+                Done editing
+              </button>
+              {/*
+                Cancel puts back what was there when the field was opened.
+
+                Without it, clearing a field and clicking away looked like the old value had been
+                restored on its own - the company field did exactly that, and there was no way to
+                tell "I want this empty" from "I changed my mind". Done keeps what is on screen,
+                including nothing; Cancel undoes the edit.
+              */}
+              {onEditCancel && (
+                <button
+                  type="button"
+                  onClick={onEditCancel}
+                  aria-label={cancelLabel}
+                  className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+
+/**
+ * The first-hand-experience attestation, asked before any rating is stored.
+ *
+ * <p>Every rating form asks it, because every rating form publishes somebody's account of a real
+ * place or person. The manager form had it and the workplace and interview forms did not, so the
+ * same claim was made under three different standards — and the two without it published ratings
+ * nobody had confirmed they were entitled to make.
+ *
+ * <p>Each form supplies its own sentence: what was worked at, rated, or interviewed with is not
+ * interchangeable, and a generic wording would be a promise about nothing in particular.
+ */
+export function AttestationCard({
+  checked,
+  onChange,
+  children,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  /** The claim being confirmed, in this form's own words. */
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-border p-5">
+      <label className="flex cursor-pointer items-start gap-3 text-sm text-foreground">
+        <input
+          type="checkbox"
+          name="attestation"
+          checked={checked}
+          onChange={e => onChange(e.target.checked)}
+          className="mt-0.5 h-4 w-4 flex-shrink-0"
+        />
+        <span>{children}</span>
+      </label>
     </div>
   );
 }
