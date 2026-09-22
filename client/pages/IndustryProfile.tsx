@@ -81,7 +81,10 @@ function IndustryRatings({ data, hideCount }: { data: IndustryProfileData; hideC
       */
       averages={
         <div>
-          <p className="mb-2 text-center text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+          {/* Left, like every other heading on this page - "Industry ratings", "Strongest",
+              "Weakest" and "Search companies" are all flush left, and this one alone was
+              centred, which on a phone made the whole block look like it belonged elsewhere. */}
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             Industry averages
           </p>
           <RatingColumns

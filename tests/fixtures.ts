@@ -310,6 +310,15 @@ export async function mockManagerPage(
     user?: typeof MOCK_USER;
   } = {}
 ) {
+  /*
+    Geo is mocked here, not left to the network.
+
+    Nothing mocked /api/geo for a manager page, so it fell through the vite proxy to whatever
+    backend happened to be running locally - and the manager form's first step waits on it. That
+    passes on a machine with the backend up and hangs anywhere it is not, which includes CI. The
+    suite was green here only because :8889 happened to be running.
+  */
+  await page.route(/\/api\/geo/, (route) => route.fulfill({ json: MOCK_GEO }));
   const {
     manager = MOCK_MANAGER,
     existingUserReviews = [],

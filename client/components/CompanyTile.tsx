@@ -1,5 +1,6 @@
 import { Users } from "lucide-react";
 import { RatingColumns } from "@/components/RatingColumns";
+import { ManagerTile } from "@/components/ManagerTile";
 import { CompanyLogoImg } from "@/components/ManagerCard";
 import { TopRatedPill } from "@/components/TopRatedPill";
 
@@ -53,11 +54,10 @@ export function CompanyTile({
   const interviewCount = company.interviewCount ?? 0;
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group relative h-full w-full min-w-0 text-left rounded-2xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/30 transition-all min-[420px]:w-[200px] sm:p-5"
-    >
+    /* The shared box, not this file's own copy of it. See ManagerTile: size, corners, padding,
+       border, shadow and hover are decided there and nowhere else. This carried a fourth copy,
+       which is how company tiles ended up 180px tall beside 230px manager tiles. */
+    <ManagerTile onClick={onClick} testId="company-tile">
       {/*
         The badge gets its own row instead of the top-right corner. This card puts the name beside
         a 48px logo, so a corner badge leaves the first line about 44px on a 200px card - too
@@ -136,6 +136,6 @@ export function CompanyTile({
           {managers} {managers === 1 ? "manager" : "managers"}
         </p>
       )}
-    </button>
+    </ManagerTile>
   );
 }

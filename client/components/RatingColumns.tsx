@@ -82,7 +82,14 @@ export function RatingColumns({
             read as something bolted on from another page.
           */
           <div key={col.label} className="flex items-center gap-3">
-            <span className="whitespace-nowrap text-2xl font-bold leading-none tabular-nums text-[#6d5091]">
+            {/*
+              Fixed width, so the three rows line up.
+
+              "3.5" and "-" are different widths, so everything after them - stars, label, count -
+              started at a different x on each row and the block read as ragged. tabular-nums
+              keeps the digits aligned; this keeps the rows aligned with each other.
+            */}
+            <span className="w-10 flex-shrink-0 whitespace-nowrap text-2xl font-bold leading-none tabular-nums text-[#6d5091]">
               {locked || col.value == null ? "-" : col.value.toFixed(1)}
             </span>
             <div className="min-w-0">
@@ -128,7 +135,7 @@ export function RatingColumns({
 
   const stacked = false;
   return (
-    <div className={`grid grid-cols-3 text-center ${stacked ? "gap-3" : "gap-1.5"}`}>
+    <div className={`grid grid-cols-3 text-center ${stacked ? "gap-3" : "gap-1 min-[420px]:gap-1.5"}`}>
       {columns.map(col => (
         <div key={col.label} className="min-w-0">
           {/*
@@ -136,7 +143,16 @@ export function RatingColumns({
             "MANAGERS" in a 49px column, so all three headings ellipsed - a heading that cannot
             say its own word is worse than a quieter one.
           */}
-          <p className={`leading-tight text-muted-foreground ${stacked ? "text-xs" : "text-[10px]"}`}>
+          {/*
+            nowrap, and a size smaller until the tile reaches its full width.
+
+            Below 420px the grid is two-up, so a tile is about 173px rather than 200 and each
+            column about 43px rather than 49. "Managers" at 10px needs more than that, and
+            without nowrap it broke mid-word - the tiles read "Manager / s" and "Compan / y".
+          */}
+          <p className={`truncate leading-tight text-muted-foreground ${
+            stacked ? "text-xs" : "text-[9px] min-[420px]:text-[10px]"
+          }`}>
             {col.label}
           </p>
 
@@ -176,8 +192,14 @@ export function RatingColumns({
             reads as two facts. A size down buys the width; nowrap makes it a guarantee rather
             than something that holds until a company has ten of them.
           */}
+          {/*
+            One line, always - and a size smaller on the narrow tile for the same reason as the
+            heading. "16 reviews" at 10px is wider than a 43px column, and because this is nowrap
+            it did not wrap, it overflowed: neighbouring columns collided and read "16 reviews0
+            reviews" with no gap between them.
+          */}
           <p className={`whitespace-nowrap leading-tight text-muted-foreground ${
-            stacked ? "mt-1.5 text-xs" : "mt-1 text-[10px]"
+            stacked ? "mt-1.5 text-xs" : "mt-1 text-[9px] min-[420px]:text-[10px]"
           }`}>
             {locked ? "" : `${col.count} ${col.count === 1 ? "review" : "reviews"}`}
           </p>

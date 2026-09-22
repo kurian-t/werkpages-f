@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CompanyLogoImg } from "@/components/ManagerCard";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
 import { CompanyTile } from "@/components/CompanyTile";
+import { TILE_GRID } from "@/components/ManagerTile";
 import { Pagination } from "@/components/Pagination";
 
 import { companyPath, companyPathByName } from "@/lib/urls";
@@ -136,7 +137,7 @@ export default function Companies() {
           <div className="flex-1 min-w-0">
 
         {isLoading && (
-          <div className="grid grid-cols-2 auto-rows-[minmax(180px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
+          <div className={TILE_GRID}>
             {Array.from({ length: 12 }).map((_, i) => (
               <div key={i} className="h-full w-full rounded-2xl border border-border bg-card p-4 shadow-sm animate-pulse min-[420px]:w-[200px] sm:p-5">
                 <div className="flex min-w-0 items-center gap-3 mb-3">
@@ -176,7 +177,7 @@ export default function Companies() {
               />
             )}
 
-            <div className="grid grid-cols-2 auto-rows-[minmax(180px,auto)] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4">
+            <div className={TILE_GRID}>
               {displayed.map((co) => (
                 /*
                   Keyed by identity, not by position. Without a key React reconciles this list by

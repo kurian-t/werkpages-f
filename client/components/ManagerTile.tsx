@@ -24,13 +24,21 @@ import { Link } from "react-router-dom";
  * was supposed to have fixed. 230 clears the tallest variant measured; the cap is deliberate, so
  * a future variant that would overflow it fails the size regression instead of silently
  * stretching its row.
+ *
+ * <p><b>205, measured — not guessed.</b> It was 230, set when the cards carried more. The tallest
+ * content across every surface and variant now measures 159px, and the box adds 20px of padding
+ * top and bottom, so 199 is what the tallest tile actually needs. 205 keeps a small buffer over
+ * that. At 230 every tile carried about 31px of dead space and a company tile — 99px of content —
+ * carried ninety. Re-measure before changing it again; the number is only ever as good as the
+ * content it was taken from.
  */
-export const TILE_ROW_HEIGHT = 230;
+export const TILE_ROW_HEIGHT = 205;
 export const TILE_GRID =
-  "grid grid-cols-2 auto-rows-[230px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4";
+  "grid grid-cols-2 auto-rows-[205px] gap-3 min-[420px]:grid-cols-[repeat(auto-fill,200px)] min-[420px]:gap-4";
 
 export function ManagerTile({
   to,
+  onClick,
   tone = "default",
   inert = false,
   layout = "grid",
@@ -39,6 +47,14 @@ export function ManagerTile({
 }: {
   /** Where the tile goes. Omitted for a tile that is not clickable. */
   to?: string;
+  /**
+   * For a tile that acts rather than navigates - the company tiles decide their own destination.
+   *
+   * <p>Here so those tiles can use this shell instead of carrying a fourth copy of it. That copy
+   * is exactly how the sizes drifted apart again: it sat in a grid of its own with
+   * `minmax(180px, auto)` rows, so company tiles came out 180px tall beside 230px manager tiles.
+   */
+  onClick?: () => void;
   /**
    * Where this tile is being placed.
    *
@@ -58,7 +74,7 @@ export function ManagerTile({
   const box = layout === "grid"
     // min-h as well as h-full, so a tile dropped into something that is not a TILE_GRID still has
     // a sensible floor rather than collapsing to its content.
-    ? "h-full min-h-[230px] w-full min-[420px]:w-[200px]"
+    ? "h-full min-h-[205px] w-full min-[420px]:w-[200px]"
     : "w-full";
   const className =
     // overflow-hidden: content is clipped to the card rather than escaping its corners, which is
@@ -70,6 +86,14 @@ export function ManagerTile({
         ? "border-amber-300 hover:shadow-md hover:border-amber-400 hover:shadow-amber-100"
         : "border-border hover:shadow-md hover:border-[#2e0562]/30 hover:shadow-[#2e0562]/5");
 
+  if (onClick && !inert) {
+    return (
+      <button type="button" onClick={onClick} className={`${className} text-left`}
+              data-testid={testId ?? "manager-tile"}>
+        {children}
+      </button>
+    );
+  }
   if (!to || inert) {
     return <div className={className} data-testid={testId ?? "manager-tile"}>{children}</div>;
   }
