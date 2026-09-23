@@ -4,6 +4,7 @@ import { Helmet, HelmetProvider } from "react-helmet-async";
 import { RouteMeta } from "@/components/RouteMeta";
 import { Toaster } from "@/components/ui/toaster";
 import { createRoot } from "react-dom/client";
+import { Suspense, lazy } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -16,30 +17,43 @@ import { DataProvider } from "@/contexts/DataContext";
 import Index from "./pages/Index";
 import BossProfile from "./pages/BossProfile";
 import Directory from "./pages/Directory";
-import AddBoss from "./pages/AddBoss";
-import AddInterview from "./pages/AddInterview";
-import RateCompany from "./pages/RateCompany";
-import ProveIt from "./pages/ProveIt";
-import SignIn from "./pages/SignIn";
-import SignUp from "./pages/SignUp";
-import AccountSettings from "./pages/AccountSettings";
-import Admin from "./pages/Admin";
-import Notifications from "./pages/Notifications";
 import NotFound from "./pages/NotFound";
-import Privacy from "./pages/Privacy";
-import Terms from "./pages/Terms";
-import About from "./pages/About";
-import SupportUs from "./pages/SupportUs";
-import EmailVerified from "./pages/EmailVerified";
 import FindYourManager from "./pages/FindYourManager";
-import AuthCallback from "./pages/AuthCallback";
 import Companies from "./pages/Companies";
 import CompanyProfile from "./pages/CompanyProfile";
-import WhatIsWerkpages from "./pages/WhatIsWerkpages";
-import ResumeBuilder from "./pages/ResumeBuilder";
 import Explore from "./pages/Explore";
 import Industries from "./pages/Industries";
 import IndustryProfile from "./pages/IndustryProfile";
+
+/*
+  Split out of the initial bundle.
+
+  Everything shipped as one 3.6 MB chunk. The worst of it was the resume builder: ResumeCanvas is
+  370 KB of source on its own, the feature is restricted to admins, and every anonymous visitor
+  was downloading it before the page they asked for could paint.
+
+  The pages a first-time visitor or a crawler arrives on - the homepage, manager and company
+  profiles, the directory, explore and the industry pages - stay eagerly imported on purpose.
+  Splitting those would add a round trip to exactly the paths that need to be fastest.
+*/
+const AddBoss = lazy(() => import("./pages/AddBoss"));
+const AddInterview = lazy(() => import("./pages/AddInterview"));
+const RateCompany = lazy(() => import("./pages/RateCompany"));
+const ProveIt = lazy(() => import("./pages/ProveIt"));
+const SignIn = lazy(() => import("./pages/SignIn"));
+const SignUp = lazy(() => import("./pages/SignUp"));
+const AccountSettings = lazy(() => import("./pages/AccountSettings"));
+const Admin = lazy(() => import("./pages/Admin"));
+const Notifications = lazy(() => import("./pages/Notifications"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Terms = lazy(() => import("./pages/Terms"));
+const About = lazy(() => import("./pages/About"));
+const SupportUs = lazy(() => import("./pages/SupportUs"));
+const EmailVerified = lazy(() => import("./pages/EmailVerified"));
+const AuthCallback = lazy(() => import("./pages/AuthCallback"));
+const WhatIsWerkpages = lazy(() => import("./pages/WhatIsWerkpages"));
+const ResumeBuilder = lazy(() => import("./pages/ResumeBuilder"));
+
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PostHogRouteTracker } from "@/components/PostHogProvider";
@@ -74,6 +88,12 @@ const App = () => (
           {/* Canonical for every public route, noindex for the private ones. Routes that set
               their own head tags are skipped - see RouteMeta. */}
           <RouteMeta />
+          {/*
+            One boundary around the whole route table. The fallback is deliberately empty: these
+            chunks resolve in well under a frame on a warm connection, and a spinner that flashes
+            for 20ms reads as a glitch rather than as progress.
+          */}
+          <Suspense fallback={null}>
           <Routes>
             <Route path="/" element={<Index />} />
             {/* Canonical, industry-nested routes. The industry segment is descriptive - pages
@@ -117,6 +137,7 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
         </BrowserRouter>
         </TooltipProvider>
       </DataProvider>

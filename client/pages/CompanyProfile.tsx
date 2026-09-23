@@ -30,6 +30,7 @@ import PendingSubmissions, { useMyPendingSubmissions } from "@/components/Pendin
 import { fetchGeo } from "@/lib/geo";
 import { InterviewPanel } from "@/components/InterviewPanel";
 import { useCompanyInterviews } from "@/hooks/useCompanyInterviews";
+import { isCompanyIndexable } from "@/lib/indexability";
 interface ManagerEntry {
   id: number;
   name: string;
@@ -555,7 +556,10 @@ export default function CompanyProfile() {
   // Thin pages (no reviews yet) are near-duplicate empty templates - keep them out of the index
   // until they have real content, so Google doesn't flag them as duplicates. "follow" preserves
   // link equity to the managers/pages that ARE worth indexing.
-  const isThin = (data.totalReviews ?? 0) === 0;
+  // A company page earns its place once somebody on it does - see client/lib/indexability.ts.
+  // Previously this required a review, which hid every company whose managers had not been rated
+  // yet, including the ones a reader searching that employer by name was looking for.
+  const isThin = !isCompanyIndexable(data as any);
   const pageTitle = `${data.name} Manager Reviews & Ratings | Werkpages`;
   const pageDescription = `Browse anonymous reviews of managers at ${data.name}. See ratings, leadership styles, and employee experiences at ${data.name} on Werkpages.`;
   const jsonLd = {

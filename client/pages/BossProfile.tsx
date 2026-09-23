@@ -9,6 +9,7 @@ import { companyLogoDomain, toNameCase, toJobTitleCase } from "@/lib/utils";
 import { RatingBreakdown } from "@/components/RatingBreakdown";
 import { gateKey } from "@/lib/gateKey";
 import { Helmet } from "react-helmet-async";
+import { isManagerIndexable } from "@/lib/indexability";
 import { NoIndex, SITE_HIDDEN_FROM_SEARCH } from "@/components/PageMeta";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
@@ -1779,22 +1780,35 @@ export default function BossProfile() {
   const snippetRating = manager
     ? Number((managerCategoryAverages as any)?.overallRating ?? (manager as any)?.overallRating ?? 0)
     : 0;
-  const snippetReviews = manager
+  /*
+    One count, used by the snippet and by the rating pill below.
+
+    This expression existed twice - once as `managerReviewCount`, once as `managerReviewCount` - with
+    the same fallback chain in both. The feed is authoritative once it has loaded; the cached
+    column on the row is what is there before it does.
+  */
+  const managerReviewCount = manager
     ? (contextReviews.length || Number((manager as any)?.reviewsCount ?? (manager as any)?.reviews ?? 0))
     : 0;
 
   const pageDescription = !manager
     ? ""
-    : snippetReviews > 0
-      ? `${manager.name} is rated ${snippetRating.toFixed(1)} out of 5 from ${snippetReviews} `
-        + `anonymous ${snippetReviews === 1 ? "review" : "reviews"} by people who reported to them `
+    : managerReviewCount > 0
+      ? `${manager.name} is rated ${snippetRating.toFixed(1)} out of 5 from ${managerReviewCount} `
+        + `anonymous ${managerReviewCount === 1 ? "review" : "reviews"} by people who reported to them `
         + `as ${manager.title} at ${manager.company}. See the ratings by category.`
       : `No one has reviewed ${manager.name}, ${manager.title} at ${manager.company}, yet. `
         + `If you worked with them, you can be the first — anonymously, in about two minutes.`;
-  // Keep review-less (thin, near-duplicate) manager pages out of Google's index until they have
-  // real content; "follow" so link equity still flows. Matches the sitemap's reviews_count > 0 rule.
-  const managerReviewCount = contextReviews.length || Number((manager as any)?.reviewsCount ?? (manager as any)?.reviews ?? 0);
-  const managerIsThin = !!manager && managerReviewCount === 0;
+  /*
+    Indexable, or not - see client/lib/indexability.ts for why this is no longer "has a review".
+
+    Briefly: a review-less profile still names a real person, their role and their employer, and
+    auto-created profiles are rate-limited to one per account and filtered for public figures, so
+    they are not mass-generated filler. Hiding them closed off the search that leads to the first
+    review being written. A profile with no employer or no role genuinely has nothing to show, and
+    that is what is excluded now.
+  */
+  const managerIsThin = !!manager && !isManagerIndexable(manager as any);
 
   return (
     <>
