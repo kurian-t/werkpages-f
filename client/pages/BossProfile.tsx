@@ -1759,46 +1759,13 @@ export default function BossProfile() {
     ? `${manager.name} – ${manager.title} at ${manager.company} | Werkpages`
     : "Manager Profile | Werkpages";
 
-  /*
-    The snippet is the whole job on a name query.
-
-    Somebody googling a manager by name is the site's single fastest-growing source of
-    impressions, and the description they were shown promised "anonymous employee reviews of
-    <name>" whether or not a single review existed. On a profile with none, that is a promise the
-    page cannot keep: Search Console showed one such profile taking 482 impressions and **zero**
-    clicks in a day. A snippet that overpromises does not just fail to earn the click, it teaches
-    Google the result is not worth showing.
-
-    So the two states say different things, and both say something true:
-
-      - rated:   lead with the score and the sample size, which is the thing being searched for;
-      - unrated: say plainly that nobody has reviewed them yet and name what the page DOES offer -
-                 the role, the employer, and the invitation to be the first. Honest and specific
-                 beats generic and hopeful, and it is the same content that makes the page worth
-                 indexing rather than thin.
-  */
-  const snippetRating = manager
-    ? Number((managerCategoryAverages as any)?.overallRating ?? (manager as any)?.overallRating ?? 0)
-    : 0;
-  /*
-    One count, used by the snippet and by the rating pill below.
-
-    This expression existed twice - once as `managerReviewCount`, once as `managerReviewCount` - with
-    the same fallback chain in both. The feed is authoritative once it has loaded; the cached
-    column on the row is what is there before it does.
-  */
   const managerReviewCount = manager
     ? (contextReviews.length || Number((manager as any)?.reviewsCount ?? (manager as any)?.reviews ?? 0))
     : 0;
 
-  const pageDescription = !manager
-    ? ""
-    : managerReviewCount > 0
-      ? `${manager.name} is rated ${snippetRating.toFixed(1)} out of 5 from ${managerReviewCount} `
-        + `anonymous ${managerReviewCount === 1 ? "review" : "reviews"} by people who reported to them `
-        + `as ${manager.title} at ${manager.company}. See the ratings by category.`
-      : `No one has reviewed ${manager.name}, ${manager.title} at ${manager.company}, yet. `
-        + `If you worked with them, you can be the first — anonymously, in about two minutes.`;
+  const pageDescription = manager
+    ? `Read anonymous employee reviews of ${manager.name}, ${manager.title} at ${manager.company}. Share your experience or browse workplace leadership ratings.`
+    : "";
   /*
     Indexable, or not - see client/lib/indexability.ts for why this is no longer "has a review".
 
