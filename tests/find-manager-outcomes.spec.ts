@@ -155,7 +155,7 @@ test.describe("A signed-out visitor searching for somebody we do not have", () =
     */
     await anonymousMiss(page);
     await page.route(/\/api\/managers\/ghost/, (r: any) =>
-      r.fulfill({ status: 201, json: { id: 4242, name: "Alex Johnson", created: true } }));
+      r.fulfill({ status: 201, json: { id: 4242, name: "Alex Johnson", created: true, published: true } }));
 
     await fillAndSearch(page);
 
@@ -163,11 +163,39 @@ test.describe("A signed-out visitor searching for somebody we do not have", () =
     await expect(page.getByText(/Manager added!/i)).toHaveCount(0);
   });
 
+  test("no tile is rendered when the server did not publish anything", async ({ page }) => {
+    /*
+      The "Manager Not Found" outage, from the browser's side.
+
+      A signed-out visitor searched a name that an earlier visitor had half-typed into the add
+      form. The server adopted that existing captured draft - pending, no submitter - and returned
+      it WITHOUT a `published` field. The guard read `published === false`, undefined is not false,
+      so a clickable locked tile was built for a row the profile page refuses to serve.
+
+      Two shapes are checked because the bug had two faces: `published: false` (the ceiling is in
+      force) and the field missing entirely (the captured-draft branch). Neither may produce a
+      tile. The second case is the one that actually shipped.
+    */
+    for (const payload of [
+      { id: 4242, name: "Alex Johnson", created: false, published: false },
+      { id: 4242, name: "Alex Johnson", created: false },   // ← the shape that caused the outage
+    ]) {
+      await anonymousMiss(page);
+      await page.route(/\/api\/managers\/ghost/, (r: any) =>
+        r.fulfill({ status: 201, json: payload }));
+
+      await fillAndSearch(page);
+
+      await expect(page.locator('a[href="/manager/4242"]')).toHaveCount(0);
+      await expect(page.getByText("Alex Johnson")).toHaveCount(0);
+    }
+  });
+
   test("that tile opens the manager's profile", async ({ page }) => {
     // Locked until they rate somebody, but reachable - the tile is a way in, not a dead end.
     await anonymousMiss(page);
     await page.route(/\/api\/managers\/ghost/, (r: any) =>
-      r.fulfill({ status: 201, json: { id: 4242, name: "Alex Johnson", created: true } }));
+      r.fulfill({ status: 201, json: { id: 4242, name: "Alex Johnson", created: true, published: true } }));
 
     await fillAndSearch(page);
     await expect(page.getByText("Alex Johnson").first()).toBeVisible({ timeout: 15_000 });

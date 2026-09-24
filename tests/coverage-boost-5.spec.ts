@@ -347,7 +347,7 @@ test.describe("CompanyProfile - ghost added sign in button", () => {
     );
     // Ghost creation succeeds
     await page.route(/\/api\/managers\/ghost/, (route: any) =>
-      route.fulfill({ status: 200, json: { id: 4242, name: "Mia Chen", created: true } })
+      route.fulfill({ status: 200, json: { id: 4242, name: "Mia Chen", created: true, published: true } })
     );
 
     await page.goto("/companies/acme-corp");

@@ -178,7 +178,7 @@ test.describe("What reaches the server", () => {
     const seen: any = { body: null };
     await page.route(/\/api\/managers\/ghost/, (route: any) => {
       seen.body = route.request().postDataJSON();
-      return route.fulfill({ status: 201, json: { id: 1, created: true } });
+      return route.fulfill({ status: 201, json: { id: 1, created: true, published: true } });
     });
     return seen;
   }

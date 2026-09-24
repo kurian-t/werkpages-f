@@ -196,7 +196,25 @@ export async function searchForManager(input: ManagerSearchInput): Promise<Manag
   */
   if (ghostRow?.published === false) return { results: [], hasContributed: false };
 
-  localStorage.setItem(GHOST_KEY, "true");
+  /*
+    Only a row the server says is PUBLISHED may become a tile, or burn this browser's slot.
+
+    `=== false` alone was not enough. One server branch - the one that adopts an existing captured
+    draft - returned no `published` field at all, and undefined is not false, so a tile was built
+    for a pending row the profile page refuses to serve. That was the "Manager Not Found" outage,
+    reported three times: a signed-out visitor searched a name an earlier visitor had half-typed
+    into the add form, and got a clickable tile leading nowhere.
+
+    The test is `=== true` here rather than `!== true` on the guard above, because those are not
+    the same thing. Bailing out entirely on a missing field would also kill the fallback below,
+    which is legitimate and safe: a create response with no id sends us to re-search, and the
+    search endpoint returns only approved and ghost rows, so whatever it finds IS servable.
+
+    So: publish-confirmed rows become a tile from the create response; anything else falls through
+    to the re-search and stands or falls on what that returns.
+  */
+  const publiclyCreated = ghostRow?.published === true;
+  if (publiclyCreated) localStorage.setItem(GHOST_KEY, "true");
 
   /*
     The manager we just created, shown as an ordinary locked tile, built from the create response.
@@ -208,7 +226,7 @@ export async function searchForManager(input: ManagerSearchInput): Promise<Manag
     It survives as a FALLBACK, for the one case it actually covered: a create response that comes
     back without an id. Then we have nothing to build a tile from and must go and look.
   */
-  if (ghostRow?.id != null) {
+  if (publiclyCreated && ghostRow?.id != null) {
     return {
       results: [{
         id: ghostRow.id,

@@ -347,7 +347,7 @@ test.describe("Company profile page", () => {
       route.fulfill({ json: { data: [] } })
     );
     await page.route("**/api/managers/ghost", (route) =>
-      route.fulfill({ json: { id: 4242, name: "Alex Johnson", created: true } })
+      route.fulfill({ json: { id: 4242, name: "Alex Johnson", created: true, published: true } })
     );
     await page.goto("/companies/Acme%20Corp");
 
