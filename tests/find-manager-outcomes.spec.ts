@@ -163,6 +163,56 @@ test.describe("A signed-out visitor searching for somebody we do not have", () =
     await expect(page.getByText(/Manager added!/i)).toHaveCount(0);
   });
 
+  test("a successful search does not also write a pending row for the same person", async ({ page }) => {
+    /*
+      The race that caused "Manager Not Found" on a genuinely new manager.
+
+      Two endpoints write a manager row for the same person. /api/managers/anonymous-capture calls
+      createPending -> 'pending_approval', no submitted_by. /api/managers/ghost begins by looking
+      for an existing row and deliberately matches 'pending_approval', so that a later visitor
+      adopts a draft rather than duplicating it.
+
+      Firing the capture first, unawaited, put those two in a race with each other. When the
+      capture's INSERT landed first, the ghost call found the row this same search had just
+      written, adopted it, and published nothing - so the tile pointed at a pending row that
+      enforceSubmitterAccess refuses to everybody.
+
+      The fix is ordering, so this asserts ordering: on a search that succeeds, the capture must
+      not be sent at all. Counting requests rather than inspecting the database, because the race
+      was between two HTTP calls and that is the layer it has to be prevented at.
+    */
+    let captures = 0;
+    await anonymousMiss(page);
+    await page.route(/\/api\/managers\/anonymous-capture/, (r: any) => {
+      captures++;
+      return r.fulfill({ status: 200, json: { success: true } });
+    });
+    await page.route(/\/api\/managers\/ghost/, (r: any) =>
+      r.fulfill({ status: 201, json: { id: 4242, name: "Alex Johnson", created: true, published: true } }));
+
+    await fillAndSearch(page);
+    await expect(page.getByText("Alex Johnson").first()).toBeVisible({ timeout: 15_000 });
+
+    expect(captures, "a published search must not also race a pending row into the table").toBe(0);
+  });
+
+  test("a search whose ghost write fails still records the lead", async ({ page }) => {
+    // The one case the pre-emptive capture existed for. Moving it must not lose it.
+    let captures = 0;
+    await anonymousMiss(page);
+    await page.route(/\/api\/managers\/anonymous-capture/, (r: any) => {
+      captures++;
+      return r.fulfill({ status: 200, json: { success: true } });
+    });
+    await page.route(/\/api\/managers\/ghost/, (r: any) =>
+      r.fulfill({ status: 500, json: { error: "boom" } }));
+
+    await fillAndSearch(page);
+
+    await expect.poll(() => captures, { timeout: 10_000 }).toBe(1);
+    await expect(page.locator('a[href="/manager/4242"]')).toHaveCount(0);
+  });
+
   test("no tile is rendered when the server did not publish anything", async ({ page }) => {
     /*
       The "Manager Not Found" outage, from the browser's side.

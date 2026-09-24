@@ -154,15 +154,24 @@ export async function searchForManager(input: ManagerSearchInput): Promise<Manag
   }
 
   /*
-    Captured before the ghost is attempted, and deliberately NOT awaited.
+    captureSearch runs ONLY if the ghost attempt fails. It used to fire first, unawaited, and that
+    raced this search against itself.
 
-    Before: `await captureSearch(...)`, which waited on a company-creation POST purely for
-    bookkeeping while the person sat looking at a spinner. The comment on captureSearch has always
-    said the searcher should never wait on it; now they do not. Ordering is preserved - the request
-    still leaves first - we simply stop blocking on its response.
+    Both endpoints write a manager row for the same person. captureAnonymousSearch calls
+    createPending -> a 'pending_approval' row with no submitted_by. The ghost endpoint begins with
+    findCapturedByNameAndCompany, which matches 'pending_approval' on purpose so a second visitor
+    adopts an existing draft instead of duplicating it.
+
+    So when the capture's INSERT won the race, the ghost call found the row THIS SAME SEARCH had
+    just written, took the adopt branch, and published nothing. The visitor got a tile pointing at
+    a pending row with no submitter, and enforceSubmitterAccess refuses those to everybody:
+    "Manager Not Found". Whoever won the race decided whether the search worked, which is why it
+    struck a genuinely new manager on a genuine first search and looked impossible to reproduce.
+
+    Nothing is lost by moving it. When the ghost POST succeeds the lead is already recorded - it
+    either published a 'ghost' or wrote a captured draft itself. The only case captureSearch ever
+    covered is the one it now handles: the POST failing outright.
   */
-  void captureSearch(input, geo, companyFields);
-
   let ghostRow: { id?: number | string; published?: boolean } | null = null;
   try {
     const ghostRes = await axios.post(`${API_BASE}/api/managers/ghost`, {
@@ -179,6 +188,9 @@ export async function searchForManager(input: ManagerSearchInput): Promise<Manag
     });
     ghostRow = ghostRes.data ?? null;
   } catch {
+    // The one case the pre-emptive capture existed for: the ghost write never happened, so record
+    // the lead here instead. No race now - nothing else is writing this manager.
+    void captureSearch(input, geo, companyFields);
     return { results: [], hasContributed: false };  // ghost creation failed - an ordinary miss
   }
 
