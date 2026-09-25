@@ -42,7 +42,10 @@ import {
 } from "@/components/ManagerFormFields";
 import { LocationValue, EMPTY_LOCATION, declaredPayload, orUserGeo } from "@/lib/location";
 import { fetchGeo } from "@/lib/geo";
+import { formatReviewPeriod } from "@/lib/reviewPeriod";
 import { useFormDraft, clearFormDraft } from "@/hooks/useFormDraft";
+import { MonthYear } from "@/components/MonthYear";
+import { RoleAutocomplete } from "@/components/RoleAutocomplete";
  
 const RATING_CATEGORIES = [
   "Communication Style",
@@ -620,6 +623,8 @@ export default function BossProfile() {
   // The career-entry editor needs its own selection state: it edits a different row from the
   // manager panel above, and sharing one would carry a half-typed company between them.
   const adminCareerEditCompany = useCompanySelection();
+  // The logo the picker handed back, so it can ride with the save instead of being discarded.
+  const [adminCareerEditLogoUrl, setAdminCareerEditLogoUrl] = useState<string | undefined>(undefined);
   const [editManagerTitle, setEditManagerTitle] = useState("");
   const [editStartDate, setEditStartDate] = useState({ month: "", year: "" });
   const [editEndDate, setEditEndDate] = useState({ month: "", year: "" });
@@ -2154,13 +2159,7 @@ export default function BossProfile() {
                                   {review.managerTitle} at {review.managerCompany}
                                 </p>
                                 <p className="text-xs text-muted-foreground mt-0.5">
-                                  {review.workedFrom
-                                    ? new Date(review.workedFrom + "T00:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" })
-                                    : "No date"}
-                                  {" – "}
-                                  {review.workedUntil
-                                    ? new Date(review.workedUntil + "T00:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" })
-                                    : review.workedFrom ? "Present" : ""}
+                                  {formatReviewPeriod(review, { emptyStart: "No date" })}
                                 </p>
                               </button>
                               <button
@@ -2366,42 +2365,50 @@ export default function BossProfile() {
                     setAdminCareerEditEntry(p => p ? { ...p, company: val } : p);
                     adminCareerEditCompany.bind.onChange(val);
                   }}
-                  onSuggestionSelect={(_name, _logoUrl) => {}}
+                  onSuggestionSelect={(_name, logoUrl) => setAdminCareerEditLogoUrl(logoUrl)}
                   onCompanyIdChange={adminCareerEditCompany.bind.onCompanyIdChange}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                 />
               </div>
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">Role / Title</label>
-                <input
-                  type="text"
+                {/*
+                  The shared role control, same as every other form. A bare text box here is how
+                  "Sr. Mgr" and "Snr Manager" get invented as separate roles; suggesting spellings
+                  other people already used is what stops that. Free text still goes through.
+                */}
+                <RoleAutocomplete
+                  name="adminCareerEditRole"
+                  id="admin-career-edit-role"
                   value={adminCareerEditEntry.role}
-                  onChange={e => setAdminCareerEditEntry(p => p ? { ...p, role: e.target.value } : p)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
+                  onChange={val => setAdminCareerEditEntry(p => p ? { ...p, role: val } : p)}
+                  placeholder="e.g., Engineering Manager"
+                  maxLength={100}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">Start year</label>
-                  <input
-                    type="number"
+                  <label className="block text-xs text-muted-foreground mb-1">Started</label>
+                  {/*
+                    The shared month/year control, not two free-text year boxes. Every other date
+                    question on the site is asked this way, and a typed year cannot be validated -
+                    "20224" was as acceptable as "2024" here.
+                  */}
+                  <MonthYear
+                    label="Start"
                     value={adminCareerEditEntry.startDate}
-                    onChange={e => setAdminCareerEditEntry(p => p ? { ...p, startDate: e.target.value } : p)}
-                    min={1900}
-                    max={new Date().getFullYear()}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
+                    years={YEARS}
+                    onChange={val => setAdminCareerEditEntry(p => p ? { ...p, startDate: val } : p)}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1">End year (blank = present)</label>
-                  <input
-                    type="number"
+                  <label className="block text-xs text-muted-foreground mb-1">Ended <span className="text-muted-foreground/70">(blank if current)</span></label>
+                  <MonthYear
+                    label="End"
                     value={adminCareerEditEntry.endDate}
-                    onChange={e => setAdminCareerEditEntry(p => p ? { ...p, endDate: e.target.value } : p)}
-                    min={1900}
-                    max={new Date().getFullYear()}
-                    placeholder="Present"
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
+                    years={YEARS}
+                    onChange={val => setAdminCareerEditEntry(p => p ? { ...p, endDate: val } : p)}
                   />
                 </div>
               </div>
@@ -2421,11 +2428,22 @@ export default function BossProfile() {
                       Without a row there was nowhere to put the dates, so the panel fell back to
                       the reviewer's own worked_until and the role read "Present" regardless.
                     */
+                    /*
+                      The company the admin PICKED rides with the request - its id and its logo,
+                      not just the name.
+
+                      Sending the name alone made the server re-resolve it, and re-resolving by
+                      name is how a second company gets created and the manager ends up on the
+                      wrong logo. Reusing the picker but discarding what it produced is not reuse.
+                    */
+                    const picked = await adminCareerEditCompany.payload();
                     const body = {
-                      company:   adminCareerEditEntry.company.trim(),
-                      title:     adminCareerEditEntry.role.trim(),
-                      startDate: adminCareerEditEntry.startDate.trim(),
-                      endDate:   adminCareerEditEntry.endDate.trim() || null,
+                      company:        picked.company || adminCareerEditEntry.company.trim(),
+                      companyId:      picked.companyId,
+                      companyLogoUrl: adminCareerEditLogoUrl ?? null,
+                      title:          adminCareerEditEntry.role.trim(),
+                      startDate:      adminCareerEditEntry.startDate.trim(),
+                      endDate:        adminCareerEditEntry.endDate.trim() || null,
                     };
                     if (adminCareerEditEntry.entryId == null) {
                       await axios.post(
@@ -2721,8 +2739,8 @@ export default function BossProfile() {
                 entryId:   entry.entryId,
                 company:   entry.company,
                 role:      entry.role,
-                startDate: entry.startDate?.slice(0, 4) ?? "",
-                endDate:   entry.endDate?.slice(0, 4) ?? "",
+                startDate: entry.startDate?.slice(0, 7) ?? "",
+                endDate:   entry.endDate?.slice(0, 7) ?? "",
               });
             } : undefined}
             onDeleteCareerEntry={user?.role === "admin" ? (entryId) => {
@@ -2841,11 +2859,7 @@ export default function BossProfile() {
                       <p className={`text-xs text-muted-foreground mt-0.5 ${
                         isLocked && !revealIdentity ? "blur-sm select-none" : ""
                       }`}>
-                        {review.workedFrom ? new Date(review.workedFrom + "T00:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" }) : ""}
-                        {" – "}
-                        {review.workedUntil
-                          ? new Date(review.workedUntil + "T00:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" })
-                          : "Present"}
+                        {formatReviewPeriod(review)}
                       </p>
                     )}
                   </div>

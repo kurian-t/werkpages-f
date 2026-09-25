@@ -1,3 +1,5 @@
+import { reviewEndDate, type ReviewPeriod } from "./reviewPeriod";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Career-timeline insight engine
 // All insights are deterministic - no AI, everything traceable to review data.
@@ -23,11 +25,9 @@ export interface ConsistencyResult {
   hrInterpretation: string;
 }
 
-export interface ReviewForTimeline {
+export interface ReviewForTimeline extends ReviewPeriod {
   managerCompany: string;
   managerTitle: string;
-  workedFrom?: string | null;
-  workedUntil?: string | null;
   overallRating: number;
   ratings?: Record<string, number>;
 }
@@ -111,11 +111,15 @@ export function computeCareerSegments(reviews: ReviewForTimeline[]): CareerSegme
       .map((r) => r.workedFrom)
       .filter((d): d is string => !!d)
       .sort();
+    /*
+      The capped end date, not the reviewer's own. A reviewer still at the company kept a
+      segment open for a manager who had already left it, so the tile read "Present".
+    */
     const untilDates = groupRevs
-      .map((r) => r.workedUntil)
+      .map((r) => reviewEndDate(r))
       .filter((d): d is string => !!d)
       .sort();
-    const isCurrent = groupRevs.some((r) => !r.workedUntil);
+    const isCurrent = groupRevs.some((r) => !reviewEndDate(r));
 
     const avgRating =
       groupRevs.reduce((s, r) => s + r.overallRating, 0) / groupRevs.length;

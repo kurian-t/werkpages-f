@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Star, Edit2, LogOut, Trash2, X, User, Clock, ArrowLeft } from "lucide-react";
 import { generateUsername } from "@/lib/validators";
+import { formatReviewPeriod } from "@/lib/reviewPeriod";
 import { toast } from "sonner";
 import axios from "axios";
 import { formatDistanceToNow } from "date-fns";
@@ -486,11 +487,7 @@ export default function AccountSettings() {
                           {(review.workedFrom || review.workedUntil) && (
                             <p>
                               <span className="font-medium">Worked together: </span>
-                              {review.workedFrom ? new Date(review.workedFrom + "T00:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" }) : ""}
-                              {" – "}
-                              {review.workedUntil
-                                ? new Date(review.workedUntil + "T00:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" })
-                                : "Current"}
+                              {formatReviewPeriod(review, { openLabel: "Current" })}
                             </p>
                           )}
                         </div>
