@@ -1455,6 +1455,11 @@ export default function Admin() {
                           <p className="text-muted-foreground text-xs">{m.title} · {m.company}</p>
                           <p className="text-muted-foreground text-xs">{m.country}</p>
                           <p className="text-muted-foreground text-xs mt-1">{m.reviews} review{m.reviews !== 1 ? "s" : ""}</p>
+                          {/* The URL this manager is on today. Without it the merge silently
+                              decides an address and you find out afterwards. */}
+                          {m.slug && (
+                            <p className="text-muted-foreground text-[11px] mt-1 font-mono break-all">/{m.slug}</p>
+                          )}
                           <a href={`/manager/${m.id}`} target="_blank" rel="noreferrer"
                             className="text-xs text-primary underline mt-1 inline-block">
                             View profile
@@ -1462,10 +1467,28 @@ export default function Admin() {
                         </div>
                       ))}
                     </div>
+                    {/*
+                      What the survivor's URL becomes.
+
+                      The merge reclaims the plain name slug and parks the retired duplicate's, so
+                      the outcome is settled before you click - it just was not shown. Called out
+                      when it differs from what the surviving manager is on now, because that is
+                      the case where a link changes and manager_url_history starts carrying the old
+                      one.
+                    */}
+                    {s.resultingSlug && (
+                      <p className="text-xs text-muted-foreground">
+                        After merging, the surviving profile lives at{" "}
+                        <code className="rounded bg-muted px-1.5 py-0.5 font-mono">/{s.resultingSlug}</code>
+                        {s.managerA.slug && s.resultingSlug !== s.managerA.slug && (
+                          <span> — changed from <code className="rounded bg-muted px-1 py-0.5 font-mono">/{s.managerA.slug}</code>; the old link keeps working.</span>
+                        )}
+                      </p>
+                    )}
                     <button
                       onClick={() => setConfirmAction({
                         type: "ai-merge",
-                        label: `Merge "${s.managerB.name}" into "${s.managerA.name}"`,
+                        label: `Merge "${s.managerB.name}" into "${s.managerA.name}" — profile will live at /${s.resultingSlug ?? s.managerA.slug ?? ""}`,
                         onConfirm: async () => {
                           await axios.post(`${API_BASE}/api/admin/managers/${s.managerA.id}/merge/${s.managerB.id}`);
                           setAiSuggestions(prev => prev.filter((x: any) => x.id !== s.id));
