@@ -617,6 +617,9 @@ export default function BossProfile() {
   // longer mint the very duplicate the correction was meant to fix.
   const editCompany = useCompanySelection();
   const adminEditCompany = useCompanySelection();
+  // The career-entry editor needs its own selection state: it edits a different row from the
+  // manager panel above, and sharing one would carry a half-typed company between them.
+  const adminCareerEditCompany = useCompanySelection();
   const [editManagerTitle, setEditManagerTitle] = useState("");
   const [editStartDate, setEditStartDate] = useState({ month: "", year: "" });
   const [editEndDate, setEditEndDate] = useState({ month: "", year: "" });
@@ -2345,11 +2348,27 @@ export default function BossProfile() {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">Company</label>
-                <input
-                  type="text"
+                {/*
+                  The same company control every other form uses, not a bare text box.
+
+                  This one asked for a company as free text, so there were no suggestions and no
+                  logos - and typing a name that does not match an existing company exactly creates
+                  a second one, which is how a manager ends up on the wrong logo with no way to
+                  correct it from the panel that caused it.
+
+                  CLAUDE.md section 46: a control that asks the same question is written once and
+                  reused.
+                */}
+                <CompanyAutocomplete
+                  name="adminCareerEditCompany"
                   value={adminCareerEditEntry.company}
-                  onChange={e => setAdminCareerEditEntry(p => p ? { ...p, company: e.target.value } : p)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
+                  onChange={val => {
+                    setAdminCareerEditEntry(p => p ? { ...p, company: val } : p);
+                    adminCareerEditCompany.bind.onChange(val);
+                  }}
+                  onSuggestionSelect={(_name, _logoUrl) => {}}
+                  onCompanyIdChange={adminCareerEditCompany.bind.onCompanyIdChange}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                 />
               </div>
               <div>
@@ -2394,22 +2413,35 @@ export default function BossProfile() {
                 onClick={async () => {
                   setAdminCareerEditSaving(true);
                   try {
-                    await axios.put(
-                      `${API_BASE}/api/admin/managers/${manager.id}/career-history/${adminCareerEditEntry.entryId}`,
-                      {
-                        company:   adminCareerEditEntry.company.trim(),
-                        title:     adminCareerEditEntry.role.trim(),
-                        startDate: adminCareerEditEntry.startDate.trim(),
-                        endDate:   adminCareerEditEntry.endDate.trim() || null,
-                      },
-                      { withCredentials: true }
-                    );
+                    /*
+                      Create when there is no row yet, update when there is.
+
+                      A trajectory card can come from a career_history row, from reviews grouped
+                      into a segment, or from the manager record - and only the first had an id.
+                      Without a row there was nowhere to put the dates, so the panel fell back to
+                      the reviewer's own worked_until and the role read "Present" regardless.
+                    */
+                    const body = {
+                      company:   adminCareerEditEntry.company.trim(),
+                      title:     adminCareerEditEntry.role.trim(),
+                      startDate: adminCareerEditEntry.startDate.trim(),
+                      endDate:   adminCareerEditEntry.endDate.trim() || null,
+                    };
+                    if (adminCareerEditEntry.entryId == null) {
+                      await axios.post(
+                        `${API_BASE}/api/admin/managers/${manager.id}/career-history`,
+                        body, { withCredentials: true });
+                    } else {
+                      await axios.put(
+                        `${API_BASE}/api/admin/managers/${manager.id}/career-history/${adminCareerEditEntry.entryId}`,
+                        body, { withCredentials: true });
+                    }
                     await Promise.all([
                       queryClient.invalidateQueries({ queryKey: managerQueryKey }),
                       queryClient.invalidateQueries({ queryKey: ["manager-career-segments", manager.id] }),
                     ]);
                     setAdminCareerEditEntry(null);
-                    toast.success("Career entry updated");
+                    toast.success(adminCareerEditEntry.entryId == null ? "Role recorded" : "Career entry updated");
                   } catch {
                     toast.error("Failed to update entry");
                   } finally {
@@ -2675,28 +2707,16 @@ export default function BossProfile() {
             segments={effectiveCareerSegments}
             onEditCareerEntry={user?.role === "admin" ? (entry) => {
               /*
-                A card without a career_history row is edited through the manager's own panel.
+                A card with no career_history row still needs its dates.
 
-                Three things produce a card - a career_history row, reviews grouped into a segment,
-                and a synthetic node built from the manager row when there is neither - and only the
-                first has an id the career-history endpoint can act on. Gating the control on that
-                id made it appear on some cards and not others for reasons a reader cannot see.
+                This used to open the manager panel instead, which edits name/title/company and has
+                no date fields at all - so the role's dates could not be written anywhere, and the
+                trajectory went on falling back to the reviewer's own worked_until. That is why a
+                manager who had plainly left still read "Present" however many times this was used.
 
-                Where there is no row, the company and title the card is showing came from the
-                manager record, so the existing admin editor is exactly the right thing to open: it
-                edits those same two fields, and it is already built, tested and wired up.
+                The same dated dialog opens either way. With no row it creates one; with a row it
+                updates it.
               */
-              if (entry.entryId == null) {
-                setAdminEditForm({
-                  name: manager.name,
-                  title: entry.role || manager.title,
-                  company: entry.company || manager.company,
-                  linkedinUrl: manager.linkedinUrl ?? "",
-                });
-                adminEditCompany.set(entry.company || manager.company, manager.companyId ?? undefined);
-                setAdminEditing(true);
-                return;
-              }
               setAdminCareerEditEntry({
                 entryId:   entry.entryId,
                 company:   entry.company,
