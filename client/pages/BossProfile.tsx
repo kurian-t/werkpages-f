@@ -281,6 +281,27 @@ export default function BossProfile() {
 
     const managerCompanyKey = (manager.company ?? "").toLowerCase().trim();
 
+    /*
+      The logo of the company the role was AT - the one the admin picked, which the segment
+      now carries from career_history.company_id.
+
+      This used to keep a logo ONLY when the segment's company name matched the manager's
+      CURRENT company, and throw it away otherwise. So every past company arrived with no
+      logo, the tile fell through to guessing a domain from the name, and a past employer
+      rendered some unrelated brand's mark - unchanged however many times the right company
+      was picked in the editor, because the pick was never read back.
+
+      The manager record is now only a fallback, for a current company whose row has no logo.
+    */
+    const withSegmentLogo = (s: any) => ({
+      ...s,
+      careerHistoryId: idForSegment(s),
+      logoUrl: s.logoUrl
+        ?? (s.company?.toLowerCase().trim() === managerCompanyKey
+              ? (manager.companyLogoUrl ?? undefined)
+              : undefined),
+    });
+
     const toGhost = (ch: any) => {
       const company = ch.company ?? manager.company ?? "";
       const isCurrentCompany = company.toLowerCase().trim() === managerCompanyKey;
@@ -341,13 +362,7 @@ export default function BossProfile() {
     );
     if (ghostEntries.length > 0) {
       const ghosts = ghostEntries.map(toGhost);
-      const enriched = careerSegments.map((s: any) => ({
-        ...s,
-        careerHistoryId: idForSegment(s),
-        logoUrl: s.company?.toLowerCase().trim() === managerCompanyKey
-          ? (manager.companyLogoUrl ?? undefined)
-          : s.logoUrl,
-      }));
+      const enriched = careerSegments.map(withSegmentLogo);
       const all = [...enriched, ...ghosts];
       all.sort((a: any, b: any) => {
         // Sort by startDate ascending; null startDates go last
@@ -365,13 +380,7 @@ export default function BossProfile() {
       return all;
     }
 
-    return careerSegments.map((s: any) => ({
-      ...s,
-      careerHistoryId: idForSegment(s),
-      logoUrl: s.company?.toLowerCase().trim() === managerCompanyKey
-        ? (manager.companyLogoUrl ?? undefined)
-        : s.logoUrl,
-    }));
+    return careerSegments.map(withSegmentLogo);
   }, [careerSegments, manager]);
 
   // Contribution gate: hasContributed is loaded as part of the /api/auth/me session
