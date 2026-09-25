@@ -109,12 +109,38 @@ export function CompanyField({
   const logoBelongsToValue =
     !!logoUrl && (logoUrlFor ? norm(logoUrlFor) === norm(value) : true);
 
+  /*
+    The logo of the suggestion picked in THIS field, remembered here.
+
+    The collapsed card showed only what the caller passed down. A caller holding the pick in its
+    own state but not threading it back - AddBoss and AddInterview both - collapsed to a logo
+    GUESSED from the company name, because CompanyLogoImg falls back to buildLogoDevUrl(name).
+
+    That guess is not a near miss. companyLogoDomain("Lime") is "lime.com"; the Lime people
+    actually pick from the dropdown is "li.me". So choosing Lime showed the right mark, and
+    clicking "Done editing" replaced it with an unrelated company's - and no amount of re-editing
+    could stick, because the pick was never what the card read.
+
+    Owned here rather than by the callers: five of them had to wire this correctly and most did
+    not. A field that asks the question owns the answer it displays.
+  */
+  const [picked, setPicked] = useState<{ name: string; logoUrl?: string } | null>(null);
+  const pickedBelongsToValue = !!picked && norm(picked.name) === norm(value);
+
+  const shownLogoUrl = pickedBelongsToValue
+    ? picked!.logoUrl
+    : (logoBelongsToValue ? logoUrl : undefined);
+
   const picker = (
     <CompanyAutocomplete
       value={value}
       onChange={(v) => { setTyping(true); onChange(v); }}
       onCompanyIdChange={onCompanyIdChange}
-      onSuggestionSelect={(name, logo) => { setTyping(false); onSuggestionSelect?.(name, logo); }}
+      onSuggestionSelect={(name, logo) => {
+        setTyping(false);
+        setPicked({ name, logoUrl: logo });
+        onSuggestionSelect?.(name, logo);
+      }}
       onSuggestionPicked={(sug) => { setTyping(false); onSuggestionPicked?.(sug); }}
       placeholder={placeholder}
       id={fieldId}
@@ -146,7 +172,7 @@ export function CompanyField({
                  previous company's mark. */
               key={value}
               company={value}
-              logoUrl={logoBelongsToValue ? logoUrl : undefined}
+              logoUrl={shownLogoUrl}
               sizeClass="h-6 w-6 rounded"
               eager
             />
