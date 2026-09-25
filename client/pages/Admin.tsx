@@ -308,16 +308,66 @@ export default function Admin() {
     }).catch(() => {});
   }, []);
 
-  const handleApproveManager = async (managerId: string) => {
+  /*
+    What approving this manager would do to its slug, asked before approving.
+
+    Pending managers hold a slug in the reserved "-pending" namespace so they cannot occupy the
+    name a published manager would use - a half-typed draft taking "sourabh-setia" is why a real
+    manager ended up on "sourabh-setia-lumenwerx". Approval moves the row onto the clean name.
+
+    When somebody published already holds that name it is a decision, not a collision: the same
+    person entered twice, or two people who share a name. So we ask first and show who holds it,
+    rather than letting the database pick.
+  */
+  const [slugConflict, setSlugConflict] = useState<{
+    managerId: string;
+    cleanSlug: string;
+    suggestedSlug?: string;
+    heldBy?: { id: number; name: string; company: string; slug?: string; reviewsCount?: number };
+    /** True when the names merely LOOK alike rather than competing for the same slug. */
+    nameClash?: boolean;
+  } | null>(null);
+
+  const approveWithSlug = async (managerId: string, slug?: string) => {
     try {
-      await axios.post(`${API_BASE}/api/admin/pending-managers/${managerId}/approve`);
+      await axios.post(`${API_BASE}/api/admin/pending-managers/${managerId}/approve`,
+        slug ? { slug } : {});
       setPendingManagers((prev) => prev.filter((m) => String(m.id) !== String(managerId)));
-      toast.success("Manager approved and is now live.");
+      toast.success(slug ? `Manager approved as /${slug}` : "Manager approved and is now live.");
     } catch {
       toast.error("Failed to approve manager.");
     }
+    setSlugConflict(null);
     setConfirmAction(null);
     setRejectReason("");
+  };
+
+  const handleApproveManager = async (managerId: string) => {
+    let preview: any = null;
+    try {
+      const res = await axios.get(
+        `${API_BASE}/api/admin/pending-managers/${managerId}/slug-preview`);
+      preview = res.data;
+    } catch {
+      // The preview is advisory. If it fails, approve as before rather than blocking the queue.
+    }
+
+    // Either signal is worth stopping for: the slug is taken, OR somebody who looks like the same
+    // person is already live. The second is the one the slug check cannot see - "Emma D" against
+    // a live "Emma Davis" does not collide, and approving it forks the person in two.
+    const looksLike = Array.isArray(preview?.looksLike) ? preview.looksLike : [];
+    if (preview && (preview.available === false || looksLike.length > 0)) {
+      setConfirmAction(null);
+      setSlugConflict({
+        managerId,
+        cleanSlug: preview.cleanSlug,
+        suggestedSlug: preview.suggestedSlug,
+        heldBy: preview.heldBy ?? looksLike[0],
+        nameClash: preview.available !== false,
+      });
+      return;
+    }
+    await approveWithSlug(managerId);
   };
 
   const handleRejectManager = async (managerId: string) => {
@@ -1684,6 +1734,75 @@ export default function Admin() {
       </div>
 
       {/* Confirm Dialog */}
+      {/*
+        The slug conflict, put to the admin instead of resolved by the database.
+
+        Reached only when a published manager already holds the name this pending row would take.
+        Two honest outcomes: it is the same person, so merge; or it is somebody else with the same
+        name, so publish under a name that distinguishes them. The old behaviour - appending the
+        company automatically - looked like a third option but was really just one of these two
+        chosen at random.
+      */}
+      {slugConflict && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl border border-border bg-background p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-foreground">
+              {slugConflict.nameClash
+                ? "This may already be on the site"
+                : <>The name <code className="rounded bg-muted px-1.5 py-0.5">/{slugConflict.cleanSlug}</code> is taken</>}
+            </h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              It belongs to{" "}
+              <span className="font-medium text-foreground">{slugConflict.heldBy?.name}</span>
+              {slugConflict.heldBy?.company ? ` at ${slugConflict.heldBy.company}` : ""}
+              {typeof slugConflict.heldBy?.reviewsCount === "number"
+                ? ` — ${slugConflict.heldBy.reviewsCount} ${slugConflict.heldBy.reviewsCount === 1 ? "review" : "reviews"}.`
+                : "."}
+            </p>
+            <p className="mt-3 text-sm text-muted-foreground">
+              If that is the same person, merge them. If it is somebody else who happens to share a
+              name, publish this one under a name that tells them apart.
+            </p>
+
+            <div className="mt-5 flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  /*
+                    The existing merge tool owns this. It keeps `keepManager` and folds
+                    `mergeManager` into it, so the published manager is the one kept and the
+                    pending duplicate is the one absorbed - never the other way round, or the
+                    reviews would follow the wrong row.
+                  */
+                  const pending = pendingManagers.find(
+                    (m) => String(m.id) === String(slugConflict.managerId));
+                  setKeepManager(slugConflict.heldBy);
+                  setMergeManager(pending ?? { id: slugConflict.managerId });
+                  setSlugConflict(null);
+                  toast.info("Loaded into the merge tool — the published manager is kept.");
+                }}
+                className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Same person — merge into {slugConflict.heldBy?.name}
+              </button>
+              <button
+                onClick={() => approveWithSlug(slugConflict.managerId, slugConflict.suggestedSlug)}
+                className="w-full rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/60 transition-colors"
+              >
+                {slugConflict.nameClash
+                  ? "Different person — publish anyway"
+                  : `Different person — publish as /${slugConflict.suggestedSlug}`}
+              </button>
+              <button
+                onClick={() => setSlugConflict(null)}
+                className="w-full rounded-lg px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {confirmAction && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
