@@ -120,13 +120,34 @@ export function companyIdentityOf(source: unknown): CompanyIdentity {
  * icon, so the chain could never fall through to the letter, and it happily returns a real icon
  * for a wrong guessed domain.
  */
+/**
+ * The domain inside a stored logo.dev URL.
+ *
+ * <p>Not a guess. A stored `img.logo.dev/<domain>` URL was built from a domain somebody
+ * established - the company picker, which is Clearbit-backed - so the domain is recoverable
+ * from it exactly, and is as trustworthy as the URL itself.
+ *
+ * <p>This exists because the two halves of a deploy can land apart. The browser bundle shipped
+ * with the Brandfetch failover while the API was still serving the older payload with no
+ * `domain` field, so every tile had a logo.dev URL that could not be served and nothing to hand
+ * Brandfetch - a letter on every company whose domain we had known all along.
+ */
+export function domainFromLogoDevUrl(url?: string | null): string | null {
+  if (!url) return null;
+  const m = /^https?:\/\/img\.logo\.dev\/([^/?#]+)/i.exec(url.trim());
+  const d = m?.[1] ? decodeURIComponent(m[1]).toLowerCase() : null;
+  return d && d.includes(".") ? d : null;
+}
+
 export function logoCandidates(
   companyName: string,
   storedUrl?: string | null,
   resolvedDomain?: string | null,
   storedBrandfetchIcon?: string | null,
 ): string[] {
-  const domain = resolvedDomain && resolvedDomain.trim() ? resolvedDomain.trim().toLowerCase() : null;
+  const explicit = resolvedDomain && resolvedDomain.trim() ? resolvedDomain.trim().toLowerCase() : null;
+  // The resolved domain when we have one; otherwise the one the stored URL was built from.
+  const domain = explicit ?? domainFromLogoDevUrl(storedUrl);
   const ordered = [
     storedUrl || null,
     domain ? logoDevUrlForDomain(domain) : null,

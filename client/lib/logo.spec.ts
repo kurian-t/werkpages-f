@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { logoCandidates, brandfetchIconUrl, brandfetchLogoUrl, logoDevUrlForDomain } from "./logo";
+import { logoCandidates, brandfetchIconUrl, brandfetchLogoUrl, domainFromLogoDevUrl, logoDevUrlForDomain } from "./logo";
 
 /**
  * Which logo sources are tried, in what order, and - most importantly - what is NEVER tried.
@@ -91,5 +91,31 @@ describe("logoCandidates", () => {
     expect(brandfetchIconUrl(null)).toBeNull();
     expect(brandfetchIconUrl("   ")).toBeNull();
     expect(brandfetchIconUrl(ICON)).toBe(ICON);
+  });
+
+  it("recovers the domain from a stored logo.dev URL when the API sends none", () => {
+    /*
+      The two halves of a deploy can land apart. The bundle shipped with the Brandfetch failover
+      while the API was still serving the older payload with no `domain` field, so every tile had
+      a logo.dev URL that could not be served and nothing to hand Brandfetch - a letter on every
+      company whose domain had been known all along.
+
+      Recovered, not guessed: that URL was built from a domain somebody established.
+    */
+    const stored = "https://img.logo.dev/amazon.com?token=pk_x";
+    const list = logoCandidates("Amazon", stored);
+    expect(list).toContain(brandfetchLogoUrl("amazon.com"));
+  });
+
+  it("an explicit resolved domain still wins over the stored URL", () => {
+    const stored = "https://img.logo.dev/wrong.com?token=pk_x";
+    const list = logoCandidates("Lime", stored, "li.me");
+    expect(list).toContain(brandfetchLogoUrl("li.me"));
+    expect(list.some((u) => u.includes("wrong.com") && u.includes("brandfetch"))).toBe(false);
+  });
+
+  it("ignores a stored URL that is not a logo.dev one", () => {
+    expect(domainFromLogoDevUrl("https://cdn.example/acme.png")).toBeNull();
+    expect(domainFromLogoDevUrl(null)).toBeNull();
   });
 });
