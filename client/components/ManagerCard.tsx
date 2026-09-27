@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Star } from "lucide-react";
-import { logoDevUrl as buildLogoDevUrl } from "@/lib/logo";
+import { logoDevUrl as buildLogoDevUrl, logoCandidates, companyIdentityOf } from "@/lib/logo";
 import { TopRatedPill } from "@/components/TopRatedPill";
 import { Stars } from "@/components/Stars";
 import { ManagerTile } from "@/components/ManagerTile";
@@ -137,14 +137,30 @@ function useNearViewport<T extends Element>(rootMargin: string, skip: boolean) {
   return [ref, near] as const;
 }
 
-export function CompanyLogoImg({ company, logoUrl, sizeClass, eager = false }: { company: string; logoUrl?: string; sizeClass: string; eager?: boolean }) {
-  const logoDevUrl = buildLogoDevUrl(company);
-  const preferred = logoUrl ?? logoDevUrl;
+/**
+ * A company's logo, or its initial.
+ *
+ * <p>`from` is the record the logo belongs to - a company row, a manager row, anything carrying
+ * the company's resolved identity. It is read by companyIdentityOf, which understands every
+ * shape the API returns, so a call site passes ONE prop and cannot forget half of a pair.
+ *
+ * <p>`domain` and `brandfetchIconUrl` remain as overrides for callers holding the values loose.
+ */
+export function CompanyLogoImg({ company, logoUrl, from, domain, brandfetchIconUrl, sizeClass, eager = false }: { company: string; logoUrl?: string; from?: unknown; domain?: string | null; brandfetchIconUrl?: string | null; sizeClass: string; eager?: boolean }) {
+  const identity = companyIdentityOf(from);
+  const useDomain = domain ?? identity.domain;
+  const useIcon   = brandfetchIconUrl ?? identity.brandfetchIconUrl;
+  /*
+    Every source worth trying, best first: the stored URL, then logo.dev, then the free
+    unmetered fallback. The order lives in lib/logo.ts because the career timeline walks the
+    same one - when logo.dev's monthly quota ran out, a chain that stopped at logo.dev turned
+    every logo on the site into a letter.
+  */
+  const candidates = logoCandidates(company, logoUrl, useDomain, useIcon);
+  const preferred = candidates[0];
   // Skip any candidate already known to fail, so a repeat visit goes straight to the letter
   // instead of re-requesting its way back down to it.
-  const firstUntried = !failedLogos.has(preferred) ? preferred
-                     : !failedLogos.has(logoDevUrl) ? logoDevUrl
-                     : null;
+  const firstUntried = candidates.find((c) => !failedLogos.has(c)) ?? null;
 
   const [ref, near] = useNearViewport<HTMLDivElement>(LOGO_PRELOAD_MARGIN, eager);
   const [src, setSrc] = useState<string | null>(firstUntried);
@@ -164,8 +180,8 @@ export function CompanyLogoImg({ company, logoUrl, sizeClass, eager = false }: {
 
   const handleError = () => {
     if (src) rememberLogoFailure(src);
-    if (src !== logoDevUrl && !failedLogos.has(logoDevUrl)) setSrc(logoDevUrl);
-    else setSrc(null);
+    // Down the list, never back up it. Running out is what "show the initial" means.
+    setSrc(candidates.find((c) => c !== src && !failedLogos.has(c)) ?? null);
   };
 
   // Same box, same border, same space. Reserving the layout here is what keeps lazy loading from
@@ -176,7 +192,19 @@ export function CompanyLogoImg({ company, logoUrl, sizeClass, eager = false }: {
 
   if (src === null) {
     return (
-      <div className={`${boxClass} bg-slate-100 flex items-center justify-center text-[13px] font-semibold text-slate-500`}>
+      /*
+        Decorative, and hidden from assistive technology.
+
+        The company's name is always rendered beside this, so the initial adds nothing a screen
+        reader needs - and it actively harms: inside a typeahead option it became part of the
+        option's accessible NAME, turning "Crumbl" into "C Crumbl" and breaking selection by
+        name for anyone navigating that way. The <img> it replaced carried alt="" and was
+        already decorative; this restores that.
+      */
+      <div
+        aria-hidden="true"
+        className={`${boxClass} bg-slate-100 flex items-center justify-center text-[13px] font-semibold text-slate-500`}
+      >
         {initial}
       </div>
     );
@@ -195,7 +223,7 @@ export function CompanyLogoImg({ company, logoUrl, sizeClass, eager = false }: {
   );
 }
 
-export function CompanyRow({ company, title, industry, logoUrl, logoSize = "md", wrapTitle = false, companyClassName }: { company: string; title: string; industry?: string; logoUrl?: string; logoSize?: "md" | "lg"; wrapTitle?: boolean; companyClassName?: string }) {
+export function CompanyRow({ company, title, industry, logoUrl, from, domain, brandfetchIconUrl, logoSize = "md", wrapTitle = false, companyClassName }: { company: string; title: string; industry?: string; logoUrl?: string; from?: unknown; domain?: string | null; brandfetchIconUrl?: string | null; logoSize?: "md" | "lg"; wrapTitle?: boolean; companyClassName?: string }) {
   // Bumped a step (md 8→10, lg 10→12): with the industry as a third line, the old sizes
   // left the logo visually undersized against the text column beside it.
   // Changing "lg" changes the indent the manager profile uses to align its industry line -
@@ -203,7 +231,7 @@ export function CompanyRow({ company, title, industry, logoUrl, logoSize = "md",
   const sizeClass = logoSize === "lg" ? "h-12 w-12" : "h-10 w-10";
   return (
     <div className="flex min-w-0 items-center gap-2">
-      <CompanyLogoImg company={company} logoUrl={logoUrl} sizeClass={sizeClass} eager={logoSize === "lg"} />
+      <CompanyLogoImg company={company} logoUrl={logoUrl} from={from} domain={domain} brandfetchIconUrl={brandfetchIconUrl} sizeClass={sizeClass} eager={logoSize === "lg"} />
       <div className="min-w-0 flex-1">
         <p className={`text-sm font-semibold leading-tight truncate ${companyClassName ?? "text-foreground"}`}>{company}</p>
         <p className={`text-xs text-muted-foreground ${wrapTitle ? "break-words" : "truncate"}`}>{title}</p>
@@ -249,7 +277,7 @@ export default function ManagerCard({ boss, isPending = false, to }: ManagerCard
       </div>
 
       {/* Row 2: company row */}
-      <CompanyRow company={boss.company} title={boss.title} industry={boss.industry} logoUrl={boss.companyLogoUrl} />
+      <CompanyRow company={boss.company} title={boss.title} industry={boss.industry} logoUrl={boss.companyLogoUrl} from={boss} />
 
       {/* Row 3: rating always owns its own rows on narrow cards */}
       {!isPending && (

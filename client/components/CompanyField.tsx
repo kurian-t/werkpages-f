@@ -124,7 +124,7 @@ export function CompanyField({
     Owned here rather than by the callers: five of them had to wire this correctly and most did
     not. A field that asks the question owns the answer it displays.
   */
-  const [picked, setPicked] = useState<{ name: string; logoUrl?: string } | null>(null);
+  const [picked, setPicked] = useState<{ name: string; logoUrl?: string; domain?: string; brandfetchIconUrl?: string } | null>(null);
   const pickedBelongsToValue = !!picked && norm(picked.name) === norm(value);
 
   const shownLogoUrl = pickedBelongsToValue
@@ -141,7 +141,18 @@ export function CompanyField({
         setPicked({ name, logoUrl: logo });
         onSuggestionSelect?.(name, logo);
       }}
-      onSuggestionPicked={(sug) => { setTyping(false); onSuggestionPicked?.(sug); }}
+      onSuggestionPicked={(sug) => {
+        setTyping(false);
+        /* The picked company's own identity, so the collapsed card can render a real logo
+           even while logo.dev's quota is exhausted. */
+        setPicked((prev) => ({
+          name: sug.name,
+          logoUrl: prev && norm(prev.name) === norm(sug.name) ? prev.logoUrl : undefined,
+          domain: (sug as any).domain,
+          brandfetchIconUrl: (sug as any).brandfetchIconUrl,
+        }));
+        onSuggestionPicked?.(sug);
+      }}
       placeholder={placeholder}
       id={fieldId}
       name="company"
@@ -173,6 +184,7 @@ export function CompanyField({
               key={value}
               company={value}
               logoUrl={shownLogoUrl}
+              from={pickedBelongsToValue ? picked : undefined}
               sizeClass="h-6 w-6 rounded"
               eager
             />

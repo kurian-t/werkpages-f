@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronUp, ArrowUp, ArrowDown, ChevronRight,
 } from "lucide-react";
 import { companyLogoDomain } from "@/lib/utils";
-import { logoDevUrlForDomain } from "@/lib/logo";
+import { logoDevUrlForDomain, logoCandidates } from "@/lib/logo";
 import {
   generateCareerInsights,
   computeConsistencyScore,
@@ -74,23 +74,22 @@ function deltaConfig(delta: number): DeltaConfig {
 
 // ── Company logo ──────────────────────────────────────────────────────────────
 function CompanyLogo({ company, logoUrl }: { company: string; logoUrl?: string }) {
-  const [triedPrimary, setTriedPrimary] = useState(false);
-  const [failed,       setFailed]       = useState(false);
-  const initial   = company.trim().charAt(0).toUpperCase();
-  const domain    = companyLogoDomain(company);
-  const domainSrc = logoDevUrlForDomain(domain);
+  const initial = company.trim().charAt(0).toUpperCase();
 
-  // Two-tier fallback: stored URL → logo.dev domain URL → letter initial.
-  // Stored URLs may be stale (e.g. Clearbit, which shut down its free API).
-  const src = (!triedPrimary && logoUrl) ? logoUrl : domainSrc;
+  /*
+    Stored URL → logo.dev → free unmetered fallback → letter initial.
 
-  const handleError = () => {
-    if (!triedPrimary && logoUrl) {
-      setTriedPrimary(true);
-    } else {
-      setFailed(true);
-    }
-  };
+    This used to stop at logo.dev, and so did the card's own copy - two hand-rolled chains that
+    had already drifted. When logo.dev's monthly quota ran out every logo on the site became a
+    letter, because one provider was the only rung between the stored URL and giving up. The
+    order now lives in lib/logo.ts and both walk the same one.
+  */
+  const candidates = logoCandidates(company, logoUrl);
+  const [index, setIndex] = useState(0);
+  const src = candidates[index] ?? null;
+  const failed = src === null;
+
+  const handleError = () => setIndex((i) => i + 1);
 
   if (failed) {
     return (

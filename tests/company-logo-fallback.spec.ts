@@ -16,16 +16,37 @@ import { MOCK_MANAGERS_LIST, mockDirectoryPage } from "./fixtures";
  * None of it ran: the logo was always mocked as present, so only the happy first step was tested.
  */
 
-/** Fails every logo request, so the chain has to walk all the way down. */
+/**
+ * Fails every logo request, so the chain has to walk all the way down.
+ *
+ * `icons.duckduckgo.com` was added on 2026-09-26 when a free rung was inserted beneath logo.dev
+ * (see logo-provider-outage.spec.ts). Without it this helper stopped doing what its name says:
+ * logo.dev was refused, the new source answered, and the tests below waited for an initial that
+ * correctly never came. No assertion here changed - only the set of sources this breaks.
+ */
 async function withBrokenLogos(page: any) {
-  await page.route(/logo\.dev|logodev|\.png$|\.jpg$|\.svg$/, (r: any) => r.abort("failed"));
+  await page.route(
+    /logo\.dev|logodev|cdn\.brandfetch\.io|icons\.duckduckgo\.com|\.png$|\.jpg$|\.svg$|\.ico$/,
+    (r: any) => r.abort("failed"),
+  );
 }
 
 /** The company on the first directory tile. */
 const COMPANY = MOCK_MANAGERS_LIST[0].company as string;
 
+/*
+  Managers whose company identity IS resolved.
+
+  A provider is only ever asked about a company we have identified - a domain guessed from the
+  name renders a different company's logo - so a fixture without one makes no request at all,
+  nothing fails, and there is nothing for the failure memo below to remember.
+*/
+const RESOLVED_MANAGERS = MOCK_MANAGERS_LIST.map((m: any) => ({
+  ...m, companyDomain: "example.com",
+}));
+
 async function openDirectory(page: any) {
-  await mockDirectoryPage(page);
+  await mockDirectoryPage(page, { managers: RESOLVED_MANAGERS } as any);
   await page.goto("/directory");
   await expect(page.getByText(MOCK_MANAGERS_LIST[0].name).first()).toBeVisible({ timeout: 10_000 });
 }

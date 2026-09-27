@@ -17,7 +17,6 @@ import { Star, Edit2, X, Trash2, Flag, Check, ChevronDown, ArrowLeft } from "luc
 import { IndustryIcon } from "@/components/IndustryIcon";
 import { managerPath, companyPath } from "@/lib/urls";
 import { ManagerAvatar, CompanyLogoImg, getInitials, getAvatarColor } from "@/components/ManagerCard";
-import { logoDevUrl as buildLogoDevUrl } from "@/lib/logo";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useAnalytics } from "@/hooks/useAnalytics";
@@ -46,6 +45,7 @@ import { formatReviewPeriod } from "@/lib/reviewPeriod";
 import { useFormDraft, clearFormDraft } from "@/hooks/useFormDraft";
 import { MonthYear } from "@/components/MonthYear";
 import { RoleAutocomplete } from "@/components/RoleAutocomplete";
+import { DeleteRatingControl } from "@/components/DeleteRatingControl";
  
 const RATING_CATEGORIES = [
   "Communication Style",
@@ -1696,6 +1696,44 @@ export default function BossProfile() {
     setEditReviewStep(null);
   };
 
+  /*
+    A moderator removing somebody else's rating.
+
+    Deliberately separate from handleDeleteReview above, which is a PERSON withdrawing their OWN
+    rating: that one carries a 30-day cooldown, anonymises the row and auto-restores after three
+    days. None of that is right for a moderation decision, and the backend keeps them apart for
+    the same reason.
+
+    The reason is not a formality - only "junk" debits the author's confidence, so it has to be
+    chosen deliberately rather than defaulted.
+  */
+  const [adminDeleteBusy, setAdminDeleteBusy] = useState(false);
+
+  const handleAdminDeleteReview = async (reviewId: string, reason: string) => {
+    setAdminDeleteBusy(true);
+    try {
+      await axios.delete(`${API_BASE}/api/admin/reviews/${reviewId}`, { data: { reason } });
+    } catch {
+      toast.error("Could not delete that rating. Please try again.");
+      setAdminDeleteBusy(false);
+      return;
+    }
+    // The manager's average and the company figures are recomputed server-side before this
+    // resolves, so everything showing a number has to be re-read rather than patched locally.
+    queryClient.invalidateQueries({ queryKey: managerQueryKey });
+    queryClient.invalidateQueries({ queryKey: ["manager-reviews", manager?.id] });
+    queryClient.invalidateQueries({ queryKey: ["manager-career-segments", manager?.id] });
+    queryClient.removeQueries({ queryKey: ["managers-directory"] });
+    queryClient.removeQueries({ queryKey: ["managers-top"] });
+    queryClient.removeQueries({ queryKey: ["stats"] });
+    toast.success("Rating deleted", {
+      description: reason === "junk"
+        ? "Removed, and the author's confidence was lowered."
+        : "Removed. The author's confidence was not affected.",
+    });
+    setAdminDeleteBusy(false);
+  };
+
   const handleDeleteReview = async (reviewId?: string) => {
     const targetId = reviewId ?? editingReviewId;
     if (targetId === null) return;
@@ -1931,7 +1969,7 @@ export default function BossProfile() {
                   className="flex-shrink-0 hover:opacity-80 transition-opacity"
                   aria-label={`View ${manager.company}`}
                 >
-                  <CompanyLogoImg company={manager.company} logoUrl={manager.companyLogoUrl} sizeClass="h-14 w-14" />
+                  <CompanyLogoImg company={manager.company} logoUrl={manager.companyLogoUrl} from={manager} sizeClass="h-14 w-14" />
                 </Link>
 
                 <div className="min-w-0 flex-1">
@@ -2856,6 +2894,19 @@ export default function BossProfile() {
                     <p className="mb-3 inline-block rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
                       Not published yet, awaiting verification
                     </p>
+                  )}
+
+                  {/*
+                    Moderation lives on the card itself, because the decision is about THIS
+                    rating and an admin should not have to match an id against a separate list.
+                  */}
+                  {user?.role === "admin" && (
+                    <div className="mb-3" data-testid="admin-review-moderation">
+                      <DeleteRatingControl
+                        busy={adminDeleteBusy}
+                        onDelete={(reason) => handleAdminDeleteReview(review.id, reason)}
+                      />
+                    </div>
                   )}
 
                   {/* Role context - most important signal for readers */}

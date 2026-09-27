@@ -19,6 +19,16 @@ import { TopRatedPill } from "@/components/TopRatedPill";
 export interface CompanyTileData {
   name: string;
   logoUrl?: string;
+  /**
+   * The RESOLVED domain, never one derived from the name.
+   *
+   * Absent until identity resolution has run for this company, and absent means the tile shows
+   * its letter rather than guessing - a guessed domain that resolves renders a different
+   * company's logo with full confidence, which is worse than no logo at all.
+   */
+  domain?: string | null;
+  /** A Brandfetch icon resolved server-side. Signed and expiring, so never constructed here. */
+  brandfetchIconUrl?: string | null;
   industry?: string;
   managerCount?: number;
   totalReviews?: number;
@@ -72,7 +82,7 @@ export function CompanyTile({
       </div>
 
       <div className="flex items-center gap-3 mb-3">
-        <CompanyLogoImg company={company.name} logoUrl={company.logoUrl} sizeClass="h-12 w-12" />
+        <CompanyLogoImg company={company.name} logoUrl={company.logoUrl} from={company} sizeClass="h-12 w-12" />
         <div className="min-w-0 flex-1">
           <h2 className="font-semibold text-sm text-foreground group-hover:text-[#6d28d9] leading-tight transition-colors line-clamp-2">
             {company.name}

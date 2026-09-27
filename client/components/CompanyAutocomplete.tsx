@@ -4,8 +4,11 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import API_BASE from "@/lib/api";
 import { logoDevUrlForDomain, logoDevUrl } from "@/lib/logo";
+import { CompanyLogoImg } from "@/components/ManagerCard";
 
 interface Suggestion {
+  /** A Brandfetch icon the server already resolved for this domain, when it has one. */
+  brandfetchIconUrl?: string;
   name: string;
   /**
    * The company's identity. Absent for a suggestion that has no companies row yet, and absent
@@ -39,7 +42,8 @@ interface Props {
    * signature they were written against. Fired only on an actual pick - a caller that needs a
    * company to exist can treat "never fired" as "nothing was selected".
    */
-  onSuggestionPicked?: (s: { id?: number; name: string; slug?: string; logoUrl?: string }) => void;
+  onSuggestionPicked?: (s: { id?: number; name: string; slug?: string; logoUrl?: string;
+                           domain?: string; brandfetchIconUrl?: string }) => void;
   onClear?: () => void;
   placeholder?: string;
   className?: string;
@@ -50,6 +54,14 @@ interface Props {
 }
 
 
+/**
+ * The logo to show beside a suggestion.
+ *
+ * <p>logo.dev first, as everywhere else. But a suggestion may also carry a Brandfetch icon the
+ * server already resolved for that domain - and when logo.dev's monthly quota is exhausted that
+ * is the only thing standing between this dropdown and a column of blanks, which is exactly what
+ * it became. Both are passed on so the image can fall from one to the other.
+ */
 function suggestionLogoUrl(s: Suggestion): string | undefined {
   if (s.domain) return logoDevUrlForDomain(s.domain);
   return s.logoUrl;
@@ -60,6 +72,9 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
+  /* The resolved Brandfetch icon for the picked company, so the field can show a
+     real logo while logo.dev's monthly quota is exhausted. */
+  const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
   /*
     Whether the current value is mid-edit rather than a settled company name.
 
@@ -158,7 +173,11 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
     setSuggestions([]);
     const logoUrl = suggestionLogoUrl(s);
     if (onSuggestionSelect) onSuggestionSelect(s.name, logoUrl);
-    onSuggestionPicked?.({ id: s.id, name: s.name, slug: s.slug, logoUrl });
+    setSelectedIcon(s.brandfetchIconUrl ?? null);
+    /* domain and the resolved icon travel with the pick - without them the
+       collapsed card had nothing but a logo.dev URL that 429s. */
+    onSuggestionPicked?.({ id: s.id, name: s.name, slug: s.slug, logoUrl,
+                           domain: s.domain, brandfetchIconUrl: s.brandfetchIconUrl });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -233,14 +252,19 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
               i === activeIndex ? "" : "hover:bg-[#d5cde0]"
             }`}
           >
-            {logo && (
-              <img
-                src={logo}
-                alt=""
-                className="h-5 w-5 rounded object-contain flex-shrink-0"
-                onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-              />
-            )}
+            {/*
+              The shared logo component, not a bare <img>. This row used to hide the image on
+              error, so when logo.dev's monthly quota ran out the dropdown showed a column of
+              nameless blanks. Going through CompanyLogoImg means it falls to a resolved
+              Brandfetch icon where we have one, and to the company's initial where we do not.
+            */}
+            <CompanyLogoImg
+              company={s.name}
+              logoUrl={logo}
+              from={s}
+              sizeClass="h-5 w-5 rounded"
+              eager
+            />
             <span className="truncate text-foreground">{s.name}</span>
             {s.domain && (
               <span className="ml-auto text-xs text-muted-foreground shrink-0">{s.domain}</span>
@@ -267,12 +291,20 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
   return (
     <div ref={containerRef} className="relative">
       {inputLogoUrl && (
-        <img
-          src={inputLogoUrl}
-          alt=""
-          className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 rounded object-contain pointer-events-none z-10"
-          onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-        />
+        /*
+          The shared chain, not a bare <img>. This hid itself on error, so when logo.dev's
+          monthly quota ran out the field showed no mark at all even for a company whose logo
+          we already hold.
+        */
+        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10">
+          <CompanyLogoImg
+            company={value}
+            logoUrl={inputLogoUrl}
+            from={{ domain: selectedDomain, brandfetchIconUrl: selectedIcon }}
+            sizeClass="h-4 w-4 rounded"
+            eager
+          />
+        </span>
       )}
       <input
         type="text"

@@ -21,6 +21,9 @@ export interface PendingSubmission {
   title?: string;
   approvalStatus?: string;
   companyLogoUrl?: string;
+  /** The employer's resolved identity, read by CompanyLogoImg via companyIdentityOf. */
+  companyDomain?: string | null;
+  companyBrandfetchIconUrl?: string | null;
   reviews?: number;
   overallRating?: number;
 }

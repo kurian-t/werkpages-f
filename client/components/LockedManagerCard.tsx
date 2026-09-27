@@ -120,7 +120,7 @@ export default function LockedManagerCard({ boss, isLoggedIn: _isLoggedIn, narro
       <div className="mt-2 mb-auto min-w-0">
         {teaser ? (
           <div className="flex items-center gap-2">
-            <CompanyLogoImg company={boss.company ?? ""} logoUrl={boss.companyLogoUrl} sizeClass="h-8 w-8 rounded-md flex-shrink-0" />
+            <CompanyLogoImg company={boss.company ?? ""} logoUrl={boss.companyLogoUrl} from={boss} sizeClass="h-8 w-8 rounded-md flex-shrink-0" />
             <div className="min-w-0">
               <p className="text-sm font-semibold leading-tight truncate text-foreground">{boss.company}</p>
               <p className="truncate text-xs text-muted-foreground blur-sm">{teaser.role}</p>
@@ -136,7 +136,7 @@ export default function LockedManagerCard({ boss, isLoggedIn: _isLoggedIn, narro
           </div>
         ) : blurTitle ? (
           <div className="flex items-center gap-2">
-            <CompanyLogoImg company={boss.company ?? ""} logoUrl={boss.companyLogoUrl} sizeClass="h-10 w-10" />
+            <CompanyLogoImg company={boss.company ?? ""} logoUrl={boss.companyLogoUrl} from={boss} sizeClass="h-10 w-10" />
             <div className="min-w-0">
               <p className="text-sm font-semibold leading-tight truncate text-foreground">{boss.company}</p>
               <BlurPlaceholder width="w-24" />
@@ -148,6 +148,7 @@ export default function LockedManagerCard({ boss, isLoggedIn: _isLoggedIn, narro
             title={boss.title ?? ""}
             industry={boss.industry}
             logoUrl={boss.companyLogoUrl}
+            from={boss}
           />
         )}
       </div>

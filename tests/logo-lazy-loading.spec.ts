@@ -25,6 +25,12 @@ const MANY_MANAGERS = Array.from({ length: 40 }, (_, i) => ({
   name: `Manager Number${i}`,
   title: "Engineering Manager",
   company: `Distinct Company ${i}`,
+  /*
+    A RESOLVED domain. Logos are no longer requested for a company whose identity is unknown -
+    a domain guessed from the name renders a different company's logo - so a fixture without
+    one now correctly makes no request at all, and this spec would measure nothing.
+  */
+  companyDomain: `distinct-company-${i}.example`,
   overallRating: 4.1,
   reviews: 3,
   approvalStatus: "approved",

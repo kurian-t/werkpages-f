@@ -615,6 +615,7 @@ export default function CompanyProfile() {
             <CompanyLogoImg
               company={data.name}
               logoUrl={data.logoUrl}
+              from={data}
               sizeClass="h-16 w-16 rounded-xl"
             />
             <div className="flex-1 min-w-0">
