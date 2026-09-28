@@ -22,6 +22,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { AuthFlowModal } from "@/components/AuthFlowModal";
 import { CompanyField } from "@/components/CompanyField";
+import { LocationField } from "@/components/LocationField";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
 import { useCompanySelection } from "@/hooks/useCompanySelection";
 import type { AuthFlowStep } from "@/components/AuthFlowModal";
@@ -684,6 +685,15 @@ export default function BossProfile() {
   const [adminEditing, setAdminEditing] = useState(false);
   const [adminEditForm, setAdminEditForm] = useState({ name: "", title: "", company: "", linkedinUrl: "" });
   const [adminEditLogoUrl, setAdminEditLogoUrl] = useState<string | undefined>(undefined);
+  /*
+    Where the manager works, on the admin edit form.
+
+    Settable only on the ADD form until now - nothing, admin or user, could correct a manager
+    filed against the wrong country, and country is what the directory filters on. Uses the same
+    LocationField every contribution form uses rather than a second set of inputs.
+  */
+  const [adminEditLocation, setAdminEditLocation] = useState<LocationValue>(EMPTY_LOCATION);
+  const [adminEditLocationOpen, setAdminEditLocationOpen] = useState(false);
   const [adminEditSaving, setAdminEditSaving] = useState(false);
   const [adminDeleteConfirm, setAdminDeleteConfirm] = useState(false);
   const [adminDeleting, setAdminDeleting] = useState(false);
@@ -1902,6 +1912,18 @@ export default function BossProfile() {
                         // Seed the selection with the company as it stands. Without this the form
                         // would submit an empty name for an admin who edited only the title.
                         adminEditCompany.set(manager.company, manager.companyId ?? undefined);
+                        /*
+                          Seed the location with what the manager already has, so the field shows
+                          the current value rather than opening blank and inviting an admin to
+                          retype something that was already right.
+                        */
+                        setAdminEditLocation({
+                          ...EMPTY_LOCATION,
+                          country: (manager as any).country ?? undefined,
+                          state:   (manager as any).state   ?? undefined,
+                          city:    (manager as any).city    ?? undefined,
+                        });
+                        setAdminEditLocationOpen(false);
                         setAdminEditing(true);
                       }}
                       className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -2322,11 +2344,26 @@ export default function BossProfile() {
                 <label className="block text-xs text-muted-foreground mb-1">Company</label>
                 <CompanyAutocomplete
                   name="adminEditCompany"
+                  initialDomain={(manager as any)?.companyDomain}
+                  initialBrandfetchIconUrl={(manager as any)?.companyBrandfetchIconUrl}
                   value={adminEditForm.company}
                   onChange={val => { setAdminEditForm(p => ({ ...p, company: val })); setAdminEditLogoUrl(undefined); adminEditCompany.bind.onChange(val); }}
                   onSuggestionSelect={(_name, logoUrl) => setAdminEditLogoUrl(logoUrl)}
                   onCompanyIdChange={adminEditCompany.bind.onCompanyIdChange}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Location</label>
+                <LocationField
+                  value={adminEditLocation}
+                  onChange={setAdminEditLocation}
+                  companyId={adminEditCompany.id}
+                  companyName={adminEditForm.company}
+                  editing={adminEditLocationOpen}
+                  onEditStart={() => setAdminEditLocationOpen(true)}
+                  onEditDone={() => setAdminEditLocationOpen(false)}
+                  id="admin-edit-location"
                 />
               </div>
               <div>
@@ -2354,6 +2391,9 @@ export default function BossProfile() {
                       ...(await adminEditCompany.payload()),
                       linkedinUrl:    adminEditForm.linkedinUrl.trim() || undefined,
                       companyLogoUrl: adminEditLogoUrl,
+                      country: adminEditLocation.country ?? undefined,
+                      state:   adminEditLocation.state   ?? undefined,
+                      city:    adminEditLocation.city    ?? undefined,
                     }, { withCredentials: true });
                     await Promise.all([
                       queryClient.invalidateQueries({ queryKey: managerQueryKey }),
@@ -2407,6 +2447,8 @@ export default function BossProfile() {
                 */}
                 <CompanyAutocomplete
                   name="adminCareerEditCompany"
+                  initialDomain={(manager as any)?.companyDomain}
+                  initialBrandfetchIconUrl={(manager as any)?.companyBrandfetchIconUrl}
                   value={adminCareerEditEntry.company}
                   onChange={val => {
                     setAdminCareerEditEntry(p => p ? { ...p, company: val } : p);
@@ -3551,6 +3593,8 @@ export default function BossProfile() {
                   <div>
                     <label className="block text-sm font-semibold text-foreground mb-2">Company *</label>
                     <CompanyAutocomplete
+                      initialDomain={(manager as any)?.companyDomain}
+                      initialBrandfetchIconUrl={(manager as any)?.companyBrandfetchIconUrl}
                       value={editFormData.company}
                       onChange={(val) => { setEditModalTouched(true); setEditFormData((prev) => ({ ...prev, company: val })); setEditCompanyLogoUrl(undefined); editCompany.bind.onChange(val); }}
                       onSuggestionSelect={(_name, logoUrl) => setEditCompanyLogoUrl(logoUrl)}

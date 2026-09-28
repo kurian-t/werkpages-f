@@ -34,6 +34,8 @@ export function CompanyField({
   onSuggestionPicked,
   logoUrl,
   logoUrlFor,
+  initialDomain,
+  initialBrandfetchIconUrl,
   label = "Company",
   required = true,
   placeholder = "e.g. Acme Corp",
@@ -55,6 +57,9 @@ export function CompanyField({
    * When the value has moved on the logo is resolved from the name instead.
    */
   logoUrlFor?: string;
+  /** The identity of the company already in the field, so it renders a logo on open. */
+  initialDomain?: string | null;
+  initialBrandfetchIconUrl?: string | null;
   label?: string | null;
   required?: boolean;
   placeholder?: string;
@@ -141,6 +146,8 @@ export function CompanyField({
         setPicked({ name, logoUrl: logo });
         onSuggestionSelect?.(name, logo);
       }}
+      initialDomain={(logoUrlFor && norm(logoUrlFor) === norm(value)) ? initialDomain : undefined}
+      initialBrandfetchIconUrl={(logoUrlFor && norm(logoUrlFor) === norm(value)) ? initialBrandfetchIconUrl : undefined}
       onSuggestionPicked={(sug) => {
         setTyping(false);
         /* The picked company's own identity, so the collapsed card can render a real logo

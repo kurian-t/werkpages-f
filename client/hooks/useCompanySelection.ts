@@ -53,7 +53,7 @@ export interface CompanySelection {
    * resolved server-side. That is a deliberate soft edge: losing someone's submission because a
    * company row could not be written would be worse than resolving it the old way.
    */
-  payload: () => Promise<{ company: string; companyId: number | null }>;
+  payload: () => Promise<{ company: string; companyId: number | null; companyLogoUrl?: string }>;
 }
 
 export function useCompanySelection(initialName = ""): CompanySelection {
@@ -86,8 +86,15 @@ export function useCompanySelection(initialName = ""): CompanySelection {
       return res.data ?? {};
     });
     if (resolved.companyId != null) setId(resolved.companyId);
-    return resolved;
-  }, [name, id]);
+    /*
+      The picked logo travels with the identity it belongs to.
+
+      It was tracked here and left out of the payload, so every caller sent a company without
+      one - an admin could pick a company in the editor and watch the profile keep the previous
+      employer's mark, because nothing carried the choice to the write.
+    */
+    return { ...resolved, companyLogoUrl: logoUrl };
+  }, [name, id, logoUrl]);
 
   return {
     name,

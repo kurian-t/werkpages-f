@@ -44,6 +44,16 @@ interface Props {
    */
   onSuggestionPicked?: (s: { id?: number; name: string; slug?: string; logoUrl?: string;
                            domain?: string; brandfetchIconUrl?: string }) => void;
+  /**
+   * The identity of the company ALREADY in this field, when the caller knows it.
+   *
+   * An edit form opens with a company already chosen, and until something is picked this
+   * component knows only a name - so it fell back to a domain guessed from that name, which
+   * logo.dev cannot serve while its quota is spent and which is the wrong company anyway.
+   * Given the real domain, the field shows the real logo the moment it opens.
+   */
+  initialDomain?: string | null;
+  initialBrandfetchIconUrl?: string | null;
   onClear?: () => void;
   placeholder?: string;
   className?: string;
@@ -67,7 +77,7 @@ function suggestionLogoUrl(s: Suggestion): string | undefined {
   return s.logoUrl;
 }
 
-export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCompanyIdChange, onSuggestionPicked, onClear, placeholder, className, autoFocus, name, id }: Props) {
+export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCompanyIdChange, onSuggestionPicked, onClear, placeholder, className, autoFocus, name, id, initialDomain, initialBrandfetchIconUrl }: Props) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -226,11 +236,14 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
     A name that resolves to nothing simply hides the image, so a company logo.dev has never heard
     of costs nothing.
   */
-  const inputLogoUrl = selectedDomain
-    ? logoDevUrlForDomain(selectedDomain)
-    : !typing && value.trim().length > 1
-      ? logoDevUrl(value.trim())
-      : null;
+  /*
+    The domain to render from: the one just picked, else the one the caller already knew.
+    A domain is never derived from the typed NAME - that guess renders a different company's
+    logo, which is the whole reason identity is resolved rather than invented.
+  */
+  const effectiveDomain = selectedDomain ?? (initialDomain || null);
+  const effectiveIcon   = selectedIcon   ?? (initialBrandfetchIconUrl || null);
+  const inputLogoUrl = effectiveDomain ? logoDevUrlForDomain(effectiveDomain) : null;
 
   const dropdown = open ? (
     <ul
@@ -300,7 +313,7 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
           <CompanyLogoImg
             company={value}
             logoUrl={inputLogoUrl}
-            from={{ domain: selectedDomain, brandfetchIconUrl: selectedIcon }}
+            from={{ domain: effectiveDomain, brandfetchIconUrl: effectiveIcon }}
             sizeClass="h-4 w-4 rounded"
             eager
           />
