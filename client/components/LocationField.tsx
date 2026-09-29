@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import API_BASE from "@/lib/api";
 import { createPortal } from "react-dom";
 import { MapPin, Building2 } from "lucide-react";
 import {
@@ -24,6 +25,23 @@ import { useAnchoredPosition } from "@/lib/anchoredDropdown";
  * nobody is made to pick a street address to submit a rating. Somebody who only knows the province
  * should be able to say exactly that and stop.
  */
+/** Two country names meaning the same place, however they were written. */
+function sameCountry(a?: string | null, b?: string | null): boolean {
+  return !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/**
+ * A country the reader named in the query itself.
+ *
+ * <p>Somebody typing "Toronto, Ontario, Canada" has said which country they mean, and refusing to
+ * look there because the field currently holds a UK location is the whole bug. Only the last
+ * comma-separated part is considered, which is where a country goes.
+ */
+function countryNamedIn(query: string): string | null {
+  const parts = query.split(",").map((p) => p.trim()).filter(Boolean);
+  return parts.length >= 2 ? parts[parts.length - 1] : null;
+}
+
 export function LocationField({
   value,
   onChange,
@@ -46,6 +64,24 @@ export function LocationField({
 }) {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
+  /*
+    The reader's own country, used only to widen a search that found nothing - never to overrule
+    what they typed or what the field already holds.
+  */
+  const [geoCountry, setGeoCountry] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/geo`);
+        const geo = await res.json();
+        if (!cancelled && geo?.country) setGeoCountry(geo.country as string);
+      } catch {
+        // A widened search is a convenience; failing to learn the country must break nothing.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
 
@@ -79,9 +115,30 @@ export function LocationField({
 
     const timer = setTimeout(() => {
       void (async () => {
-        const found = await fetchLocationSuggestions(q, {
+        /*
+          The country narrows the search, and it must never trap it.
+
+          This passed value.country as a hard filter - the country of the location being EDITED.
+          Once a field held "Herne Bay, England, United Kingdom", every later search was confined
+          to the UK: typing "Toronto, Ontario" matched nothing, so there was no suggestion to
+          pick, so the country could never change. The filter made itself permanent.
+
+          Narrow first, then widen. The current country is still tried first, because "Waterloo"
+          under Ontario should not offer Waterloo, Belgium. But when it finds nothing we retry
+          without it - and the backend needs SOME country, so the reader's own is the next best
+          guess, and finally the query is taken at its word.
+        */
+        let found = await fetchLocationSuggestions(q, {
           companyId, companyName, country: value.country, state: value.state,
         });
+
+        if (found.length === 0) {
+          for (const fallback of [geoCountry, countryNamedIn(q)]) {
+            if (!fallback || sameCountry(fallback, value.country)) continue;
+            found = await fetchLocationSuggestions(q, { companyId, companyName, country: fallback });
+            if (found.length > 0) break;
+          }
+        }
         setSuggestions(found);
         setOpen(found.length > 0);
         setActiveIndex(-1);
