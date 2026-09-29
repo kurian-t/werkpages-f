@@ -76,7 +76,7 @@ test.describe("Resume Builder", () => {
   test("logged-out user is redirected away from /resume", async ({ page }) => {
     await page.route("**/api/auth/me", route => route.fulfill({ status: 401, json: { error: "Unauthorized" } }));
     await page.goto("/resume");
-    await expect(page).toHaveURL(/\/explore/, { timeout: 10_000 });
+    await expect(page).toHaveURL(/\/search/, { timeout: 10_000 });
   });
 
   test("logged-in non-admin is redirected away from /resume", async ({ page }) => {
@@ -84,7 +84,7 @@ test.describe("Resume Builder", () => {
     await page.route("**/api/auth/me", route => route.fulfill({ json: user }));
     await page.addInitScript(u => localStorage.setItem("authUser", JSON.stringify(u)), user);
     await page.goto("/resume");
-    await expect(page).toHaveURL(/\/explore/, { timeout: 10_000 });
+    await expect(page).toHaveURL(/\/search/, { timeout: 10_000 });
   });
 
   test("logged-in non-contributor sees gate screen", async ({ page }) => {

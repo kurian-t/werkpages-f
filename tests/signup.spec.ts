@@ -181,6 +181,6 @@ test.describe("Sign Up page - /signup", () => {
 
     await page.goto("/signup");
     // Should redirect to /find, not stay on /signup
-    await expect(page).toHaveURL(/\/find/, { timeout: 5_000 });
+    await expect(page).toHaveURL(/\/search/, { timeout: 5_000 });
   });
 });

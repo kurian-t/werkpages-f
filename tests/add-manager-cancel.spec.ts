@@ -68,7 +68,7 @@ test.describe("Add a manager - cancel", () => {
 
     await page.getByRole("button", { name: "Cancel" }).click();
 
-    await expect(page).toHaveURL(/\/explore$/, { timeout: 10_000 });
+    await expect(page).toHaveURL(/\/search$/, { timeout: 10_000 });
   });
 
   test("falls back to the directory when /add was opened directly", async ({ page }) => {

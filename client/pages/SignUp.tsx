@@ -64,7 +64,7 @@ export default function SignUp() {
     password === confirmPassword && passwordValid &&
     (!TURNSTILE_SITE_KEY || !!turnstileToken);
 
-  if (isAuthenticated) return <Navigate to="/find" replace />;
+  if (isAuthenticated) return <Navigate to="/search" replace />;
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleGenerateUsername = () => {

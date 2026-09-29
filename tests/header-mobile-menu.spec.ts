@@ -93,7 +93,7 @@ test.describe("Where the menu can take a signed-out reader", () => {
 
     await page.getByRole("button", { name: "Open menu" }).click();
 
-    for (const name of ["Explore", "Industries", "Companies", "Managers"]) {
+    for (const name of ["Search", "Industries", "Companies", "Managers"]) {
       await expect(nav(page).getByRole("link", { name })).toBeVisible();
     }
   });
@@ -104,7 +104,7 @@ test.describe("Where the menu can take a signed-out reader", () => {
 
     await expect(nav(page).getByRole("link", { name: "Companies" })).toHaveAttribute("href", "/companies");
     await expect(nav(page).getByRole("link", { name: "Managers" })).toHaveAttribute("href", "/directory");
-    await expect(nav(page).getByRole("link", { name: "Explore" })).toHaveAttribute("href", "/explore");
+    await expect(nav(page).getByRole("link", { name: "Search" })).toHaveAttribute("href", "/search");
   });
 
   test("signing in is offered from inside the menu", async ({ page }) => {

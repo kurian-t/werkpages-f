@@ -38,11 +38,20 @@ test.describe("FindYourManager page (/find)", () => {
     await expect(page.getByPlaceholder("First name")).toBeVisible({ timeout: 10_000 });
   });
 
-  test("empty state shows browse prompt before searching", async ({ page }) => {
+  /*
+    /find now redirects to /search, which serves the richer page Werkpages already linked from
+    its nav. There were TWO pages doing this job - the nav pointed at one and the other was
+    unreachable - so the duplicate was removed and both products settled on /search.
+
+    The browse affordance survived the consolidation, worded differently: "Prefer to browse?"
+    with a "Browse managers" card rather than "Want to browse instead?".
+  */
+  test("empty state offers a way to browse before searching", async ({ page }) => {
     await mockFindManagerPage(page);
     await page.goto("/find");
 
-    await expect(page.getByText(/want to browse instead/i)).toBeVisible({ timeout: 5_000 });
+    await expect(page).toHaveURL(/\/search/, { timeout: 5_000 });
+    await expect(page.getByText(/prefer to browse/i)).toBeVisible({ timeout: 5_000 });
   });
 
   test("search button is disabled until all fields are filled", async ({ page }) => {
@@ -110,13 +119,15 @@ test.describe("FindYourManager page (/find)", () => {
     await expect(page.getByRole("button", { name: /\+ add manager/i })).toBeVisible();
   });
 
-  test("'View directory' navigates to /directory", async ({ page }) => {
+  test("browsing from the search page reaches the directory", async ({ page }) => {
     await mockFindManagerPage(page);
     await page.goto("/find");
 
-    // Before any search, a "View directory" link is shown
-    await expect(page.getByText(/view directory/i)).toBeVisible({ timeout: 5_000 });
-    await page.getByText(/view directory/i).click();
+    // Before any search, a way through to the directory is shown.
+    // A button that navigates, not an anchor - BrowseCard uses navigate().
+    const browse = page.getByRole("button", { name: /browse managers/i }).first();
+    await expect(browse).toBeVisible({ timeout: 5_000 });
+    await browse.click();
     await expect(page).toHaveURL(/\/directory/, { timeout: 5_000 });
   });
 

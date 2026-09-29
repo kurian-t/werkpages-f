@@ -35,7 +35,7 @@ export default function AuthCallback() {
     }
 
     const savedState = sessionStorage.getItem("oauth_state");
-    const returnTo   = sessionStorage.getItem("oauth_return_to") || "/explore";
+    const returnTo   = sessionStorage.getItem("oauth_return_to") || "/search";
     sessionStorage.removeItem("oauth_state");
     sessionStorage.removeItem("oauth_return_to");
 
@@ -57,7 +57,7 @@ export default function AuthCallback() {
       const { user, isNewUser } = res.data;
       setUser(user);
       localStorage.setItem("authUser", JSON.stringify(user));
-      navigate(isNewUser && !returnTo.startsWith("/add") ? "/explore" : returnTo, { replace: true });
+      navigate(isNewUser && !returnTo.startsWith("/add") ? "/search" : returnTo, { replace: true });
     }).catch(err => {
       const data = err.response?.data;
       if (data?.error === "email_already_registered") {

@@ -40,7 +40,7 @@ import { AttestationCard } from "@/components/RatingFormParts";
 import {
   ManagerIdentityFields, WorkTimelineFields, type ManagerField,
 } from "@/components/ManagerFormFields";
-import { LocationValue, EMPTY_LOCATION, declaredPayload, orUserGeo } from "@/lib/location";
+import { LocationValue, EMPTY_LOCATION, formatLocation, declaredPayload, orUserGeo } from "@/lib/location";
 import { fetchGeo } from "@/lib/geo";
 import { formatReviewPeriod } from "@/lib/reviewPeriod";
 import { useFormDraft, clearFormDraft } from "@/hooks/useFormDraft";
@@ -2021,10 +2021,37 @@ export default function BossProfile() {
                 </div>
               </div>
 
-              {/* Country */}
-              {manager.country && (
+              {/*
+                Where the manager works - the fullest answer we hold.
+
+                This showed the COUNTRY alone. A manager pinned to a real address, or simply to a
+                city, was described as "US" - throwing away detail somebody had deliberately
+                entered, and making two managers on opposite sides of a country look identical.
+
+                Built through the shared formatLocation so it reads the same here as on every
+                form: an exact place shows its label, otherwise city, state and country in that
+                order, skipping whatever is missing.
+              */}
+              {(manager.country || (manager as any).city || (manager as any).locationName) && (
                 <p className="mt-2 text-sm text-muted-foreground">
-                  {getCountryFlag(manager.country)} {manager.country}
+                  {manager.country && <>{getCountryFlag(manager.country)} </>}
+                  {formatLocation({
+                    ...EMPTY_LOCATION,
+                    country: manager.country || "",
+                    state:  (manager as any).state || "",
+                    city:   (manager as any).city || "",
+                    label:  (manager as any).locationName || "",
+                    precision: (manager as any).locationName ? "exact" : null,
+                  })}
+                  {(manager as any).locationStreet && (
+                    /* A street with no city is not an address. */
+                    <span className="block text-xs text-muted-foreground/80">
+                      {[(manager as any).locationStreet,
+                        (manager as any).locationCity,
+                        (manager as any).locationState]
+                        .filter(Boolean).join(", ")}
+                    </span>
+                  )}
                 </p>
               )}
 
@@ -2394,6 +2421,12 @@ export default function BossProfile() {
                       country: adminEditLocation.country ?? undefined,
                       state:   adminEditLocation.state   ?? undefined,
                       city:    adminEditLocation.city    ?? undefined,
+                      /*
+                        The exact place, when one was picked. -1 clears it, so an admin can move a
+                        manager off a specific building rather than being stuck with whatever was
+                        chosen first.
+                      */
+                      companyLocationId: adminEditLocation.companyLocationId ?? -1,
                     }, { withCredentials: true });
                     await Promise.all([
                       queryClient.invalidateQueries({ queryKey: managerQueryKey }),

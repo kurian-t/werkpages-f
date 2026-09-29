@@ -18,7 +18,6 @@ import Index from "./pages/Index";
 import BossProfile from "./pages/BossProfile";
 import Directory from "./pages/Directory";
 import NotFound from "./pages/NotFound";
-import FindYourManager from "./pages/FindYourManager";
 import Companies from "./pages/Companies";
 import CompanyProfile from "./pages/CompanyProfile";
 import Explore from "./pages/Explore";
@@ -118,8 +117,22 @@ const App = () => (
             <Route path="/what-is-werkpages" element={<WhatIsWerkpages />} />
             <Route path="/support" element={<SupportUs />} />
             <Route path="/auth/verified" element={<EmailVerified />} />
-            <Route path="/find" element={<FindYourManager />} />
-            <Route path="/explore" element={<Explore />} />
+            {/*
+              One name for one job, in both products.
+
+              RateMyManagers served this at /find while Werkpages served it at /explore, so the
+              same purpose had two addresses and anything shared between them - a link, a
+              redirect, a piece of copy - had to know which product it was in. It did not: the
+              RMM sign-in redirect pointed at /explore and dropped every new account on a 404.
+
+              Werkpages also had BOTH pages. /explore was the advanced one the nav linked to,
+              and /find rendered a simpler duplicate that nothing pointed at. The advanced page
+              now serves /find and the duplicate is gone.
+            */}
+            <Route path="/search" element={<Explore />} />
+            {/* Kept so shared links, bookmarks and anything indexed still arrive. */}
+            <Route path="/explore" element={<Navigate to="/search" replace />} />
+            <Route path="/find" element={<Navigate to="/search" replace />} />
             <Route path="/industries" element={<Industries />} />
             <Route path="/industries/:slug" element={<IndustryProfile />} />
             <Route path="/auth/callback" element={<AuthCallback />} />

@@ -106,7 +106,7 @@ test.describe("OAuth callback routing", () => {
 
     await page.goto("/auth/callback?code=test-code&state=test-state");
 
-    await expect(page).toHaveURL(/\/explore/, { timeout: 10_000 });
+    await expect(page).toHaveURL(/\/search/, { timeout: 10_000 });
   });
 
   test("returning user (isNewUser=false) is redirected to returnTo after OAuth callback", async ({

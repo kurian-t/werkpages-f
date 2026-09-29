@@ -109,10 +109,10 @@ export function Header() {
               </Link>
             )}
             <Link
-              to="/explore"
-              className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${pathname === "/explore" || pathname === "/find" ? "text-[#6d28d9]" : "text-foreground"}`}
+              to="/search"
+              className={`text-sm font-medium transition-colors hover:text-[#6d28d9] ${pathname === "/search" ? "text-[#6d28d9]" : "text-foreground"}`}
             >
-              Explore
+              Search
             </Link>
             <Link
               to="/industries"
@@ -325,11 +325,11 @@ export function Header() {
                 </Link>
               )}
               <Link
-                to="/explore"
-                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${pathname === "/explore" || pathname === "/find" ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}
+                to="/search"
+                className={`rounded px-4 py-2 text-sm font-medium transition-colors hover:bg-[#d5cde0] ${pathname === "/search" ? "text-[#2e0562] bg-[#d5cde0]" : "text-foreground"}`}
                 onClick={() => setIsMenuOpen(false)}
               >
-                Explore
+                Search
               </Link>
               <Link
                 to="/industries"
@@ -457,7 +457,7 @@ export function Header() {
         autoSubmit={false}
         onAuthenticated={() => {
           setAuthFlowStep(null);
-          if (pathname === "/" || pathname === "/signin" || pathname === "/signup") navigate("/find");
+          if (pathname === "/" || pathname === "/signin" || pathname === "/signup") navigate("/search");
         }}
         onClose={() => setAuthFlowStep(null)}
         returnTo={["/", "/signin", "/signup"].includes(pathname) ? "/find" : undefined}
