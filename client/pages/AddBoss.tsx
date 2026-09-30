@@ -144,7 +144,9 @@ export default function AddBoss() {
         Left empty and required instead: an answer somebody typed is worth more than one nobody
         disagreed with.
       */
-      setFormData(prev => ({ ...prev, country: prev.country || geo.country }));
+      // ?? "" because /api/geo answers {"country": null} when the header is absent, and a null
+      // here reaches formData.country, where anything calling .trim() on it throws.
+      setFormData(prev => ({ ...prev, country: prev.country || (geo.country ?? "") }));
     });
     return () => { cancelled = true; };
   }, []);
@@ -221,7 +223,18 @@ export default function AddBoss() {
   const lastNameValid  = formData.lastName.trim().length > 0;
   const titleValid     = formData.title.trim().length > 0;
   const companyValid   = companySelection.name.trim().length >= 2;
-  const countryValid   = formData.country.trim().length > 0;
+  /*
+    THE COUNTRY IS NOT A FIELD ON THIS FORM ANY MORE.
+
+    It was a <select>, replaced by LocationField, so formData.country is now set from ONE place:
+    /api/geo. Gating on it meant that a visitor whose geography we cannot read - no Cloudflare
+    header, a stripping proxy, a VPN - had Next permanently disabled on step 1 and a "Country is
+    required" error pointing at a control that does not exist. There was no way out of the form.
+
+    The country that matters is the one attached to the location somebody picked, and that travels
+    with it. Nothing here needs to demand it separately.
+  */
+  const countryValid   = true;
   const linkedinValid  = !formData.linkedinUrl || validateProfileUrl(formData.linkedinUrl).valid;
   const unratedCount   = Object.values(ratings).filter(r => r < 1).length;
 
@@ -399,7 +412,7 @@ export default function AddBoss() {
         name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
         ...(await companySelection.payload()),
         title: formData.title.trim(),
-        country: formData.country,
+        country: workLocation.country || formData.country,
         state: formData.state.trim() || null,
         ...declaredPayload(workLocation),
       }).catch(() => {});
@@ -441,7 +454,7 @@ export default function AddBoss() {
           image: formData.firstName.trim().charAt(0).toUpperCase(),
           bio: "New manager submitted for community review",
           status: formData.status,
-          country: formData.country,
+          country: workLocation.country || formData.country,
           linkedinUrl: formData.linkedinUrl.trim() || null,
           startDate: toYearMonth(workedFrom.month, workedFrom.year),
           endDate: formData.status === "retired" ? toYearMonth(workedUntil.month, workedUntil.year) : null,
@@ -537,14 +550,17 @@ export default function AddBoss() {
     if (companySelection.name.trim().length === 0) errs.push("Company is required");
     else if (!companyValid) errs.push("Company must be at least 2 characters");
     /*
-      Required, and no longer pre-filled.
+      NOT a blocker, deliberately.
 
-      The form used to arrive with the IP-detected location already in it, so the common path was
-      submitting a guess untouched. Requiring an answer that nobody typed is worse than requiring
-      one they did: this is published as fact about a real manager.
+      It was one, and it cost a real submission: somebody filled the whole form and could not
+      send it. Two things have to both work for a required location to be fair - the field has to
+      start empty, and the picker has to be able to answer - and only the first was true. A picker
+      that returns nothing turns "required" into a form nobody can submit, and a contribution
+      refused is a contribution lost.
+
+      What protects anonymity is that the field is no longer PRE-FILLED with a guess from an IP
+      address. Refusing the submission adds nothing to that, so it is gone.
     */
-    if (!workLocation.precision) errs.push("Location is required - pick a suggestion");
-    if (!countryValid)   errs.push("Country is required");
     if (formData.linkedinUrl && !linkedinValid) {
       errs.push(validateProfileUrl(formData.linkedinUrl).error!);
     }
@@ -614,7 +630,7 @@ export default function AddBoss() {
           name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
           ...(await companySelection.payload()),
           title: formData.title.trim(),
-          country: formData.country,
+          country: workLocation.country || formData.country,
           state: formData.state.trim() || null,
           ...declaredPayload(workLocation),
           status: formData.status,
@@ -666,7 +682,7 @@ export default function AddBoss() {
         image: formData.firstName.trim().charAt(0).toUpperCase(),
         bio: "New manager submitted for community review",
         status: formData.status,
-        country: formData.country,
+        country: workLocation.country || formData.country,
         state: formData.state.trim() || null,
         ...declaredPayload(workLocation),
         linkedinUrl: formData.linkedinUrl.trim() || null,

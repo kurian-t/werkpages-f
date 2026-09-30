@@ -208,3 +208,69 @@ test.describe("When the work was already saved", () => {
     }).toPass({ timeout: 15_000 });
   });
 });
+
+/**
+ * The form has to be submittable when we cannot tell where the visitor is.
+ *
+ * <p>This is a real lost submission, not a hypothetical: somebody filled in the whole add-manager
+ * form and the submit did nothing.
+ *
+ * <p>Two changes combined badly. The country <select> was replaced by LocationField, which left
+ * {@code formData.country} set from exactly one source - {@code /api/geo}, i.e. a Cloudflare
+ * header. And step 1 still required a country. So for any visitor that header does not reach - a
+ * stripping proxy, a VPN, a privacy browser, every local developer - Next stayed disabled and the
+ * form reported "Country is required" pointing at a control that no longer existed. There was no
+ * way out of it.
+ *
+ * <p>The location requirement compounded it: required, starting empty, and answerable only by a
+ * picker that itself needs a country to search.
+ */
+test.describe("When the visitor's country cannot be determined", () => {
+  async function geoUnavailable(page: any) {
+    // Exactly what a stripped Cloudflare header produces.
+    await page.route(/\/api\/geo/, (route: any) =>
+      route.fulfill({ json: { country: null, state: null, city: null } }));
+  }
+
+  test("step 1 still advances with no country and no location", async ({ page }) => {
+    await mockAddBossPage(page);
+    await geoUnavailable(page);
+    await page.goto("/add");
+
+    await page.locator('input[name="firstName"]').fill("Jordan");
+    await page.locator('input[name="lastName"]').fill("Smith");
+    await page.locator('input[name="title"]').fill("Engineering Manager");
+    await page.locator('input[name="company"]').fill("Acme Corp");
+    await page.keyboard.press("Escape");
+
+    // The whole bug in one assertion: this button was permanently disabled.
+    await expect(next(page)).toBeEnabled({ timeout: 10_000 });
+    await next(page).click();
+    await expect(page.getByText(/step 2 of 3/i)).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("a complete form reaches the server", async ({ page }) => {
+    // The end of the journey the person actually attempted, and the part that was lost.
+    let submitted = false;
+    await mockAddBossPage(page, { loggedIn: true });
+    await geoUnavailable(page);
+    await page.route(/\/api\/managers(\?|$)/, (route: any) => {
+      if (route.request().method() === "POST") {
+        submitted = true;
+        return route.fulfill({ status: 201, json: { id: "m1", slug: "jordan-smith" } });
+      }
+      return route.continue();
+    });
+    await page.goto("/add");
+
+    await fillStep1(page);
+    await next(page).click();
+    await fillTimeline(page);
+    await next(page).click();
+    await rateAllFiveStars(page);
+    await attestFirstHandExperience(page);
+    await page.getByRole("button", { name: /submit/i }).click();
+
+    await expect(async () => expect(submitted).toBe(true)).toPass({ timeout: 15_000 });
+  });
+});
