@@ -15,6 +15,22 @@ import { FormSubjectCard } from "@/components/RatingFormParts";
  */
 
 /**
+ * The mark that says a field is required.
+ *
+ * <p>One implementation, because three labels had spelled it themselves as a literal "*" inside
+ * their text while the shared fields rendered a red one - so on the same form Name and Title were
+ * marked in red and Company, Location and Manager Status in plain body colour, which reads as
+ * "these three are optional".
+ *
+ * <p>aria-hidden: the asterisk is decoration. The input itself carries `required`, which is what a
+ * screen reader announces, and "Company star" is not what anybody needs to hear.
+ */
+export function RequiredMark() {
+  return <span aria-hidden="true" className="text-red-500">*</span>;
+}
+
+
+/**
  * The text input every field on these forms uses.
  *
  * <p>One implementation, so a bug found in one field is fixed in all of them. Three call sites used
@@ -190,7 +206,7 @@ export function CollapsibleField({
       onBlurCapture={() => { hasFocus.current = false; }}
     >
       <label htmlFor={id} className="mb-2 block text-sm font-semibold text-foreground">
-        {label} {required && <span className="text-red-500">*</span>}
+        {label} {required && <RequiredMark />}
       </label>
       {/*
         The same card the company field uses, not a lookalike. Two implementations of "collapsed

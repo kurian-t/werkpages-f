@@ -22,6 +22,7 @@ import { CompanyLogoImg } from "@/components/ManagerCard";
 import { useCompanySelection } from "@/hooks/useCompanySelection";
 import type { AuthFlowStep } from "@/components/AuthFlowModal";
 import type { User } from "@/contexts/AuthContext";
+import { RequiredMark } from "@/components/FormFields";
 
 const currentYear = new Date().getFullYear();
 const currentMonth = new Date().getMonth() + 1;
@@ -961,7 +962,7 @@ export default function AddBoss() {
                   {RATING_CATEGORIES.map((category) => (
                     <div key={category} className="border-b border-border pb-6 last:border-b-0">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                        <label className="block text-sm font-semibold text-foreground">{category} *</label>
+                        <label className="block text-sm font-semibold text-foreground">{category} <RequiredMark /></label>
                         <StarRating
                           value={ratings[category] || 0}
                           onChange={(value) => handleRatingChange(category, value)}

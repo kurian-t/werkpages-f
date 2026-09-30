@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import API_BASE from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { RoleAutocomplete } from "@/components/RoleAutocomplete";
-import { CollapsibleField } from "@/components/FormFields";
+import { CollapsibleField, RequiredMark } from "@/components/FormFields";
 import { LocationField } from "@/components/LocationField";
 import { AttestationCard } from "@/components/RatingFormParts";
 import { LocationValue, EMPTY_LOCATION, declaredPayload, orUserGeo } from "@/lib/location";
@@ -551,7 +551,7 @@ export default function AddInterview() {
                 */}
                 <div>
                   <p className="mb-2 block text-sm font-semibold text-foreground">
-                    When did you interview here? <span className="text-red-500">*</span>
+                    When did you interview here? <RequiredMark />
                   </p>
                   <div className="flex items-center gap-2">
                     <select

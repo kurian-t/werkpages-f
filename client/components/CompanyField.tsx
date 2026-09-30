@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CompanyLogoImg } from "@/components/ManagerCard";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
 import { FormSubjectCard } from "@/components/RatingFormParts";
+import { RequiredMark } from "@/components/FormFields";
 
 /**
  * Choosing a company, wherever a form asks for one.
@@ -176,7 +177,7 @@ export function CompanyField({
     <div data-testid="company-field">
       {label && (
         <label htmlFor={fieldId} className="mb-2 block text-sm font-semibold text-foreground">
-          {label} {required && <span className="text-red-500">*</span>}
+          {label} {required && <RequiredMark />}
         </label>
       )}
 

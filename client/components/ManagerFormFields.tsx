@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Check, X } from "lucide-react";
 import { CompanyField } from "@/components/CompanyField";
-import { CollapsibleField, FormTextInput } from "@/components/FormFields";
+import { CollapsibleField, FormTextInput, RequiredMark } from "@/components/FormFields";
 export { CollapsibleField, FormTextInput } from "@/components/FormFields";
 import { LocationField } from "@/components/LocationField";
 import { RoleAutocomplete } from "@/components/RoleAutocomplete";
@@ -247,7 +247,7 @@ export function ManagerIdentityFields({
       */}
       <div>
         <label htmlFor="company-field" className="mb-2 block text-sm font-semibold text-foreground">
-          Company *
+          Company <RequiredMark />
         </label>
         <CompanyField
           label={null}
@@ -280,7 +280,7 @@ export function ManagerIdentityFields({
 
       {showStatus && (
         <div>
-          <label className="mb-3 block text-sm font-semibold text-foreground">Manager Status *</label>
+          <label className="mb-3 block text-sm font-semibold text-foreground">Manager Status <RequiredMark /></label>
           <div className="space-y-2">
             {([
               { key: "active",  title: "Currently Active",                    blurb: "Manager is actively leading" },

@@ -10,6 +10,7 @@ import { formatReviewPeriod } from "@/lib/reviewPeriod";
 import { toast } from "sonner";
 import axios from "axios";
 import { formatDistanceToNow } from "date-fns";
+import { RequiredMark } from "@/components/FormFields";
 
 const RATING_CATEGORIES = [
   "Communication Style",
@@ -805,13 +806,13 @@ export default function AccountSettings() {
                         <div className="space-y-3">
                           <div className="grid gap-3 sm:grid-cols-2">
                             <div>
-                              <label className="block text-xs text-muted-foreground mb-1">Their title <span className="text-red-500">*</span></label>
+                              <label className="block text-xs text-muted-foreground mb-1">Their title <RequiredMark /></label>
                               <input type="text" value={editManagerTitle} onChange={(e) => setEditManagerTitle(e.target.value)}
                                 placeholder="e.g. Engineering Manager" maxLength={100} autoFocus
                                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
                             </div>
                             <div>
-                              <label className="block text-xs text-muted-foreground mb-1">Their company <span className="text-red-500">*</span></label>
+                              <label className="block text-xs text-muted-foreground mb-1">Their company <RequiredMark /></label>
                               <input type="text" value={editManagerCompany} onChange={(e) => setEditManagerCompany(e.target.value)}
                                 placeholder="e.g. Acme Corp" maxLength={100}
                                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
@@ -875,10 +876,10 @@ export default function AccountSettings() {
                       <p className="mt-1 text-sm text-muted-foreground">When did you work with this manager?</p>
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-foreground mb-1">When did you work with this manager? <span className="text-red-500">*</span></p>
+                      <p className="text-sm font-semibold text-foreground mb-1">When did you work with this manager? <RequiredMark /></p>
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div>
-                          <p className="text-xs text-muted-foreground mb-2">From <span className="text-red-500">*</span></p>
+                          <p className="text-xs text-muted-foreground mb-2">From <RequiredMark /></p>
                           <div className="flex gap-2">
                             <select value={editWorkedFrom.month} onChange={(e) => setEditWorkedFrom(p => ({ ...p, month: e.target.value }))} className="rounded border border-border bg-background px-2 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
                               <option value="">Month</option>
@@ -984,7 +985,7 @@ export default function AccountSettings() {
                 stated it.
               */}
               <div>
-                <label htmlFor="submission-field-name" className="block text-sm font-semibold text-foreground mb-1">Full Name *</label>
+                <label htmlFor="submission-field-name" className="block text-sm font-semibold text-foreground mb-1">Full Name <RequiredMark /></label>
                 <input
                   id="submission-field-name"
                   type="text"
@@ -995,7 +996,7 @@ export default function AccountSettings() {
                 />
               </div>
               <div>
-                <label htmlFor="submission-field-title" className="block text-sm font-semibold text-foreground mb-1">Title *</label>
+                <label htmlFor="submission-field-title" className="block text-sm font-semibold text-foreground mb-1">Title <RequiredMark /></label>
                 <input
                   id="submission-field-title"
                   type="text"
@@ -1006,7 +1007,7 @@ export default function AccountSettings() {
                 />
               </div>
               <div>
-                <label htmlFor="submission-field-company" className="block text-sm font-semibold text-foreground mb-1">Company *</label>
+                <label htmlFor="submission-field-company" className="block text-sm font-semibold text-foreground mb-1">Company <RequiredMark /></label>
                 <input
                   id="submission-field-company"
                   type="text"

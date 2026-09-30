@@ -47,6 +47,7 @@ import { useFormDraft, clearFormDraft } from "@/hooks/useFormDraft";
 import { MonthYear } from "@/components/MonthYear";
 import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import { DeleteRatingControl } from "@/components/DeleteRatingControl";
+import { RequiredMark } from "@/components/FormFields";
  
 const RATING_CATEGORIES = [
   "Communication Style",
@@ -3298,7 +3299,7 @@ export default function BossProfile() {
                       {RATING_CATEGORIES.map((category) => (
                         <div key={category} className="border-b border-border pb-6 last:border-b-0">
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                            <label className="block text-sm font-semibold text-foreground">{category} *</label>
+                            <label className="block text-sm font-semibold text-foreground">{category} <RequiredMark /></label>
                             <StarRating
                               value={modalRatings[category] || 0}
                               onChange={(value) => setModalRatings((prev) => ({ ...prev, [category]: value }))}
@@ -3974,7 +3975,7 @@ export default function BossProfile() {
                       {RATING_CATEGORIES.map((category) => (
                         <div key={category} className="border-b border-border pb-6 last:border-b-0">
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                            <label className="block text-sm font-semibold text-foreground">{category} *</label>
+                            <label className="block text-sm font-semibold text-foreground">{category} <RequiredMark /></label>
                             <StarRating
                               value={editReviewData[category] || 0}
                               onChange={(value) => setEditReviewData((prev) => ({ ...prev, [category]: value }))}

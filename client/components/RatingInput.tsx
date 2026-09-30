@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Star } from "lucide-react";
+import { RequiredMark } from "@/components/FormFields";
 
 /**
  * Five stars you can click. The input, not the display.
@@ -76,7 +77,7 @@ export function FormField({
     <div className="space-y-2">
       <label htmlFor={htmlFor} className="block text-sm font-semibold text-foreground">
         {label}
-        {required && <span className="ml-0.5 text-destructive">*</span>}
+        {required && <RequiredMark />}
       </label>
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       {children}

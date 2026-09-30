@@ -7,6 +7,7 @@ import {
   hasGeography, mergeWidenedSuggestions,
 } from "@/lib/location";
 import { FormSubjectCard } from "@/components/RatingFormParts";
+import { RequiredMark } from "@/components/FormFields";
 import { useAnchoredPosition } from "@/lib/anchoredDropdown";
 
 /**
@@ -230,7 +231,7 @@ export function LocationField({
   return (
     <div ref={containerRef}>
       <label htmlFor={id} className="block text-sm font-semibold text-foreground mb-2">
-        Location *
+        Location <RequiredMark />
       </label>
       <FormSubjectCard
         layout="inline"
