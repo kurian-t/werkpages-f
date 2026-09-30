@@ -74,10 +74,18 @@ const CORPUS_BRANCH = {
 };
 
 test.describe("The location control", () => {
-  test("collapses to one line showing the whole location", async ({ page }) => {
+  test("starts empty, and offers to be filled in", async ({ page }) => {
+    /*
+      It used to open holding the visitor's own geography, read from their IP.
+
+      That was removed deliberately: the guess is often wrong, and a wrong city attached to a
+      named person at a named company is identifying in a way nobody agreed to. An unanswered
+      question is better than a confidently wrong answer, so the field starts blank and the
+      person says where they worked.
+    */
     await openForm(page);
 
-    await expect(page.getByText("San Francisco, California, United States")).toBeVisible();
+    await expect(page.getByText("San Francisco, California, United States")).toHaveCount(0);
     await expect(page.getByRole("button", { name: /edit location details/i })).toBeVisible();
   });
 
@@ -90,28 +98,31 @@ test.describe("The location control", () => {
     await expect(page.getByLabel("City")).toHaveCount(0);
   });
 
-  test("the prefilled location is shown in full, and can be changed", async ({ page }) => {
+  test("nothing is attached to the form that the person did not type", async ({ page }) => {
     /*
-      It fills the visible field; it never attaches itself at submit. A value somebody can see,
-      change and send unchanged is a declaration - one attached behind their back is an inference
-      about where they worked, drawn from an IP address.
+      The rule this protects is unchanged; the way it is satisfied has moved.
 
-      The sentence that used to say so under the field is gone at the user's request; what makes
-      the value a declaration is that it is displayed and editable, which is what this asserts.
+      A value somebody can see, change and send unchanged was treated as a declaration, which is
+      why the IP guess was allowed to prefill the visible field. It turned out people submit what
+      is already there without reading it, so the guess was being published as though somebody
+      had confirmed it. Now nothing is offered at all, and the only location the form can send is
+      one that was chosen from the suggestion list.
     */
     await openForm(page);
 
-    await expect(page.getByText("San Francisco, California, United States")).toBeVisible();
+    await expect(page.getByText("San Francisco, California, United States")).toHaveCount(0);
+    await expect(page.getByText(/California/)).toHaveCount(0);
     await expect(page.getByRole("button", { name: /edit location details/i })).toBeEnabled();
   });
 
-  test("editing opens one free-form field, already holding the current value", async ({ page }) => {
-    // Correcting a location should mean editing what is there, not retyping it from nothing.
+  test("editing opens one free-form field, empty and ready to type into", async ({ page }) => {
+    // One field, not a country/province/city hierarchy - and, now, one that starts blank rather
+    // than holding a guess the person would have to notice in order to correct.
     await openForm(page);
 
     await page.getByRole("button", { name: /edit location details/i }).click();
 
-    await expect(page.getByLabel("Location *")).toHaveValue("San Francisco, California, United States");
+    await expect(page.getByLabel("Location *")).toHaveValue("");
     // Named for its field: several fields on this form collapse, so "Done editing" alone is
     // ambiguous both to a screen reader and to a locator.
     await expect(page.getByRole("button", { name: /done editing location/i })).toBeVisible();
@@ -168,7 +179,10 @@ test.describe("Choosing a place", () => {
     await page.getByLabel("Location *").fill("Waterlooo");
     await page.getByRole("button", { name: /done editing location/i }).click();
 
-    await expect(page.getByText("San Francisco, California, United States")).toBeVisible();
+    // Nothing matched, so nothing was chosen, so there is still no location - and specifically
+    // the typed text has NOT been turned into one.
+    await expect(page.getByText("Waterlooo")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /edit location details/i })).toBeVisible();
   });
 });
 
@@ -183,11 +197,15 @@ test.describe("What reaches the server", () => {
     return seen;
   }
 
-  test("a form submitted unchanged declares the location it showed", async ({ page }) => {
+  test("a form nobody gave a location to sends none", async ({ page }) => {
     /*
-      The reason the whole location is rendered rather than inferred. Somebody who reads it and
-      leaves it alone has confirmed it, so it may be declared - and the declared keys are the only
-      ones the backend will ever publish.
+      This asserted the opposite: that an untouched form declared the IP-derived location it had
+      prefilled. That was the bug. The early ghost capture fires as soon as step 1 is valid, so
+      the guess was reaching the server - and being published - before the person had even seen
+      step 2, let alone agreed to it.
+
+      The declared keys are the only ones the backend publishes, so the assertion that matters is
+      that they are absent until somebody picks a place.
     */
     await mockAddBossPage(page);
     const seen = await captureGhostBody(page);
@@ -199,10 +217,10 @@ test.describe("What reaches the server", () => {
     await page.locator('input[name="company"]').fill("Acme Corp");
 
     await expect(async () => expect(seen.body).not.toBeNull()).toPass({ timeout: 10_000 });
-    expect(seen.body.declaredCountry).toBe("United States");
-    expect(seen.body.declaredState).toBe("California");
-    expect(seen.body.declaredCity).toBe("San Francisco");
-    expect(seen.body.declaredPrecision).toBe("city");
+    expect(seen.body.declaredCountry).toBeFalsy();
+    expect(seen.body.declaredState).toBeFalsy();
+    expect(seen.body.declaredCity).toBeFalsy();
+    expect(seen.body.declaredPrecision).toBeFalsy();
   });
 
   test("an exact pick sends the workplace id and no coarse values", async ({ page }) => {

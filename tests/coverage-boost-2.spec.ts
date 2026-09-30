@@ -8,6 +8,8 @@ import {
   MOCK_COMPANY_LISTING, TEST_COMPANY_SLUG, TEST_MANAGER_SLUG,
   mockTurnstile,
   openDirectoryFilters,
+  pickLocation,
+  DEFAULT_LOCATION_SUGGESTION,
 } from "./fixtures";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -605,6 +607,14 @@ test.describe("AddBoss - multi-step form flow", () => {
       await mockUnauthenticated(page);
     }
     await mockGeo(page);
+    /*
+      This local helper shadows the one in fixtures.ts, so it needs the location picker's endpoint
+      too. Without it the request falls through the vite proxy to whatever backend is running -
+      which answers here and answers nothing in CI, and answers from the real S3 corpus either way.
+    */
+    await page.route(/\/api\/company-locations\/suggest/, (route: any) =>
+      route.fulfill({ json: [DEFAULT_LOCATION_SUGGESTION] })
+    );
     await page.route(/\/api\/companies\/suggest/, (route: any) =>
       route.fulfill({ json: { data: [] } })
     );
@@ -658,13 +668,9 @@ test.describe("AddBoss - multi-step form flow", () => {
     // The company field is CompanyField now, which owns its own placeholder; the name
     // attribute is what stayed stable across that change.
     await page.locator('input[name="company"]').fill("Acme Corp");
-
-    // Geo pre-fills country; verify country select has a value
-    const countrySelect = page.locator("select").first();
-    if (await countrySelect.isVisible({ timeout: 2000 }).catch(() => false)) {
-      const val = await countrySelect.inputValue();
-      if (!val) await countrySelect.selectOption({ label: "Canada" });
-    }
+    // Location is required and no longer prefilled, so step 1 is not valid without one.
+    await page.keyboard.press("Escape");   // close the company picker's own listbox
+    await pickLocation(page);
 
     const nextBtn = page.getByRole("button", { name: /^next$/i });
     await expect(nextBtn).toBeVisible({ timeout: 5000 });

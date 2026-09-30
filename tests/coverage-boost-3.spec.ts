@@ -1029,11 +1029,17 @@ test.describe("careerInsights.ts - insight generation via BossProfile", () => {
 // ─── countries.ts - getCountryFlag via AddBoss location rendering ─────────────
 
 test.describe("countries.ts - getCountryFlag coverage", () => {
-  test("AddBoss renders country flag from geo-prefilled location", async ({ page }) => {
+  test("AddBoss renders country flag for a chosen location", async ({ page }) => {
+    /*
+      Named for geo-prefill, which is gone - the form no longer fills the field from an IP. The
+      flag is still rendered from the CHOSEN location, so the countries.ts lookup this test exists
+      to cover is reached by picking a place instead of by being handed one.
+    */
     await mockAuthenticated(page, MOCK_USER);
-    // Mock geo to return "Canada" so the COUNTRIES lookup runs
-    await page.route("**/api/geo", (route: any) =>
-      route.fulfill({ json: { country: "Canada", state: "Ontario", city: "Toronto" } })
+    await page.route(/\/api\/company-locations\/suggest/, (route: any) =>
+      route.fulfill({ json: [{ kind: "geo", label: "Toronto, Ontario, Canada",
+                               country: "Canada", state: "Ontario", city: "Toronto",
+                               precision: "city" }] })
     );
     await page.route(/\/api\/companies\/suggest/, (route: any) =>
       route.fulfill({ json: { data: [] } })
@@ -1044,14 +1050,21 @@ test.describe("countries.ts - getCountryFlag coverage", () => {
     await page.route("**/api/managers*", (route: any) => route.continue());
     await page.goto("/add");
     await expect(page.getByText(/who is this manager/i)).toBeVisible({ timeout: 8000 });
+
+    await page.getByRole("button", { name: /edit location details/i }).first().click();
+    await page.getByLabel(/^Location \*/).fill("Toronto");
+    await page.getByRole("option", { name: /Toronto, Ontario, Canada/ }).first().click();
+
     // The location chip renders getCountryFlag("Canada") = "🇨🇦"
     await expect(page.getByText(/🇨🇦|canada/i).first()).toBeVisible({ timeout: 5000 });
   });
 
   test("AddBoss with 'Other' country shows 🌍 fallback flag", async ({ page }) => {
+    // Same retarget as above: the country comes from what was picked, not from the visitor's IP.
     await mockAuthenticated(page, MOCK_USER);
-    await page.route("**/api/geo", (route: any) =>
-      route.fulfill({ json: { country: "Other", state: "", city: "" } })
+    await page.route(/\/api\/company-locations\/suggest/, (route: any) =>
+      route.fulfill({ json: [{ kind: "geo", label: "Somewhere, Other",
+                               country: "Other", precision: "country" }] })
     );
     await page.route(/\/api\/companies\/suggest/, (route: any) =>
       route.fulfill({ json: { data: [] } })
@@ -1062,6 +1075,11 @@ test.describe("countries.ts - getCountryFlag coverage", () => {
     await page.route("**/api/managers*", (route: any) => route.continue());
     await page.goto("/add");
     await expect(page.getByText(/who is this manager/i)).toBeVisible({ timeout: 8000 });
+
+    await page.getByRole("button", { name: /edit location details/i }).first().click();
+    await page.getByLabel(/^Location \*/).fill("Somewhere");
+    await page.getByRole("option", { name: /Somewhere, Other/ }).first().click();
+
     // "Other" maps to 🌍
     await expect(page.getByText(/🌍|other/i).first()).toBeVisible({ timeout: 5000 });
   });

@@ -656,6 +656,17 @@ export async function mockAddBossPage(
     tests that pick a company fail there and only there. Mocked here so the form's picker is
     answered by the same fixture that answers the rest of the form.
   */
+  /*
+    The location picker's own endpoint, for exactly the same reason as the company one below.
+
+    It also has to be answered because Location is now REQUIRED and starts empty: the form no
+    longer prefills the visitor's geography, so a test that does not choose a place cannot get
+    past step 1. Left unmocked this reaches the real corpus in S3 through the vite proxy, which
+    is slow, costs reads, and answers nothing at all in CI.
+  */
+  await page.route(/\/api\/company-locations\/suggest/, (route) =>
+    route.fulfill({ json: [DEFAULT_LOCATION_SUGGESTION] }));
+
   await page.route(/\/api\/companies\/suggest/, (route) => {
     const query = (new URL(route.request().url()).searchParams.get("query") || "").toLowerCase();
     route.fulfill({
@@ -1000,4 +1011,37 @@ export async function openAccountMenu(page: Page, username: string) {
 export async function openDirectoryFilters(page: Page) {
   const toggle = page.getByRole("button", { name: "Filters", exact: true });
   if (await toggle.isVisible().catch(() => false)) await toggle.click();
+}
+
+
+/**
+ * The place every form test picks when the location itself is not what is under test.
+ *
+ * A `geo` row, because a coarse place is a complete answer on its own - most tests want "a valid
+ * location was chosen", not "a specific building was chosen".
+ */
+export const DEFAULT_LOCATION_SUGGESTION = {
+  kind: "geo",
+  label: "Waterloo, Ontario, Canada",
+  country: "Canada",
+  state: "Ontario",
+  city: "Waterloo",
+  precision: "city",
+};
+
+/**
+ * Answers the location question the way a person would: type, then pick from the list.
+ *
+ * <p>Every contribution form asks it through the same control, so every test answers it the same
+ * way. It exists because the field stopped being prefilled - the form used to arrive holding the
+ * visitor's IP-derived geography, which meant tests never had to answer it and, more importantly,
+ * neither did real people. See manager-location.spec.ts for why that was wrong.
+ *
+ * <p>Typed text is never parsed into a location, so the click is the part that matters.
+ */
+export async function pickLocation(page: Page, label: RegExp = /edit location details/i) {
+  const edit = page.getByRole("button", { name: label });
+  if (await edit.count()) await edit.first().click();
+  await page.getByLabel(/^Location \*/).fill("Waterloo");
+  await page.getByRole("option", { name: /Waterloo, Ontario, Canada/ }).first().click();
 }

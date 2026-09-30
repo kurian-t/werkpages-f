@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { MapPin, Building2 } from "lucide-react";
 import {
   LocationValue, LocationSuggestion, formatLocation, fromSuggestion, fetchLocationSuggestions,
+  hasGeography, mergeWidenedSuggestions,
 } from "@/lib/location";
 import { FormSubjectCard } from "@/components/RatingFormParts";
 import { useAnchoredPosition } from "@/lib/anchoredDropdown";
@@ -65,6 +66,14 @@ export function LocationField({
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
   /*
+    Which search is the current one.
+
+    Requests are not cancelled and do not finish in order - a US corpus scan can take twenty
+    seconds while the next keystroke's Canadian one takes a third of one - so every reply checks
+    that it is still the newest before touching the list.
+  */
+  const latestRef = useRef(0);
+  /*
     The reader's own country, used only to widen a search that found nothing - never to overrule
     what they typed or what the field already holds.
   */
@@ -113,6 +122,7 @@ export function LocationField({
     const q = query.trim();
     if (q.length < 2) { setSuggestions([]); setOpen(false); return; }
 
+    const seq = ++latestRef.current;
     const timer = setTimeout(() => {
       void (async () => {
         /*
@@ -124,21 +134,46 @@ export function LocationField({
           pick, so the country could never change. The filter made itself permanent.
 
           Narrow first, then widen. The current country is still tried first, because "Waterloo"
-          under Ontario should not offer Waterloo, Belgium. But when it finds nothing we retry
-          without it - and the backend needs SOME country, so the reader's own is the next best
-          guess, and finally the query is taken at its word.
+          under Ontario should not offer Waterloo, Belgium.
+
+          WIDEN ON NO GEOGRAPHY, NOT ON NO RESULTS.
+
+          Widening used to need the list to come back completely empty, which it almost never
+          does: searching "kitchener" against the UK returns a London pub called "Lord Kitchener",
+          and one irrelevant pub was enough to count as success and cancel the retry. Kitchener,
+          Ontario could not be reached at all - the same trap as before, now sprung by a business
+          name rather than by an empty list.
+
+          A `geo` row is the answer being asked for here; a `place` is a bonus. So the test is
+          whether any geography came back, and the widened results are MERGED rather than
+          substituted, because a genuine search for that pub should still find it.
         */
         let found = await fetchLocationSuggestions(q, {
           companyId, companyName, country: value.country, state: value.state,
         });
+        // Show what we have straight away. The widening below is an extra round trip, and making
+        // the whole list wait for it is what made a search that already had answers feel slow.
+        if (seq === latestRef.current && found.length > 0) {
+          setSuggestions(found);
+          setOpen(true);
+          setActiveIndex(-1);
+        }
 
-        if (found.length === 0) {
+        if (!hasGeography(found)) {
           for (const fallback of [geoCountry, countryNamedIn(q)]) {
             if (!fallback || sameCountry(fallback, value.country)) continue;
-            found = await fetchLocationSuggestions(q, { companyId, companyName, country: fallback });
-            if (found.length > 0) break;
+            const widened = await fetchLocationSuggestions(q, { companyId, companyName, country: fallback });
+            const merged = mergeWidenedSuggestions(found, widened);
+            if (merged !== found) { found = merged; break; }
+            if (found.length === 0 && widened.length > 0) { found = widened; break; }
           }
         }
+
+        // A reply from a query the user has already typed past must never replace a newer one.
+        // US partitions can take twenty seconds, so an abandoned request landing late would
+        // overwrite the list somebody was reading.
+        if (seq !== latestRef.current) return;
+
         setSuggestions(found);
         setOpen(found.length > 0);
         setActiveIndex(-1);

@@ -40,7 +40,7 @@ import { AttestationCard } from "@/components/RatingFormParts";
 import {
   ManagerIdentityFields, WorkTimelineFields, type ManagerField,
 } from "@/components/ManagerFormFields";
-import { LocationValue, EMPTY_LOCATION, formatLocation, declaredPayload, orUserGeo } from "@/lib/location";
+import { LocationValue, EMPTY_LOCATION, formatLocation, declaredPayload, orUserGeo, visibleManagerLocation } from "@/lib/location";
 import { fetchGeo } from "@/lib/geo";
 import { formatReviewPeriod } from "@/lib/reviewPeriod";
 import { useFormDraft, clearFormDraft } from "@/hooks/useFormDraft";
@@ -693,6 +693,12 @@ export default function BossProfile() {
     LocationField every contribution form uses rather than a second set of inputs.
   */
   const [adminEditLocation, setAdminEditLocation] = useState<LocationValue>(EMPTY_LOCATION);
+  /*
+    The MANAGER's location on the edit form - deliberately not editLocation, which is the
+    REVIEWER's location for their own opinion and must never be copied from the manager.
+  */
+  const [editManagerLocation, setEditManagerLocation] = useState<LocationValue>(EMPTY_LOCATION);
+  const [editManagerLocationOpen, setEditManagerLocationOpen] = useState(false);
   const [adminEditLocationOpen, setAdminEditLocationOpen] = useState(false);
   const [adminEditSaving, setAdminEditSaving] = useState(false);
   const [adminDeleteConfirm, setAdminDeleteConfirm] = useState(false);
@@ -872,6 +878,10 @@ export default function BossProfile() {
         country: manager.country || "",
         linkedinUrl: manager.linkedinUrl || "",
       });
+      // The control holds the whole answer, so it is seeded with the whole answer - subject to
+      // what this profile is allowed to reveal at all. See visibleManagerLocation.
+      setEditManagerLocation(visibleManagerLocation(manager as any));
+      setEditManagerLocationOpen(false);
       // Seed the selection with the company as it stands, so an edit that changes only the title
       // still submits the company this manager already belongs to.
       editCompany.set(manager.company, manager.companyId ?? undefined);
@@ -1210,6 +1220,8 @@ export default function BossProfile() {
       country: manager.country || "",
       linkedinUrl: manager.linkedinUrl || "",
     });
+    setEditManagerLocation(visibleManagerLocation(manager as any));
+    setEditManagerLocationOpen(false);
     const ch = manager.careerHistory?.[0];
     if (ch?.startDate) {
       const [y, m] = ch.startDate.split("-");
@@ -1528,7 +1540,7 @@ export default function BossProfile() {
           companyLogoUrl: editCompanyLogoUrl ?? null,
           title: toJobTitleCase(editFormData.title),
           status: editFormData.status,
-          country: editFormData.country || null,
+          country: editManagerLocation.country || editFormData.country || null,
           linkedinUrl: editFormData.linkedinUrl.trim() || null,
           startDate: newStartDate,
           endDate: newEndDate,
@@ -1555,11 +1567,21 @@ export default function BossProfile() {
       const statusChanged   = editFormData.status !== manager?.status;
       const companyChanged  = editFormData.company.trim() !== manager?.company;
       const titleChanged    = editFormData.title.trim() !== manager?.title;
-      const countryChanged  = (editFormData.country || null) !== (manager?.country || null);
+      /*
+        The whole location, not just the country.
+
+        This compared country alone, so moving a manager from Toronto to Kitchener - same country,
+        different city - counted as no change at all and the form returned "no changes to save".
+      */
+      const countryChanged  = (editManagerLocation.country || null) !== (manager?.country || null);
+      const locationChanged = countryChanged
+        || (editManagerLocation.state || null) !== ((manager as any)?.state || null)
+        || (editManagerLocation.city  || null) !== ((manager as any)?.city  || null)
+        || (editManagerLocation.companyLocationId ?? null) !== ((manager as any)?.companyLocationId ?? null);
       const linkedinChanged = (editFormData.linkedinUrl.trim() || null) !== (manager?.linkedinUrl || null);
       const startChanged    = newStartDate !== origStartDate;
       const endChanged      = newEndDate !== origEndDate;
-      const anyChanged = statusChanged || companyChanged || titleChanged || countryChanged || linkedinChanged || startChanged || endChanged;
+      const anyChanged = statusChanged || companyChanged || titleChanged || locationChanged || linkedinChanged || startChanged || endChanged;
 
       if (!anyChanged) {
         setEditManagerStep(null);
@@ -1574,7 +1596,19 @@ export default function BossProfile() {
       if (companyChanged && editCompanyLogoUrl) payload.companyLogoUrl = editCompanyLogoUrl;
       if (titleChanged)    payload.title       = toJobTitleCase(editFormData.title);
       if (statusChanged)   payload.status      = editFormData.status;
-      if (countryChanged)  payload.country     = editFormData.country || null;
+      if (countryChanged)  payload.country     = editManagerLocation.country || null;
+      /*
+        The rest of the answer travels with it - a city nobody can send is a city nobody can fix.
+        Sent as "" rather than omitted when cleared, because the backend leaves a null column
+        alone and an edit that removes a city has to be able to say so.
+      */
+      if (locationChanged) {
+        payload.state = editManagerLocation.state || "";
+        payload.city  = editManagerLocation.city  || "";
+        if (editManagerLocation.precision) payload.precision = editManagerLocation.precision;
+        // Negative means "no longer at a specific building" - the field is otherwise additive.
+        payload.companyLocationId = editManagerLocation.companyLocationId ?? -1;
+      }
       if (linkedinChanged) payload.linkedinUrl = editFormData.linkedinUrl.trim();
       if (startChanged)    payload.startDate   = newStartDate;
       if (endChanged)      payload.endDate     = newEndDate;
@@ -2032,28 +2066,44 @@ export default function BossProfile() {
                 form: an exact place shows its label, otherwise city, state and country in that
                 order, skipping whatever is missing.
               */}
-              {(manager.country || (manager as any).city || (manager as any).locationName) && (
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {manager.country && <>{getCountryFlag(manager.country)} </>}
-                  {formatLocation({
-                    ...EMPTY_LOCATION,
-                    country: manager.country || "",
-                    state:  (manager as any).state || "",
-                    city:   (manager as any).city || "",
-                    label:  (manager as any).locationName || "",
-                    precision: (manager as any).locationName ? "exact" : null,
-                  })}
-                  {(manager as any).locationStreet && (
-                    /* A street with no city is not an address. */
-                    <span className="block text-xs text-muted-foreground/80">
-                      {[(manager as any).locationStreet,
-                        (manager as any).locationCity,
-                        (manager as any).locationState]
-                        .filter(Boolean).join(", ")}
-                    </span>
-                  )}
-                </p>
-              )}
+              {/*
+                A GHOST profile shows its COUNTRY and nothing finer.
+
+                A ghost is created automatically from somebody's search, so its location is not a
+                fact anybody asserted about the manager - it is derived from the searcher. City,
+                province and street would therefore describe the PERSON WHO SEARCHED, published on
+                a page about somebody else, and "a manager in this city at this company" narrows
+                to a handful of real people. Country is coarse enough to be harmless and still
+                useful for the directory.
+
+                Profiles somebody actually submitted are unaffected: a location that was typed and
+                confirmed is a claim about the manager, and is shown in full.
+              */}
+              {(() => {
+                /*
+                  No ghost check here either. The API withholds the street for a location nobody
+                  confirmed, so there is nothing to hide - and an address somebody DID confirm on
+                  a search-created profile must be shown, which a ghost check would have blocked.
+                */
+                const street  = (manager as any).locationStreet;
+                const shown   = formatLocation(visibleManagerLocation(manager as any));
+                if (!shown && !street) return null;
+                return (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {manager.country && <>{getCountryFlag(manager.country)} </>}
+                    {shown}
+                    {street && (
+                      /* A street with no city is not an address. */
+                      <span className="block text-xs text-muted-foreground/80">
+                        {[street,
+                          (manager as any).locationCity,
+                          (manager as any).locationState]
+                          .filter(Boolean).join(", ")}
+                      </span>
+                    )}
+                  </p>
+                );
+              })()}
 
               {/* Employment status pill */}
               <div className="mt-2">
@@ -3638,17 +3688,29 @@ export default function BossProfile() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-foreground mb-2">Country</label>
-                    <select
-                      value={editFormData.country}
-                      onChange={(e) => { setEditModalTouched(true); setEditFormData((prev) => ({ ...prev, country: e.target.value })); }}
-                      className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
-                    >
-                      <option value="">Select a country</option>
-                      {COUNTRIES.map(c => (
-                        <option key={c.value} value={c.value}>{c.flag} {c.value}</option>
-                      ))}
-                    </select>
+                    <label className="block text-sm font-semibold text-foreground mb-2">Location</label>
+                    {/*
+                      The same control every other form uses, not a country dropdown.
+
+                      This asked only for a country, from a <select>, while the add form, the
+                      review form and the interview form all ask the same question through
+                      LocationField - so the answer somebody could give depended on which page
+                      they happened to be on, and a manager edited here could never be given a
+                      city, let alone an address.
+
+                      It also defaulted to whatever the list happened to show, which is how a
+                      Canadian company ended up recorded in the United Kingdom.
+                    */}
+                    <LocationField
+                      value={editManagerLocation}
+                      onChange={(next) => { setEditModalTouched(true); setEditManagerLocation(next); }}
+                      companyId={editCompany.id}
+                      companyName={editFormData.company}
+                      editing={editManagerLocationOpen}
+                      onEditStart={() => setEditManagerLocationOpen(true)}
+                      onEditDone={() => setEditManagerLocationOpen(false)}
+                      id="edit-manager-location"
+                    />
                   </div>
 
                   <div>

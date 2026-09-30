@@ -130,14 +130,20 @@ export default function AddBoss() {
       // Remembered so a later change of country can tell "still what we detected" from "somebody
       // picked somewhere else", which is what decides whether the detected state still applies.
       setDetectedCountry(geo.country ?? null);
-      setFormData(prev => ({
-        ...prev,
-        country: prev.country || geo.country,
-        state: prev.state || (geo.state ?? ""),
-      }));
-      // The visible, editable value. Shown in full so that submitting it unchanged is a
-      // confirmation rather than an inference - which is what lets it be published at all.
-      setWorkLocation(prev => orUserGeo(prev, geo));
+      /*
+        The detected country is kept ONLY to scope the location search - never to pre-fill the
+        answer.
+
+        This used to fill the form in, on the reasoning that showing a value made submitting it a
+        confirmation rather than an inference. In practice people submit what is already there.
+        IP geolocation puts somebody at their ISP's exchange, their VPN's exit, or an office they
+        have never visited - so a pre-filled city is published as fact about a real manager on the
+        strength of a guess about the person filling the form.
+
+        Left empty and required instead: an answer somebody typed is worth more than one nobody
+        disagreed with.
+      */
+      setFormData(prev => ({ ...prev, country: prev.country || geo.country }));
     });
     return () => { cancelled = true; };
   }, []);
@@ -529,6 +535,14 @@ export default function AddBoss() {
     if (!titleValid)     errs.push("Title is required");
     if (companySelection.name.trim().length === 0) errs.push("Company is required");
     else if (!companyValid) errs.push("Company must be at least 2 characters");
+    /*
+      Required, and no longer pre-filled.
+
+      The form used to arrive with the IP-detected location already in it, so the common path was
+      submitting a guess untouched. Requiring an answer that nobody typed is worse than requiring
+      one they did: this is published as fact about a real manager.
+    */
+    if (!workLocation.precision) errs.push("Location is required - pick a suggestion");
     if (!countryValid)   errs.push("Country is required");
     if (formData.linkedinUrl && !linkedinValid) {
       errs.push(validateProfileUrl(formData.linkedinUrl).error!);

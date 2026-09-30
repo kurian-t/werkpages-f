@@ -27,6 +27,7 @@ import {
   mockAdminPage,
   mockAddBossPage,
   openDirectoryFilters,
+  pickLocation,
 } from "./fixtures";
 
 // ─── Companies - clear autocomplete ──────────────────────────────────────────
@@ -872,6 +873,9 @@ test.describe("AddBoss - draft restore and form interactions", () => {
     // The company field is CompanyField now, which owns its own placeholder; the name
     // attribute is what stayed stable across that change.
     await page.locator('input[name="company"]').fill("Acme Corp");
+    // Location is required and no longer prefilled, so step 1 is not valid without one.
+    await page.keyboard.press("Escape");   // close the company picker's own listbox
+    await pickLocation(page);
     // Country is pre-filled from geo - no need to change it
     await page.getByRole("button", { name: /next/i }).click();
     // Now on timeline step
@@ -897,6 +901,9 @@ test.describe("AddBoss - draft restore and form interactions", () => {
     // The company field is CompanyField now, which owns its own placeholder; the name
     // attribute is what stayed stable across that change.
     await page.locator('input[name="company"]').fill("Acme Corp");
+    // Location is required and no longer prefilled, so step 1 is not valid without one.
+    await page.keyboard.press("Escape");   // close the company picker's own listbox
+    await pickLocation(page);
     await page.getByRole("button", { name: /next/i }).click();
     // Fill step 2 (dates)
     await expect(page.getByRole("heading", { name: /work timeline/i })).toBeVisible({ timeout: 5000 });

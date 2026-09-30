@@ -639,18 +639,21 @@ test.describe("AddBoss extra coverage", () => {
     );
   }
 
-  test("add boss page loads with geo pre-filled", async ({ page }) => {
+  test("add boss page loads with no location filled in", async ({ page }) => {
     /*
-      This asserted `getByText(/add|manager|boss/i).first()` - a pattern that matches most of the
-      page, on an element that turned out to be hidden at phone width. It never checked the geo
-      the test is named for.
+      This was "loads with geo pre-filled", and asserted that the visitor's own city arrived in
+      the field. That prefill has been removed: the guess comes from an IP, it is often wrong, and
+      people submit whatever is already there without reading it - so a wrong city was being
+      published as though somebody had confirmed it.
+
+      The assertion is inverted rather than the test deleted, because "nothing is filled in on the
+      reader's behalf" is now the thing worth holding.
     */
     await mockAddBoss(page, false);
     await page.goto("/add");
 
     await expect(page.getByText(/who is this manager/i)).toBeVisible({ timeout: 8000 });
-    // The inferred location arrives filled in, rather than leaving somebody to find their own.
-    await expect(page.getByText(/SF|CA|United States/).first()).toBeVisible();
+    await expect(page.getByText(/SF|San Francisco|California/)).toHaveCount(0);
   });
 
   test("add boss page shows manager name field", async ({ page }) => {

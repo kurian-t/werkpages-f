@@ -1,5 +1,5 @@
 import { test, expect } from "./base";
-import { MOCK_USER, mockAddBossPage, rateAllFiveStars, attestFirstHandExperience } from "./fixtures";
+import { MOCK_USER, mockAddBossPage, rateAllFiveStars, attestFirstHandExperience, pickLocation } from "./fixtures";
 
 /**
  * What the add-manager form does when it is wrong, and what it does when it works.
@@ -23,6 +23,9 @@ async function fillStep1(page: any, over: Record<string, string> = {}) {
   if (lastName) await page.locator('input[name="lastName"]').fill(lastName);
   if (title) await page.locator('input[name="title"]').fill(title);
   if (company) await page.locator('input[name="company"]').fill(company);
+  // Location is required and no longer prefilled, so step 1 is not valid without one.
+  await page.keyboard.press("Escape");   // close the company picker's own listbox
+  await pickLocation(page);
 }
 
 const next = (page: any) => page.getByRole("button", { name: /^next$/i });

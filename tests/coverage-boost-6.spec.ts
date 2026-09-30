@@ -22,6 +22,7 @@ import {
   TEST_MANAGER_ID,
   TEST_MANAGER_SLUG,
   TEST_COMPANY_SLUG,
+  pickLocation,
 } from "./fixtures";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -462,6 +463,9 @@ test.describe("AddBoss - draft lifecycle", () => {
     // The company field is CompanyField now, which owns its own placeholder; the name
     // attribute is what stayed stable across that change.
     await page.locator('input[name="company"]').fill("Acme Corp");
+    // Location is required and no longer prefilled, so step 1 is not valid without one.
+    await page.keyboard.press("Escape");   // close the company picker's own listbox
+    await pickLocation(page);
     // Fill an invalid LinkedIn URL if the field exists
     const linkedinInput = page.locator('input[type="url"]').first();
     if (await linkedinInput.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -491,6 +495,9 @@ test.describe("AddBoss - draft lifecycle", () => {
     // The company field is CompanyField now, which owns its own placeholder; the name
     // attribute is what stayed stable across that change.
     await page.locator('input[name="company"]').fill("Acme Corp");
+    // Location is required and no longer prefilled, so step 1 is not valid without one.
+    await page.keyboard.press("Escape");   // close the company picker's own listbox
+    await pickLocation(page);
     await page.getByRole("button", { name: /^next$/i }).click();
     // Step 2
     await expect(page.getByRole("heading", { name: /work timeline/i })).toBeVisible({ timeout: 5000 });

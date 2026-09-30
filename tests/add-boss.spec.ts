@@ -1,13 +1,16 @@
 import { test, expect } from "./base";
-import { mockAddBossPage, rateAllFiveStars, attestFirstHandExperience, MOCK_USER } from "./fixtures";
+import { mockAddBossPage, rateAllFiveStars, attestFirstHandExperience, MOCK_USER, pickLocation } from "./fixtures";
 
 // Helper: fill Step 1 (manager info) using name attributes since inputs have no htmlFor.
-// Country is omitted - the geo mock pre-fills "United States", so the chip view shows.
+// The location has to be answered: the form no longer arrives holding the visitor's own
+// geography, and Location is required, so step 1 is not valid until a place is chosen.
 async function fillStep1(page: any) {
   await page.locator('input[name="firstName"]').fill("Jordan");
   await page.locator('input[name="lastName"]').fill("Smith");
   await page.locator('input[name="title"]').fill("Engineering Manager");
   await page.locator('input[name="company"]').fill("Acme Corp");
+  await page.keyboard.press("Escape");   // close the company picker's own listbox
+  await pickLocation(page);
 }
 
 // Helper: fill Step 2 (work timeline)

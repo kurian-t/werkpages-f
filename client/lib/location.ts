@@ -172,3 +172,78 @@ export async function fetchLocationSuggestions(
     return [];
   }
 }
+
+/**
+ * A manager's location, as a value any control can hold.
+ *
+ * <p><b>What may be shown is decided by the server, not here.</b> The API withholds sub-country
+ * detail for a location nobody confirmed - a manager created by a search carries the SEARCHER's
+ * geography - so those fields simply are not in the response, and this reads whatever did arrive.
+ *
+ * <p>It briefly re-derived that rule, suppressing anything below country when
+ * {@code approvalStatus === "ghost"}. Two things were wrong with it. Hiding a value the response
+ * still carried was not anonymity at all, just a quieter page. And once the edit form could
+ * correct a ghost's location, the same rule hid the correction: the row stays a ghost after an
+ * edit, so a city somebody had explicitly typed could never appear.
+ *
+ * <p>So the judgement lives in one place - the projection every read goes through - and this is a
+ * plain reader. Precision is stated from what is present.
+ *
+ * <p>It exists so the profile display and the edit form cannot disagree. They did: the header
+ * suppressed the city while the edit form below it seeded the same city into a visible input.
+ */
+export function visibleManagerLocation(manager: {
+  country?: string | null;
+  state?: string | null;
+  city?: string | null;
+  locationName?: string | null;
+  companyLocationId?: number | null;
+}): LocationValue {
+  const country = manager.country?.trim() ?? "";
+  const state   = manager.state?.trim()   ?? "";
+  const city    = manager.city?.trim()    ?? "";
+  const label   = manager.locationName?.trim() ?? "";
+  return {
+    country, state, city,
+    precision: label ? "exact" : city ? "city" : state ? "state" : country ? "country" : null,
+    companyLocationId: manager.companyLocationId ?? null,
+    corpusPlace: null,
+    label,
+  };
+}
+
+
+/**
+ * Whether a suggestion list actually answers "where is this place".
+ *
+ * <p><b>This is the test that decides whether to widen the search beyond the current country,
+ * and it is deliberately not "is the list empty".</b>
+ *
+ * <p>It used to be. Searching "kitchener" while the field held a UK location returned a London
+ * pub called "Lord Kitchener" - a `place`, matched on its business name - and a non-empty list
+ * counted as success, so the search was never widened and Kitchener, Ontario could not be
+ * reached at all. The country filter made itself permanent again, this time sprung by a pub.
+ *
+ * <p>A `geo` row is a place on the map and is always a valid answer on its own. A `place` is a
+ * specific building, useful when it is the one meant and noise when it is not. Only the former
+ * settles the question.
+ */
+export function hasGeography(list: LocationSuggestion[]): boolean {
+  return list.some(s => s.kind === "geo");
+}
+
+/**
+ * The narrowed country's results, with geography found in a wider search placed above them.
+ *
+ * <p>Merged rather than substituted: somebody genuinely looking for that London pub should still
+ * find it under the city they were offered. Geography leads because it is the answer most people
+ * can give, and because it is the one that was missing.
+ */
+export function mergeWidenedSuggestions(
+  narrow: LocationSuggestion[],
+  widened: LocationSuggestion[],
+): LocationSuggestion[] {
+  const geo = widened.filter(s => s.kind === "geo");
+  if (geo.length === 0) return narrow;
+  return [...geo, ...narrow];
+}
