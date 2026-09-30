@@ -11,6 +11,7 @@ import axios from "axios";
 import { validateProfileUrl, generateUsername } from "@/lib/validators";
 import { COUNTRIES } from "@/lib/countries";
 import { LocationValue, EMPTY_LOCATION, declaredPayload, orUserGeo } from "@/lib/location";
+import { isStep1Valid, step1Errors, type Step1Fields } from "@/lib/addManagerValidation";
 import { fetchGeo } from "@/lib/geo";
 import { AuthFlowModal } from "@/components/AuthFlowModal";
 import { FormSubjectCard } from "@/components/RatingFormParts";
@@ -223,6 +224,15 @@ export default function AddBoss() {
   const lastNameValid  = formData.lastName.trim().length > 0;
   const titleValid     = formData.title.trim().length > 0;
   const companyValid   = companySelection.name.trim().length >= 2;
+
+  /* The rule itself lives in one testable place; see addManagerValidation for why. */
+  const step1Fields: Step1Fields = {
+    firstName: formData.firstName,
+    lastName:  formData.lastName,
+    title:     formData.title,
+    companyName: companySelection.name,
+    linkedinUrl: formData.linkedinUrl,
+  };
   /*
     THE COUNTRY IS NOT A FIELD ON THIS FORM ANY MORE.
 
@@ -238,7 +248,7 @@ export default function AddBoss() {
   const linkedinValid  = !formData.linkedinUrl || validateProfileUrl(formData.linkedinUrl).valid;
   const unratedCount   = Object.values(ratings).filter(r => r < 1).length;
 
-  const step1Valid = firstNameValid && lastNameValid && titleValid && companyValid && countryValid && linkedinValid;
+  const step1Valid = isStep1Valid(step1Fields);
   const step2Valid = isDateValid;
 
   // ── Rule builders ─────────────────────────────────────────────────────────
@@ -543,12 +553,8 @@ export default function AddBoss() {
     without them ever being checked.
   */
   const infoErrors = () => {
-    const errs: string[] = [];
-    if (!firstNameValid) errs.push("First name is required");
-    if (!lastNameValid)  errs.push("Last name is required");
-    if (!titleValid)     errs.push("Title is required");
-    if (companySelection.name.trim().length === 0) errs.push("Company is required");
-    else if (!companyValid) errs.push("Company must be at least 2 characters");
+    // One rule, so the button and the message can never disagree about why.
+    const errs: string[] = step1Errors(step1Fields);
     /*
       NOT a blocker, deliberately.
 

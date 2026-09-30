@@ -108,3 +108,46 @@ export function validateRating(value: number, fieldName: string): { valid: boole
   }
   return { valid: true };
 }
+
+const MANAGER_NAME_ALLOWED = /^[a-zA-ZÀ-ÖØ-öø-ÿ'\-\s]+$/;
+const MANAGER_NAME_REPEATED_PUNCTUATION = /['\-]{2,}/;
+
+export function validateManagerNamePart(
+  value: string,
+  fieldName: string
+): { valid: boolean; error?: string } {
+  const trimmed = (value ?? "").trim().replace(/\s+/g, " ");
+  if (!trimmed) {
+    return { valid: false, error: `${fieldName} is required` };
+  }
+  if (trimmed.length < 2) {
+    return { valid: false, error: `${fieldName} must be at least 2 characters` };
+  }
+  if (trimmed.length > 50) {
+    return { valid: false, error: `${fieldName} must be at most 50 characters` };
+  }
+  if (/[0-9]/.test(trimmed)) {
+    return { valid: false, error: `${fieldName} cannot contain numbers` };
+  }
+  if (!MANAGER_NAME_ALLOWED.test(trimmed)) {
+    return {
+      valid: false,
+      error: `${fieldName} can only contain letters, apostrophes, and hyphens`,
+    };
+  }
+  const letterCount = (trimmed.match(/[a-zA-ZÀ-ÖØ-öø-ÿ]/g) ?? []).length;
+  if (letterCount < 2) {
+    return { valid: false, error: `${fieldName} must contain at least 2 letters` };
+  }
+  const isLetter = (ch: string) => /[a-zA-ZÀ-ÖØ-öø-ÿ]/.test(ch);
+  if (!isLetter(trimmed[0]) || !isLetter(trimmed[trimmed.length - 1])) {
+    return { valid: false, error: `${fieldName} must start and end with a letter` };
+  }
+  if (MANAGER_NAME_REPEATED_PUNCTUATION.test(trimmed)) {
+    return {
+      valid: false,
+      error: `${fieldName} can only contain letters, apostrophes, and hyphens`,
+    };
+  }
+  return { valid: true };
+}
