@@ -485,3 +485,43 @@ test.describe("Admin Panel", () => {
     });
   });
 });
+
+/**
+ * An admin reviewing a submission has to be able to see, and fix, where it says the manager works.
+ *
+ * <p>The queue showed no location at all: findPendingForAdmin never selected the columns, so the
+ * value went straight into the public directory on approval without anybody having seen it. That
+ * matters most for auto-created rows, whose location is the geography of whoever happened to be
+ * searching rather than an answer anybody gave.
+ */
+test.describe("Location in the pending queue", () => {
+  test("a pending manager shows its location, and says when it was never typed", async ({ page }) => {
+    await mockAdminPage(page, {
+      pendingManagers: [{
+        id: 501, name: "Pat Pending", company: "Acme Corp", title: "Manager",
+        image: "P", submittedBy: "someone", createdAt: new Date().toISOString(),
+        isAutoCreated: true,
+        country: "Canada", state: "Ontario", city: "Kitchener",
+        locationSource: "legacy_visitor_inferred",
+      }],
+    });
+    await page.goto("/admin");
+
+    await expect(page.getByText(/Kitchener, Ontario, Canada/)).toBeVisible({ timeout: 10_000 });
+    // The provenance warning: approving this publishes a city nobody typed.
+    await expect(page.getByText(/from a visitor's IP, not typed/i)).toBeVisible();
+  });
+
+  test("a pending manager with no location says so rather than showing nothing", async ({ page }) => {
+    await mockAdminPage(page, {
+      pendingManagers: [{
+        id: 502, name: "Nowhere Person", company: "Acme Corp", title: "Manager",
+        image: "N", submittedBy: "someone", createdAt: new Date().toISOString(),
+        isAutoCreated: false,
+      }],
+    });
+    await page.goto("/admin");
+
+    await expect(page.getByText(/No location set/i)).toBeVisible({ timeout: 10_000 });
+  });
+});

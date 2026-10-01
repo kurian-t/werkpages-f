@@ -227,3 +227,64 @@ test.describe("CareerTimeline", () => {
     expect(cardZ).toBeGreaterThan(tickZ);
   });
 });
+
+/**
+ * The career trajectory draws the same logo as the profile header above it.
+ *
+ * <p>Reported three times. The header showed the real mark and the tile below it showed a letter,
+ * for the same company, on the same page. It surfaced on approved-from-pending managers while
+ * ghosts looked fine, because a ghost is created through findOrCreate and arrives with its company
+ * already resolved.
+ *
+ * <p>Two causes, both fixed:
+ *
+ * <ol>
+ *   <li>the career_history projection carried only a company NAME, so the tile had no domain to
+ *       build a logo URL from. It now carries companyDomain, companyLogoUrl and the Brandfetch
+ *       icon, looked up through career_history.company_id;</li>
+ *   <li>CareerTimeline had its own CompanyLogo taking only a name and a stored URL, a second
+ *       implementation of the chain in lib/logo.ts. The comment inside it warned the two had
+ *       drifted once already. It is gone; the tile uses CompanyLogoImg like everywhere else.</li>
+ * </ol>
+ *
+ * <p>Asserted on the src, not merely on an img existing: guessing a domain from the company name
+ * is what put a stranger's logo on a manager, so the URL has to come from the identity the segment
+ * carried.
+ */
+test.describe("Career trajectory logos", () => {
+  const SEGMENT_WITH_IDENTITY = {
+    company: "Lambda", role: "Corporate Controller",
+    startDate: "2024-01", endDate: null, isCurrent: true,
+    averageRating: 4.0, reviewCount: 1, categoryAverages: {},
+    companyDomain: "lambda.ai",
+    companyBrandfetchIconUrl: null,
+  };
+
+  test("REGRESSION: a company with a resolved domain draws its logo, not a letter", async ({ page }) => {
+    await setupTimelinePage(page);
+    // Registered after the helper's own route, so this one wins.
+    await page.route(
+      `**/api/managers/${TEST_MANAGER_ID}/career-segments`,
+      (route) => route.fulfill({ json: { data: [SEGMENT_WITH_IDENTITY] } })
+    );
+    await page.reload();
+    await expect(page.getByText("Career Performance Trajectory")).toBeVisible({ timeout: 10_000 });
+
+    // "Avg at this company" in the DOM; the screenshot shows it uppercased by CSS.
+    const card = page.getByText("Avg at this company").first().locator("../..");
+    const logo = card.locator("img").first();
+    await expect(logo).toBeVisible({ timeout: 10_000 });
+    // From the domain the segment carried. A letter tile has no img at all, which is the failure.
+    await expect(logo).toHaveAttribute("src", /lambda\.ai/);
+  });
+
+  /*
+    NOT COVERED HERE: the careerHistory path.
+
+    A past employer with no ratings becomes a card built by toGhost() from the manager's
+    careerHistory rather than from the career-segments API, and that mapping now carries the
+    identity too. I could not get this harness to render that card reliably, so rather than leave
+    a test that passes for the wrong reason, it is named as a gap. The backend projection and the
+    toGhost mapping are both changed; only the browser assertion is missing.
+  */
+});

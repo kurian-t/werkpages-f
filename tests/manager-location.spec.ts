@@ -291,17 +291,24 @@ test.describe("What reaches the server", () => {
  * <p>Asserted in the suggestion list rather than the page footer, because that is where the data
  * appears. A test on a footer would keep passing if the credit and the data ever parted company.
  */
+/**
+ * GeoNames is CC BY 4.0, which obliges attribution wherever the data is surfaced.
+ *
+ * <p>It was surfaced in production with no credit at all: the location picker has always offered
+ * GeoNames rows and neither product named the source anywhere.
+ *
+ * <p>In the footer, not the suggestion dropdown. It was put in the dropdown first, on the
+ * reasoning that the credit should sit with the data. An extra line there made the dropdown
+ * taller, pushed its options out of reach on small viewports, and broke twenty tests that click
+ * them. A credit must not be able to change the geometry of the control it credits.
+ */
 test.describe("Crediting the location data", () => {
-  test("the suggestion list names GeoNames and Overture", async ({ page }) => {
-    await openForm(page, [WATERLOO]);
+  test("the footer names GeoNames, its licence, and Overture", async ({ page }) => {
+    await openForm(page);
 
-    await page.getByRole("button", { name: /edit location details/i }).click();
-    await page.getByLabel(/^Location \*/).fill("Waterloo");
-    await expect(page.getByRole("option", { name: /Waterloo, Ontario, Canada/ })).toBeVisible();
-
-    const listbox = page.locator("#addboss-location-suggestions").locator("..");
-    await expect(listbox.getByRole("link", { name: /GeoNames/i })).toBeVisible();
-    await expect(listbox.getByRole("link", { name: /CC BY 4\.0/i })).toBeVisible();
-    await expect(listbox.getByRole("link", { name: /Overture/i })).toBeVisible();
+    const footer = page.locator("footer");
+    await expect(footer.getByRole("link", { name: /GeoNames/i })).toBeVisible();
+    await expect(footer.getByRole("link", { name: /CC BY 4\.0/i })).toBeVisible();
+    await expect(footer.getByRole("link", { name: /Overture/i })).toBeVisible();
   });
 });

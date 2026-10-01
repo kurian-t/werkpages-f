@@ -295,9 +295,27 @@ export default function BossProfile() {
 
       The manager record is now only a fallback, for a current company whose row has no logo.
     */
+    /*
+      The employer's identity travels with the segment, not just a stored URL.
+
+      A career tile with only a name and a logoUrl cannot resolve a logo when none is stored, so it
+      fell to a letter while the header above it showed the real mark. Guessing the domain from the
+      name is not the alternative; it is what put a stranger's logo on a manager and was removed.
+    */
+    const identityFor = (s: any) => {
+      const sameCompany = s.company?.toLowerCase().trim() === managerCompanyKey;
+      return {
+        companyDomain: s.companyDomain
+          ?? (sameCompany ? ((manager as any).companyDomain ?? null) : null),
+        companyBrandfetchIconUrl: s.companyBrandfetchIconUrl
+          ?? (sameCompany ? ((manager as any).companyBrandfetchIconUrl ?? null) : null),
+      };
+    };
+
     const withSegmentLogo = (s: any) => ({
       ...s,
       careerHistoryId: idForSegment(s),
+      ...identityFor(s),
       logoUrl: s.logoUrl
         ?? (s.company?.toLowerCase().trim() === managerCompanyKey
               ? (manager.companyLogoUrl ?? undefined)
@@ -316,7 +334,9 @@ export default function BossProfile() {
         averageRating:    0,
         reviewCount:      0,
         categoryAverages: {},
-        logoUrl:          isCurrentCompany ? (manager.companyLogoUrl ?? undefined) : undefined,
+        logoUrl:          ch.companyLogoUrl ?? (isCurrentCompany ? (manager.companyLogoUrl ?? undefined) : undefined),
+        companyDomain:            ch.companyDomain ?? (isCurrentCompany ? ((manager as any).companyDomain ?? null) : null),
+        companyBrandfetchIconUrl: ch.companyBrandfetchIconUrl ?? (isCurrentCompany ? ((manager as any).companyBrandfetchIconUrl ?? null) : null),
         careerHistoryId:  ch.id ?? null,
       };
     };

@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronUp, ArrowUp, ArrowDown, ChevronRight,
 } from "lucide-react";
 import { companyLogoDomain } from "@/lib/utils";
-import { logoDevUrlForDomain, logoCandidates } from "@/lib/logo";
+import { CompanyLogoImg } from "@/components/ManagerCard";
 import {
   generateCareerInsights,
   computeConsistencyScore,
@@ -72,41 +72,17 @@ function deltaConfig(delta: number): DeltaConfig {
   };
 }
 
-// ── Company logo ──────────────────────────────────────────────────────────────
-function CompanyLogo({ company, logoUrl }: { company: string; logoUrl?: string }) {
-  const initial = company.trim().charAt(0).toUpperCase();
+/*
+  THE COMPANY LOGO IS NOT DRAWN HERE.
 
-  /*
-    Stored URL → logo.dev → free unmetered fallback → letter initial.
+  There used to be a second CompanyLogo in this file, taking only a name and a stored URL. It had
+  no way to reach the employer's domain, so a company whose logo was not already stored fell
+  straight to a letter tile, while the profile header above it, which does get the identity, drew
+  the real logo. The same company, two tiles, two answers, and the comment in the deleted copy
+  already said the chain had drifted once before.
 
-    This used to stop at logo.dev, and so did the card's own copy - two hand-rolled chains that
-    had already drifted. When logo.dev's monthly quota ran out every logo on the site became a
-    letter, because one provider was the only rung between the stored URL and giving up. The
-    order now lives in lib/logo.ts and both walk the same one.
-  */
-  const candidates = logoCandidates(company, logoUrl);
-  const [index, setIndex] = useState(0);
-  const src = candidates[index] ?? null;
-  const failed = src === null;
-
-  const handleError = () => setIndex((i) => i + 1);
-
-  if (failed) {
-    return (
-      <div className="flex-shrink-0 h-9 w-9 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-[13px] font-semibold text-slate-500">
-        {initial}
-      </div>
-    );
-  }
-  return (
-    <img
-      src={src}
-      alt={company}
-      className="flex-shrink-0 h-9 w-9 rounded-md object-contain bg-white border border-slate-200"
-      onError={handleError}
-    />
-  );
-}
+  CompanyLogoImg from ManagerCard is the one implementation. See CLAUDE.md section 46.
+*/
 
 // ── Stars ─────────────────────────────────────────────────────────────────────
 function Stars({ rating, size = 11 }: { rating: number; size?: number }) {
@@ -160,6 +136,9 @@ type CompanyNode = {
   isGhost:      boolean;
   company:      string;
   logoUrl?:     string;
+  /* The employer's identity, so the tile can resolve a logo rather than guess a domain. */
+  companyDomain?:            string | null;
+  companyBrandfetchIconUrl?: string | null;
   avg:          number;
   totalReviews: number;
   startDate?:   string;
@@ -364,7 +343,13 @@ function CompanyCard({
       >
         <div className="px-4 pt-3 pb-5 flex flex-col">
           <div className="flex items-center gap-2 mb-2">
-            <CompanyLogo company={node.company} logoUrl={node.logoUrl} />
+            <CompanyLogoImg
+              company={node.company}
+              logoUrl={node.logoUrl}
+              domain={node.companyDomain}
+              brandfetchIconUrl={node.companyBrandfetchIconUrl}
+              sizeClass="h-9 w-9"
+            />
             <span className="text-[13px] font-semibold text-slate-900 leading-tight truncate">
               {node.company}
             </span>
@@ -825,6 +810,8 @@ export function CareerTimeline({
         isGhost,
         company:      group[0].company,
         logoUrl:      group[0].logoUrl,
+        companyDomain:            (group[0] as any).companyDomain,
+        companyBrandfetchIconUrl: (group[0] as any).companyBrandfetchIconUrl,
         avg,
         totalReviews,
         startDate:    group[0].startDate,

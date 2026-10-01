@@ -7,6 +7,25 @@ import { useAuth } from "@/hooks/useAuth";
 import { Shield, CheckCircle, XCircle, Ban, RotateCcw, Plus, X, Clock, GitMerge, Pencil, MessageSquare, Star, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
+import { LocationField } from "@/components/LocationField";
+import { LocationValue, EMPTY_LOCATION, formatLocation } from "@/lib/location";
+
+/**
+ * A pending manager's location, as the edit control holds it.
+ *
+ * <p>Deliberately NOT visibleManagerLocation, which reduces an unconfirmed location to its country
+ * for public display. An admin deciding whether to publish a row has to see what the row actually
+ * holds, including a city inherited from a searcher's IP that they may well want to clear.
+ */
+function adminLocationOf(m: any): LocationValue {
+  return {
+    country: m.country ?? "", state: m.state ?? "", city: m.city ?? "",
+    precision: m.locationName ? "exact" : m.city ? "city" : m.state ? "state" : m.country ? "country" : null,
+    companyLocationId: m.companyLocationId ?? null,
+    corpusPlace: null,
+    label: m.locationName ?? "",
+  };
+}
 import { useCompanySelection } from "@/hooks/useCompanySelection";
 import axios from "axios";
 
@@ -101,6 +120,16 @@ export default function Admin() {
 
   // Pending manager inline edit state
   const [editingManagerId, setEditingManagerId] = useState<number | null>(null);
+  /*
+    Where the manager works, on the admin edit.
+
+    The queue showed no location at all, so an admin approving a submission into the public
+    directory could not see where it said the person worked, let alone correct it. That matters
+    most for the auto-created rows, whose location came from a searcher's IP rather than from
+    anybody's answer.
+  */
+  const [editingLocation, setEditingLocation] = useState<LocationValue>(EMPTY_LOCATION);
+  const [editingLocationOpen, setEditingLocationOpen] = useState(false);
   const [editingName, setEditingName] = useState("");
   const [editingTitle, setEditingTitle] = useState("");
   // Both admin tabs edit one manager at a time, so one selection serves both.
@@ -385,13 +414,26 @@ export default function Admin() {
   };
 
   const handleEditManager = async (managerId: number) => {
-    if (!editingName.trim() && !editingTitle.trim() && !editingCompany.name.trim()) return;
+    // A location-only correction is a real edit, so it must not be refused as "nothing to save".
+    if (!editingName.trim() && !editingTitle.trim() && !editingCompany.name.trim()
+        && !editingLocation.precision) return;
     setEditSaving(true);
     try {
       await axios.put(`${API_BASE}/api/admin/managers/${managerId}`, {
         name: editingName.trim() || undefined,
         title: editingTitle.trim() || undefined,
         ...(await editingCompany.payload()),
+        /*
+          The whole location, and "" rather than omitted for a part that was cleared: the backend
+          leaves a null column alone, so an admin removing a wrong city has to be able to say so.
+          A negative companyLocationId means "no longer at a specific building".
+        */
+        ...(editingLocation.precision ? {
+          country: editingLocation.country || "",
+          state:   editingLocation.state   || "",
+          city:    editingLocation.city    || "",
+          companyLocationId: editingLocation.companyLocationId ?? -1,
+        } : {}),
       });
       /*
         Re-read the list rather than rebuilding the row from the response.
@@ -880,10 +922,21 @@ export default function Admin() {
                               placeholder="Company"
                               className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             />
+                            {/* The same control every contribution form uses, not an admin-only lookalike. */}
+                            <LocationField
+                              value={editingLocation}
+                              onChange={setEditingLocation}
+                              companyId={editingCompany.id}
+                              companyName={editingCompany.name}
+                              editing={editingLocationOpen}
+                              onEditStart={() => setEditingLocationOpen(true)}
+                              onEditDone={() => setEditingLocationOpen(false)}
+                              id={`admin-location-${manager.id}`}
+                            />
                             <div className="flex gap-2 pt-1">
                               <button
                                 onClick={() => handleEditManager(manager.id)}
-                                disabled={editSaving || (!editingName.trim() && !editingTitle.trim() && !editingCompany.name.trim())}
+                                disabled={editSaving || (!editingName.trim() && !editingTitle.trim() && !editingCompany.name.trim() && !editingLocation.precision)}
                                 className="rounded-lg bg-[#2e0562] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#2e0562]/90 disabled:opacity-50"
                               >
                                 {editSaving ? "Saving…" : "Save"}
@@ -901,7 +954,7 @@ export default function Admin() {
                             <div className="flex items-center gap-2">
                               <h3 className="text-lg font-bold text-foreground">{manager.name}</h3>
                               <button
-                                onClick={() => { setEditingManagerId(manager.id); setEditingName(manager.name); setEditingTitle(manager.title); editingCompany.set(manager.company); }}
+                                onClick={() => { setEditingManagerId(manager.id); setEditingName(manager.name); setEditingTitle(manager.title); editingCompany.set(manager.company); setEditingLocation(adminLocationOf(manager)); setEditingLocationOpen(false); }}
                                 aria-label="Edit manager"
                                 className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
                               >
@@ -909,6 +962,31 @@ export default function Admin() {
                               </button>
                             </div>
                             <p className="text-sm text-muted-foreground">{manager.title} at {manager.company}</p>
+                            {/*
+                              Shown before the approve button, not hidden behind the edit form.
+
+                              An auto-created row carries the geography of whoever searched, which
+                              is frequently a different person in a different city, and approving
+                              it publishes that as fact. An admin cannot weigh that if the queue
+                              never mentions it, so the provenance is named too.
+                            */}
+                            {(() => {
+                              const shown = formatLocation(adminLocationOf(manager));
+                              const inferred = manager.locationSource === "legacy_visitor_inferred";
+                              if (!shown && !manager.locationStreet) {
+                                return <p className="text-sm text-muted-foreground/70 mt-1">No location set</p>;
+                              }
+                              return (
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  {manager.locationStreet ? `${manager.locationStreet}, ` : ""}{shown}
+                                  {inferred && (
+                                    <span className="ml-1.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                                      from a visitor's IP, not typed
+                                    </span>
+                                  )}
+                                </p>
+                              );
+                            })()}
                             <p className="text-sm text-muted-foreground mt-1">Submitted by: @{manager.submittedBy}</p>
                             <p className="text-xs text-muted-foreground mt-1">
                               {new Date(manager.createdAt).toLocaleDateString()} at {new Date(manager.createdAt).toLocaleTimeString()}
@@ -1084,10 +1162,21 @@ export default function Admin() {
                               placeholder="Company"
                               className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             />
+                            {/* The same control every contribution form uses, not an admin-only lookalike. */}
+                            <LocationField
+                              value={editingLocation}
+                              onChange={setEditingLocation}
+                              companyId={editingCompany.id}
+                              companyName={editingCompany.name}
+                              editing={editingLocationOpen}
+                              onEditStart={() => setEditingLocationOpen(true)}
+                              onEditDone={() => setEditingLocationOpen(false)}
+                              id={`admin-location-${manager.id}`}
+                            />
                             <div className="flex gap-2 pt-1">
                               <button
                                 onClick={() => handleEditManager(manager.id)}
-                                disabled={editSaving || (!editingName.trim() && !editingTitle.trim() && !editingCompany.name.trim())}
+                                disabled={editSaving || (!editingName.trim() && !editingTitle.trim() && !editingCompany.name.trim() && !editingLocation.precision)}
                                 className="rounded-lg bg-[#2e0562] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#2e0562]/90 disabled:opacity-50"
                               >
                                 {editSaving ? "Saving…" : "Save"}
@@ -1105,7 +1194,7 @@ export default function Admin() {
                             <div className="flex items-center gap-2">
                               <h3 className="text-lg font-bold text-foreground">{manager.name}</h3>
                               <button
-                                onClick={() => { setEditingManagerId(manager.id); setEditingName(manager.name); setEditingTitle(manager.title); editingCompany.set(manager.company); }}
+                                onClick={() => { setEditingManagerId(manager.id); setEditingName(manager.name); setEditingTitle(manager.title); editingCompany.set(manager.company); setEditingLocation(adminLocationOf(manager)); setEditingLocationOpen(false); }}
                                 aria-label="Edit manager"
                                 className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
                               >
@@ -1113,6 +1202,31 @@ export default function Admin() {
                               </button>
                             </div>
                             <p className="text-sm text-muted-foreground">{manager.title} at {manager.company}</p>
+                            {/*
+                              Shown before the approve button, not hidden behind the edit form.
+
+                              An auto-created row carries the geography of whoever searched, which
+                              is frequently a different person in a different city, and approving
+                              it publishes that as fact. An admin cannot weigh that if the queue
+                              never mentions it, so the provenance is named too.
+                            */}
+                            {(() => {
+                              const shown = formatLocation(adminLocationOf(manager));
+                              const inferred = manager.locationSource === "legacy_visitor_inferred";
+                              if (!shown && !manager.locationStreet) {
+                                return <p className="text-sm text-muted-foreground/70 mt-1">No location set</p>;
+                              }
+                              return (
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  {manager.locationStreet ? `${manager.locationStreet}, ` : ""}{shown}
+                                  {inferred && (
+                                    <span className="ml-1.5 rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                                      from a visitor's IP, not typed
+                                    </span>
+                                  )}
+                                </p>
+                              );
+                            })()}
                             <p className="text-xs text-muted-foreground mt-1">
                               {new Date(manager.createdAt).toLocaleDateString()} at {new Date(manager.createdAt).toLocaleTimeString()}
                             </p>

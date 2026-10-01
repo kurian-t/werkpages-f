@@ -59,6 +59,29 @@ export function Layout({ children }: LayoutProps) {
               {" · "}
               <Link to="/privacy" className="underline hover:text-foreground transition-colors">Privacy Policy</Link>
             </p>
+            {/*
+              Required, not decorative.
+
+              The location picker surfaces GeoNames data, which is CC BY 4.0: attribution-only, but
+              the attribution is obliged wherever the data is surfaced. Neither product credited it
+              anywhere. Overture Places is CDLA-Permissive-2.0 and is credited alongside it.
+
+              In the footer rather than inside the suggestion dropdown, where it was first put: an
+              extra line there made the dropdown taller, which moved the options out of reach on
+              small viewports and broke twenty tests that click them. A credit must not be able to
+              change the geometry of the control it credits.
+            */}
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Location data from{" "}
+              <a href="https://www.geonames.org/" target="_blank" rel="noopener noreferrer"
+                 className="underline hover:text-foreground transition-colors">GeoNames</a>
+              {" ("}
+              <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer"
+                 className="underline hover:text-foreground transition-colors">CC BY 4.0</a>
+              {") and "}
+              <a href="https://overturemaps.org/" target="_blank" rel="noopener noreferrer"
+                 className="underline hover:text-foreground transition-colors">Overture Maps</a>
+            </p>
           </div>
         </div>
       </footer>
