@@ -274,10 +274,6 @@ export function LocationField({
           autoComplete="off"
           className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
         />
-        <p className="text-xs leading-snug text-muted-foreground">
-          Pick a suggestion to set the location. Being as specific as you actually know is enough —
-          a province on its own is a complete answer.
-        </p>
       </FormSubjectCard>
 
       {open && suggestions.length > 0 && createPortal(
@@ -312,6 +308,29 @@ export function LocationField({
               </li>
             ))}
           </ul>
+          {/*
+            Required, not decorative.
+
+            The geography rows come from GeoNames under CC BY 4.0, which is attribution-only but
+            obliges attribution wherever the data is surfaced, and this list is where it surfaces.
+            The building rows come from Overture Places under CDLA-Permissive-2.0. Overture's
+            divisions theme was deliberately not used: it is 98.3% OpenStreetMap under ODbL-1.0,
+            which would have put share-alike obligations on half the corpus.
+
+            In the dropdown rather than the page footer so it travels with the data: a reader who
+            never opens this control is never shown data that needs crediting.
+          */}
+          <p className="border-t border-border px-3 py-1.5 text-[11px] leading-snug text-muted-foreground">
+            Location data from{" "}
+            <a href="https://www.geonames.org/" target="_blank" rel="noopener noreferrer"
+               className="underline hover:text-foreground">GeoNames</a>
+            {" "}(
+            <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer"
+               className="underline hover:text-foreground">CC BY 4.0</a>
+            ) and{" "}
+            <a href="https://overturemaps.org/" target="_blank" rel="noopener noreferrer"
+               className="underline hover:text-foreground">Overture Maps</a>
+          </p>
         </div>,
         document.body,
       )}

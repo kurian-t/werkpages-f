@@ -280,3 +280,28 @@ test.describe("What reaches the server", () => {
     expect(seen.body.declaredCity).toBeUndefined();
   });
 });
+
+/**
+ * GeoNames is CC BY 4.0, which obliges attribution wherever the data is surfaced.
+ *
+ * <p>It was surfaced in production with no credit at all: the location picker has always offered
+ * GeoNames rows and neither product named the source anywhere. Attribution-only is the easiest
+ * licence in the corpus to comply with and it was the one being missed.
+ *
+ * <p>Asserted in the suggestion list rather than the page footer, because that is where the data
+ * appears. A test on a footer would keep passing if the credit and the data ever parted company.
+ */
+test.describe("Crediting the location data", () => {
+  test("the suggestion list names GeoNames and Overture", async ({ page }) => {
+    await openForm(page, [WATERLOO]);
+
+    await page.getByRole("button", { name: /edit location details/i }).click();
+    await page.getByLabel(/^Location \*/).fill("Waterloo");
+    await expect(page.getByRole("option", { name: /Waterloo, Ontario, Canada/ })).toBeVisible();
+
+    const listbox = page.locator("#addboss-location-suggestions").locator("..");
+    await expect(listbox.getByRole("link", { name: /GeoNames/i })).toBeVisible();
+    await expect(listbox.getByRole("link", { name: /CC BY 4\.0/i })).toBeVisible();
+    await expect(listbox.getByRole("link", { name: /Overture/i })).toBeVisible();
+  });
+});

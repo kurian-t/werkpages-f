@@ -8,6 +8,15 @@ services:
       - "127.0.0.1:8888:8888"
     environment:
       USE_AWS_SECRETS: "true"
+      # How many threads DuckDB uses to read the location corpus from S3.
+      #
+      # Four, not the default two, and not eight. This work is I/O bound - the threads spend their
+      # time waiting on S3 range requests, not on CPU - so more of them help even on a 2 vCPU box.
+      # Measured pinned to two CPUs at the 512MB corpus memory cap, on one US query:
+      #   threads=2  6.4s      threads=4  4.2s      threads=8  3.4s
+      # Eight peaked at 483MB against that 512MB limit, which is too close on a 4GB host also
+      # running the JVM. Four takes most of the win with headroom left.
+      LOCATION_CORPUS_THREADS: "4"
     restart: always
 
   frontend:
