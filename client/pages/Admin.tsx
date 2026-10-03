@@ -9,6 +9,24 @@ import { toast } from "sonner";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
 import { LocationField } from "@/components/LocationField";
 import { LocationValue, EMPTY_LOCATION, formatLocation } from "@/lib/location";
+import type { ModerationReason } from "@/lib/moderationReasons";
+
+/**
+ * Why a pending manager is being taken down, and what that costs whoever submitted it.
+ *
+ * Only "junk" debits the submitter. A duplicate of a manager already in the directory, or a row
+ * an admin corrected by hand, is not their fault - and since duplicates come from the people who
+ * contribute most, penalising those quietly pushed the best accounts into the restricted band.
+ *
+ * Keys are typed against the shared vocabulary rather than written as strings, so one of them
+ * going stale against the backend is a compile error instead of a silent penalty.
+ */
+const MANAGER_REJECT_CATEGORIES: { key: ModerationReason; label: string; blurb: string }[] = [
+  { key: "junk",       label: "Junk / fake submission", blurb: "Rejects it and lowers the submitter's confidence" },
+  { key: "duplicate",  label: "Duplicate",              blurb: "No penalty for the submitter" },
+  { key: "correction", label: "Data correction",        blurb: "No penalty for the submitter" },
+  { key: "other",      label: "Other",                  blurb: "No penalty for the submitter" },
+];
 
 /**
  * A pending manager's location, as the edit control holds it.
@@ -177,6 +195,9 @@ export default function Admin() {
     onConfirm?: () => Promise<void>;
   } | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  // Never defaulted: a moderator who has decided to reject has also decided whether it was the
+  // submitter's fault, and the confirm button stays disabled until they say which.
+  const [rejectCategory, setRejectCategory] = useState<ModerationReason | "">("");
 
   // Redirect non-admins
   if (!user || user.role !== "admin") {
@@ -368,7 +389,7 @@ export default function Admin() {
     }
     setSlugConflict(null);
     setConfirmAction(null);
-    setRejectReason("");
+    setRejectReason(""); setRejectCategory("");
   };
 
   const handleApproveManager = async (managerId: string) => {
@@ -401,16 +422,27 @@ export default function Admin() {
 
   const handleRejectManager = async (managerId: string) => {
     try {
-      await axios.post(`${API_BASE}/api/admin/pending-managers/${managerId}/reject`, {
+      const { data } = await axios.post(`${API_BASE}/api/admin/pending-managers/${managerId}/reject`, {
         reason: rejectReason.trim() || undefined,
+        category: rejectCategory || undefined,
       });
       setPendingManagers((prev) => prev.filter((m) => String(m.id) !== String(managerId)));
-      toast.success("Manager rejected.");
+      /*
+        Read back from the server rather than worked out from the category. "Junk" on a
+        search-created ghost penalises nobody, because the person typed into a search box and was
+        never notified - so inferring it here would tell the moderator they had docked somebody
+        when they had not.
+      */
+      toast.success("Manager rejected.", {
+        description: data?.confidencePenalty
+          ? "The submitter's confidence was lowered."
+          : "The submitter's confidence was not affected.",
+      });
     } catch {
       toast.error("Failed to reject manager.");
     }
     setConfirmAction(null);
-    setRejectReason("");
+    setRejectReason(""); setRejectCategory("");
   };
 
   const handleEditManager = async (managerId: number) => {
@@ -1943,8 +1975,8 @@ export default function Admin() {
       {confirmAction && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-          onClick={() => { setConfirmAction(null); setRejectReason(""); }}
-          onKeyDown={e => { if (e.key === "Escape") { setConfirmAction(null); setRejectReason(""); } }}
+          onClick={() => { setConfirmAction(null); setRejectReason(""); setRejectCategory(""); }}
+          onKeyDown={e => { if (e.key === "Escape") { setConfirmAction(null); setRejectReason(""); setRejectCategory(""); } }}
         >
           <div
             className="w-full max-w-sm rounded-2xl border border-border bg-background shadow-xl p-6"
@@ -1966,7 +1998,7 @@ export default function Admin() {
                 {confirmAction.type === "ai-merge" && "Merge Managers?"}
               </h2>
               <button
-                onClick={() => { setConfirmAction(null); setRejectReason(""); }}
+                onClick={() => { setConfirmAction(null); setRejectReason(""); setRejectCategory(""); }}
                 aria-label="Close"
                 className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted/60 transition-colors"
               >
@@ -2045,7 +2077,29 @@ export default function Admin() {
 
             {confirmAction.type === "reject-manager" && (
               <div className="mb-4">
-                <label className="block text-sm font-medium text-foreground mb-1">Reason (optional)</label>
+                <label className="block text-sm font-medium text-foreground mb-1">
+                  Why are you rejecting this? <span className="text-red-600">*</span>
+                </label>
+                <div className="space-y-1" data-testid="reject-category-picker">
+                  {MANAGER_REJECT_CATEGORIES.map((c) => (
+                    <button
+                      key={c.key}
+                      type="button"
+                      data-testid={`reject-category-${c.key}`}
+                      aria-pressed={rejectCategory === c.key}
+                      onClick={() => setRejectCategory(c.key)}
+                      className={`block w-full rounded-md border px-3 py-2 text-left text-xs transition-colors ${
+                        rejectCategory === c.key
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-background hover:bg-muted/60"
+                      }`}
+                    >
+                      <span className="font-semibold text-foreground">{c.label}</span>
+                      <span className="block text-[11px] text-muted-foreground">{c.blurb}</span>
+                    </button>
+                  ))}
+                </div>
+                <label className="mt-3 block text-sm font-medium text-foreground mb-1">Reason (optional)</label>
                 <textarea
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
@@ -2058,7 +2112,7 @@ export default function Admin() {
 
             <div className="flex gap-3">
               <button
-                onClick={() => { setConfirmAction(null); setRejectReason(""); }}
+                onClick={() => { setConfirmAction(null); setRejectReason(""); setRejectCategory(""); }}
                 className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/60 transition-colors"
               >
                 Cancel
@@ -2077,7 +2131,10 @@ export default function Admin() {
                 }}
                 // A blocked merge cannot succeed, so the button does not offer to try. The server
                 // refuses it too - this only saves the admin a pointless error.
-                disabled={confirmAction.type === "merge-company" && (mergePreviewLoading || mergePreview?.blocked === true)}
+                disabled={
+                  (confirmAction.type === "merge-company" && (mergePreviewLoading || mergePreview?.blocked === true))
+                  || (confirmAction.type === "reject-manager" && !rejectCategory)
+                }
                 className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                   confirmAction.type === "approve-manager" || confirmAction.type === "approve"
                     ? "bg-[#2e0562] hover:bg-[#2e0562]/90"

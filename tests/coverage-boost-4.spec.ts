@@ -524,6 +524,10 @@ test.describe("Admin - reject pending manager with reason", () => {
     await expect(page.getByRole("dialog")).toBeVisible({ timeout: 5000 });
     // Type a rejection reason
     await page.getByPlaceholder(/provide a reason/i).fill("Duplicate profile - already exists as admin-pm-2");
+    // Say why. The confirm button is disabled until a category is chosen, because only "junk"
+    // debits the submitter and that has to be deliberate. The reason typed above describes a
+    // duplicate, so that is the category which matches it.
+    await page.getByTestId("reject-category-duplicate").click();
     // Click Reject in dialog
     await page.getByRole("dialog").getByRole("button", { name: /^Reject$/ }).click();
     // Dialog closes after success

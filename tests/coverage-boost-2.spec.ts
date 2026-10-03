@@ -484,6 +484,13 @@ test.describe("Admin - tabs and actions", () => {
     await page.goto("/admin");
     await expect(page.getByText(/jane doe/i)).toBeVisible({ timeout: 8000 });
     await page.getByRole("button", { name: /reject/i }).first().click();
+    /*
+      The dialog now asks WHY before it will reject anything, and the confirm button stays
+      disabled until it is answered. Only "junk" debits the submitter's confidence, so the
+      answer cannot be defaulted: rejecting a duplicate used to cost somebody 20 points for a
+      submission that was never their fault. "duplicate" here is the no-penalty choice.
+    */
+    await page.getByTestId("reject-category-duplicate").click();
     await page.getByRole("button", { name: /^reject$|^confirm$|yes/i }).last().click();
     await expect(page.getByText(/no pending manager submissions|rejected/i).first()).toBeVisible({ timeout: 8000 });
   });

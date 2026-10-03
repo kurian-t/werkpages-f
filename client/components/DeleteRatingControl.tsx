@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ModerationReason } from "@/lib/moderationReasons";
 
 /**
  * Removing somebody else's rating, as a moderator, with the reason that decides the consequence.
@@ -13,7 +14,7 @@ import { useState } from "react";
  * data correction is not their fault, and an unexplained penalty is one nobody can defend six
  * months later.
  */
-export const DELETE_RATING_REASONS: { key: string; label: string; blurb: string }[] = [
+export const DELETE_RATING_REASONS: { key: ModerationReason; label: string; blurb: string }[] = [
   { key: "junk",       label: "Junk / fake contribution", blurb: "Removes it and lowers the author's confidence" },
   { key: "duplicate",  label: "Duplicate",                blurb: "No penalty for the author" },
   { key: "correction", label: "Data correction",          blurb: "No penalty for the author" },
