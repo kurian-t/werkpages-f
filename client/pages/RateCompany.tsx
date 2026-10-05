@@ -9,7 +9,7 @@ import { CompanyLogoImg } from "@/components/ManagerCard";
 import { CompanyField } from "@/components/CompanyField";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
 import { RatingInput, FormField } from "@/components/RatingInput";
-import { AboutPanel, AnonymityCard, FormIntro, FormSubjectCard, RatingRow } from "@/components/RatingFormParts";
+import { AboutPanel, AnonymityCard, FormIntro, FormSubjectCard, HideDatesField, RatingRow } from "@/components/RatingFormParts";
 import { recentYears } from "@/components/MonthYear";
 import { WorkTimelineFields, type MonthYear as MonthYearValue } from "@/components/ManagerFormFields";
 import { AttestationCard } from "@/components/RatingFormParts";
@@ -136,6 +136,9 @@ export default function RateCompany() {
       workedFrom: (mine.workedFrom ?? "").slice(0, 7),
       workedUntil: mine.workedUntil ? mine.workedUntil.slice(0, 7) : null,
       stillHere: !mine.workedUntil,
+      // Reopens in the state they chose. getMyCompanyRating sends the dates unmasked for exactly
+      // this reason, so the form is never blanked by a privacy choice it is meant to edit.
+      datesHidden: !!mine.datesHidden,
     });
     // The control reads the parts, so an existing rating has to fill those too - otherwise
     // revisiting shows an empty period over a draft that has one.
@@ -566,6 +569,16 @@ export default function RateCompany() {
                 ? <p className="text-xs text-red-600">{errors.workedFrom ?? errors.workedUntil}</p>
                 : undefined}
             />
+            {/*
+              Asked where the dates are given, the same as on the manager forms. At a company with
+              four people in the office the period identifies its author as precisely as a name.
+            */}
+            <div className="mt-6">
+              <HideDatesField
+                hidden={draft.datesHidden}
+                onChange={v => setDraft(prev => ({ ...prev, datesHidden: v }))}
+              />
+            </div>
           </div>
 
           </>

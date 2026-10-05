@@ -55,12 +55,15 @@ export interface CompanyRatingDraft {
   workedFrom: string;
   workedUntil: string | null;
   stillHere: boolean;
+  /** Withhold the period from everyone, the author included. See HideDatesField. */
+  datesHidden: boolean;
 }
 
 export type CompanyRatingErrors = Partial<Record<CompanyCategory | "overallRating" | "workedFrom" | "workedUntil", string>>;
 
 export function emptyCompanyRatingDraft(): CompanyRatingDraft {
-  return { overallRating: null, ratings: {}, workedFrom: "", workedUntil: null, stillHere: false };
+  return { overallRating: null, ratings: {}, workedFrom: "", workedUntil: null,
+           stillHere: false, datesHidden: false };
 }
 
 /**
@@ -104,5 +107,8 @@ export function toCompanyRatingPayload(draft: CompanyRatingDraft) {
     ratings: draft.ratings,
     workedFrom: draft.workedFrom,
     workedUntil: draft.stillHere ? null : draft.workedUntil,
+    // Both the real submit and the drop-off capture go through here, so a draft keeps the choice
+    // somebody made before they were bounced to sign in.
+    datesHidden: draft.datesHidden,
   };
 }

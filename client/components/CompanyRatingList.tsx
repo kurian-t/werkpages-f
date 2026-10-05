@@ -30,6 +30,8 @@ interface CompanyRatingRow {
   workedFrom: string | null;
   workedUntil: string | null;
   current: boolean;
+  /** Author withheld the period. The API already nulls the dates; this drives the wording. */
+  datesHidden?: boolean | null;
   createdAt: string;
   updatedAt?: string | null;
   /** The handle its author picked. Null on ratings written before authors existed. */
@@ -122,7 +124,7 @@ function WorkplaceRatingCard({
                 {r.current ? "Current employee" : "Former employee"}
               </p>
               {/* Tenure is contributed detail, withheld like the scores on every card but the lead one. */}
-              {(r.workedFrom || r.workedUntil) && (
+              {(r.workedFrom || r.workedUntil || r.datesHidden) && (
                 <p className={`text-xs text-muted-foreground mt-0.5 ${
                   blurred && !revealIdentity ? "blur-sm select-none" : ""
                 }`}>
@@ -139,6 +141,7 @@ function WorkplaceRatingCard({
                   {formatReviewPeriod({
                     workedFrom: r.workedFrom,
                     workedUntil: r.current ? null : r.workedUntil,
+                    datesHidden: r.datesHidden,
                     updatedAt: r.updatedAt,
                   })}
                 </p>
