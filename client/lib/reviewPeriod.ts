@@ -15,10 +15,29 @@ export interface ReviewPeriod {
   workedFrom?: string | null;
   workedUntil?: string | null;
   effectiveWorkedUntil?: string | null;
+  /**
+   * The author asked for the period not to be published.
+   *
+   * Honoured on EVERY surface, including the author's own. The first version of this masked the
+   * dates for other people and left the author seeing theirs, which meant the one person who
+   * needed to know whether the setting had worked was the only one who could not tell: their
+   * review looked exactly as it had before. Showing them what everybody else sees is the whole
+   * point of the control.
+   *
+   * The dates are still delivered to the author by the API - the edit form opens with them, and
+   * the overlap check reads them - so this is a display rule, not an absence of data.
+   */
+  datesHidden?: boolean | null;
 }
 
-/** The end date to SHOW. Falls back to the raw date when the API has not sent a capped one. */
+/**
+ * The end date to SHOW. Falls back to the raw date when the API has not sent a capped one.
+ *
+ * Null when the author withheld the period, so nothing derived from it - a "still there" badge,
+ * a tenure figure - can reintroduce what the control was asked to hide.
+ */
 export function reviewEndDate(review: ReviewPeriod): string | null {
+  if (review.datesHidden) return null;
   return review.effectiveWorkedUntil ?? review.workedUntil ?? null;
 }
 
@@ -37,9 +56,15 @@ function monthYear(date: string): string {
  */
 export function formatReviewPeriod(
   review: ReviewPeriod,
-  opts: { emptyStart?: string; openLabel?: string } = {},
+  opts: { emptyStart?: string; openLabel?: string; hiddenLabel?: string } = {},
 ): string {
-  const { emptyStart = "", openLabel = "Present" } = opts;
+  const { emptyStart = "", openLabel = "Present", hiddenLabel = "Dates hidden" } = opts;
+  /*
+    Said in words rather than left blank. A blank reads as missing data - "they never filled it
+    in" - where the author needs to see that a choice they made is in force, and is the same
+    thing every other reader sees.
+  */
+  if (review.datesHidden) return hiddenLabel;
   const end = reviewEndDate(review);
   const start = review.workedFrom ? monthYear(review.workedFrom) : emptyStart;
   const endText = end ? monthYear(end) : review.workedFrom ? openLabel : "";

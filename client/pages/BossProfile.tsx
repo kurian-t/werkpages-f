@@ -36,7 +36,7 @@ import { StarRating } from "@/components/StarRating";
 import { generateUsername } from "@/lib/validators";
 import { CareerTimeline } from "@/components/CareerTimeline";
 import { COUNTRIES, getCountryFlag } from "@/lib/countries";
-import { AttestationCard } from "@/components/RatingFormParts";
+import { AttestationCard, HideDatesField } from "@/components/RatingFormParts";
 import {
   ManagerIdentityFields, WorkTimelineFields, type ManagerField,
 } from "@/components/ManagerFormFields";
@@ -631,9 +631,13 @@ export default function BossProfile() {
   const [reviewWorkedFrom, setReviewWorkedFrom] = useState({ month: "", year: "" });
   const [reviewWorkedUntil, setReviewWorkedUntil] = useState({ month: "", year: "" });
   const [reviewCurrentlyWorking, setReviewCurrentlyWorking] = useState(false);
+  // Opt-in. The edit copy is seeded from what was stored, so reopening a rating shows the
+  // choice its author actually made rather than silently offering to republish their dates.
+  const [reviewDatesHidden, setReviewDatesHidden] = useState(false);
   const [editWorkedFrom, setEditWorkedFrom] = useState({ month: "", year: "" });
   const [editWorkedUntil, setEditWorkedUntil] = useState({ month: "", year: "" });
   const [editCurrentlyWorking, setEditCurrentlyWorking] = useState(false);
+  const [editDatesHidden, setEditDatesHidden] = useState(false);
   /*
     The manager's status, as this reviewer knew it. Seeded from the profile and sent with the
     review; the manager's own status is then derived from the most current opinion, exactly as
@@ -1299,6 +1303,7 @@ export default function BossProfile() {
         managerStatus: reviewManagerStatus,
         workedFrom: toYearMonth(reviewWorkedFrom.month, reviewWorkedFrom.year),
         workedUntil: reviewCurrentlyWorking ? null : toYearMonth(reviewWorkedUntil.month, reviewWorkedUntil.year),
+        datesHidden: reviewDatesHidden,
         draftToken: dropOffToken,
       }).catch(() => {});
       if (pendingVerificationEmail) {
@@ -1337,6 +1342,7 @@ export default function BossProfile() {
           managerTitle: reviewManagerTitle,
           workedFrom: toYearMonth(reviewWorkedFrom.month, reviewWorkedFrom.year),
           workedUntil: reviewCurrentlyWorking ? null : toYearMonth(reviewWorkedUntil.month, reviewWorkedUntil.year),
+          datesHidden: reviewDatesHidden,
           // Where THIS opinion happened. A contribution carries its own, so the manager moving
           // branch later never rewrites where the opinion was formed.
           ...declaredPayload(reviewLocation),
@@ -1509,6 +1515,7 @@ export default function BossProfile() {
           managerTitle: reviewManagerTitle || manager?.title,
           workedFrom: toYearMonth(reviewWorkedFrom.month, reviewWorkedFrom.year),
           workedUntil: reviewCurrentlyWorking ? null : toYearMonth(reviewWorkedUntil.month, reviewWorkedUntil.year),
+          datesHidden: reviewDatesHidden,
           authorType,
           author: generatedName,
         }
@@ -1689,6 +1696,7 @@ export default function BossProfile() {
           managerStatus: editManagerStatus,
           workedFrom: toYearMonth(editWorkedFrom.month, editWorkedFrom.year),
           workedUntil: editCurrentlyWorking ? null : toYearMonth(editWorkedUntil.month, editWorkedUntil.year),
+          datesHidden: editDatesHidden,
           /*
             The location is sent only when the form actually holds one, and the server treats an
             absent declaredPrecision as "leave it alone". So an edit to the stars cannot move an
@@ -2278,6 +2286,7 @@ export default function BossProfile() {
                                     ? { month: review.workedUntil.slice(5, 7), year: review.workedUntil.slice(0, 4) }
                                     : { month: "", year: "" });
                                   setEditCurrentlyWorking(!!review.workedFrom && !review.workedUntil);
+                                  setEditDatesHidden(!!review.datesHidden);
                                   setEditManagerCompany(review.managerCompany || manager.company);
                                   setEditManagerTitle(review.managerTitle || manager.title);
                                   setEditManagerStatus(
@@ -2326,7 +2335,7 @@ export default function BossProfile() {
                                   {review.managerTitle} at {review.managerCompany}
                                 </p>
                                 <p className="text-xs text-muted-foreground mt-0.5">
-                                  {formatReviewPeriod(review, { emptyStart: "No date" })}
+                                  {formatReviewPeriod(review, { emptyStart: "No date", hiddenLabel: "Dates hidden from everyone" })}
                                 </p>
                               </button>
                               <button
@@ -3367,6 +3376,11 @@ export default function BossProfile() {
                         ) : undefined
                       }
                     />
+                    {/*
+                      Asked where the dates are given. On a small team the period identifies the
+                      author to the manager, and only the author can judge whether that is safe.
+                    */}
+                    <HideDatesField hidden={reviewDatesHidden} onChange={setReviewDatesHidden} />
 
                 {/* Cross-user company conflict soft warning */}
                     {crossUserCompanyConflict && !crossUserWarningDismissed && (
@@ -3926,6 +3940,7 @@ export default function BossProfile() {
                         ) : undefined
                       }
                     />
+                    <HideDatesField hidden={editDatesHidden} onChange={setEditDatesHidden} />
 
                     {/* Cross-user company conflict soft warning */}
                     {editCrossUserCompanyConflict && !editCrossUserWarningDismissed && (

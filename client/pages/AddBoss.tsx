@@ -14,7 +14,7 @@ import { LocationValue, EMPTY_LOCATION, declaredPayload, orUserGeo } from "@/lib
 import { isStep1Valid, step1Errors, type Step1Fields } from "@/lib/addManagerValidation";
 import { fetchGeo } from "@/lib/geo";
 import { AuthFlowModal } from "@/components/AuthFlowModal";
-import { FormSubjectCard } from "@/components/RatingFormParts";
+import { FormSubjectCard, HideDatesField } from "@/components/RatingFormParts";
 import {
   ManagerIdentityFields, WorkTimelineFields, RuleList,
   type ManagerField, type MonthYear, type Rule, type RuleState,
@@ -162,6 +162,8 @@ export default function AddBoss() {
   const [workedFrom, setWorkedFrom] = useState({ month: "", year: "" });
   const [workedUntil, setWorkedUntil] = useState({ month: "", year: "" });
   const [currentlyWorking, setCurrentlyWorking] = useState(false);
+  // Opt-in, so an existing draft or an untouched form behaves exactly as it always has.
+  const [datesHidden, setDatesHidden] = useState(false);
   const [formTouched, setFormTouched] = useState(false);
   /*
     One slot, not one flag per field. Every populated field collapses to a line with a pencil, and
@@ -343,6 +345,7 @@ export default function AddBoss() {
           if (data.step)        setStep(data.step);
           if (data.workedUntil) setWorkedUntil(data.workedUntil);
           if (data.currentlyWorking != null) setCurrentlyWorking(data.currentlyWorking);
+          if (data.datesHidden != null) setDatesHidden(data.datesHidden);
           if (data.generatedName) setGeneratedName(data.generatedName);
           if (data.draftToken) draftTokenRef.current = data.draftToken;
           /*
@@ -401,7 +404,7 @@ export default function AddBoss() {
       companyId: companySelection.id ?? null,
       workLocation,
       ratings,
-      workedFrom, workedUntil, currentlyWorking,
+      workedFrom, workedUntil, currentlyWorking, datesHidden,
       authorType, generatedName,
       step,
       ...(autoSavedManagerId != null ? { autoSavedManagerId } : {}),
@@ -409,7 +412,7 @@ export default function AddBoss() {
       ...(pendingVerificationEmail ? { signupEmail: pendingVerificationEmail, emailVerified: pendingEmailVerified } : {}),
       savedAt: Date.now(),
     }));
-  }, [formData, companySelection.name, companySelection.id, workLocation, ratings, workedFrom, workedUntil, currentlyWorking, authorType, generatedName, step, pendingVerificationEmail, pendingEmailVerified, autoSavedManagerId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [formData, companySelection.name, companySelection.id, workLocation, ratings, workedFrom, workedUntil, currentlyWorking, datesHidden, authorType, generatedName, step, pendingVerificationEmail, pendingEmailVerified, autoSavedManagerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Early ghost capture (works for all users, including unauthenticated) ─────
   useEffect(() => {
@@ -479,6 +482,7 @@ export default function AddBoss() {
             text: null,
             workedFrom: toYearMonth(workedFrom.month, workedFrom.year),
             workedUntil: currentlyWorking ? null : toYearMonth(workedUntil.month, workedUntil.year),
+            datesHidden,
           },
         });
         autoSavedManagerIdRef.current = res.data.id;
@@ -649,6 +653,7 @@ export default function AddBoss() {
             managerTitle: formData.title.trim(),
             workedFrom: toYearMonth(workedFrom.month, workedFrom.year),
             workedUntil: currentlyWorking ? null : toYearMonth(workedUntil.month, workedUntil.year),
+            datesHidden,
           },
         }).catch(() => {});
       }
@@ -706,6 +711,7 @@ export default function AddBoss() {
           text: null,
           workedFrom: toYearMonth(workedFrom.month, workedFrom.year),
           workedUntil: currentlyWorking ? null : toYearMonth(workedUntil.month, workedUntil.year),
+          datesHidden,
         },
       });
 
@@ -922,6 +928,11 @@ export default function AddBoss() {
                 />
                 {showRevFrom  && <RuleList rules={revFromRules} />}
                 {showRevUntil && <RuleList rules={revUntilRules} />}
+                {/*
+                  Offered where the dates are given, not buried on the ratings step: the moment
+                  somebody types a period that could identify them is the moment to ask.
+                */}
+                <HideDatesField hidden={datesHidden} onChange={setDatesHidden} />
               </div>
             )}
 

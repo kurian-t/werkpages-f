@@ -52,6 +52,57 @@ export function AnonymityCard({
   );
 }
 
+/**
+ * Whether to publish the period somebody worked under a manager.
+ *
+ * Lives here, beside AnonymityCard, because it is the same question: how much of themselves a
+ * contributor is willing to attach to an opinion. A random display name is not anonymity on its
+ * own - "Mar 2019 to Aug 2024" on a manager with three direct reports identifies its author to
+ * that manager as precisely as a signature would, and the author is the only person who can
+ * judge whether that is safe for them.
+ *
+ * Written once and used from every form that asks for dates, so the answer cannot be offered on
+ * one page and silently withheld on another.
+ *
+ * The dates are still collected and still required. This withholds the DISPLAY: the overlap check
+ * that stops one person rating the same manager twice for one period reads them back, and the
+ * end date shown on a profile is capped at the date the manager left the role, which needs the
+ * real value to cap.
+ */
+export function HideDatesField({
+  hidden,
+  onChange,
+  what = "dates",
+}: {
+  hidden: boolean;
+  onChange: (hidden: boolean) => void;
+  /** What the sentence calls the thing being hidden, for forms that word it differently. */
+  what?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/20 px-4 py-3">
+      <label className="flex cursor-pointer items-start gap-3">
+        <input
+          type="checkbox"
+          data-testid="hide-dates-toggle"
+          checked={hidden}
+          onChange={(e) => onChange(e.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-primary"
+        />
+        <span>
+          <span className="block text-sm font-medium text-foreground">
+            Hide the {what} from my review
+          </span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">
+            On a small team the period you worked for someone can identify you. Hiding it keeps
+            your rating published while protecting your anonymity.
+          </span>
+        </span>
+      </label>
+    </div>
+  );
+}
+
 /** Title and the one line under it. */
 export function FormIntro({ title, blurb }: { title: string; blurb: string }) {
   return (

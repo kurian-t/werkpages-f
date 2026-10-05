@@ -488,7 +488,7 @@ export default function AccountSettings() {
                           {(review.workedFrom || review.workedUntil) && (
                             <p>
                               <span className="font-medium">Worked together: </span>
-                              {formatReviewPeriod(review, { openLabel: "Current" })}
+                              {formatReviewPeriod(review, { openLabel: "Current", hiddenLabel: "Dates hidden from everyone" })}
                             </p>
                           )}
                         </div>
