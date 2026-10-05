@@ -48,7 +48,7 @@ import { MonthYear } from "@/components/MonthYear";
 import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import { DeleteRatingControl } from "@/components/DeleteRatingControl";
 import { RequiredMark } from "@/components/FormFields";
- 
+  
 const RATING_CATEGORIES = [
   "Communication Style",
   "Perceived Approachability",
