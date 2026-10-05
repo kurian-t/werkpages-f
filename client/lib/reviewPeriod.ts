@@ -28,6 +28,15 @@ export interface ReviewPeriod {
    * the overlap check reads them - so this is a display rule, not an absence of data.
    */
   datesHidden?: boolean | null;
+  /**
+   * When the reviewer last stood behind this answer.
+   *
+   * Only consulted for an open-ended period. "Present" is the one value on a card that changes
+   * meaning while nobody touches it, and it only ever changes in the direction of claiming more:
+   * somebody who wrote "Jan 2024 - Present" in March attested to fourteen months, and a year
+   * later the same card asserts twenty-six. Nothing confirmed the extra twelve.
+   */
+  updatedAt?: string | null;
 }
 
 /**
@@ -54,11 +63,42 @@ function monthYear(date: string): string {
  * `emptyStart` and `openLabel` exist because the three callers word those two cases differently
  * and that wording is deliberate - Account Settings says "Current", the profile says "Present".
  */
+/**
+ * " · as of Mar 2024", or "" when saying so would add nothing.
+ *
+ * Bounds an open-ended claim with a fact instead of inventing one. Capping "Present" to the
+ * month it was attested would read as "the relationship ENDED in March", which the reviewer
+ * never said and which is probably untrue - a different false statement, and a worse one for
+ * somebody who still works there. This states what was attested and when, and lets a reader
+ * discount a two-year-old "as of" themselves.
+ *
+ * Suppressed inside the attestation month: while it is still March, "as of Mar" tells a reader
+ * nothing they do not already assume, and every fresh card would carry noise.
+ */
+function asOfSuffix(attested: string | null | undefined, label: string, now: Date): string {
+  if (!attested) return "";
+  const at = new Date(attested);
+  if (Number.isNaN(at.getTime())) return "";
+  if (at.getFullYear() === now.getFullYear() && at.getMonth() === now.getMonth()) return "";
+  const when = at.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  return ` · ${label} ${when}`;
+}
+
 export function formatReviewPeriod(
   review: ReviewPeriod,
-  opts: { emptyStart?: string; openLabel?: string; hiddenLabel?: string } = {},
+  opts: {
+    emptyStart?: string;
+    openLabel?: string;
+    hiddenLabel?: string;
+    asOfLabel?: string;
+    /** Injectable so the suppression rule is testable without waiting for a month to pass. */
+    now?: Date;
+  } = {},
 ): string {
-  const { emptyStart = "", openLabel = "Present", hiddenLabel = "Dates hidden" } = opts;
+  const {
+    emptyStart = "", openLabel = "Present", hiddenLabel = "Dates hidden",
+    asOfLabel = "as of", now = new Date(),
+  } = opts;
   /*
     Said in words rather than left blank. A blank reads as missing data - "they never filled it
     in" - where the author needs to see that a choice they made is in force, and is the same
@@ -67,6 +107,13 @@ export function formatReviewPeriod(
   if (review.datesHidden) return hiddenLabel;
   const end = reviewEndDate(review);
   const start = review.workedFrom ? monthYear(review.workedFrom) : emptyStart;
-  const endText = end ? monthYear(end) : review.workedFrom ? openLabel : "";
-  return `${start} – ${endText}`;
+  /*
+    Only an open end is aged. When the manager's departure has already capped this, the card
+    shows a real end date and there is nothing stale to qualify - the two rules compose rather
+    than compete.
+  */
+  const isOpen = !end && !!review.workedFrom;
+  const endText = end ? monthYear(end) : isOpen ? openLabel : "";
+  const asOf = isOpen ? asOfSuffix(review.updatedAt, asOfLabel, now) : "";
+  return `${start} – ${endText}${asOf}`;
 }

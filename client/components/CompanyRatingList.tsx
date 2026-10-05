@@ -8,6 +8,7 @@ import { getAvatarColor, getInitials } from "@/components/ManagerCard";
 import { formatDistanceToNow } from "date-fns";
 import { Stars } from "@/components/Stars";
 import { OpinionCard, OpinionAuthor, LockedOpinions } from "@/components/OpinionCard";
+import { formatReviewPeriod } from "@/lib/reviewPeriod";
 
 /**
  * The individual ratings behind a company's average.
@@ -35,9 +36,6 @@ interface CompanyRatingRow {
   author: string | null;
   mine: boolean;
 }
-
-const monthYear = (iso: string | null) =>
-  iso ? new Date(iso + "T00:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" }) : null;
 
 /**
  * When it was written, the way a manager review says it.
@@ -128,9 +126,21 @@ function WorkplaceRatingCard({
                 <p className={`text-xs text-muted-foreground mt-0.5 ${
                   blurred && !revealIdentity ? "blur-sm select-none" : ""
                 }`}>
-                  {monthYear(r.workedFrom) ?? ""}
-                  {" – "}
-                  {r.current ? "Present" : monthYear(r.workedUntil) ?? ""}
+                  {/*
+                    The shared formatter, not a local copy. This component had its own monthYear
+                    and its own " - Present", which is why company ratings went on asserting an
+                    open-ended stay long after manager reviews stopped: the ageing rule landed in
+                    one of the two and nothing connected them.
+
+                    `current` is this surface's own way of saying the period is open - there is no
+                    effectiveWorkedUntil here, because nobody leaves a company role the way a
+                    manager leaves a post - so it is mapped to the null end the formatter reads.
+                  */}
+                  {formatReviewPeriod({
+                    workedFrom: r.workedFrom,
+                    workedUntil: r.current ? null : r.workedUntil,
+                    updatedAt: r.updatedAt,
+                  })}
                 </p>
               )}
             </div>
