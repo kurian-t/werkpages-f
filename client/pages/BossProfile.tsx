@@ -11,6 +11,7 @@ import { gateKey } from "@/lib/gateKey";
 import { Helmet } from "react-helmet-async";
 import { isManagerIndexable } from "@/lib/indexability";
 import { NoIndex, SITE_HIDDEN_FROM_SEARCH } from "@/components/PageMeta";
+import { ContributionNextStep } from "@/components/ContributionNextStep";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Star, Edit2, X, Trash2, Flag, Check, ChevronDown, ArrowLeft } from "lucide-react";
@@ -570,6 +571,12 @@ export default function BossProfile() {
   const [editCompanyLogoUrl, setEditCompanyLogoUrl] = useState<string | undefined>(undefined);
   const [editReviewData, setEditReviewData] = useState<Record<string, number>>({});
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  /*
+    Asked after a rating lands, where the flow used to simply stop. Somebody who has just
+    answered ten questions about a manager also worked at that company, and will never be
+    cheaper to ask than right now.
+  */
+  const [nextStepOpen, setNextStepOpen] = useState(false);
   const [pendingAutoSubmit, setPendingAutoSubmit] = useState<User | null>(null);
   const [conflictAfterAuth, setConflictAfterAuth] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -1476,6 +1483,7 @@ export default function BossProfile() {
     setIsSubmittingReview(false);
     setReviewStep(null);
     setModalRatings(initializeRatings());
+    setNextStepOpen(true);
   };
 
   // Finds the user's existing review that conflicts with the current draft -
@@ -1907,6 +1915,39 @@ export default function BossProfile() {
 
   return (
     <>
+    {/*
+      Manager -> company, and manager -> another manager at the same company.
+
+      Rating the workplace is primary: it is the dataset with far less in it, and somebody who has
+      just rated a manager has exactly the experience it asks about. Rating another manager is
+      offered second rather than hidden, because people who stayed somewhere for years usually had
+      more than one. Both carry the company, so neither asks for it again.
+
+      Routed through companyPath so the industry segment this product nests under is preserved -
+      a hand-built /companies/<slug> here would 404 half the time.
+    */}
+    {manager && (
+      <ContributionNextStep
+        open={nextStepOpen}
+        onClose={() => setNextStepOpen(false)}
+        confirmation="Your rating was submitted anonymously"
+        question="Want to share a little more?"
+        blurb={`You also worked at ${manager.company}. Rate your overall workplace experience.`}
+        primaryLabel={`Rate ${manager.company}`}
+        onPrimary={() => {
+          setNextStepOpen(false);
+          navigate(
+            `${companyPath(manager.industrySlug, manager.companySlug)}/rate?returnTo=` +
+            encodeURIComponent(window.location.pathname + window.location.search),
+          );
+        }}
+        secondaryLabel={`Rate another ${manager.company} manager`}
+        onSecondary={() => {
+          setNextStepOpen(false);
+          navigate(companyPath(manager.industrySlug, manager.companySlug));
+        }}
+      />
+    )}
     {manager && (
       <Helmet>
         <title>{pageTitle}</title>

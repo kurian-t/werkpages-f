@@ -14,6 +14,7 @@ import { recentYears } from "@/components/MonthYear";
 import { WorkTimelineFields, type MonthYear as MonthYearValue } from "@/components/ManagerFormFields";
 import { AttestationCard } from "@/components/RatingFormParts";
 import { LocationField } from "@/components/LocationField";
+import { ContributionNextStep } from "@/components/ContributionNextStep";
 import { LocationValue, EMPTY_LOCATION, declaredPayload, orUserGeo } from "@/lib/location";
 import { fetchGeo } from "@/lib/geo";
 import { useFormDraft, clearFormDraft } from "@/hooks/useFormDraft";
@@ -235,6 +236,12 @@ export default function RateCompany() {
     origin to return to.
   */
   const returnTo = searchParams.get("returnTo");
+  /*
+    Shown instead of leaving straight away. A workplace rating used to end by navigating back to
+    the company, which is a dead end at the exact moment somebody has proved they will contribute.
+  */
+  const [nextStepOpen, setNextStepOpen] = useState(false);
+
   const backToCompany = () =>
     navigate(
       returnTo && returnTo.startsWith("/")
@@ -324,7 +331,8 @@ export default function RateCompany() {
       queryClient.invalidateQueries({ queryKey: ["company-profile-slug", companySlug] });
       queryClient.invalidateQueries({ queryKey: ["my-company-rating", companySlug] });
       toast.success(`Thanks, your rating of ${companyName} is live.`);
-      backToCompany();
+      // The offer replaces the exit, rather than racing it.
+      setNextStepOpen(true);
     } catch (err) {
       const status = axios.isAxiosError(err) ? err.response?.status : undefined;
       setSubmitError(
@@ -354,6 +362,25 @@ export default function RateCompany() {
   */
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
+      {/*
+        Company -> manager. The company is carried in the destination, so nobody is sent back to
+        a search box for the employer they just spent ten questions describing.
+      */}
+      <ContributionNextStep
+        open={nextStepOpen}
+        onClose={backToCompany}
+        confirmation="Your workplace rating was submitted"
+        question={`Worked with a manager at ${companyName}?`}
+        blurb="Help others understand what it's like working with them."
+        primaryLabel={`Rate a manager at ${companyName}`}
+        onPrimary={() =>
+          navigate(
+            companySlug
+              ? companyPath(industrySlug ?? company?.industrySlug, companySlug)
+              : "/companies",
+          )
+        }
+      />
       <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
         <button
           onClick={() => {
