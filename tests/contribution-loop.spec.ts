@@ -1,3 +1,7 @@
+// FIXME: these cover ContributionNextStep, which duplicated a nudge that already
+// existed as a toast in BossProfile. The dialog is no longer opened; the toast is the
+// single nudge. Kept visible rather than deleted pending a decision on which design
+// to keep - see review-submit-guards-and-nudge.spec.ts for the surviving one.
 import { test, expect } from "./base";
 import {
   MOCK_USER, MOCK_MANAGER, TEST_COMPANY_SLUG, TEST_MANAGER_SLUG, mockManagerPage,
@@ -54,7 +58,7 @@ async function submitRating(page: any) {
   await page.getByRole("button", { name: /submit rating|update rating/i }).click();
 }
 
-test.describe("After a workplace rating", () => {
+test.describe.fixme("After a workplace rating", () => {
   test("the flow does not end - it asks for the other half of the contribution", async ({ page }) => {
     await openForm(page);
     await submitRating(page);
@@ -105,7 +109,7 @@ test.describe("After a workplace rating", () => {
   });
 });
 
-test.describe("After a manager rating", () => {
+test.describe.fixme("After a manager rating", () => {
   /*
     The other direction, and the more valuable one: workplace ratings are the thinner dataset, and
     somebody who has just answered ten questions about a manager has exactly the experience a

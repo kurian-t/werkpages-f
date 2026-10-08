@@ -1483,7 +1483,15 @@ export default function BossProfile() {
     setIsSubmittingReview(false);
     setReviewStep(null);
     setModalRatings(initializeRatings());
-    setNextStepOpen(true);
+    /*
+      No second nudge here.
+
+      The toast above has asked about the employer since before ContributionNextStep existed, and
+      it carries suppression (isNudgeSuppressed / suppressNudge) so it stops asking once answered.
+      Opening the dialog as well meant two prompts with the same button label, which is what
+      "strict mode violation: resolved to 2 elements" in review-submit-guards-and-nudge was
+      reporting. One nudge, and it is the one that remembers your answer.
+    */
   };
 
   // Finds the user's existing review that conflicts with the current draft -

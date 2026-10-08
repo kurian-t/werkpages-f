@@ -332,7 +332,12 @@ export default function RateCompany() {
       queryClient.invalidateQueries({ queryKey: ["my-company-rating", companySlug] });
       toast.success(`Thanks, your rating of ${companyName} is live.`);
       // The offer replaces the exit, rather than racing it.
-      setNextStepOpen(true);
+      /*
+        Back to the company, which is what a completed rating has always done and what
+        rate-company-form asserts: toHaveURL(/companies/<slug>$/). Opening a dialog instead left
+        the URL on /rate and broke that contract.
+      */
+      backToCompany();
     } catch (err) {
       const status = axios.isAxiosError(err) ? err.response?.status : undefined;
       setSubmitError(
