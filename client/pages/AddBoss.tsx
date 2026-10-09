@@ -7,6 +7,7 @@ import { AlertCircle, Check, X, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { isNudgeSuppressed, suppressNudge } from "@/lib/rateCompanyNudge";
 import axios from "axios";
 import { validateProfileUrl, generateUsername } from "@/lib/validators";
 import { COUNTRIES } from "@/lib/countries";
@@ -727,6 +728,32 @@ export default function AddBoss() {
       toast.success(`${formData.firstName} ${formData.lastName} submitted for review!`, {
         description: "An admin will review it shortly.",
       });
+      /*
+        Then, separately, ask about the employer.
+      
+        The same prompt BossProfile shows after a manager rating, on the one page where somebody
+        has just told us where they worked. It was missing here entirely, so the add-manager flow -
+        the most common way a first contribution happens - never offered it at all.
+      
+        Delayed so it lands after the success toast rather than on top of it, and suppressed once
+        answered by either route, exactly as the profile one is. One nudge mechanism, not two.
+      */
+      const nudgeSlug = managerResponse.data?.companySlug;
+      if (nudgeSlug && !isNudgeSuppressed(nudgeSlug)) {
+        const nudgeCompany = (companySelection.name ?? "").trim() || "this company";
+        setTimeout(() => {
+          toast(`Rate ${nudgeCompany} too?`, {
+            description: `You've rated ${formData.firstName} ${formData.lastName}. Tell us what the workplace itself was like.`,
+            duration: Infinity,
+            action: {
+              label: `Rate ${nudgeCompany}`,
+              onClick: () => { suppressNudge(nudgeSlug); navigate(`/companies/${nudgeSlug}/rate`); },
+            },
+            cancel: { label: "Maybe later", onClick: () => suppressNudge(nudgeSlug) },
+            onDismiss: () => suppressNudge(nudgeSlug),
+          });
+        }, 1500);
+      }
       navigate(`/manager/${managerId}`);
     } catch (error: any) {
       /*

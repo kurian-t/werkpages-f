@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { toast } from "sonner";
+import { isNudgeSuppressed, suppressNudge } from "@/lib/rateCompanyNudge";
 import { AlertCircle, ArrowLeft, Check, X } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { CompanyLogoImg } from "@/components/ManagerCard";
@@ -337,6 +338,28 @@ export default function RateCompany() {
         rate-company-form asserts: toHaveURL(/companies/<slug>$/). Opening a dialog instead left
         the URL on /rate and broke that contract.
       */
+        /*
+          And the other direction: having rated the workplace, offer the people in it.
+
+          Same mechanism as the manager-to-company nudge, with its own suppression key so
+          answering one direction never silences the other. Fires alongside the exit rather than
+          replacing it, so the reader still lands where a completed rating has always taken them.
+        */
+        const mgrNudgeKey = `mgr:${companySlug}`;
+        if (companySlug && !isNudgeSuppressed(mgrNudgeKey)) {
+          setTimeout(() => {
+            toast(`Rate a manager at ${companyName}?`, {
+              description: "You've told us about the workplace. Who did you work for there?",
+              duration: Infinity,
+              action: {
+                label: `See ${companyName} managers`,
+                onClick: () => { suppressNudge(mgrNudgeKey); navigate(`/companies/${companySlug}`); },
+              },
+              cancel: { label: "Maybe later", onClick: () => suppressNudge(mgrNudgeKey) },
+              onDismiss: () => suppressNudge(mgrNudgeKey),
+            });
+          }, 1500);
+        }
       backToCompany();
     } catch (err) {
       const status = axios.isAxiosError(err) ? err.response?.status : undefined;
