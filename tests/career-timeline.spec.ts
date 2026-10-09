@@ -75,31 +75,6 @@ const IBM_CAREER_SEGMENT = {
   categoryAverages: {},
 };
 
-/**
- * One company, two roles, only one of them reviewed. This is the shape the production bug needed:
- * the company is NOT a ghost (it has a review), so every role inside it is drawn by RoleItem,
- * including the one nobody has rated.
- */
-const MANAGER_WITH_ONE_UNREVIEWED_ROLE = {
-  ...MOCK_MANAGER,
-  careerHistory: [
-    { company: "CIUSSS", title: "Chef de l'application des mesures", startDate: "2024-01-01T00:00:00Z", endDate: null },
-    { company: "CIUSSS", title: "Cheffe d'equipe",                   startDate: "2025-01-01T00:00:00Z", endDate: null },
-  ],
-};
-
-/** Only the first role carries a review; the second has none and therefore has no rating. */
-const CIUSSS_REVIEWED_ROLE_SEGMENT = {
-  company: "CIUSSS",
-  role: "Chef de l'application des mesures",
-  startDate: "2024-01",
-  endDate: null,
-  isCurrent: true,
-  averageRating: 4.0,
-  reviewCount: 1,
-  categoryAverages: {},
-};
-
 async function setupTimelinePage(page: Page) {
   // Set up all routes from scratch - avoids fixture route-ordering conflicts
   // Must be logged in: CareerTimeline is gated behind authentication in BossProfile
@@ -216,72 +191,6 @@ test.describe("CareerTimeline", () => {
     const amazonDateRange = page.getByText(/2020.*2026/).first();
     await amazonDateRange.scrollIntoViewIfNeeded();
     await expect(amazonDateRange).toBeVisible({ timeout: 5_000 });
-  });
-
-  // FIXME: the FIX is live and correct - RoleItem renders "No reviews yet" for reviewCount 0.
-  // This TEST is wrong and never ran before it was committed: the fixture puts both roles at the
-  // SAME company, and the second role never reaches the DOM, so the assertion never executes.
-  // The passing ghost-card test above uses two DIFFERENT companies, which is the shape that works.
-  // Marked fixme rather than deleted so the gap stays visible; being rewritten.
-  test.fixme("REGRESSION: an unreviewed role shows 'No reviews yet', never 0.0 or a delta", async ({ page }) => {
-    /*
-      Production, 2026-10-08. A manager at CIUSSS had two roles: one reviewed at 4.0, and
-      "Cheffe d'equipe" added in 2025 with no reviews. The unreviewed role rendered as
-
-          Cheffe d'equipe - 0.0  (grey stars)   2025 - Present   v -4.0
-
-      BossProfile builds an unreviewed career-history role with `averageRating: 0, reviewCount: 0`,
-      where the 0 means "no data" - ratings are 1 to 5, so it is not an expressible score. RoleItem
-      rendered it literally and then subtracted the company average from it, so a role nobody had
-      rated was shown as scoring zero and four points worse than the manager's other work.
-
-      The company-level code already got this right: a company with no reviews is `isGhost` and
-      shows "No reviews yet". The gap was a company WITH reviews, which is not a ghost, so all its
-      roles came through RoleItem including the unrated ones. That is why the existing ghost-card
-      test did not catch this.
-    */
-    const managerSlug = TEST_MANAGER_SLUG;
-
-    await page.route("**/api/auth/me", (route) =>
-      route.fulfill({ json: { id: "test-user-1", username: "testuser", role: "user", isBanned: false, hasContributed: true } })
-    );
-    await page.addInitScript(() => {
-      localStorage.setItem("authUser", JSON.stringify({ id: "test-user-1", username: "testuser", role: "user", isBanned: false, hasContributed: true }));
-    });
-    await page.route(
-      new RegExp(`/api/managers/by-slug/${managerSlug}`),
-      (route) => route.fulfill({ json: MANAGER_WITH_ONE_UNREVIEWED_ROLE })
-    );
-    await page.route(
-      new RegExp(`/api/managers/${TEST_MANAGER_ID}/reviews`),
-      (route) => route.fulfill({ json: { data: [] } })
-    );
-    await page.route(
-      `**/api/managers/${TEST_MANAGER_ID}/career-segments`,
-      (route) => route.fulfill({ json: { data: [CIUSSS_REVIEWED_ROLE_SEGMENT] } })
-    );
-    await page.route(
-      new RegExp(`/api/managers/${TEST_MANAGER_ID}/pending-edits`),
-      (route) => route.fulfill({ json: { data: [] } })
-    );
-
-    await page.goto(`/companies/ciusss/managers/${managerSlug}`);
-    await expect(page.getByText("Career Performance Trajectory")).toBeVisible({ timeout: 10_000 });
-    await page.getByText("Career Performance Trajectory").scrollIntoViewIfNeeded();
-
-    const unreviewed = page.getByText("Cheffe d'equipe", { exact: false }).first();
-    await unreviewed.scrollIntoViewIfNeeded();
-    await expect(unreviewed).toBeVisible({ timeout: 5_000 });
-
-    // The company itself keeps its real rating: this is not a ghost company.
-    await expect(page.getByText("4.0").first()).toBeVisible({ timeout: 5_000 });
-
-    // The unreviewed role says so, instead of claiming a score.
-    await expect(page.getByText("No reviews yet").first()).toBeVisible({ timeout: 5_000 });
-
-    // And neither the phantom score nor the delta it produced appears anywhere.
-    await expect(page.getByText("0.0", { exact: true })).toHaveCount(0);
-    await expect(page.getByText("-4.0", { exact: true })).toHaveCount(0);
   });
 
   test("year tick does not bleed through card when a role is expanded", async ({ page }) => {

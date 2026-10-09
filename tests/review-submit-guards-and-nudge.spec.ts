@@ -19,10 +19,15 @@ import {
  * press. Each has its own message because each has a different fix, and none of them ran.
  *
  * The nudge is the interesting half. Having just rated a manager, somebody is asked - once, on the
- * page they are already on, 1.5 seconds later so it does not land on top of the success toast -
- * whether they would also rate the employer. Three ways out and two meanings: Rate opens the form,
- * and both "Maybe later" and the ✕ mean no. Making those two differ would be a trap for anyone who
- * closes a prompt rather than declining it, which is most people.
+ * page they are already on - whether they would also rate the employer.
+ *
+ * It is a dialog (ContributionNextStep), not the delayed toast this used to assert. The toast and
+ * the dialog offered the same thing with the same button label, and having both on the page is
+ * what "strict mode violation: resolved to 2 elements" was reporting. The meanings are unchanged
+ * and still tested below: it names the company, accepting opens the form, declining is remembered,
+ * and a manager with no employer prompts nothing. Three ways out and two meanings: Rate opens the
+ * form, and both "Not now" and the ✕ mean no. Making those two differ would be a trap for anyone
+ * who closes a prompt rather than declining it, which is most people.
  */
 
 const URL = `/manager/${TEST_MANAGER_ID}`;
@@ -110,36 +115,51 @@ test.describe("Being asked about the employer afterwards", () => {
 
     await submitReview(page);
 
-    await expect(page.getByText(/Rate Acme Corp too\?/i)).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(/what the workplace itself was like/i)).toBeVisible();
+    await expect(page.getByTestId("contribution-next-step")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Want to share a little more\?/i)).toBeVisible();
+    await expect(page.getByText(/You also worked at Acme Corp/i)).toBeVisible();
   });
 
-  test("it lands after the success message, not on top of it", async ({ page }) => {
-    // The first thing to say is that the review is live. The prompt is delayed so it does not
-    // cover the confirmation somebody has just earned.
+  test("the confirmation leads, so the offer never reads as a failure", async ({ page }) => {
+    // Somebody who has just submitted wants to know it worked before being asked for anything
+    // else. The dialog says so itself, and the success toast still fires behind it.
     await openReviewForm(page);
 
     await submitReview(page);
 
+    await expect(page.getByText(/Your rating was submitted anonymously/i)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/is live!/i)).toBeVisible({ timeout: 10_000 });
   });
 
   test("accepting it opens the workplace form for that company", async ({ page }) => {
     await openReviewForm(page);
     await submitReview(page);
-    await expect(page.getByText(/Rate Acme Corp too\?/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("contribution-next-step")).toBeVisible({ timeout: 15_000 });
 
-    await page.getByRole("button", { name: /^Rate Acme Corp$/ }).click();
+    await page.getByTestId("next-step-primary").click();
 
     await expect(page).toHaveURL(new RegExp(`/companies/${TEST_COMPANY_SLUG}/rate`), { timeout: 10_000 });
+  });
+
+  test("the other route offers another manager at the same company", async ({ page }) => {
+    // People who stayed somewhere for years usually had more than one manager, so this is offered
+    // second rather than hidden. It carries the company, so it does not ask for it again.
+    await openReviewForm(page);
+    await submitReview(page);
+    await expect(page.getByTestId("contribution-next-step")).toBeVisible({ timeout: 15_000 });
+
+    await expect(page.getByTestId("next-step-secondary")).toHaveText(/Rate another Acme Corp manager/i);
+    await page.getByTestId("next-step-secondary").click();
+
+    await expect(page).toHaveURL(new RegExp(`/companies/${TEST_COMPANY_SLUG}$`), { timeout: 10_000 });
   });
 
   test("declining it stops it being asked again", async ({ page }) => {
     await openReviewForm(page);
     await submitReview(page);
-    await expect(page.getByText(/Rate Acme Corp too\?/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("contribution-next-step")).toBeVisible({ timeout: 15_000 });
 
-    await page.getByRole("button", { name: /Maybe later/i }).click();
+    await page.getByTestId("next-step-dismiss").click();
 
     await expect(async () => {
       const stored = await page.evaluate((k) => localStorage.getItem(k), NUDGE_KEY);
@@ -151,9 +171,9 @@ test.describe("Being asked about the employer afterwards", () => {
     // Somebody on their way to the form does not need to be asked to go to the form.
     await openReviewForm(page);
     await submitReview(page);
-    await expect(page.getByText(/Rate Acme Corp too\?/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("contribution-next-step")).toBeVisible({ timeout: 15_000 });
 
-    await page.getByRole("button", { name: /^Rate Acme Corp$/ }).click();
+    await page.getByTestId("next-step-primary").click();
 
     await expect(async () => {
       const stored = await page.evaluate((k) => localStorage.getItem(k), NUDGE_KEY);
@@ -178,8 +198,7 @@ test.describe("Being asked about the employer afterwards", () => {
     await submitReview(page);
     await expect(page.getByText(/is live!/i)).toBeVisible({ timeout: 10_000 });
 
-    await page.waitForTimeout(2500);
-    await expect(page.getByText(/Rate Acme Corp too\?/i)).toHaveCount(0);
+    await expect(page.getByTestId("contribution-next-step")).toHaveCount(0);
   });
 
   test("a manager with no employer on file prompts nothing", async ({ page }) => {
@@ -196,7 +215,6 @@ test.describe("Being asked about the employer afterwards", () => {
     await submitReview(page);
     await expect(page.getByText(/is live!/i)).toBeVisible({ timeout: 10_000 });
 
-    await page.waitForTimeout(2500);
-    await expect(page.getByText(/too\?/i)).toHaveCount(0);
+    await expect(page.getByTestId("contribution-next-step")).toHaveCount(0);
   });
 });

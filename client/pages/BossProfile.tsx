@@ -11,7 +11,6 @@ import { gateKey } from "@/lib/gateKey";
 import { Helmet } from "react-helmet-async";
 import { isManagerIndexable } from "@/lib/indexability";
 import { NoIndex, SITE_HIDDEN_FROM_SEARCH } from "@/components/PageMeta";
-import { ContributionNextStep } from "@/components/ContributionNextStep";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Star, Edit2, X, Trash2, Flag, Check, ChevronDown, ArrowLeft } from "lucide-react";
@@ -31,7 +30,8 @@ import type { User } from "@/contexts/AuthContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { toast } from "sonner";
-import { isNudgeSuppressed, suppressNudge } from "@/lib/rateCompanyNudge";
+import { ContributionNextStep } from "@/components/ContributionNextStep";
+import { consumeJustAddedManager, isNudgeSuppressed, suppressNudge } from "@/lib/rateCompanyNudge";
 import { formatDistanceToNow } from 'date-fns';
 import { StarRating } from "@/components/StarRating";
 import { generateUsername } from "@/lib/validators";
@@ -49,7 +49,7 @@ import { MonthYear } from "@/components/MonthYear";
 import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import { DeleteRatingControl } from "@/components/DeleteRatingControl";
 import { RequiredMark } from "@/components/FormFields";
-
+  
 const RATING_CATEGORIES = [
   "Communication Style",
   "Perceived Approachability",
@@ -571,12 +571,24 @@ export default function BossProfile() {
   const [editCompanyLogoUrl, setEditCompanyLogoUrl] = useState<string | undefined>(undefined);
   const [editReviewData, setEditReviewData] = useState<Record<string, number>>({});
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
-  /*
-    Asked after a rating lands, where the flow used to simply stop. Somebody who has just
-    answered ten questions about a manager also worked at that company, and will never be
-    cheaper to ask than right now.
-  */
   const [nextStepOpen, setNextStepOpen] = useState(false);
+  /*
+    Arriving straight from the add-manager form.
+
+    Adding a manager is a contribution like any other, and it used to end in a navigation and
+    nothing else. The form cannot host the offer itself: it navigates here on success, so a dialog
+    opened there unmounts before it can be read. markJustAddedManager leaves a one-shot session
+    flag and this consumes it once.
+
+    Suppression is shared with the after-rating offer, so somebody who has already declined for
+    this company is not asked again just because they arrived by a different route.
+  */
+  useEffect(() => {
+    if (!manager) return;
+    if (!consumeJustAddedManager()) return;
+    if (manager.companySlug && !isNudgeSuppressed(manager.companySlug)) setNextStepOpen(true);
+  }, [manager]);
+
   const [pendingAutoSubmit, setPendingAutoSubmit] = useState<User | null>(null);
   const [conflictAfterAuth, setConflictAfterAuth] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -1452,46 +1464,18 @@ export default function BossProfile() {
     /*
       Then, separately, ask about the employer.
 
-      Delayed so it lands after the success toast rather than on top of it, and offered here on
-      the manager's own profile because that is where people want to be once they have rated
-      someone. A screen of its own would take them off the page they came for.
+      Offered here on the manager's own profile because that is where people want to be once they
+      have rated someone, and suppressed for anyone who has already answered so it never nags.
 
       Never part of the review itself: nothing may make the manager contribution harder.
     */
     if (manager.companySlug && !isNudgeSuppressed(manager.companySlug)) {
-      const slug = manager.companySlug;
-      const companyName = manager.company ?? "this company";
-      setTimeout(() => {
-        toast(`Rate ${companyName} too?`, {
-          description: `You've rated ${manager.name}. Tell us what the workplace itself was like.`,
-          duration: Infinity,
-          action: {
-            label: `Rate ${companyName}`,
-            onClick: () => { suppressNudge(slug); navigate(`/companies/${slug}/rate`); },
-          },
-          cancel: {
-            label: "Maybe later",
-            onClick: () => suppressNudge(slug),
-          },
-          // Dismissing by any route counts as an answer, so the ✕ suppresses it too. Two exits
-          // that behave differently would be a trap for anyone who closes rather than declines.
-          onDismiss: () => suppressNudge(slug),
-        });
-      }, 1500);
+      setNextStepOpen(true);
     }
 
     setIsSubmittingReview(false);
     setReviewStep(null);
     setModalRatings(initializeRatings());
-    /*
-      No second nudge here.
-
-      The toast above has asked about the employer since before ContributionNextStep existed, and
-      it carries suppression (isNudgeSuppressed / suppressNudge) so it stops asking once answered.
-      Opening the dialog as well meant two prompts with the same button label, which is what
-      "strict mode violation: resolved to 2 elements" in review-submit-guards-and-nudge was
-      reporting. One nudge, and it is the one that remembers your answer.
-    */
   };
 
   // Finds the user's existing review that conflicts with the current draft -
@@ -1931,28 +1915,34 @@ export default function BossProfile() {
       offered second rather than hidden, because people who stayed somewhere for years usually had
       more than one. Both carry the company, so neither asks for it again.
 
-      Routed through companyPath so the industry segment this product nests under is preserved -
-      a hand-built /companies/<slug> here would 404 half the time.
+      This replaced a second toast that asked the same question with the SAME button label as this
+      dialog's primary action. Both on one page is what "strict mode violation: resolved to 2
+      elements" was reporting. One prompt, and it still remembers the answer through suppressNudge.
     */}
     {manager && (
       <ContributionNextStep
         open={nextStepOpen}
-        onClose={() => setNextStepOpen(false)}
+        onClose={() => {
+          setNextStepOpen(false);
+          if (manager.companySlug) suppressNudge(manager.companySlug);
+        }}
         confirmation="Your rating was submitted anonymously"
         question="Want to share a little more?"
         blurb={`You also worked at ${manager.company}. Rate your overall workplace experience.`}
         primaryLabel={`Rate ${manager.company}`}
         onPrimary={() => {
           setNextStepOpen(false);
+          if (manager.companySlug) suppressNudge(manager.companySlug);
           navigate(
-            `${companyPath(manager.industrySlug, manager.companySlug)}/rate?returnTo=` +
+            `/companies/${manager.companySlug}/rate?returnTo=` +
             encodeURIComponent(window.location.pathname + window.location.search),
           );
         }}
         secondaryLabel={`Rate another ${manager.company} manager`}
         onSecondary={() => {
           setNextStepOpen(false);
-          navigate(companyPath(manager.industrySlug, manager.companySlug));
+          if (manager.companySlug) suppressNudge(manager.companySlug);
+          navigate(`/companies/${manager.companySlug}`);
         }}
       />
     )}
@@ -3119,7 +3109,22 @@ export default function BossProfile() {
                       {review.managerTitle} at {review.managerCompany}
                     </p>
                     {/* Tenure is contributed detail, withheld like the scores on every card but the lead one. */}
-                    {(review.workedFrom || review.workedUntil) && (
+                    {/*
+                      Nothing at all when the author hid their dates - not the words "Dates hidden".
+
+                      This line used to be skipped for free: the API nulled both dates for every
+                      reader, so the condition was false and nothing rendered. Serving the author
+                      their own dates (so their edit form can open with them) made the condition
+                      true, and the formatter's hidden label surfaced on the card for the first
+                      time. The guard now states the rule the card always meant, instead of relying
+                      on the data being absent.
+
+                      Matches CompanyRatingList, which had the same text removed for the same
+                      reason. The picker in "Your Reviews - select to edit" DOES still name the
+                      choice, deliberately: that list is the author's own, and confirming a privacy
+                      setting back to the person who chose it is useful there.
+                    */}
+                    {!review.datesHidden && (review.workedFrom || review.workedUntil) && (
                       <p className={`text-xs text-muted-foreground mt-0.5 ${
                         isLocked && !revealIdentity ? "blur-sm select-none" : ""
                       }`}>
@@ -3609,6 +3614,14 @@ export default function BossProfile() {
                             setEditCurrentlyWorking(!!conflicting.workedFrom && !conflicting.workedUntil);
                             setEditManagerCompany(conflicting.managerCompany || manager?.company || "");
                             setEditManagerTitle(conflicting.managerTitle || manager?.title || "");
+                            /*
+                              Seeded here too, not only on the dropdown path. Reaching the edit
+                              form through "Edit my existing review" after a duplicate-role clash
+                              left the toggle at its default, so an author who had hidden their
+                              dates was shown an unticked box and would have republished them by
+                              saving.
+                            */
+                            setEditDatesHidden(!!conflicting.datesHidden);
                             setEditReviewData(fromApiRatings(conflicting.ratings));
                             const existingAuthor = conflicting.author ?? "";
                             if (existingAuthor === user?.username) {

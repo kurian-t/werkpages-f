@@ -1,4 +1,5 @@
 import API_BASE from "@/lib/api";
+import { rankCategoryAverages } from "@/lib/categoryAverages";
 import { CompanyTile } from "@/components/CompanyTile";
 import { CompanyTabHeader } from "@/components/CompanyTabHeader";
 import { RatingColumns } from "@/components/RatingColumns";
@@ -55,18 +56,23 @@ const num = (v: unknown): number | null =>
   v == null || v === "" || isNaN(Number(v)) ? null : Number(v);
 
 function IndustryRatings({ data, hideCount }: { data: IndustryProfileData; hideCount: boolean }) {
-  const entries = Object.entries(data.categoryAverages ?? {})
-    .filter(([, v]) => typeof v === "number" && !isNaN(v))
-    .map(([label, value]) => ({ label, value }));
-  if (entries.length === 0) return null;
+  /*
+    The shared helper owns reading this field and the ranking rule - see client/lib/categoryAverages.
+
+    The "one sorted list, split" rule used to be written out here AND in CompanyProfile, having
+    been found and fixed in each separately. The guard against a missing field was written here and
+    NOT there, which is what crashed the company page. One implementation, so neither can happen
+    again.
+  */
+  const { ranked: sorted, strongest, weakest } = rankCategoryAverages(data.categoryAverages);
+  if (sorted.length === 0) return null;
 
   /*
-    One sorted list, split - never two independent slices. Taking a top three and a bottom three
-    from a short list returns the same rows in both, and a category then appears as a strength and
-    a weakness at once.
+    Weakest best-first, which is this page's existing order and NOT the company profile's - that
+    one lists the worst first. Preserved rather than unified, because changing which end a reader's
+    eye lands on is a visible change to a page, not a refactor. Worth settling deliberately.
   */
-  const sorted = [...entries].sort((a, b) => b.value - a.value);
-  const cut = Math.max(3, sorted.length - 3);
+  const weakestShownBestFirst = [...weakest].reverse();
 
   return (
     <CompanyTabHeader
@@ -126,8 +132,8 @@ function IndustryRatings({ data, hideCount }: { data: IndustryProfileData; hideC
           label: (data.managerCount ?? 0) === 1 ? "manager" : "managers" },
       ]}
       highlights={[
-        ...sorted.slice(0, 3).map((e) => ({ direction: "up" as const, label: e.label, value: e.value })),
-        ...sorted.slice(cut).map((e) => ({ direction: "down" as const, label: e.label, value: e.value })),
+        ...strongest.map((e) => ({ direction: "up" as const, label: e.label, value: e.value })),
+        ...weakestShownBestFirst.map((e) => ({ direction: "down" as const, label: e.label, value: e.value })),
       ]}
     />
   );

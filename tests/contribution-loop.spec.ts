@@ -1,7 +1,3 @@
-// FIXME: these cover ContributionNextStep, which duplicated a nudge that already
-// existed as a toast in BossProfile. The dialog is no longer opened; the toast is the
-// single nudge. Kept visible rather than deleted pending a decision on which design
-// to keep - see review-submit-guards-and-nudge.spec.ts for the surviving one.
 import { test, expect } from "./base";
 import {
   MOCK_USER, MOCK_MANAGER, TEST_COMPANY_SLUG, TEST_MANAGER_SLUG, mockManagerPage,
@@ -23,9 +19,16 @@ import {
  * box for the employer they just described loses most of them there.
  */
 
+/*
+  categoryAverages is NOT optional padding. CompanyProfile does Object.entries() on it unguarded,
+  so a payload without it throws and the page renders the error boundary instead - which is what
+  happened the moment these tests started following the rating onto the company page rather than
+  only asserting its URL.
+*/
 const COMPANY = {
   id: 1, name: "Red Hat", slug: "red-hat", industry: "Software", industrySlug: "software",
-  managerCount: 0, totalReviews: 0, avgRating: null, managers: [],
+  managerCount: 0, totalReviews: 0, avgRating: null, managers: [], categoryAverages: {},
+  companyRating: null,
 };
 
 async function openForm(page: any) {
@@ -56,9 +59,16 @@ async function submitRating(page: any) {
   for (let i = 0; i < n; i++) await stars.nth(i).click();
   await page.locator('input[name="attestation"]').check();
   await page.getByRole("button", { name: /submit rating|update rating/i }).click();
+
+  /*
+    The rating lands on the company's own page, on the tab that SHOWS it, and the offer is made
+    there. It used to be a modal on the form itself, which asked somebody to choose between two
+    further contributions while the one they had just written was hidden behind the question.
+  */
+  await expect(page).toHaveURL(/\?tab=company$/, { timeout: 10_000 });
 }
 
-test.describe.fixme("After a workplace rating", () => {
+test.describe("After a workplace rating", () => {
   test("the flow does not end - it asks for the other half of the contribution", async ({ page }) => {
     await openForm(page);
     await submitRating(page);
@@ -75,23 +85,113 @@ test.describe.fixme("After a workplace rating", () => {
     await expect(page.getByTestId("next-step-primary")).toHaveText(/Rate a manager at Red Hat/);
   });
 
-  test("taking it goes to that company, not to a search box", async ({ page }) => {
+  test("taking it opens the add-manager form, not a search box", async ({ page }) => {
+    /*
+      The form, not the Managers tab.
+
+      It used to flip to that tab, which is a dead end in the common case: somebody who has just
+      rated a workplace is often rating a company with no managers listed, so the offer led to an
+      empty tab. The form is where both halves happen - the manager is added and rated in one
+      submission.
+    */
     await openForm(page);
     await submitRating(page);
     await page.getByTestId("next-step-primary").click();
 
-    // The company page is where managers at a company are found. Landing anywhere else would mean
-    // retyping the employer that was just submitted.
-    await expect(page).toHaveURL(/\/companies\/red-hat(\?|$)/, { timeout: 10_000 });
+    await expect(page).toHaveURL(/\/add\?/, { timeout: 10_000 });
+  });
+
+  test("the form opens with the company already filled in", async ({ page }) => {
+    /*
+      The whole point of asking here rather than later: the employer is already known, so nobody is
+      sent to a blank company box for the company they just spent ten questions describing. Every
+      step that asks for it again is a step most people leave at.
+    */
+    await openForm(page);
+    await submitRating(page);
+    await page.getByTestId("next-step-primary").click();
+
+    await expect(page).toHaveURL(/company=Red\+Hat|company=Red%20Hat/, { timeout: 10_000 });
+    /*
+      And it is actually in the field, not merely in the URL. Scoped to the company field rather
+      than the page: the company name appears in several places on this form, so a bare text match
+      would pass even if the field itself were empty.
+
+      Asserted as text, not as an input value - the shared company control collapses to a card
+      showing the name once it HAS one, which is the whole point of it being prefilled.
+    */
+    await expect(page.getByTestId("company-field")).toContainText("Red Hat", { timeout: 10_000 });
+  });
+
+  test("Next is enabled without touching the prefilled company", async ({ page }) => {
+    /*
+      The bug this exists for. Step 1 validates the SELECTED company, not the text in the box, and
+      arriving with ?company= filled only the text. So Next stayed greyed out until the reader
+      opened the company field and edited it - having been sent there precisely so they would not
+      have to retype the employer they just rated.
+    */
+    await openForm(page);
+    await submitRating(page);
+    await page.getByTestId("next-step-primary").click();
+    await expect(page).toHaveURL(/\/add\?/, { timeout: 10_000 });
+
+    // Everything else step 1 asks for, and nothing touching the company.
+    await page.getByLabel(/first name/i).fill("Dana");
+    await page.getByLabel(/last name/i).fill("Scully");
+    await page.getByLabel(/title/i).first().fill("Engineering Manager");
+
+    await expect(page.getByRole("button", { name: /^next$/i }).first()).toBeEnabled({ timeout: 10_000 });
+  });
+
+  test("the prefilled company carries its id, so no second row is minted", async ({ page }) => {
+    /*
+      Without the id the write resolves the company by name again, which is how a duplicate row
+      for a company that already exists appears. The id is in the URL and seeded into the
+      selection, so the submission points at the row the reader was just looking at.
+    */
+    await openForm(page);
+    await submitRating(page);
+    await page.getByTestId("next-step-primary").click();
+
+    await expect(page).toHaveURL(/companyId=1\b/, { timeout: 10_000 });
+  });
+
+  test("cancelling the form returns to the rating that was just written", async ({ page }) => {
+    // returnTo carries the company tab, where the new workplace rating is shown - not the
+    // Managers tab, which is not what they were looking at.
+    await openForm(page);
+    await submitRating(page);
+    await page.getByTestId("next-step-primary").click();
+
+    await expect(page).toHaveURL(/returnTo=[^&]*tab%3Dcompany/, { timeout: 10_000 });
   });
 
   test("declining still finishes the submission", async ({ page }) => {
     /*
       The rating is already saved by the time this is asked - the offer is never a condition of
       the contribution, and "Not now" must never read as cancelling what was just submitted.
+
+      This is also the regression test for the toast collision, and the only one that catches it.
+      Sonner's toaster is bottom-right too and ships z-index: 999999999, so while the card was at
+      z-50 the success toast sat on top of it and its container ate the clicks - Playwright
+      reported "subtree intercepts pointer events" and the dismiss click timed out. It reproduces
+      HERE and nowhere else because this is a real submission, so a success toast is actually on
+      screen; the cases that open the card from a stored flag have no toast and passed throughout.
+      It failed on Mobile Chrome only, where both elements are effectively full width - which is
+      the viewport most readers use.
     */
     await openForm(page);
     await submitRating(page);
+
+    /*
+      Wait for the toast to be ON SCREEN before clicking, so the overlap is exercised every run.
+
+      Without this the test was only accidentally a regression test: the toast auto-dismisses, so
+      a fast run clicked after it had gone and passed, and the bug surfaced only under a loaded
+      full suite. A regression test that depends on losing a race is one that gets re-run instead
+      of read.
+    */
+    await expect(page.locator("[data-sonner-toast]").first()).toBeVisible({ timeout: 10_000 });
     await page.getByTestId("next-step-dismiss").click();
 
     await expect(page.getByTestId("contribution-next-step")).toHaveCount(0);
@@ -109,7 +209,7 @@ test.describe.fixme("After a workplace rating", () => {
   });
 });
 
-test.describe.fixme("After a manager rating", () => {
+test.describe("After a manager rating", () => {
   /*
     The other direction, and the more valuable one: workplace ratings are the thinner dataset, and
     somebody who has just answered ten questions about a manager has exactly the experience a
@@ -187,5 +287,159 @@ test.describe.fixme("After a manager rating", () => {
 
     await expect(page.getByTestId("contribution-next-step")).toHaveCount(0);
     await expect(page).toHaveURL(/\/companies\/acme-corp\/managers\/alex-johnson/);
+  });
+});
+
+test.describe("After adding a manager", () => {
+  /*
+    The third surface, and the one that was missing entirely.
+
+    Adding a manager is a contribution like the other two, and it used to end in a navigation to
+    the new profile and nothing else. The offer cannot live on the form - a successful submission
+    navigates away, so a dialog opened there unmounts before it can be read - so the form leaves a
+    one-shot session flag and the profile consumes it on arrival.
+
+    These assert the consuming half, which is the half that can silently stop working: the flag is
+    set in three separate success branches in AddBoss, and a profile that ignored it would look
+    exactly like a submission that simply did not offer anything.
+  */
+  const JUST_ADDED = "rmm_just_added_manager";
+
+  async function arriveFromAddManager(page: any, opts: { suppressed?: boolean } = {}) {
+    const user = { id: "u1", username: "testuser", role: "user", isBanned: false, hasContributed: true };
+    await page.route("**/api/auth/me", (r: any) => r.fulfill({ json: user }));
+    await mockManagerPage(page, { manager: MOCK_MANAGER, loggedIn: true });
+    await page.addInitScript(
+      ([u, k, suppressKey]: [any, string, string | null]) => {
+        localStorage.setItem("authUser", JSON.stringify(u));
+        sessionStorage.setItem(k, "1");
+        if (suppressKey) {
+          localStorage.setItem(suppressKey, String(Date.now() + 30 * 24 * 60 * 60 * 1000));
+        }
+      },
+      [user, JUST_ADDED, opts.suppressed ? `wp_company_rate_nudge:${TEST_COMPANY_SLUG}` : null],
+    );
+    await page.goto(`/companies/${TEST_COMPANY_SLUG}/managers/${TEST_MANAGER_SLUG}`);
+    await expect(page.getByRole("heading", { name: "Alex Johnson", exact: true }))
+      .toBeVisible({ timeout: 10_000 });
+  }
+
+  test("the new manager's profile asks for the workplace too", async ({ page }) => {
+    await arriveFromAddManager(page);
+
+    await expect(page.getByTestId("contribution-next-step")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Want to share a little more?")).toBeVisible();
+    await expect(page.getByTestId("next-step-primary")).toHaveText(/Rate Acme Corp/);
+  });
+
+  test("the offer is made once, not on every later visit", async ({ page }) => {
+    /*
+      The flag is one-shot. Left set, the dialog would reopen on an unrelated profile later in the
+      same tab, which is how a useful prompt turns into something people learn to click past.
+    */
+    await arriveFromAddManager(page);
+    await expect(page.getByTestId("contribution-next-step")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("next-step-dismiss").click();
+
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Alex Johnson", exact: true }))
+      .toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("contribution-next-step")).toHaveCount(0);
+  });
+
+  test("somebody who already declined for this company is not asked", async ({ page }) => {
+    // Suppression is shared with the after-rating offer, so arriving by a different route is not
+    // a way around an answer somebody already gave.
+    await arriveFromAddManager(page, { suppressed: true });
+
+    await expect(page.getByTestId("contribution-next-step")).toHaveCount(0);
+  });
+
+  test("declining leaves them on the profile they just created", async ({ page }) => {
+    await arriveFromAddManager(page);
+    await page.getByTestId("next-step-dismiss").click();
+
+    await expect(page.getByTestId("contribution-next-step")).toHaveCount(0);
+    await expect(page).toHaveURL(/\/companies\/acme-corp\/managers\/alex-johnson/);
+  });
+});
+
+test.describe("The offer does not block the page it is congratulating", () => {
+  /*
+    This was a centred modal over a dimmed backdrop, which made the offer arrive before the thing
+    it congratulates could be seen: somebody who had just rated a manager was asked to choose
+    between two further contributions while their own rating sat hidden behind the dialog asking
+    about it.
+
+    So it is a corner card. These assert the three properties that stop it being a modal again:
+    nothing is dimmed or blocked, it can be tucked away rather than only accepted or refused, and
+    tucking it away is not the same as declining.
+  */
+  async function offerShowing(page: any) {
+    const user = { id: "u1", username: "testuser", role: "user", isBanned: false, hasContributed: true };
+    await page.route("**/api/auth/me", (r: any) => r.fulfill({ json: user }));
+    await mockManagerPage(page, { manager: MOCK_MANAGER, loggedIn: true });
+    await page.addInitScript(
+      ([u, k]: [any, string]) => {
+        localStorage.setItem("authUser", JSON.stringify(u));
+        sessionStorage.setItem(k, "1");
+      },
+      [user, "rmm_just_added_manager"],
+    );
+    await page.goto(`/companies/${TEST_COMPANY_SLUG}/managers/${TEST_MANAGER_SLUG}`);
+    await expect(page.getByTestId("contribution-next-step")).toBeVisible({ timeout: 10_000 });
+  }
+
+  test("there is no backdrop over the page", async ({ page }) => {
+    // A dimming overlay is what made the previous design a wall. The profile stays readable and
+    // clickable while the offer is up.
+    await offerShowing(page);
+
+    await expect(page.getByRole("heading", { name: "Alex Johnson", exact: true })).toBeVisible();
+    await expect(page.locator("div.fixed.inset-0.bg-black\\/50")).toHaveCount(0);
+  });
+
+  test("it can be tucked away to read the page, then brought back", async ({ page }) => {
+    await offerShowing(page);
+
+    await page.getByTestId("next-step-minimize").click();
+
+    // Collapsed to a pill: the question is still there, the buttons are not in the way.
+    await expect(page.getByTestId("next-step-expand")).toBeVisible();
+    await expect(page.getByTestId("next-step-primary")).toHaveCount(0);
+
+    await page.getByTestId("next-step-expand").click();
+    await expect(page.getByTestId("next-step-primary")).toBeVisible();
+  });
+
+  test("tucking it away is not declining it", async ({ page }) => {
+    /*
+      The distinction the minimise control exists for. Somebody who wants to read the page first
+      has not said no, so minimising must not write the suppression that a dismissal does.
+    */
+    await offerShowing(page);
+
+    await page.getByTestId("next-step-minimize").click();
+
+    const stored = await page.evaluate(
+      (k: string) => localStorage.getItem(k),
+      `wp_company_rate_nudge:${TEST_COMPANY_SLUG}`,
+    );
+    expect(stored).toBeNull();
+  });
+
+  test("closing it is declining it, and is remembered", async ({ page }) => {
+    await offerShowing(page);
+
+    await page.getByTestId("next-step-close").click();
+
+    await expect(page.getByTestId("contribution-next-step")).toHaveCount(0);
+    await expect(async () => {
+      const stored = await page.evaluate(
+        (k: string) => localStorage.getItem(k),
+        `wp_company_rate_nudge:${TEST_COMPANY_SLUG}`,
+      );
+      expect(stored).toBeTruthy();
+    }).toPass({ timeout: 10_000 });
   });
 });

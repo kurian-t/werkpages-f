@@ -224,7 +224,18 @@ test.describe("Rating a workplace", () => {
 
     await page.getByRole("button", { name: "Submit rating" }).click();
 
-    await expect(page).toHaveURL(/\/companies\/red-hat$/, { timeout: 10_000 });
+    /*
+      A successful rating no longer dead-ends on the company page: it asks whether the reader would
+      also rate a manager there (ContributionNextStep). Declining is what lands them back, so this
+      asserts the same destination through the step that now precedes it.
+    */
+    /*
+      The company TAB, not the page's default Managers tab: the rating just written is shown
+      there, and landing anywhere else hides it. The follow-up offer is a corner card on that
+      page, so it no longer stands between submitting and seeing the result - see
+      contribution-loop.spec.ts.
+    */
+    await expect(page).toHaveURL(/\/companies\/red-hat\?tab=company$/, { timeout: 10_000 });
     expect(posted?.overallRating).toBe(4);
     // The handle is generated on this page and sent with the rating, so the card has a byline.
     expect(typeof posted?.author).toBe("string");
@@ -334,7 +345,14 @@ test.describe("Rating a workplace", () => {
     await attest(page);
     await page.getByRole("button", { name: "Submit rating" }).click();
 
-    await expect(page).toHaveURL(/\/companies\/red-hat$/, { timeout: 10_000 });
+    // Same follow-up offer as above; dismissing it is what returns to the company.
+    /*
+      The company TAB, not the page's default Managers tab: the rating just written is shown
+      there, and landing anywhere else hides it. The follow-up offer is a corner card on that
+      page, so it no longer stands between submitting and seeing the result - see
+      contribution-loop.spec.ts.
+    */
+    await expect(page).toHaveURL(/\/companies\/red-hat\?tab=company$/, { timeout: 10_000 });
     expect(posted?.workedUntil).toMatch(/^\d{4}-09$/);
   });
 

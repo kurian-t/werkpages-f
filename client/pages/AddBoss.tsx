@@ -7,7 +7,7 @@ import { AlertCircle, Check, X, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { isNudgeSuppressed, suppressNudge } from "@/lib/rateCompanyNudge";
+import { markJustAddedManager } from "@/lib/rateCompanyNudge";
 import axios from "axios";
 import { validateProfileUrl, generateUsername } from "@/lib/validators";
 import { COUNTRIES } from "@/lib/countries";
@@ -193,6 +193,26 @@ export default function AddBoss() {
     draft, and all three request bodies.
   */
   const companySelection = useCompanySelection(searchParams.get("company") ?? "");
+
+  /*
+    Arriving from a company page with that company already chosen.
+
+    The name alone is not a choice. Step 1 validates the SELECTED company, so a name sitting in
+    the box with no selection behind it left Next greyed out until the reader opened the field and
+    edited it - having been sent there precisely so they would not have to.
+
+    The id matters as much: without it the write resolves the company by name again, which is how
+    a second row for a company that already exists gets minted. The logo is carried for the same
+    reason the company is - it is already known, and the alternative is CompanyLogoImg guessing a
+    domain from the name, which is the guess that put the wrong mark on Lime.
+  */
+  useEffect(() => {
+    const name = searchParams.get("company");
+    if (!name) return;
+    const rawId = searchParams.get("companyId");
+    const id = rawId && /^\d+$/.test(rawId) ? Number(rawId) : undefined;
+    companySelection.set(name, id, searchParams.get("companyLogoUrl") ?? undefined);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [isSubmitting, setIsSubmitting] = useState(false);
   const readyBannerRef = useRef<HTMLDivElement>(null);
   const ghostCaptureAttemptedRef = useRef(false);
@@ -672,6 +692,7 @@ export default function AddBoss() {
       markContributed();
       localStorage.removeItem("rmm_pending_manager");
       sessionStorage.setItem("rmm_just_rated", "1");
+      markJustAddedManager();
       toast.success(`${formData.firstName} ${formData.lastName} submitted for review!`, {
         description: "An admin will review it shortly.",
       });
@@ -725,35 +746,10 @@ export default function AddBoss() {
 
       localStorage.removeItem("rmm_pending_manager");
       sessionStorage.setItem("rmm_just_rated", "1");
+      markJustAddedManager();
       toast.success(`${formData.firstName} ${formData.lastName} submitted for review!`, {
         description: "An admin will review it shortly.",
       });
-      /*
-        Then, separately, ask about the employer.
-      
-        The same prompt BossProfile shows after a manager rating, on the one page where somebody
-        has just told us where they worked. It was missing here entirely, so the add-manager flow -
-        the most common way a first contribution happens - never offered it at all.
-      
-        Delayed so it lands after the success toast rather than on top of it, and suppressed once
-        answered by either route, exactly as the profile one is. One nudge mechanism, not two.
-      */
-      const nudgeSlug = managerResponse.data?.companySlug;
-      if (nudgeSlug && !isNudgeSuppressed(nudgeSlug)) {
-        const nudgeCompany = (companySelection.name ?? "").trim() || "this company";
-        setTimeout(() => {
-          toast(`Rate ${nudgeCompany} too?`, {
-            description: `You've rated ${formData.firstName} ${formData.lastName}. Tell us what the workplace itself was like.`,
-            duration: Infinity,
-            action: {
-              label: `Rate ${nudgeCompany}`,
-              onClick: () => { suppressNudge(nudgeSlug); navigate(`/companies/${nudgeSlug}/rate`); },
-            },
-            cancel: { label: "Maybe later", onClick: () => suppressNudge(nudgeSlug) },
-            onDismiss: () => suppressNudge(nudgeSlug),
-          });
-        }, 1500);
-      }
       navigate(`/manager/${managerId}`);
     } catch (error: any) {
       /*
@@ -780,6 +776,7 @@ export default function AddBoss() {
         // Auto-save already saved this review; navigate instead of showing a confusing error
         markContributed();
         sessionStorage.setItem("rmm_just_rated", "1");
+        markJustAddedManager();
         navigate(`/manager/${autoSavedManagerIdRef.current}`);
       } else {
         setErrors([apiMessage]);
@@ -927,6 +924,7 @@ export default function AddBoss() {
                   onClose={() => setOpenField(null)}
                   companyId={companySelection.id}
                   companyName={companySelection.name}
+                  companyLogoUrl={companySelection.logoUrl}
                   onCompanyIdChange={companySelection.bind.onCompanyIdChange}
                   onCompanySuggestionSelect={companySelection.bind.onSuggestionSelect}
                   idPrefix="addboss"

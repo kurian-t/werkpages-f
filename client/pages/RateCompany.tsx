@@ -3,7 +3,6 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { toast } from "sonner";
-import { isNudgeSuppressed, suppressNudge } from "@/lib/rateCompanyNudge";
 import { AlertCircle, ArrowLeft, Check, X } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { CompanyLogoImg } from "@/components/ManagerCard";
@@ -15,10 +14,10 @@ import { recentYears } from "@/components/MonthYear";
 import { WorkTimelineFields, type MonthYear as MonthYearValue } from "@/components/ManagerFormFields";
 import { AttestationCard } from "@/components/RatingFormParts";
 import { LocationField } from "@/components/LocationField";
-import { ContributionNextStep } from "@/components/ContributionNextStep";
 import { LocationValue, EMPTY_LOCATION, declaredPayload, orUserGeo } from "@/lib/location";
 import { fetchGeo } from "@/lib/geo";
 import { useFormDraft, clearFormDraft } from "@/hooks/useFormDraft";
+import { markJustRatedCompany } from "@/lib/rateCompanyNudge";
 
 /** "2021-06" as the shared timeline control holds it, and back again. */
 const monthYearOf = (value: string | null | undefined): MonthYearValue => {
@@ -127,8 +126,28 @@ export default function RateCompany() {
     retry: false,
   });
 
+  /*
+    What this form is ABOUT: the company named in the field, which is not always the company in
+    the URL. The picker is backed by Clearbit and answers {name, domain}, so choosing a different
+    company usually cannot navigate - there is no slug to navigate to - and the URL keeps naming
+    the company the page opened with.
+  */
+  const subject = companyText.trim();
+  const pageCompanyName = (company?.name ?? "").trim();
+  const editingPageCompany =
+    subject === "" || pageCompanyName === "" ||
+    subject.toLowerCase() === pageCompanyName.toLowerCase();
+
   useEffect(() => {
     if (!mine || loadedExisting) return;
+    /*
+      Never seed over a form that belongs to a different company now.
+
+      `mine` is fetched for the URL's company. Without this, clearing the form for Discord and
+      then letting this run re-applied Shopify's dates and stars on top of it - the reported bug
+      surviving its own fix.
+    */
+    if (!editingPageCompany) return;
     // Editing keeps the name the rating already carries. A fresh one would make the same person
     // look like a different reviewer to anybody who had read it.
     if (mine.author) setGeneratedName(mine.author);
@@ -166,7 +185,7 @@ export default function RateCompany() {
       });
     }
     setLoadedExisting(true);
-  }, [mine, loadedExisting]);
+  }, [mine, loadedExisting, editingPageCompany]);
 
   const companyName = company?.name ?? "this company";
   /*
@@ -175,6 +194,54 @@ export default function RateCompany() {
     by a later refetch.
   */
   const [companySeeded, setCompanySeeded] = useState(false);
+
+  /*
+    Changing the company starts a different rating, so none of the answers carry over.
+
+    THE SUBJECT IS THE COMPANY IN THE FIELD, NOT THE ONE IN THE URL. That distinction is the whole
+    bug. Picking a suggestion only navigates when it carries a slug, and the picker is backed by
+    Clearbit - it answers {name, domain} for companies that mostly have no row here, so a pick
+    almost never has one. companySlug therefore stayed on the company the page opened with, this
+    effect never fired, and the form kept the first company's dates, stars and hide-dates box.
+
+    Reported as: open "edit my rating of Shopify", change the company to Discord, press Next, and
+    the dates were Shopify's.
+
+    Resetting on the slug alone was not enough for a second reason. `mine` is fetched for the URL's
+    company, so clearing `loadedExisting` while the URL still said Shopify made the effect below
+    re-apply Shopify's rating over the cleared form. So the seeding effect is gated on the subject
+    still BEING the page's company, and this clears whenever it stops being.
+
+    Keyed off an actual change rather than firing on mount, or it would wipe the draft that
+    useFormDraft has just restored.
+  */
+  const lastSubjectRef = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${companySlug ?? ""}|${subject.toLowerCase()}`;
+    if (lastSubjectRef.current === null) { lastSubjectRef.current = key; return; }
+    if (lastSubjectRef.current === key) return;
+    lastSubjectRef.current = key;
+
+    setDraft(emptyCompanyRatingDraft());
+    setFromParts({ month: "", year: "" });
+    setUntilParts({ month: "", year: "" });
+    setLocation(EMPTY_LOCATION);
+    setAttested(false);
+    setErrors({});
+    setSubmitError(null);
+    /*
+      A fresh handle. The old one signs the other company's rating, and reusing it would publish
+      two ratings under one name - which is exactly how an anonymous author stops being anonymous.
+    */
+    setGeneratedName(generateUsername());
+    /*
+      Only re-open an existing rating when the subject is the page's own company again. Clearing
+      this while the field names a different company is what let Shopify's rating reload over a
+      form that had just been emptied for Discord.
+    */
+    setLoadedExisting(!editingPageCompany);
+  }, [companySlug, subject]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   /*
     What was typed, kept across a refresh.
@@ -237,12 +304,6 @@ export default function RateCompany() {
     origin to return to.
   */
   const returnTo = searchParams.get("returnTo");
-  /*
-    Shown instead of leaving straight away. A workplace rating used to end by navigating back to
-    the company, which is a dead end at the exact moment somebody has proved they will contribute.
-  */
-  const [nextStepOpen, setNextStepOpen] = useState(false);
-
   const backToCompany = () =>
     navigate(
       returnTo && returnTo.startsWith("/")
@@ -250,6 +311,34 @@ export default function RateCompany() {
         : companySlug
           ? companyPath(industrySlug ?? company?.industrySlug, companySlug)
           : "/companies",
+    );
+
+  /*
+    Where a FINISHED rating lands, which is not where Cancel lands.
+
+    backToCompany honours returnTo - right for Cancel, wrong here. Somebody who has just rated a
+    company wants to see the rating, and it lives on the company tab; the page opens on Managers
+    by default. Sending them to returnTo instead put them back on the manager profile they
+    started from, where the thing they just wrote is not shown at all.
+  */
+  /*
+    `slug` is the company the rating was FILED against, which is not always the one in the URL -
+    the server files against the company the author named. Defaults to the URL for every caller
+    that is not the submit path.
+  */
+  const toRatingOnCompanyTab = (slug: string | undefined = companySlug) =>
+    navigate(
+      slug
+        /*
+          The industry is only correct for the company this page loaded. Sending a different
+          company down the loaded company's industry path would build an address for a company
+          that does not live there, so an unfamiliar company goes to the flat path and the
+          canonical redirect on the profile moves it to its real one.
+        */
+        ? `${slug === companySlug
+              ? companyPath(industrySlug ?? company?.industrySlug, companySlug)
+              : `/companies/${slug}`}?tab=company`
+        : "/companies",
     );
 
   const setRating = (category: (typeof COMPANY_CATEGORIES)[number], value: number) => {
@@ -302,7 +391,7 @@ export default function RateCompany() {
         case it is in.
       */
       const namedCompany = companyText.trim() || companyName;
-      await axios.post(
+      const submitted = await axios.post(
         `${API_BASE}/api/companies/${companySlug}/rating`,
         {
           ...toCompanyRatingPayload(draft),
@@ -329,38 +418,40 @@ export default function RateCompany() {
       // Finished, so the draft is finished with. Only here: a failed submit keeps it.
       clearFormDraft(draftKey);
       await refreshUser();
+      /*
+        Follow the company the rating was actually filed against, not the one we posted to.
+
+        Those differ whenever the author changed the company on the form: the server files against
+        the company they NAMED, while this page is still sitting on the slug it opened with. Using
+        the old slug sent them back to the previous company's page, where the rating they had just
+        written was nowhere to be found - and for a company created by this very submission, that
+        looked like the rating had vanished.
+
+        Falls back to the posted slug, so an older server that does not send this still works.
+      */
+      const ratedSlug: string = submitted.data?.companySlug ?? companySlug;
+      const ratedName: string = submitted.data?.companyName ?? companyName;
+
       queryClient.invalidateQueries({ queryKey: ["company-profile-slug", companySlug] });
       queryClient.invalidateQueries({ queryKey: ["my-company-rating", companySlug] });
-      toast.success(`Thanks, your rating of ${companyName} is live.`);
-      // The offer replaces the exit, rather than racing it.
+      if (ratedSlug !== companySlug) {
+        // The company that actually changed needs its caches dropped too, or its page renders
+        // from a copy fetched before the rating existed.
+        queryClient.invalidateQueries({ queryKey: ["company-profile-slug", ratedSlug] });
+        queryClient.invalidateQueries({ queryKey: ["my-company-rating", ratedSlug] });
+      }
+      queryClient.invalidateQueries({ queryKey: ["company-listing"] });
+      toast.success(`Thanks, your rating of ${ratedName} is live.`);
       /*
-        Back to the company, which is what a completed rating has always done and what
-        rate-company-form asserts: toHaveURL(/companies/<slug>$/). Opening a dialog instead left
-        the URL on /rate and broke that contract.
-      */
-        /*
-          And the other direction: having rated the workplace, offer the people in it.
+        Land on the rating, then ask - in that order.
 
-          Same mechanism as the manager-to-company nudge, with its own suppression key so
-          answering one direction never silences the other. Fires alongside the exit rather than
-          replacing it, so the reader still lands where a completed rating has always taken them.
-        */
-        const mgrNudgeKey = `mgr:${companySlug}`;
-        if (companySlug && !isNudgeSuppressed(mgrNudgeKey)) {
-          setTimeout(() => {
-            toast(`Rate a manager at ${companyName}?`, {
-              description: "You've told us about the workplace. Who did you work for there?",
-              duration: Infinity,
-              action: {
-                label: `See ${companyName} managers`,
-                onClick: () => { suppressNudge(mgrNudgeKey); navigate(`/companies/${companySlug}`); },
-              },
-              cancel: { label: "Maybe later", onClick: () => suppressNudge(mgrNudgeKey) },
-              onDismiss: () => suppressNudge(mgrNudgeKey),
-            });
-          }, 1500);
-        }
-      backToCompany();
+        The offer used to open here, on the form, as a modal over a dimmed page: somebody was
+        asked to choose between two further contributions before they could see the one they had
+        just written. So this navigates to the company tab, where the rating is shown, and leaves
+        a one-shot flag that the profile turns into a corner prompt.
+      */
+      markJustRatedCompany();
+      toRatingOnCompanyTab(ratedSlug);
     } catch (err) {
       const status = axios.isAxiosError(err) ? err.response?.status : undefined;
       setSubmitError(
@@ -390,25 +481,6 @@ export default function RateCompany() {
   */
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
-      {/*
-        Company -> manager. The company is carried in the destination, so nobody is sent back to
-        a search box for the employer they just spent ten questions describing.
-      */}
-      <ContributionNextStep
-        open={nextStepOpen}
-        onClose={backToCompany}
-        confirmation="Your workplace rating was submitted"
-        question={`Worked with a manager at ${companyName}?`}
-        blurb="Help others understand what it's like working with them."
-        primaryLabel={`Rate a manager at ${companyName}`}
-        onPrimary={() =>
-          navigate(
-            companySlug
-              ? companyPath(industrySlug ?? company?.industrySlug, companySlug)
-              : "/companies",
-          )
-        }
-      />
       <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
         <button
           onClick={() => {

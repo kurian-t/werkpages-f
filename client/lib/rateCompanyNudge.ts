@@ -45,3 +45,63 @@ export function suppressNudge(companyId: number | string): void {
     // better failure than a thrown exception on a page somebody is reading.
   }
 }
+
+
+/*
+  The handoff from the add-manager form.
+
+  The offer belongs on the profile, not on the form: a successful submission navigates straight to
+  the new manager's page, so a dialog opened on the form would unmount before anybody could read
+  it. The form leaves a one-shot flag and the profile consumes it exactly once.
+
+  sessionStorage, not localStorage: this must not survive the tab. A flag that outlived the visit
+  would open the dialog on some unrelated profile days later.
+*/
+const JUST_ADDED_KEY = "rmm_just_added_manager";
+
+export function markJustAddedManager(): void {
+  try {
+    sessionStorage.setItem(JUST_ADDED_KEY, "1");
+  } catch {
+    // Storage blocked. The submission still worked; only the follow-up offer is lost.
+  }
+}
+
+/** True once per submission, then never again - reading it clears it. */
+export function consumeJustAddedManager(): boolean {
+  try {
+    if (sessionStorage.getItem(JUST_ADDED_KEY) !== "1") return false;
+    sessionStorage.removeItem(JUST_ADDED_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/*
+  The handoff from the workplace-rating form.
+
+  Same one-shot shape as the add-manager flag, and for the same reason: the offer belongs on the
+  page that SHOWS the rating, not on the form that submitted it. Asking on the form meant deciding
+  about two further contributions while the one just written was still hidden behind the question.
+*/
+const JUST_RATED_COMPANY_KEY = "rmm_just_rated_company";
+
+export function markJustRatedCompany(): void {
+  try {
+    sessionStorage.setItem(JUST_RATED_COMPANY_KEY, "1");
+  } catch {
+    // Storage blocked. The rating still landed; only the follow-up offer is lost.
+  }
+}
+
+/** True once per rating, then never again - reading it clears it. */
+export function consumeJustRatedCompany(): boolean {
+  try {
+    if (sessionStorage.getItem(JUST_RATED_COMPANY_KEY) !== "1") return false;
+    sessionStorage.removeItem(JUST_RATED_COMPANY_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}

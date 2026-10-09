@@ -123,8 +123,19 @@ function WorkplaceRatingCard({
               <p className="text-[13px] font-semibold text-foreground">
                 {r.current ? "Current employee" : "Former employee"}
               </p>
-              {/* Tenure is contributed detail, withheld like the scores on every card but the lead one. */}
-              {(r.workedFrom || r.workedUntil || r.datesHidden) && (
+              {/*
+                Tenure is contributed detail, withheld like the scores on every card but the lead one.
+
+                Nothing at all when the author hid their dates - not the words "Dates hidden".
+
+                This card used to say so, and the manager review card beside it said nothing, because
+                the manager card renders this line only when there is a date to put in it and both are
+                null once they are hidden. Two cards answering the same question two ways is the
+                asymmetry; the quieter answer wins. "Current employee" above still says what the
+                reader needs, and the author's own list in Account Settings does still name the choice
+                back to them, which is where confirming it belongs.
+              */}
+              {!r.datesHidden && (r.workedFrom || r.workedUntil) && (
                 <p className={`text-xs text-muted-foreground mt-0.5 ${
                   blurred && !revealIdentity ? "blur-sm select-none" : ""
                 }`}>

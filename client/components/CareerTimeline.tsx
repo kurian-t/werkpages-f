@@ -169,26 +169,11 @@ function RoleItem({
   onDeleteCareerEntry?: (entryId: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  /*
-    A role nobody has reviewed has no rating, and must not be drawn as though it scored zero.
-
-    BossProfile builds a career-history role with `averageRating: 0, reviewCount: 0`, where the 0
-    is a sentinel for "no data" - ratings are 1 to 5, so it is not an expressible score. This card
-    rendered it literally: "0.0", five grey stars, and a delta against the company average, so a
-    role added in 2025 and not yet reviewed appeared as 0.0 and 4.0 points worse than the
-    manager's other work. That is an accusation the data does not make.
-
-    The rest of the file already knows this. A company whose roles have no reviews is `isGhost`
-    and shows "No reviews yet" instead of a score, and the insight maths filters on
-    `reviewCount > 0` for the same reason. The gap was a company with SOME reviews: it is not a
-    ghost, so every one of its roles came through here, including the unreviewed ones.
-  */
-  const unrated  = role.reviewCount === 0;
   const delta    = role.averageRating - companyAvg;
   const abs      = Math.abs(delta);
   const range    = segmentYearRange(role);
-  const isUp     = !unrated && delta > 0.15;
-  const isDown   = !unrated && delta < -0.15;
+  const isUp     = delta > 0.15;
+  const isDown   = delta < -0.15;
   const deltaStr = abs < 0.05 ? "±0.0" : (delta > 0 ? "+" : "") + delta.toFixed(1);
   const arrowColor = isUp ? "#15803d" : isDown ? "#b91c1c" : "#94a3b8";
   const categories = Object.entries(role.categoryAverages);
@@ -254,36 +239,25 @@ function RoleItem({
               <span className="text-xs font-semibold text-slate-800 leading-snug">
                 {role.role}
               </span>
-              {unrated ? (
-                <span className="text-[9.5px] font-semibold uppercase tracking-widest text-slate-400">
-                  No reviews yet
-                </span>
-              ) : (
-                <>
-                  <span className="text-xs text-slate-400">-</span>
-                  <span className="text-xs font-bold text-slate-700 tabular-nums">
-                    {role.averageRating.toFixed(1)}
-                  </span>
-                  <Stars rating={role.averageRating} size={9} />
-                </>
-              )}
+              <span className="text-xs text-slate-400">-</span>
+              <span className="text-xs font-bold text-slate-700 tabular-nums">
+                {role.averageRating.toFixed(1)}
+              </span>
+              <Stars rating={role.averageRating} size={9} />
             </div>
 
             <div className="flex items-center gap-2 mt-0.5">
               {range && (
                 <span className="text-[10.5px] text-slate-500 tabular-nums">{range}</span>
               )}
-              {/* No rating means no comparison to draw against the company average. */}
-              {!unrated && (
-                <div className="flex items-center gap-0.5" style={{ color: arrowColor }}>
-                  {isUp
-                    ? <ArrowUp size={10} />
-                    : isDown
-                    ? <ArrowDown size={10} />
-                    : <Minus size={9} className="text-slate-400" />}
-                  <span className="text-[10.5px] font-bold tabular-nums">{deltaStr}</span>
-                </div>
-              )}
+              <div className="flex items-center gap-0.5" style={{ color: arrowColor }}>
+                {isUp
+                  ? <ArrowUp size={10} />
+                  : isDown
+                  ? <ArrowDown size={10} />
+                  : <Minus size={9} className="text-slate-400" />}
+                <span className="text-[10.5px] font-bold tabular-nums">{deltaStr}</span>
+              </div>
             </div>
           </div>
           {expanded

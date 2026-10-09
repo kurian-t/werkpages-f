@@ -323,10 +323,31 @@ describe("validateInterviewDraft", () => {
 
 describe("toInterviewPayload", () => {
   it("sends only the required fields for a minimal draft", () => {
+    /*
+      The two date keys are sent even when empty, unlike every other optional field below, which
+      is omitted when blank. Both are declared nullable on the server, so the null is accepted.
+
+      It carries no meaning the omission would not: parseYearMonth returns null for an absent key
+      and for an explicit null alike, and the UPDATE writes interviewed_from unconditionally, so
+      leaving the key out clears a stored range exactly as a null does. The keys are here because
+      the builder sets them unconditionally, not because anything needs them - an inconsistency
+      with the fields below rather than a rule.
+
+      `interviewedUntil` is always null. The end month was retired as a question, because a
+      hiring process is measured in weeks and "how long did it take?" already records that; the
+      column stays for rows that already have one.
+
+      This assertion listed three keys and was written on 2026-08-28. The range arrived in the
+      payload on 2026-09-22 and nothing updated the test, so it had been red for a month - which
+      is how a stale expectation stops being a check and becomes noise that teaches people to
+      ignore a failing suite.
+    */
     expect(toInterviewPayload(draft())).toEqual({
       overallRating: 4,
       outcome: "offer",
       interviewYear: CURRENT_YEAR,
+      interviewedFrom: null,
+      interviewedUntil: null,
     });
   });
 

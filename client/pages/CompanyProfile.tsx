@@ -18,6 +18,9 @@ import { Star, Building2, Users, MessageSquare, ChevronLeft, PlusCircle, Pencil 
 import { IndustryIcon } from "@/components/IndustryIcon";
 import { companyPath, managerPath } from "@/lib/urls";
 import { toast } from "sonner";
+import { rankCategoryAverages } from "@/lib/categoryAverages";
+import { ContributionNextStep } from "@/components/ContributionNextStep";
+import { consumeJustRatedCompany } from "@/lib/rateCompanyNudge";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { CompanyLogoImg } from "@/components/ManagerCard";
@@ -53,7 +56,13 @@ interface CompanyData {
   managerCount: number;
   totalReviews: number;
   avgRating?: number;
-  categoryAverages: Record<string, number>;
+  /*
+    Optional, because nothing verifies it is present. It arrives through an unchecked cast of a
+    JSON body; declaring it required made the compiler agree with an assumption the wire never
+    promised, and a dereference of it crashed the page. Optional means TypeScript now refuses any
+    use that does not cope with its absence.
+  */
+  categoryAverages?: Record<string, number>;
   managers: ManagerEntry[];
   /** The company this one belongs to, when it belongs to one. */
   partOf?: GroupCompany;
@@ -420,6 +429,7 @@ export default function CompanyProfile() {
       const res = await axios.get(`${API_BASE}/api/companies/by-name`, {
         params: { company: decoded },
       });
+
       return res.data as CompanyData;
     },
     enabled: !!companySlug,
@@ -427,6 +437,22 @@ export default function CompanyProfile() {
     // background on every mount/focus - keeping them current for all users, not 5-min stale.
     retry: false,
   });
+  /*
+    Arriving straight from the workplace-rating form.
+
+    The offer lives here rather than on the form, so the rating is on screen behind it when it is
+    made. The form leaves a one-shot flag and this consumes it once; the corner card never covers
+    the page, so the rating can be read while deciding.
+
+    Not gated on the rate-company suppression key: that remembers "do not ask me to rate this
+    company", and this is the opposite offer. One rating per person per company makes it naturally
+    once-only anyway.
+  */
+  const [nextStepOpen, setNextStepOpen] = useState(false);
+  useEffect(() => {
+    if (!data) return;
+    if (consumeJustRatedCompany()) setNextStepOpen(true);
+  }, [data]);
   // The tab strip shows how many interview experiences exist before you open the tab. This uses
   // the same query key the panel uses with no filters applied, so React Query serves both from
   // one request rather than fetching twice.
@@ -543,13 +569,14 @@ export default function CompanyProfile() {
     );
   }
   const decoded = data.name;
-  const catEntries = Object.entries(data.categoryAverages)
-    .filter(([, v]) => typeof v === "number" && !isNaN(v))
-    .sort(([, a], [, b]) => b - a);
-  // Split one sorted list rather than taking two independent slices: with six or fewer
-  // categories, slice(0,3) and slice(-3) overlap and a category is named both best and worst.
-  const strongest = catEntries.slice(0, 3);
-  const weakest   = catEntries.slice(Math.max(3, catEntries.length - 3)).reverse();
+  /*
+    Read through the shared helper, which is null-safe and owns the ranking rule.
+
+    This read the field directly and unguarded, so a payload without it threw and the whole page
+    became an error boundary. The identical question on the industry profile had a guard; this one
+    did not. Both now go through one place - see client/lib/categoryAverages.
+  */
+  const { ranked: catEntries, strongest, weakest } = rankCategoryAverages(data.categoryAverages);
   // Whether to show unlocked tiles in the results column
   const resultsUnlocked = searchResults !== null ? searchHasContributed : !isLocked;
   const canonicalUrl = `https://werkpages.com${companyPath(data.industrySlug, data.slug ?? companySlug)}`;
@@ -582,6 +609,43 @@ export default function CompanyProfile() {
   };
   return (
     <>
+    {data && (
+      <ContributionNextStep
+        open={nextStepOpen}
+        onClose={() => setNextStepOpen(false)}
+        confirmation="Your workplace rating was submitted"
+        question={`Worked with a manager at ${data.name}?`}
+        blurb="Help others understand what it's like working with them."
+        primaryLabel={`Rate a manager at ${data.name}`}
+        onPrimary={() => {
+          setNextStepOpen(false);
+          /*
+            Straight to the add-manager form, with the company carried in the URL.
+
+            It used to flip to the Managers tab. That is a dead end in the common case: somebody
+            who has just rated a workplace is often rating a company with no managers listed yet,
+            so the offer led to an empty tab. The form is where both halves happen - the manager is
+            added and rated in one submission.
+
+            Duplicates are accepted here deliberately. Three things catch them before anybody
+            notices: the form's own similar-manager warning, the server's fuzzy match on name
+            within the company (which ATTACHES the review to an existing manager rather than
+            creating a second row, and publishes immediately when that row is already live), and
+            the admin merge tool for the rest. A name one letter outside Levenshtein range is worth
+            an admin's click; a dead-end button is not.
+
+            returnTo points back at this tab, so cancelling returns to the rating just written
+            rather than to the Managers tab nobody asked for.
+          */
+          navigate(
+            `/add?company=${encodeURIComponent(data.name)}` +
+            `&companyId=${data.id}` +
+            (data.logoUrl ? `&companyLogoUrl=${encodeURIComponent(data.logoUrl)}` : "") +
+            `&returnTo=${encodeURIComponent(`${window.location.pathname}?tab=company`)}`,
+          );
+        }}
+      />
+    )}
     <Helmet>
       <title>{pageTitle}</title>
       <meta name="description" content={pageDescription} />
@@ -911,8 +975,8 @@ export default function CompanyProfile() {
             !isLocked
               ? [
                   // The key is already the display name here - the boxes below render it raw too.
-                  ...strongest.map(([label, value]) => ({ direction: "up" as const, label, value })),
-                  ...weakest.map(([label, value]) => ({ direction: "down" as const, label, value })),
+                  ...strongest.map(({ label, value }) => ({ direction: "up" as const, label, value })),
+                  ...weakest.map(({ label, value }) => ({ direction: "down" as const, label, value })),
                 ]
               : []
           }

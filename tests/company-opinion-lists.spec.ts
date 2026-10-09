@@ -178,6 +178,68 @@ test.describe("The workplace ratings behind the average", () => {
     await expect(page.getByText(/Jan 2016\s+–\s+Sep 2018/)).toBeVisible();
   });
 
+  test("a rating whose author hid their dates says nothing, not \"Dates hidden\"", async ({ page }) => {
+    /*
+      Aligned with the manager review card beside it.
+
+      That card renders its period line only when there is a date to put in it, and hiding the
+      dates nulls both - so it shows nothing. This card had an extra `|| r.datesHidden` in the
+      same condition purely so the formatter could print the words "Dates hidden", and the two
+      surfaces answered one question two different ways.
+
+      "Current employee" still carries, because that is not a date and was never hidden.
+    */
+    await open(page, {
+      ratings: [{
+        id: "rat-hidden",
+        overallRating: 4.0,
+        categories: spread(),
+        // What the API actually sends for a hidden range: the flag set and both dates nulled.
+        workedFrom: null,
+        workedUntil: null,
+        datesHidden: true,
+        current: true,
+        createdAt: ago(3),
+        updatedAt: null,
+        author: "QuietFox21",
+        mine: false,
+      }],
+      tab: "?tab=company",
+    });
+
+    await expect(page.getByText("QuietFox21")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Current employee").first()).toBeVisible();
+    await expect(page.getByText(/dates hidden/i)).toHaveCount(0);
+  });
+
+  test("a legacy row still carrying dates alongside the flag also says nothing", async ({ page }) => {
+    /*
+      The flag is what decides, not whether the dates happen to have arrived. Rows written before
+      the API started nulling them can have both, and a reader must not see a range the author
+      asked to withhold just because an old row is shaped differently.
+    */
+    await open(page, {
+      ratings: [{
+        id: "rat-legacy-hidden",
+        overallRating: 4.0,
+        categories: spread(),
+        workedFrom: "2019-03-01",
+        workedUntil: "2021-07-01",
+        datesHidden: true,
+        current: false,
+        createdAt: ago(3),
+        updatedAt: null,
+        author: "QuietFox21",
+        mine: false,
+      }],
+      tab: "?tab=company",
+    });
+
+    await expect(page.getByText("QuietFox21")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Mar 2019/)).toHaveCount(0);
+    await expect(page.getByText(/dates hidden/i)).toHaveCount(0);
+  });
+
   test("an edited rating says so, rather than passing as untouched", async ({ page }) => {
     await open(page, { tab: "?tab=company" });
 
