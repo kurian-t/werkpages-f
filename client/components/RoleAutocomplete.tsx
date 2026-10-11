@@ -39,6 +39,17 @@ export function RoleAutocomplete({ id, value, onChange, placeholder, className, 
   const dropdownRef = useRef<HTMLUListElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const justSelectedRef = useRef(false);
+  /*
+    Whether the person has actually typed in this field.
+
+    A pre-filled field is not a question. The review form opens with the manager's current role
+    already in the box, and fetching on every change of `value` meant that arriving counted as
+    typing: the list opened on its own, and because it is portalled and anchored under the input it
+    covered the controls beneath - "Done editing" among them, which simply could not be clicked.
+
+    So suggestions follow a keystroke, never a mount.
+  */
+  const userTypedRef = useRef(false);
 
   // One shared implementation, so a list running off the edge of the screen is fixed for every
   // control that has one rather than for whichever was reported.
@@ -50,6 +61,14 @@ export function RoleAutocomplete({ id, value, onChange, placeholder, className, 
       return;
     }
     if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    // Not typed in yet: no request, no list. Checked before the query length so that opening a
+    // field with a long value stays as silent as opening an empty one.
+    if (!userTypedRef.current) {
+      setSuggestions([]);
+      setOpen(false);
+      return;
+    }
 
     const query = value.trim();
     if (query.length < 2) {
@@ -128,7 +147,10 @@ export function RoleAutocomplete({ id, value, onChange, placeholder, className, 
         type="text"
         name={name}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          userTypedRef.current = true;
+          onChange(e.target.value);
+        }}
         onKeyDown={onKeyDown}
         onFocus={() => suggestions.length > 0 && setOpen(true)}
         placeholder={placeholder}

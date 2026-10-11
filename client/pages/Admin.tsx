@@ -70,7 +70,7 @@ export default function Admin() {
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
   const [aiSuggestionsTotal, setAiSuggestionsTotal] = useState(0);
   const [aiSuggestionsLoading, setAiSuggestionsLoading] = useState(false);
-  const [stats, setStats] = useState<{ realManagers: number; realReviews: number; weightedOpinions: number; seededManagers: number; scrapedManagers: number } | null>(null);
+  const [stats, setStats] = useState<{ realManagers: number; realReviews: number; weightedOpinions: number; seededManagers: number; scrapedManagers: number; companyReviews: number } | null>(null);
   const [countryStats, setCountryStats] = useState<{ managers: { country: string; count: number }[]; reviews: { country: string; count: number }[] } | null>(null);
 
   // Pending managers state
@@ -738,12 +738,16 @@ export default function Admin() {
               <p className="text-2xl font-semibold">{stats?.scrapedManagers?.toLocaleString() ?? "-"}</p>
               <p className="text-xs text-muted-foreground mt-0.5">Scraped Profiles</p>
             </div>
-            <div className={`rounded-xl border p-4 text-center ${stats?.seededManagers != null && stats.seededManagers <= 10 ? "border-amber-400 bg-amber-50 dark:bg-amber-950/20" : "border-border bg-card"}`}>
-              <p className="text-2xl font-semibold">{stats?.seededManagers?.toLocaleString() ?? "-"}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Fake Profiles Left</p>
-              {stats?.seededManagers != null && stats.seededManagers <= 10 && (
-                <p className="text-xs text-amber-600 font-medium mt-1">Ready to retire</p>
-              )}
+            {/*
+              Workplace ratings, in the slot the seeded-profile countdown used to hold.
+
+              The amber "Ready to retire" treatment went with it: that warning was specific to the
+              seed pool running low, and it means nothing about a rating count. seededManagers is
+              still returned by the API for anything else that reads it.
+            */}
+            <div className="rounded-xl border border-border bg-card p-4 text-center">
+              <p className="text-2xl font-semibold">{stats?.companyReviews?.toLocaleString() ?? "-"}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Company Reviews</p>
             </div>
           </div>
 

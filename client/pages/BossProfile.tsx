@@ -406,6 +406,47 @@ export default function BossProfile() {
     return careerSegments.map(withSegmentLogo);
   }, [careerSegments, manager]);
 
+  /*
+    ONE logo per company, shared by the header and the career trajectory.
+
+    These were resolved from two different tables. The header read managers.company_logo_url - a
+    snapshot stored on the manager row - while a career tile reads companies.logo_url for the
+    company its career_history row points at. Nothing keeps those two columns equal, and each is
+    filled by a different path at a different time, so the same employer could carry two different
+    marks on one page: one above the fold, another on the tile for the very same job.
+
+    The trajectory is the authority, because companies.logo_url is the shared, curated identity -
+    it is what the company page and every company tile already show. The manager's stored snapshot
+    is only a fallback for a company whose own row has no logo yet.
+
+    Taken from the NEWEST segment that is about the manager's current company, which is what makes
+    "the latest tile matches the header" true by construction rather than by coincidence. Past
+    tiles are untouched and keep the logo of the company THEY were at - restoring a past employer's
+    own mark was an earlier fix here and must not be undone.
+
+    The whole identity travels, not just the URL: CompanyLogoImg resolves from logoUrl, domain and
+    brandfetchIconUrl together, so handing the header a matching URL but a different domain could
+    still produce a different image.
+  */
+  const headerCompanyIdentity = useMemo(() => {
+    const key = (manager?.company ?? "").toLowerCase().trim();
+    const fallback = {
+      logoUrl: manager?.companyLogoUrl ?? undefined,
+      domain: (manager as any)?.companyDomain ?? null,
+      brandfetchIconUrl: (manager as any)?.companyBrandfetchIconUrl ?? null,
+    };
+    for (let i = effectiveCareerSegments.length - 1; i >= 0; i--) {
+      const seg: any = effectiveCareerSegments[i];
+      if ((seg.company ?? "").toLowerCase().trim() !== key) continue;
+      return {
+        logoUrl: seg.logoUrl ?? fallback.logoUrl,
+        domain: seg.companyDomain ?? fallback.domain,
+        brandfetchIconUrl: seg.companyBrandfetchIconUrl ?? fallback.brandfetchIconUrl,
+      };
+    }
+    return fallback;
+  }, [effectiveCareerSegments, manager]);
+
   // Contribution gate: hasContributed is loaded as part of the /api/auth/me session
   // response and stored in user state - no separate network request needed.
   const isLocked = !user?.hasContributed;
@@ -2093,7 +2134,7 @@ export default function BossProfile() {
                   className="flex-shrink-0 hover:opacity-80 transition-opacity"
                   aria-label={`View ${manager.company}`}
                 >
-                  <CompanyLogoImg company={manager.company} logoUrl={manager.companyLogoUrl} from={manager} sizeClass="h-14 w-14" />
+                  <CompanyLogoImg company={manager.company} logoUrl={headerCompanyIdentity.logoUrl} domain={headerCompanyIdentity.domain} brandfetchIconUrl={headerCompanyIdentity.brandfetchIconUrl} from={manager} sizeClass="h-14 w-14" />
                 </Link>
 
                 <div className="min-w-0 flex-1">

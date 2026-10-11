@@ -73,8 +73,23 @@ async function openForm(page: any) {
     return r.fulfill({ json: { review: slug === "red-hat" ? RED_HAT_RATING : null } });
   });
 
+  /*
+    Registered BEFORE the navigation, or the response can land first and the wait miss it.
+
+    Every test below needs Red Hat's existing rating to be IN the form before it does anything,
+    and not only the one that asserts so. A test that changes the company and then checks the dates
+    are empty passes for the wrong reason if the rating never arrived - the form was empty all
+    along. Waiting on the actual response removes that vacuous pass, and removes the flake it
+    caused: on firefox under a loaded suite the form reached step 2 before the rating was applied,
+    and the precondition itself failed.
+  */
+  const mineLoaded = page.waitForResponse(
+    (r: any) => /\/api\/companies\/red-hat\/rating/.test(r.url()) && r.request().method() === "GET",
+    { timeout: 15_000 });
+
   await page.goto("/companies/red-hat/rate");
   await expect(page.getByText(/Step 1 of 3/)).toBeVisible({ timeout: 10_000 });
+  await mineLoaded;
 }
 
 /** Swaps the company in the field to one the directory does not hold. */
