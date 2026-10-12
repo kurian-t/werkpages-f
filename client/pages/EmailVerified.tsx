@@ -35,8 +35,19 @@ export default function EmailVerified() {
       }
     } catch {}
 
-    // Nothing pending - just go home
-    navigate("/", { replace: true });
+    /*
+      Nothing pending: go to sign-in and SAY the verification worked.
+
+      This used to navigate("/"), which dropped the person on the homepage with no acknowledgement
+      at all. From their side: they clicked a link in an email and arrived at an ordinary home page,
+      with nothing confirming their address was verified and no hint that signing in was the next
+      step. Reported as "I click the link to verify my account and it takes me back to
+      ratemymanagers.ca ... overall it's confusing".
+
+      The sign-in page already renders "Email verified! You can now sign in." when it is given this
+      state - the message existed and nothing ever sent anybody to it.
+    */
+    navigate("/signin", { replace: true, state: { emailVerified: true } });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (

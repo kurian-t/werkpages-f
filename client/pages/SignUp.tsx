@@ -140,10 +140,13 @@ export default function SignUp() {
     } catch (err: any) {
       if (err?.response?.data?.error === "username_taken") {
         setUsernameError("That username is already taken. Please choose another.");
+        // Inline on the username field, which is also above the button on a long form.
+        window.scrollTo({ top: 0, behavior: "smooth" });
         return;
       }
       if (err?.response?.data?.error === "email_already_registered") {
         setError("An account with this email already exists. Please sign in instead.");
+        window.scrollTo({ top: 0, behavior: "smooth" });
         turnstileRef.current?.reset();
         setTurnstileToken("");
         return;
@@ -154,6 +157,14 @@ export default function SignUp() {
         err?.response?.data?.error ||
         "Failed to sign up. Please try again.";
       setError(message);
+      /*
+        Put the error where the eye is. The banner renders at the top of the card and the Create
+        Account button is at the bottom of a long form - password rules, username availability,
+        Turnstile - so on a phone the message appears entirely off-screen. The reported symptom was
+        pressing Create Account "again and again" with no feedback, then eventually being told the
+        account already existed: the failures HAD been reported, just somewhere invisible.
+      */
+      window.scrollTo({ top: 0, behavior: "smooth" });
       turnstileRef.current?.reset();
       setTurnstileToken("");
     } finally {
