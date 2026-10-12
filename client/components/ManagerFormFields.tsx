@@ -80,6 +80,7 @@ export function ManagerIdentityFields({
   idPrefix = "manager",
   titleError,
   companyHint,
+  locationError,
 }: {
   value: ManagerDetailsValue;
   onChange: (next: Partial<ManagerDetailsValue>) => void;
@@ -98,6 +99,8 @@ export function ManagerIdentityFields({
   idPrefix?: string;
   titleError?: React.ReactNode;
   companyHint?: React.ReactNode;
+  /** Why the location is not acceptable. Passed through to the shared LocationField. */
+  locationError?: string;
 }) {
   const fullName = `${value.firstName} ${value.lastName}`.trim();
   /*
@@ -275,6 +278,7 @@ export function ManagerIdentityFields({
         editing={open === "location"}
         onEditStart={() => onOpen("location")}
         onEditDone={onClose}
+        error={locationError}
         id={`${idPrefix}-location`}
       />
 
@@ -427,7 +431,14 @@ export function WorkTimelineFields({
 
       <div className="grid gap-6 sm:grid-cols-2">
         <div>
-          <p className="mb-2 text-sm font-medium text-foreground">From *</p>
+          {/*
+            RequiredMark, not a typed asterisk. A literal "*" inside text-foreground inherits the
+            body colour, so these two read black while every other required marker on the same form
+            was red - the same question looking optional or mandatory depending on which field you
+            looked at. It is also aria-hidden here, which a typed asterisk is not: a screen reader
+            was announcing "From star".
+          */}
+          <p className="mb-2 text-sm font-medium text-foreground">From <RequiredMark /></p>
           <MonthYearSelects
             label="From"
             value={from}
@@ -440,7 +451,9 @@ export function WorkTimelineFields({
           />
         </div>
         <div>
-          <p className="mb-2 text-sm font-medium text-foreground">To{!current ? " *" : ""}</p>
+          <p className="mb-2 text-sm font-medium text-foreground">
+            To{!current && <> <RequiredMark /></>}
+          </p>
           <div className="flex flex-wrap items-center gap-3">
             {!current && (
               <MonthYearSelects

@@ -67,6 +67,17 @@ export interface LocationSuggestion {
 }
 
 /** How a stored location reads on one line, coarsest parts last. */
+/**
+ * Whether somebody has actually stated a location.
+ *
+ * <p>Precision is the test, not whether the strings happen to be non-empty: it is set only when a
+ * person chose a rung, so a partially populated value from some other source cannot pass for an
+ * answer. One helper, because every form that requires a location has to ask this the same way.
+ */
+export function hasDeclaredLocation(value: LocationValue): boolean {
+  return value.precision != null;
+}
+
 export function formatLocation(value: LocationValue): string {
   if (value.precision === "exact" && value.label) return value.label;
   const parts = [value.city, value.state, value.country].filter(p => p && p.trim());

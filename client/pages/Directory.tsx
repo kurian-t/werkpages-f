@@ -103,7 +103,7 @@ export default function Directory() {
     return () => clearTimeout(timer);
   }, [firstName, lastName, searchTitle, searchCompany]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { data, isFetching: fetching, isLoading, isError } = useQuery({
+  const { data, isFetching: fetching, isLoading, isError, refetch } = useQuery({
     queryKey: ["managers-directory", page, appliedSearch, appliedTitle, appliedSearchCompany, selectedCompany, sortBy, isFullSearch],
     queryFn: async () => {
       // A full search - name, title and company - is the same act as /find, so it runs the same
@@ -142,6 +142,25 @@ export default function Directory() {
   const bosses: any[] = data?.data || [];
   const total: number = data?.total || 0;
   const error = isError ? "Failed to fetch managers" : null;
+
+  /*
+    Whether the browser thinks it has a connection, so the failure can be described honestly.
+
+    navigator.onLine is a weak signal - it reports the link, not whether anything is reachable - so
+    it is used only to choose the WORDING. The retry works either way.
+  */
+  const [offline, setOffline] = useState(() =>
+    typeof navigator !== "undefined" && navigator.onLine === false);
+  useEffect(() => {
+    const online  = () => setOffline(false);
+    const offlineH = () => setOffline(true);
+    window.addEventListener("online", online);
+    window.addEventListener("offline", offlineH);
+    return () => {
+      window.removeEventListener("online", online);
+      window.removeEventListener("offline", offlineH);
+    };
+  }, []);
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const filteredBosses = useMemo(() => {
@@ -356,10 +375,35 @@ export default function Directory() {
               {fetching && <div className="h-full bg-primary rounded-full animate-pulse w-full" />}
             </div>
 
+            {/*
+              A dead end is not an acceptable answer to a dropped request.
+
+              This said "Please try again" and gave nothing to try with: the only way out was
+              reloading the page. React Query already retries three times with backoff, so by the
+              time this appears the request has genuinely failed - but on a phone that is most often
+              a few seconds of lost signal, and the fix is one tap, not a page reload.
+
+              The message also distinguishes being offline from the server being broken. Telling
+              somebody with no signal that something went wrong on our side is both wrong and
+              unhelpful.
+            */}
             {!fetching && error && (
               <div className="rounded-xl border border-border bg-background/50 py-12 text-center">
-                <p className="text-base font-semibold text-foreground">Something went wrong</p>
-                <p className="mt-1.5 text-sm text-muted-foreground">Unable to load managers. Please try again.</p>
+                <p className="text-base font-semibold text-foreground">
+                  {offline ? "You appear to be offline" : "Something went wrong"}
+                </p>
+                <p className="mt-1.5 text-sm text-muted-foreground">
+                  {offline
+                    ? "Check your connection and try again."
+                    : "Unable to load managers."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void refetch()}
+                  className="mt-4 inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-all hover:bg-primary/90"
+                >
+                  Try again
+                </button>
               </div>
             )}
 

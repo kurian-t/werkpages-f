@@ -5,8 +5,7 @@ import {
   MOCK_GEO,
   mockManagerPage,
   rateAllFiveStars,
-  clickWriteAReview,
-} from "./fixtures";
+  clickWriteAReview, answerLocation } from "./fixtures";
 
 /**
  * One form for the manager family: add a manager, write an opinion, edit that review.

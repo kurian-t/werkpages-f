@@ -1,5 +1,5 @@
 import { test, expect } from "./base";
-import { MOCK_USER } from "./fixtures";
+import { MOCK_USER, answerLocation } from "./fixtures";
 
 /**
  * Rating a company as a workplace.
@@ -230,6 +230,8 @@ test.describe("The company rating form", () => {
     await page.getByLabel("From month").selectOption("03");
     await page.getByLabel("From year").selectOption({ index: 3 });
     await page.getByRole("checkbox", { name: /current/i }).check();
+    // The location is required on this step now, and no longer arrives prefilled from the IP.
+    await answerLocation(page);
     await page.getByRole("button", { name: "Next" }).click();
     await expect(page.getByText(/Step 3 of 3 · Red Hat/)).toBeVisible();
   }

@@ -6,8 +6,7 @@ import {
   MOCK_EXISTING_REVIEW,
   RATING_CATEGORIES,
   mockManagerPage,
-  advanceToDatesStep,
-} from "./fixtures";
+  advanceToDatesStep, answerLocation } from "./fixtures";
 
 const FULL_RATINGS = Object.fromEntries(RATING_CATEGORIES.map((c) => [c, 5]));
 
@@ -296,6 +295,12 @@ test.describe("Duplicate review - conflict UI after auth", () => {
     await page.getByRole("button", { name: /edit your review/i }).click();
     // Select the existing review to edit
     await page.getByText(/engineering manager at acme corp/i).click();
+    /*
+      The EDIT flow asks for the location too, under its own field id. A review written before the
+      field existed carries none, so editing one now has to answer it - the same question, asked of
+      the same person, rather than an inference from their IP.
+    */
+    await answerLocation(page, "edit-review");
     // Advance to the dates step
     await page.getByRole("button", { name: /^next$/i }).click();
 
@@ -423,6 +428,8 @@ test.describe("Duplicate review - conflict UI after auth", () => {
     await page.getByPlaceholder(/e\.g\.,? Engineering Manager/).fill("Senior Software Engineer");
     await page.getByRole("button", { name: /done editing title/i }).click();
 
+    // "Add another role" opens a NEW review, so its location starts empty and is required.
+    await answerLocation(page, "review");
     await advanceToDatesStep(page);
 
     // Enter a date range that overlaps with 2021-01–2022-12

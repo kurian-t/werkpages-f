@@ -22,8 +22,7 @@ import {
   TEST_MANAGER_ID,
   TEST_MANAGER_SLUG,
   TEST_COMPANY_SLUG,
-  pickLocation,
-} from "./fixtures";
+  pickLocation, answerLocation } from "./fixtures";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -33,6 +32,8 @@ async function openWriteReviewForm(page: Page) {
   await page.getByRole("button", { name: /write a review/i }).first().click();
   // The form opens on step 1, "Write a Review" - the manager information.
   await expect(page.getByRole("heading", { name: /^write a review$/i })).toBeVisible({ timeout: 8000 });
+  // The review's first step requires a location now, and it is no longer prefilled from the IP.
+  await answerLocation(page, "review");
 }
 
 /*

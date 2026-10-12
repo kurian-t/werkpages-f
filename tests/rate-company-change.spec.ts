@@ -1,5 +1,5 @@
 import { test, expect } from "./base";
-import { MOCK_USER } from "./fixtures";
+import { MOCK_USER, answerLocation } from "./fixtures";
 
 /**
  * Changing which company a workplace rating is about, mid-form.
@@ -157,6 +157,8 @@ test.describe("Changing the company a rating is about", () => {
     await page.getByLabel("From month").selectOption("03");
     await page.getByLabel("From year").selectOption({ index: 3 });
     await page.getByRole("checkbox", { name: /current/i }).check();
+    // Required on this step now; the IP prefill that used to satisfy it is gone.
+    await answerLocation(page);
     await page.getByRole("button", { name: "Next" }).click();
 
     // Nothing pre-filled: no category carries the previous company's score.
@@ -188,6 +190,8 @@ test.describe("Changing the company a rating is about", () => {
     await page.getByLabel("From month").selectOption("03");
     await page.getByLabel("From year").selectOption({ index: 3 });
     await page.getByRole("checkbox", { name: /current/i }).check();
+    // Required on this step now; the IP prefill that used to satisfy it is gone.
+    await answerLocation(page);
     await page.getByRole("button", { name: "Next" }).click();
 
     const stars = page.getByRole("button", { name: /: 4 stars$/ });

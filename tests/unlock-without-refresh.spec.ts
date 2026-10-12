@@ -1,4 +1,5 @@
 import { test, expect } from "./base";
+import { answerLocation } from "./fixtures";
 
 /**
  * Contributing unlocks the page you are standing on, without a refresh.
@@ -59,6 +60,8 @@ test.describe("Unlocking without a refresh", () => {
     await page.getByLabel("From month").selectOption("03");
     await page.getByLabel("From year").selectOption({ index: 1 });
     await page.getByRole("checkbox", { name: /current/i }).check();
+    // Required on this step now; the IP prefill that used to satisfy it is gone.
+    await answerLocation(page);
     await page.getByRole("button", { name: "Next" }).click();          // period → ratings
 
     // The form refuses an incomplete draft: an overall score and every category.

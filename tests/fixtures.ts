@@ -813,6 +813,19 @@ export async function clickWriteAReview(page: Page) {
     .getByRole("button", { name: /write a review/i })
     .first()
     .click();
+
+  /*
+    Answer the location as soon as the form opens.
+
+    The review's first step now REQUIRES it, and it is no longer prefilled from the reader's IP
+    address - an IP says where the browser is tonight, not where the work happened. Doing it here
+    rather than in each spec means a walk through this form cannot forget a question the form asks,
+    the same way a person could not.
+
+    Specs that are specifically ABOUT the location requirement drive the field themselves and do
+    not use this opener.
+  */
+  await answerLocation(page, "review");
 }
 
 // ─── Review form step navigation ──────────────────────────────────────────────
@@ -851,6 +864,14 @@ async function clickNextTo(page: Page, step: 2 | 3) {
  * case; Next is gated only on a duplicate or invalid role title.
  */
 export async function advanceToDatesStep(page: Page) {
+  /*
+    The review's details step now REQUIRES a location before it will advance.
+
+    The field always carried a required asterisk and was never enforced, which went unnoticed
+    because it arrived prefilled from the reader's IP address. That prefill was removed - an IP says
+    where the browser is tonight, not where the work happened - so every walk through this form has
+    to answer the question the way a person would.
+  */
   await clickNextTo(page, 2);
 }
 
@@ -1044,4 +1065,28 @@ export async function pickLocation(page: Page, label: RegExp = /edit location de
   if (await edit.count()) await edit.first().click();
   await page.getByLabel(/^Location \*/).fill("Waterloo");
   await page.getByRole("option", { name: /Waterloo, Ontario, Canada/ }).first().click();
+}
+
+/**
+ * Answers the location question on a contribution form.
+ *
+ * <p>Both the workplace rating and the manager review now REQUIRE a location: the field always
+ * carried a required asterisk, and it was never enforced because the field arrived prefilled from
+ * the reader's IP address. That prefill was removed - an IP says where the browser is tonight, not
+ * where the work happened - so every form walk has to answer the question like a person would.
+ *
+ * <p>One helper rather than the same six lines in a dozen specs, and it mocks its own suggestion
+ * endpoint so a caller cannot forget to.
+ */
+export async function answerLocation(page: Page, idPrefix = "rating") {
+  await page.route("**/api/company-locations/suggest**", (r: any) =>
+    r.fulfill({ json: [{
+      kind: "corpus", label: "Toronto, Ontario, Canada", precision: "city",
+      country: "Canada", state: "Ontario", city: "Toronto",
+    }] }));
+
+  await page.getByRole("button", { name: /edit location details/i }).first().click();
+  await page.getByPlaceholder("City, province, or the workplace itself").first().fill("Toronto");
+  await page.getByText("Toronto, Ontario, Canada").first().click();
+  await page.getByTestId(`${idPrefix}-location-value`).first().waitFor({ state: "visible" });
 }

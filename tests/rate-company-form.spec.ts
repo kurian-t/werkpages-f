@@ -1,5 +1,5 @@
 import { test, expect } from "./base";
-import { MOCK_USER } from "./fixtures";
+import { MOCK_USER, answerLocation } from "./fixtures";
 
 /**
  * Rating a workplace, from the first star to the request that leaves.
@@ -67,6 +67,8 @@ async function fillPeriod(page: any) {
   await page.getByLabel("From month").selectOption("03");
   await page.getByLabel("From year").selectOption({ index: 3 });
   await page.getByRole("checkbox", { name: /current/i }).check();
+  // Required on this step now; the IP prefill that used to satisfy it is gone.
+  await answerLocation(page);
 }
 
 /*
@@ -339,6 +341,8 @@ test.describe("Rating a workplace", () => {
     await page.getByLabel("From year").selectOption({ index: 5 });
     await page.getByLabel("Until month").selectOption("09");
     await page.getByLabel("Until year").selectOption({ index: 3 });
+    // Required on this step now; the IP prefill that used to satisfy it is gone.
+    await answerLocation(page);
     await page.getByRole("button", { name: "Next" }).click();
 
     await rateEverything(page, 3);

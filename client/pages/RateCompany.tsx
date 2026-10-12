@@ -14,8 +14,7 @@ import { recentYears } from "@/components/MonthYear";
 import { WorkTimelineFields, type MonthYear as MonthYearValue } from "@/components/ManagerFormFields";
 import { AttestationCard } from "@/components/RatingFormParts";
 import { LocationField } from "@/components/LocationField";
-import { LocationValue, EMPTY_LOCATION, declaredPayload, orUserGeo } from "@/lib/location";
-import { fetchGeo } from "@/lib/geo";
+import { LocationValue, EMPTY_LOCATION, declaredPayload, hasDeclaredLocation } from "@/lib/location";
 import { useFormDraft, clearFormDraft } from "@/hooks/useFormDraft";
 import { markJustRatedCompany } from "@/lib/rateCompanyNudge";
 
@@ -61,6 +60,9 @@ import {
 */
 type Step = "details" | "dates" | "ratings";
 const STEPS: Step[] = ["details", "dates", "ratings"];
+
+/** Said once, so the step check and the submit check cannot drift apart. */
+const LOCATION_REQUIRED = "Where did you work? Add a location.";
 
 export default function RateCompany() {
   const { industrySlug, companySlug } = useParams<{ industrySlug?: string; companySlug: string }>();
@@ -276,24 +278,18 @@ export default function RateCompany() {
   }, [company?.name, companySeeded]);
 
   /*
-    Prefilled rather than asked for, the same way the manager and interview forms do it.
+    NOT prefilled from the reader's IP address. The person states where they worked.
 
-    It fills the visible field; it never attaches itself at submit. A value somebody can see,
-    change, and send unchanged is a declaration - one attached behind their back is an inference
-    about where they worked, drawn from an IP address. orUserGeo never overwrites a location that
-    is already set, so a stored one always wins.
+    This used to fill the field with the full city-level guess from Cloudflare's headers, on the
+    reasoning that a value somebody can see and change is a declaration once submitted unchanged.
+    That reasoning was rejected: an IP address says where the browser is tonight, not where the work
+    happened, and most people accept whatever a form has already filled in. A rating that says
+    "Kitchener" because a datacentre is in Kitchener is worse than one that says nothing, because it
+    cannot be told apart from a real answer.
+
+    The observed location is still recorded - separately, in geo_observations, never in the declared
+    columns - so nothing is lost for the purposes it legitimately serves.
   */
-  useEffect(() => {
-    let cancelled = false;
-    fetchGeo()
-      .then(geo => {
-        if (cancelled || !geo?.country) return;
-        setLocation(prev => orUserGeo(prev, geo));
-      })
-      // Geo is a convenience. Failing to resolve it just means the field starts empty.
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
 
   /*
     Back where you came from, when the caller said where that was.
@@ -349,6 +345,9 @@ export default function RateCompany() {
   const handleSubmit = async () => {
     setSubmitError(null);
     const found = validateCompanyRating(draft);
+    // The location lives outside the draft, so the draft validator cannot see it. Checked here as
+    // well as on the step, because a restored draft can reach this point without passing step 2.
+    if (!hasDeclaredLocation(location)) found.location = LOCATION_REQUIRED;
     if (Object.keys(found).length > 0) {
       setErrors(found);
       return;
@@ -661,7 +660,13 @@ export default function RateCompany() {
             companyName={companyText.trim() || company?.name || undefined}
             editing={locationEditing}
             onEditStart={() => setLocationEditing(true)}
-            onEditDone={() => setLocationEditing(false)}
+            onEditDone={() => {
+              setLocationEditing(false);
+              // Clear the complaint the moment it is answered, rather than on the next Next.
+              if (hasDeclaredLocation(location)) setErrors((prev) => ({ ...prev, location: undefined }));
+            }}
+            error={errors.location}
+            heading="Where did you work?"
             id="rating-location"
           />
 
@@ -740,9 +745,18 @@ export default function RateCompany() {
               */
               const found = validateCompanyRating(draft);
               const dateKeys = ["workedFrom", "workedUntil"];
-              const forStep = step === "dates"
+              const forStep: Record<string, string | undefined> = step === "dates"
                 ? Object.fromEntries(Object.entries(found).filter(([k]) => dateKeys.includes(k)))
                 : {};
+              /*
+                The location is asked for on this step and is required, so it is checked here. It is
+                not part of the draft, so validateCompanyRating above cannot see it - the field
+                carried a required asterisk for months with nothing enforcing it, and the gap was
+                invisible because the field used to arrive prefilled from the reader's IP.
+              */
+              if (step === "dates" && !hasDeclaredLocation(location)) {
+                forStep.location = LOCATION_REQUIRED;
+              }
               if (Object.keys(forStep).length > 0) { setErrors((prev) => ({ ...prev, ...forStep })); return; }
               setStep(STEPS[STEPS.indexOf(step) + 1]);
             }}

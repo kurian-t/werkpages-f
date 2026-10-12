@@ -2,8 +2,7 @@ import { test, expect } from "./base";
 import {
   MOCK_USER, MOCK_MANAGER, TEST_COMPANY_SLUG, TEST_MANAGER_SLUG, mockManagerPage,
   clickWriteAReview, advanceToDatesStep, fillDatesAndAdvance, rateAllFiveStars,
-  attestFirstHandExperience,
-} from "./fixtures";
+  attestFirstHandExperience, answerLocation } from "./fixtures";
 
 /**
  * What happens after a contribution lands.
@@ -50,6 +49,8 @@ async function submitRating(page: any) {
   await page.getByLabel("From month").selectOption("03");
   await page.getByLabel("From year").selectOption({ index: 3 });
   await page.getByRole("checkbox", { name: /current/i }).check();
+  // Required on this step now, and no longer prefilled from the reader's IP.
+  await answerLocation(page);
   await page.getByRole("button", { name: "Next" }).click();
   await expect(page.getByText(/Step 3 of 3 · Red Hat/)).toBeVisible();
 

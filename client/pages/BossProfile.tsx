@@ -41,7 +41,7 @@ import { AttestationCard, HideDatesField } from "@/components/RatingFormParts";
 import {
   ManagerIdentityFields, WorkTimelineFields, type ManagerField,
 } from "@/components/ManagerFormFields";
-import { LocationValue, EMPTY_LOCATION, formatLocation, declaredPayload, orUserGeo, visibleManagerLocation } from "@/lib/location";
+import { LocationValue, EMPTY_LOCATION, formatLocation, declaredPayload, orUserGeo, hasDeclaredLocation, visibleManagerLocation } from "@/lib/location";
 import { fetchGeo } from "@/lib/geo";
 import { formatReviewPeriod } from "@/lib/reviewPeriod";
 import { useFormDraft, clearFormDraft } from "@/hooks/useFormDraft";
@@ -603,6 +603,12 @@ export default function BossProfile() {
   const [editOpenField,   setEditOpenField]   = useState<ManagerField | null>(null);
   /** Where the opinion happened. Carried per contribution, never copied from the manager on edit. */
   const [reviewLocation, setReviewLocation] = useState<LocationValue>(EMPTY_LOCATION);
+  /*
+    Required, and enforced here because the location is separate state that no draft validator sees.
+    The field has always carried a required asterisk; until now nothing checked it, and the gap was
+    invisible because the field arrived prefilled from the reader's IP.
+  */
+  const [reviewLocationError, setReviewLocationError] = useState<string | null>(null);
   const [editLocation,   setEditLocation]   = useState<LocationValue>(EMPTY_LOCATION);
   const reviewDropdownRef = useRef<HTMLDivElement>(null);
   const [authorType] = useState<"anonymous">("anonymous");
@@ -1002,7 +1008,15 @@ export default function BossProfile() {
         Submitting it unchanged is therefore a confirmation rather than an inference - which is what
         makes it publishable at all. The private observed copy stays in geo_observations either way.
       */
-      void fetchGeo().then(geo => setReviewLocation(prev => orUserGeo(prev, geo)));
+      /*
+        NOT prefilled from the reader's IP address. The reviewer states where they worked.
+
+        Removed alongside the same prefill on the workplace rating. An IP says where the browser is
+        tonight, not where the work happened, and people accept whatever a form has already filled
+        in - so a datacentre's city was submitted as a declared location, indistinguishable from a
+        real answer. The observed location is still recorded separately in geo_observations, which
+        is the half that was always meant to carry an inference.
+      */
       setReviewTitleError(null);
       setReviewDateError(null);
       setReviewOpenField(null);
@@ -3577,6 +3591,7 @@ export default function BossProfile() {
                         if (next.location !== undefined) setReviewLocation(next.location);
                         if (next.status !== undefined) setReviewManagerStatus(next.status);
                       }}
+                      locationError={reviewLocationError ?? undefined}
                       lockName
                       open={reviewOpenField}
                       onOpen={setReviewOpenField}
@@ -3717,7 +3732,21 @@ export default function BossProfile() {
                     )}
                     <button
                       onClick={() => {
-                        if (reviewStep === "details") setReviewStep("dates");
+                        if (reviewStep === "details") {
+                          /*
+                            The location is asked for on this step and is required. It is separate
+                            state, so no draft validator sees it - the field carried a required
+                            asterisk with nothing enforcing it, hidden by the IP prefill that used
+                            to fill it in. Same rule as the workplace rating.
+                          */
+                          if (!hasDeclaredLocation(reviewLocation)) {
+                            setReviewLocationError("Where did you work? Add a location.");
+                            setReviewOpenField("location");
+                            return;
+                          }
+                          setReviewLocationError(null);
+                          setReviewStep("dates");
+                        }
                         else if (reviewStep === "dates") setReviewStep("ratings");
                         else if (reviewStep === "ratings") handleSubmitReview();
                       }}

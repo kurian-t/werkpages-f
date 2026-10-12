@@ -59,7 +59,15 @@ export interface CompanyRatingDraft {
   datesHidden: boolean;
 }
 
-export type CompanyRatingErrors = Partial<Record<CompanyCategory | "overallRating" | "workedFrom" | "workedUntil", string>>;
+/*
+  "location" is in this union although validateCompanyRating never sets it.
+
+  The location is held outside the draft - it is resolved server-side against the company's places,
+  not scored like a category - so the draft validator genuinely cannot see it. The form fills this
+  key in itself. Keeping it here means one error surface rather than a second parallel one, which is
+  how the field ended up displaying a required asterisk that nothing enforced.
+*/
+export type CompanyRatingErrors = Partial<Record<CompanyCategory | "overallRating" | "workedFrom" | "workedUntil" | "location", string>>;
 
 export function emptyCompanyRatingDraft(): CompanyRatingDraft {
   return { overallRating: null, ratings: {}, workedFrom: "", workedUntil: null,

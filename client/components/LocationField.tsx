@@ -53,6 +53,8 @@ export function LocationField({
   onEditStart,
   onEditDone,
   id = "location",
+  error,
+  heading,
 }: {
   value: LocationValue;
   onChange: (next: LocationValue) => void;
@@ -63,6 +65,32 @@ export function LocationField({
   onEditStart: () => void;
   onEditDone: () => void;
   id?: string;
+  /**
+   * Why the form will not accept what is here, shown under the field.
+   *
+   * <p>The label has always carried a required asterisk; nothing enforced it, because the location
+   * is separate state and the draft validator cannot see it. A promise on screen with no
+   * enforcement behind it is worse than no marker at all.
+   */
+  error?: string;
+  /**
+   * Ask the question as a section heading instead of a field label.
+   *
+   * <p>Set it on a form where the location is its own question sitting beside other questions of
+   * equal weight - the workplace rating pairs it with "When did you work here?", which is a 22px
+   * h2, so a 14px "Location" label beside it read as a sub-detail of the dates rather than a
+   * question in its own right.
+   *
+   * <p>Left unset elsewhere on purpose. In ManagerFormFields the location sits next to a
+   * {@code text-sm font-semibold} company label, and in the admin editor among small inputs;
+   * promoting it there would be louder than everything around it. Hence a prop rather than
+   * changing the shared default - same control, two weights of question.
+   *
+   * <p>Still rendered as a {@code <label htmlFor>}, not an {@code <h2>}: it is visually a heading
+   * but it is genuinely the input's label, and turning it into a heading would leave the field
+   * unlabelled for a screen reader to gain nothing.
+   */
+  heading?: string;
 }) {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
@@ -230,8 +258,15 @@ export function LocationField({
   */
   return (
     <div ref={containerRef}>
-      <label htmlFor={id} className="block text-sm font-semibold text-foreground mb-2">
-        Location <RequiredMark />
+      <label
+        htmlFor={id}
+        className={heading
+          // Matched to WorkTimelineFields' heading, so the two questions on this step are the
+          // same size. If that one changes, this has to change with it.
+          ? "block text-[22px] font-semibold text-foreground mb-2"
+          : "block text-sm font-semibold text-foreground mb-2"}
+      >
+        {heading ?? "Location"} <RequiredMark />
       </label>
       <FormSubjectCard
         layout="inline"
@@ -275,6 +310,9 @@ export function LocationField({
           className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
         />
       </FormSubjectCard>
+
+      {/* Outside the card, so it is visible whether the field is open or collapsed. */}
+      {error && <p className="mt-2 text-sm text-red-500" data-testid={`${id}-error`}>{error}</p>}
 
       {open && suggestions.length > 0 && createPortal(
         <div
