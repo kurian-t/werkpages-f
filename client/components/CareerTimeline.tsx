@@ -166,7 +166,7 @@ function RoleItem({
   role: CareerSegment;
   companyAvg: number;
   onEditCareerEntry?: (entry: { entryId: number | null; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
-  onDeleteCareerEntry?: (entryId: number) => void;
+  onDeleteCareerEntry?: (stage: { entryId: number | null; company: string; role: string; reviewCount: number }) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const delta    = role.averageRating - companyAvg;
@@ -211,15 +211,28 @@ function RoleItem({
             </button>
           )}
           {/*
-            Delete acts on a career_history row, so it is offered only where one exists. A card
-            derived from reviews or from the manager row has nothing to delete - removing it would
-            mean deleting the manager or their reviews, which is a different act with its own
-            controls elsewhere.
+            Delete is offered on EVERY stage, including one with no career_history row.
+
+            It used to require a row, on the reasoning that there was otherwise nothing to delete.
+            But most stages have no row: the chart groups reviews by their manager_company, so a
+            stage exists wherever a review names a company. The result on a live profile was a
+            company nobody ever worked at, invented by a placeholder review that had captured a
+            half-typed name, sitting on the trajectory with an Edit button and no way to remove it.
+            Clearing it took hand-written SQL against production.
+
+            What Delete then does depends on what is behind the stage, and the dialog asks: a stage
+            with no reviews just goes, and one with reviews can have them moved to another role or
+            removed with it.
           */}
-          {onDeleteCareerEntry && role.careerHistoryId != null && (
+          {onDeleteCareerEntry && (
             <button
               type="button"
-              onClick={() => onDeleteCareerEntry(role.careerHistoryId!)}
+              onClick={() => onDeleteCareerEntry({
+                entryId: role.careerHistoryId ?? null,
+                company: role.company,
+                role: role.role,
+                reviewCount: role.reviewCount ?? 0,
+              })}
               aria-label={`Delete ${role.company} career entry`}
               className="text-[10px] text-red-400 hover:text-red-600 transition-colors leading-none"
             >
@@ -301,7 +314,7 @@ function CompanyCard({
 }: {
   node: CompanyNode; hasLeft: boolean; hasRight: boolean;
   onEditCareerEntry?: (entry: { entryId: number | null; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
-  onDeleteCareerEntry?: (entryId: number) => void;
+  onDeleteCareerEntry?: (stage: { entryId: number | null; company: string; role: string; reviewCount: number }) => void;
 }) {
   const top     = cardTopY(node.avg);
   const centerY = cardCenterY(node.avg);
@@ -415,10 +428,16 @@ function CompanyCard({
                               Edit
                             </button>
                           )}
-                          {onDeleteCareerEntry && role.careerHistoryId != null && (
+                          {/* Offered on every stage; see the note on the other copy of this control. */}
+                          {onDeleteCareerEntry && (
                             <button
                               type="button"
-                              onClick={() => onDeleteCareerEntry(role.careerHistoryId!)}
+                              onClick={() => onDeleteCareerEntry({
+                                entryId: role.careerHistoryId ?? null,
+                                company: role.company,
+                                role: role.role,
+                                reviewCount: role.reviewCount ?? 0,
+                              })}
                               aria-label={`Delete ${role.company} career entry`}
                               className="text-[10px] text-red-400 hover:text-red-600 transition-colors leading-none"
                             >
@@ -753,7 +772,7 @@ export function CareerTimeline({
 }: {
   segments: CareerSegment[];
   onEditCareerEntry?: (entry: { entryId: number | null; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
-  onDeleteCareerEntry?: (entryId: number) => void;
+  onDeleteCareerEntry?: (stage: { entryId: number | null; company: string; role: string; reviewCount: number }) => void;
 }) {
   // Only include real reviewed segments in insight/consistency calculations - ghost segments (reviewCount 0) have no rating data
   const reviewedSegments = useMemo(() => segments.filter(s => s.reviewCount > 0), [segments]);

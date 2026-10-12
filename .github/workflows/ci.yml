@@ -51,6 +51,16 @@ jobs:
       - name: Install Playwright system dependencies
         run: pnpm exec playwright install-deps chromium
 
+      # ffmpeg, explicitly, and it is not optional.
+      #
+      # The config sets `retries: 1` and `video: "on-first-retry"`, so a retry opens a context that
+      # records video - and recording needs Playwright's own ffmpeg binary, which install-deps does
+      # not fetch. Without it every retry died with "Executable doesn't exist ... ffmpeg-linux"
+      # before the test ran, so a single flake became a hard red build AND destroyed the retry
+      # result that was supposed to tell us whether it was a flake at all.
+      - name: Install Playwright browsers and ffmpeg
+        run: pnpm exec playwright install chromium ffmpeg
+
       # vite preview serves dist/spa on port 4174 (4173 is RateMyManagers').
       # Playwright starts it automatically via playwright.config.ts.
       - name: Run Playwright tests

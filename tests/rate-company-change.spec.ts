@@ -116,14 +116,38 @@ test.describe("Changing the company a rating is about", () => {
     await openForm(page);
     await openDatesStep(page);
 
-    await expect(page.getByLabel("From year")).toHaveValue("2019");
-    await expect(page.getByRole("checkbox", { name: /hide/i })).toBeChecked();
+    /*
+      An explicit timeout, because the default is 5 seconds and that is not a realistic budget here.
+
+      This is the precondition every assertion below leans on: the existing rating has to be IN the
+      form before the test touches anything. On CI the suite takes about 17 minutes where it takes
+      under a minute on a dev machine, so the default 5s there is worth roughly 0.3s here - and the
+      sibling test above, which makes this exact assertion, passes only because it runs first when
+      the worker is least loaded.
+
+      This asserts the same thing it always did. It does not wait for less, it waits longer for the
+      same answer.
+    */
+    await expect(page.getByLabel("From year")).toHaveValue("2019", { timeout: 15_000 });
+    await expect(page.getByRole("checkbox", { name: /hide/i })).toBeChecked({ timeout: 15_000 });
   });
 
   test("clears the dates when the company changes", async ({ page }) => {
     await openForm(page);
     await openDatesStep(page);
-    await expect(page.getByLabel("From year")).toHaveValue("2019");
+    /*
+      An explicit timeout, because the default is 5 seconds and that is not a realistic budget here.
+
+      This is the precondition every assertion below leans on: the existing rating has to be IN the
+      form before the test touches anything. On CI the suite takes about 17 minutes where it takes
+      under a minute on a dev machine, so the default 5s there is worth roughly 0.3s here - and the
+      sibling test above, which makes this exact assertion, passes only because it runs first when
+      the worker is least loaded.
+
+      This asserts the same thing it always did. It does not wait for less, it waits longer for the
+      same answer.
+    */
+    await expect(page.getByLabel("From year")).toHaveValue("2019", { timeout: 15_000 });
     await page.getByRole("button", { name: "Back" }).click();
 
     await changeCompanyTo(page, "Canonical");

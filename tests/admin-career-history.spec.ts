@@ -174,7 +174,13 @@ test.describe("Deleting an entry", () => {
     });
 
     await page.getByRole("button", { name: "Delete Globex career entry" }).click();
-    await page.getByRole("button", { name: /^Delete$|Yes|Confirm/ }).last().click();
+    /*
+      The confirmation now names what it does, because Delete on a stage grew more than one
+      meaning: the ratings under a role can be moved, deleted with it, or left alone. This is the
+      last of those, and it is the one that still acts on the career_history row - so this test,
+      which is about deleting the chosen ENTRY, follows it here.
+    */
+    await page.getByRole("button", { name: /Remove role only, keep ratings/i }).click();
 
     await expect(async () => expect(url).not.toBeNull()).toPass({ timeout: 10_000 });
     expect(url).toContain("/career-history/11");

@@ -800,7 +800,15 @@ export default function BossProfile() {
     entryId: number; company: string; role: string; startDate: string; endDate: string;
   } | null>(null);
   const [adminCareerEditSaving, setAdminCareerEditSaving] = useState(false);
-  const [adminCareerDeleteId, setAdminCareerDeleteId] = useState<number | null>(null);
+  /*
+    The stage an admin is removing, not just its id.
+
+    A trajectory stage often has no career_history row, so an id is not enough to identify one.
+    The company names it, and the review count decides what the dialog has to ask.
+  */
+  const [adminCareerDeleteStage, setAdminCareerDeleteStage] =
+    useState<{ entryId: number | null; company: string; role: string; reviewCount: number } | null>(null);
+  const [adminStageReassignTo, setAdminStageReassignTo] = useState<string>("");
   const [adminCareerDeleting, setAdminCareerDeleting] = useState(false);
 
   // Helper: parse "YYYY-MM" to a numeric key for comparison
@@ -2773,43 +2781,158 @@ export default function BossProfile() {
       )}
 
       {/* Admin career history delete confirmation */}
-      {adminCareerDeleteId != null && (
+      {/*
+        Removing a career stage, which is not the same thing as deleting a career_history row.
+
+        Three cases, and the dialog asks only what it has to:
+          - no reviews behind the stage: it just goes;
+          - reviews behind it: move them to another role, or delete them along with it.
+
+        The second option is the one that matters. A stage can be wrong while the opinions under it
+        are real, and deleting somebody's genuine review to tidy up a chart is not a repair.
+      */}
+      {adminCareerDeleteStage != null && (() => {
+        const stage = adminCareerDeleteStage;
+        const hasReviews = stage.reviewCount > 0;
+        // Every other stage on this profile is a candidate to receive the reviews.
+        const otherRoles = (effectiveCareerSegments as any[])
+          .filter((s) => s.company.trim().toLowerCase() !== stage.company.trim().toLowerCase());
+
+        /*
+          "entryOnly" is the original behaviour, kept deliberately.
+
+          It removes the recorded role and leaves the ratings alone, so they regroup under whatever
+          else names them. That is the right act when the career_history row itself is wrong - a
+          mistyped employer or a wrong date - and the opinions under it are fine. Folding it into
+          the stage delete would have meant an admin could no longer correct a bad row without
+          first deciding the fate of other people's reviews.
+
+          It is offered only where a row exists, because it is the only one of the three that acts
+          on a row.
+        */
+        const resolveStage = async (action: "delete" | "reassign" | "entryOnly") => {
+          setAdminCareerDeleting(true);
+          try {
+            const target = otherRoles.find((r) => r.company === adminStageReassignTo);
+            if (action === "entryOnly") {
+              await axios.delete(
+                `${API_BASE}/api/admin/managers/${manager.id}/career-history/${stage.entryId}`,
+                { withCredentials: true },
+              );
+            } else {
+            await axios.post(
+              `${API_BASE}/api/admin/managers/${manager.id}/career-stage`,
+              action === "reassign"
+                ? { action, company: stage.company, toCompany: target?.company, toTitle: target?.role }
+                : { action, company: stage.company, confirmRealReviews: true },
+              { withCredentials: true },
+            );
+            }
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: managerQueryKey }),
+              queryClient.invalidateQueries({ queryKey: ["manager-career-segments", manager.id] }),
+            ]);
+            setAdminCareerDeleteStage(null);
+            toast.success(
+              action === "reassign" ? "Reviews moved and role removed"
+              : action === "entryOnly" ? "Recorded role removed"
+              : "Role removed");
+          } catch (err: any) {
+            toast.error(err?.response?.data?.message ?? "Failed to remove the role");
+          } finally {
+            setAdminCareerDeleting(false);
+          }
+        };
+
+        return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-xs rounded-xl border border-border bg-card p-6 shadow-xl">
-            <p className="text-sm font-semibold text-foreground mb-2">Delete career entry?</p>
-            <p className="text-xs text-muted-foreground mb-5">This cannot be undone.</p>
-            <div className="flex items-center gap-3">
+          <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-xl" data-testid="career-stage-dialog">
+            <p className="text-sm font-semibold text-foreground mb-1">Remove this role?</p>
+            <p className="text-xs text-muted-foreground mb-4">
+              {stage.role} at {stage.company}
+              {hasReviews
+                ? ` · ${stage.reviewCount} ${stage.reviewCount === 1 ? "review" : "reviews"}`
+                : " · no reviews"}
+            </p>
+
+            {hasReviews && (
+              <div className="mb-4 space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  This role has ratings attached. Move them to another role, or delete them with it.
+                </p>
+                {otherRoles.length > 0 && (
+                  <div>
+                    <label htmlFor="stage-reassign" className="block text-xs font-medium text-foreground mb-1">
+                      Move the ratings to
+                    </label>
+                    <select
+                      id="stage-reassign"
+                      value={adminStageReassignTo}
+                      onChange={(e) => setAdminStageReassignTo(e.target.value)}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">Choose a role…</option>
+                      {otherRoles.map((r: any) => (
+                        <option key={`${r.company}-${r.role}`} value={r.company}>
+                          {r.role} at {r.company}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      The reviewers' own dates travel with them, so that role may widen to cover them.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-3">
+              {hasReviews && otherRoles.length > 0 && (
+                <button
+                  type="button"
+                  disabled={adminCareerDeleting || !adminStageReassignTo}
+                  onClick={() => resolveStage("reassign")}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {adminCareerDeleting ? "Working…" : "Move ratings"}
+                </button>
+              )}
               <button
                 type="button"
                 disabled={adminCareerDeleting}
-                onClick={async () => {
-                  setAdminCareerDeleting(true);
-                  try {
-                    await axios.delete(
-                      `${API_BASE}/api/admin/managers/${manager.id}/career-history/${adminCareerDeleteId}`,
-                      { withCredentials: true }
-                    );
-                    await Promise.all([
-                      queryClient.invalidateQueries({ queryKey: managerQueryKey }),
-                      queryClient.invalidateQueries({ queryKey: ["manager-career-segments", manager.id] }),
-                    ]);
-                    setAdminCareerDeleteId(null);
-                    toast.success("Career entry deleted");
-                  } catch {
-                    toast.error("Failed to delete entry");
-                  } finally {
-                    setAdminCareerDeleting(false);
-                  }
-                }}
+                onClick={() => resolveStage("delete")}
                 className="rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white hover:bg-destructive/90 disabled:opacity-50"
               >
-                {adminCareerDeleting ? "Deleting…" : "Delete"}
+                {adminCareerDeleting
+                  ? "Working…"
+                  : hasReviews ? "Delete role and ratings" : "Delete role"}
               </button>
-              <button type="button" onClick={() => setAdminCareerDeleteId(null)} className="text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+              {/*
+                Only where a career_history row exists, because this is the one action that acts on
+                one. See the note on resolveStage.
+              */}
+              {stage.entryId != null && (
+                <button
+                  type="button"
+                  disabled={adminCareerDeleting}
+                  onClick={() => resolveStage("entryOnly")}
+                  className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
+                >
+                  {adminCareerDeleting ? "Working…" : "Remove role only, keep ratings"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setAdminCareerDeleteStage(null)}
+                className="text-sm text-muted-foreground hover:text-foreground"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* System notices - between hero and content */}
       {(manager.approvalStatus === "pending_approval" || pendingEdits.length > 0 || !!myHeldReview || (hasReported && manager.approvalStatus !== "pending_approval")) && (
@@ -3039,8 +3162,9 @@ export default function BossProfile() {
                 endDate:   entry.endDate?.slice(0, 7) ?? "",
               });
             } : undefined}
-            onDeleteCareerEntry={user?.role === "admin" ? (entryId) => {
-              setAdminCareerDeleteId(entryId);
+            onDeleteCareerEntry={user?.role === "admin" ? (stage) => {
+              setAdminStageReassignTo("");
+              setAdminCareerDeleteStage(stage);
             } : undefined}
           />
         </div>
