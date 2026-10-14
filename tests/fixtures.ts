@@ -423,10 +423,47 @@ export async function mockDirectoryPage(
     }
   });
 
+  /*
+    THE COMPLETED SEARCH IS A POST.
+
+    A finished four-field search resolves the company and creates it when we do not hold it, which
+    is a write and no longer sits behind a GET. The GET remains for read-only discovery and for
+    paging. Both are mocked, from one body of logic, so a spec cannot pass against one verb while
+    the product uses the other.
+  */
+  await page.route(/\/api\/managers\/search$/, (route) => {
+    const body = route.request().postDataJSON() ?? {};
+    const search = `${body.firstName ?? ""} ${body.lastName ?? ""}`.trim();
+    if (searchResultsEmpty || search) {
+      const filtered = searchResultsEmpty
+        ? []
+        : managers.filter((m: any) => m.name.toLowerCase().includes(search.toLowerCase()));
+      return route.fulfill({ json: { data: filtered, total: filtered.length, hasMore: false } });
+    }
+    return route.fulfill({ json: { data: managers, total: managers.length, hasMore: false } });
+  });
+
   // Matches /api/managers?limit=...&offset=... (the list endpoint)
   await page.route(/\/api\/managers\?/, (route) => {
     const url = new URL(route.request().url());
-    const search = url.searchParams.get("search") || "";
+    /*
+      THE FOUR-FIELD CONTRACT.
+
+      All three manager-search entry points - /find, /directory and the Find a Manager form on a
+      company profile - submit first name, last name, job title and company as separate
+      parameters, and the server matches on the name while company and title rank rather than
+      filter. This mock used to read a single `search` string, which the directory stopped sending
+      when it moved onto the shared flow; the parameter was then always empty, so the mock
+      returned the unfiltered list and the test believed the search had done nothing.
+
+      `search` is still read as a fallback because the free-text browse path on /directory - a
+      different feature from the manager-search form - does still use it.
+    */
+    const first = url.searchParams.get("firstName") || "";
+    const last  = url.searchParams.get("lastName")  || "";
+    const search = (first || last)
+      ? `${first} ${last}`.trim()
+      : (url.searchParams.get("search") || "");
     if (searchResultsEmpty || (search && search !== "")) {
       const filtered = searchResultsEmpty
         ? []
@@ -733,6 +770,15 @@ export async function mockFindManagerPage(
   });
 
   await page.route(/\/api\/geo/, (route) => route.fulfill({ json: MOCK_GEO }));
+
+  // The completed four-field search: a POST, because it writes. See mockDirectoryPage.
+  await page.route(/\/api\/managers\/search$/, (route) => {
+    if (emptySearch) {
+      route.fulfill({ json: { data: [], total: 0, hasMore: false } });
+    } else {
+      route.fulfill({ json: { data: searchResults, total: searchResults.length, hasMore: false } });
+    }
+  });
 
   // Non-logged-in fallback: GET /api/managers?search=...
   await page.route(/\/api\/managers\?/, (route) => {

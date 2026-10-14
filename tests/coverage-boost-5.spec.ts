@@ -169,7 +169,7 @@ test.describe("CompanyProfile - anonymous search with results", () => {
       route.fulfill({ json: { country: "Canada", state: "ON", city: "Toronto" } })
     );
     // Search returns results (line 229-230: setSearchResults(anonData))
-    await page.route(/\/api\/managers\?/, (route: any) =>
+    await page.route(/\/api\/managers(\?|\/search)/, (route: any) =>
       route.fulfill({
         json: {
           data: [{ ...MOCK_MANAGER, name: "Sarah Johnson", slug: "sarah-johnson" }],
@@ -213,7 +213,7 @@ test.describe("CompanyProfile - ghost creation retry returns results", () => {
 
     // First GET → empty, second GET (retry after ghost) → has manager (line 256-257)
     let searchCallCount = 0;
-    await page.route(/\/api\/managers\?/, (route: any) => {
+    await page.route(/\/api\/managers(\?|\/search)/, (route: any) => {
       searchCallCount++;
       if (searchCallCount === 1) {
         route.fulfill({ json: { data: [], total: 0 } });
@@ -259,7 +259,7 @@ test.describe("CompanyProfile - ghost creation retry returns results", () => {
       route.fulfill({ json: { country: "Canada", state: "ON", city: "Toronto" } })
     );
     // Search returns empty
-    await page.route(/\/api\/managers\?/, (route: any) =>
+    await page.route(/\/api\/managers(\?|\/search)/, (route: any) =>
       route.fulfill({ json: { data: [], total: 0 } })
     );
     // Ghost creation fails (line 246-248: catch → ghostCreated stays false → line 267)
@@ -343,7 +343,7 @@ test.describe("CompanyProfile - ghost added sign in button", () => {
       route.fulfill({ json: { country: "Canada", state: "ON", city: "Toronto" } })
     );
     // Both search calls return empty (ghost added path, line 259-260 + line 727)
-    await page.route(/\/api\/managers\?/, (route: any) =>
+    await page.route(/\/api\/managers(\?|\/search)/, (route: any) =>
       route.fulfill({ json: { data: [], total: 0 } })
     );
     // Ghost creation succeeds
@@ -392,7 +392,7 @@ test.describe("Directory - sort and filter interactions", () => {
         localStorage.setItem("authUser", JSON.stringify(u));
       }, { ...MOCK_USER, hasContributed });
     }
-    await page.route(/\/api\/managers\?/, (route: any) =>
+    await page.route(/\/api\/managers(\?|\/search)/, (route: any) =>
       route.fulfill({ json: { data: MOCK_MANAGERS_10, total: MOCK_MANAGERS_10.length } })
     );
     await page.route(/\/api\/geo/, (route: any) =>
@@ -453,9 +453,19 @@ test.describe("Directory - sort and filter interactions", () => {
       route.fulfill({ status: 401, json: { error: "Unauthorized" } })
     );
     // Empty results for search query
-    await page.route(/\/api\/managers\?/, (route: any) => {
+    await page.route(/\/api\/managers(\?|\/search)/, (route: any) => {
       const url = new URL(route.request().url());
-      const search = url.searchParams.get("search") || "";
+      // The directory submits the same four fields /find does - see tests/fixtures.ts. Reading a
+      // single `search` param here meant this mock never saw the search at all. A COMPLETED
+      // search is a POST and carries them in the body instead, so both are read.
+      const body = route.request().method() === "POST"
+        ? (route.request().postDataJSON() ?? {})
+        : {};
+      const first = body.firstName ?? url.searchParams.get("firstName") ?? "";
+      const last  = body.lastName  ?? url.searchParams.get("lastName")  ?? "";
+      const search = (first || last)
+        ? `${first} ${last}`.trim()
+        : (url.searchParams.get("search") || "");
       if (search) {
         route.fulfill({ json: { data: [], total: 0 } });
       } else {
@@ -508,7 +518,7 @@ test.describe("Directory - chevron pagination buttons", () => {
     await page.route("**/api/auth/me", (route: any) =>
       route.fulfill({ status: 401, json: { error: "Unauthorized" } })
     );
-    await page.route(/\/api\/managers\?/, (route: any) => {
+    await page.route(/\/api\/managers(\?|\/search)/, (route: any) => {
       const url = new URL(route.request().url());
       const offset = parseInt(url.searchParams.get("offset") ?? "0");
       const limit = parseInt(url.searchParams.get("limit") ?? "20");

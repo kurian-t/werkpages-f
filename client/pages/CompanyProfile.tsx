@@ -1,7 +1,8 @@
 import { SITE_HIDDEN_FROM_SEARCH } from "@/components/PageMeta";
 import API_BASE from "@/lib/api";
 import { validateManagerName } from "@/lib/managerName";
-import { searchForManager } from "@/lib/managerSearch";
+import { useManagerSearchFlow } from "@/hooks/useManagerSearchFlow";
+import ManagerSearchMore from "@/components/ManagerSearchMore";
 import { TopRatedPill } from "@/components/TopRatedPill";
 import { CompanyTile } from "@/components/CompanyTile";
 import { Stars } from "@/components/Stars";
@@ -340,7 +341,6 @@ export default function CompanyProfile() {
   const [renameMode, setRenameMode] = useState(false);
   const [newName, setNewName] = useState("");
   const [renaming, setRenaming] = useState(false);
-  const allFilled = firstName.trim().length > 0 && lastName.trim().length >= 2 && title.trim().length > 0;
   const handleRename = async () => {
     if (!data || !newName.trim()) return;
     setRenaming(true);
@@ -379,15 +379,7 @@ export default function CompanyProfile() {
     setSearchError(null);
     setSearchLoading(true);
     try {
-      const outcome = await searchForManager({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        title: title.trim(),
-        // The company is the page itself - never typed, so never ambiguous.
-        companyPayload: async () => ({ company: data?.name ?? "", companyId: data?.id ?? null }),
-        companyName: data?.name ?? "",
-        isLoggedIn: !!user,
-      });
+      const outcome = await runSearch();
       setSearchResults(outcome.results);
       setSearchHasContributed(outcome.hasContributed);
       // A search can have created a manager at this company, so the profile's own counts are stale.
@@ -437,6 +429,27 @@ export default function CompanyProfile() {
     // background on every mount/focus - keeping them current for all users, not 5-min stale.
     retry: false,
   });
+
+  /*
+    The SAME workflow /find and /directory run - see useManagerSearchFlow.
+
+    This surface supplies the company from the page's own verified identity instead of a text box,
+    which is the single permitted difference. It is still SENT and it still ranks rather than
+    filters: searching here for somebody who works elsewhere must surface them, with their real
+    employer on the tile.
+
+    It also gains the drop-off capture, which it never had. Somebody who half-filled this form
+    previously left nothing behind, on the one surface where we already know the company.
+  */
+  const { ready: allFilled, runSearch, loadMore, extraResults,
+          hasMore, mayBeIncomplete, loadingMore } = useManagerSearchFlow({
+    firstName, lastName, title,
+    companyName: data?.name ?? "",
+    companyPayload: async () => ({ company: data?.name ?? "", companyId: data?.id ?? null }),
+    companyFromPage: true,
+    isLoggedIn: !!user,
+  });
+
   /*
     Arriving straight from the workplace-rating form.
 
@@ -1065,11 +1078,27 @@ export default function CompanyProfile() {
               ) : searchResults.length > 0 ? (
                 <>
                   <div className={TILE_GRID}>
-                    {searchResults.map((boss: any) =>
+                    {/*
+                      THE SAME CARDS THE OTHER TWO SURFACES DRAW.
+
+                      Two things here used to differ from /search and /directory, and both of them
+                      told the reader something untrue.
+
+                      The company was OVERWRITTEN with this page's name. Search is name-first, so a
+                      result may legitimately work somewhere else - that is the whole point of not
+                      filtering by company - and relabelling him with the company whose page this
+                      happens to be presents a QuadReal manager as one of Acme's. His real employer
+                      is exactly what lets a reader tell he is not theirs, so it is what is shown.
+
+                      The rating was blurred only for ghosts, so an approved manager's score was
+                      handed to somebody who has rated nobody. The contribution gate does not
+                      depend on which page you asked from.
+                    */}
+                    {[...searchResults, ...extraResults].map((boss: any) =>
                       resultsUnlocked ? (
                         <ManagerCard
                           key={boss.id}
-                          boss={{ ...boss, reviews: boss.reviewsCount ?? 0, company: data.name, companyLogoUrl: data.logoUrl }}
+                          boss={{ ...boss, reviews: boss.reviewsCount ?? boss.reviews ?? 0 }}
                           to={data.slug && boss.slug ? managerPath(data.industrySlug, data.slug, boss.slug) : `/manager/${boss.id}`}
                         />
                       ) : (
@@ -1077,13 +1106,20 @@ export default function CompanyProfile() {
                           key={boss.id}
                           boss={boss}
                           isLoggedIn={!!user}
-                          forceShowCompany={boss.approvalStatus === 'ghost'}
-                          blurTitle={boss.approvalStatus === 'ghost'}
-                          blurRating={boss.approvalStatus === 'ghost'}
+                          asLink={true}
+                          forceShowCompany={true}
+                          blurTitle={true}
+                          blurRating={true}
                         />
                       )
                     )}
                   </div>
+                  <ManagerSearchMore
+                    hasMore={hasMore}
+                    mayBeIncomplete={mayBeIncomplete}
+                    loading={loadingMore}
+                    onLoadMore={loadMore}
+                  />
                   {!resultsUnlocked && (
                     <LockedPanelCard
                       className="mt-6"

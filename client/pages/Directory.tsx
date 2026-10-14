@@ -12,7 +12,8 @@ import { LockedPanelCard } from "@/components/LockedNotice";
 import { TILE_GRID } from "@/components/ManagerTile";
 import PendingSubmissions, { useMyPendingSubmissions } from "@/components/PendingSubmissions";
 import { useAnalytics } from "@/hooks/useAnalytics";
-import { captureSearch, captureKey, searchForManager, CAPTURE_DEBOUNCE_MS } from "@/lib/managerSearch";
+import { useManagerSearchFlow } from "@/hooks/useManagerSearchFlow";
+import ManagerSearchMore from "@/components/ManagerSearchMore";
 import { fetchGeo } from "@/lib/geo";
 import axios from "axios";
 
@@ -39,6 +40,8 @@ export default function Directory() {
   const [searchTitle,   setSearchTitle]   = useState("");
   const [searchCompany, setSearchCompany] = useState("");
 
+  const [appliedFirst,         setAppliedFirst]         = useState(searchParams.get("search")?.split(" ")[0] || "");
+  const [appliedLast,          setAppliedLast]          = useState(searchParams.get("search")?.split(" ").slice(1).join(" ") || "");
   const [appliedTitle,         setAppliedTitle]         = useState("");
   const [appliedSearchCompany, setAppliedSearchCompany] = useState("");
 
@@ -51,12 +54,27 @@ export default function Directory() {
     }, { replace: true });
   }, [page]);
 
-  const allFilled = !!(firstName.trim() && lastName.trim().length >= 2 && searchTitle.trim() && searchCompany.trim().length >= 2);
+  /*
+    The SAME workflow /find runs - see useManagerSearchFlow. The gate, the drop-off capture and the
+    submit all come from there; this page keeps its own layout, its filters and its free-text
+    browse, which is a different feature from the manager-search form.
+  */
+  const { ready: allFilled, runSearch, loadMore, extraResults,
+          hasMore, mayBeIncomplete, loadingMore } = useManagerSearchFlow({
+    firstName, lastName, title: searchTitle,
+    companyName: searchCompany,
+    companyPayload: async () => ({ company: searchCompany.trim(), companyId: null }),
+    isLoggedIn: !!user,
+  });
 
   const handleSearch = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (!allFilled) return;
     const combined = `${firstName.trim()} ${lastName.trim()}`;
+    // The names are applied SEPARATELY as well. `combined` is for the heading and the
+    // free-text browse path; it must never be the thing the matcher is given - see below.
+    setAppliedFirst(firstName.trim());
+    setAppliedLast(lastName.trim());
     setSearchQuery(combined);
     setAppliedSearch(combined);
     setAppliedTitle(searchTitle.trim());
@@ -70,54 +88,27 @@ export default function Directory() {
   // search owns that, which is what stopped the two halves drifting.
   const isFullSearch = !!(appliedSearch && appliedTitle && appliedSearchCompany);
 
-  /**
-   * Captures a search the person never completed, exactly as /find does.
-   *
-   * Somebody who types a name and a company here and then gives up used to leave nothing behind:
-   * only /find recorded partial searches, so the same act on this page was silently discarded.
-   */
-  const lastCapturedRef = useRef<string>("");
-  useEffect(() => {
-    const fn = firstName.trim();
-    const ln = lastName.trim();
-    const t  = searchTitle.trim();
-    const c  = searchCompany.trim();
-    if (!fn || !ln) return;
-    if (!c && !t) return;  // a bare name tells an admin nothing
-
-    const key = captureKey({ firstName: fn, lastName: ln, title: t, companyName: c });
-    if (lastCapturedRef.current === key) return;
-    lastCapturedRef.current = key;
-
-    const timer = setTimeout(() => {
-      void (async () => {
-        const geo = await fetchGeo().catch(() => ({}) as Awaited<ReturnType<typeof fetchGeo>>);
-        await captureSearch({
-          firstName: fn, lastName: ln, title: t,
-          companyPayload: async () => ({ company: c, companyId: null }),
-          companyName: c,
-          isLoggedIn: !!user,
-        }, geo);
-      })();
-    }, CAPTURE_DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [firstName, lastName, searchTitle, searchCompany]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data, isFetching: fetching, isLoading, isError, refetch } = useQuery({
-    queryKey: ["managers-directory", page, appliedSearch, appliedTitle, appliedSearchCompany, selectedCompany, sortBy, isFullSearch],
+    queryKey: ["managers-directory", page, appliedSearch, appliedFirst, appliedLast, appliedTitle, appliedSearchCompany, selectedCompany, sortBy, isFullSearch],
     queryFn: async () => {
       // A full search - name, title and company - is the same act as /find, so it runs the same
       // code. Signed in it resolves server-side; signed out it looks up, creates the ghost once per
       // browser and returns a locked tile. Both branches used to live here in a second copy.
       if (isFullSearch) {
-        const [first, ...rest] = appliedSearch.split(" ");
-        const outcome = await searchForManager({
-          firstName: first,
-          lastName: rest.join(" "),
+        /*
+          THE NAME GOES AS IT WAS TYPED.
+
+          This used to join the two fields into one string and then split it again at the first
+          space, so "Mary Jane" / "Watson" reached the matcher as "Mary" / "Jane Watson". The same
+          person typed into /find was sent correctly, and the two surfaces therefore returned
+          different results for identical typing - the exact divergence the one-workflow rule
+          exists to prevent. The form has two fields; they travel as two fields.
+        */
+        const outcome = await runSearch({
+          firstName: appliedFirst,
+          lastName: appliedLast,
           title: appliedTitle,
-          companyPayload: async () => ({ company: appliedSearchCompany, companyId: null }),
-          companyName: appliedSearchCompany,
-          isLoggedIn: !!user,
         });
         return { data: outcome.results, total: outcome.results.length, hasContributed: outcome.hasContributed };
       }
@@ -164,10 +155,22 @@ export default function Directory() {
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const filteredBosses = useMemo(() => {
-    const filtered = bosses.filter((boss: any) =>
+    /*
+      A FULL SEARCH ARRIVES ALREADY RANKED, AND THAT RANKING IS NOT OURS TO OVERRULE.
+
+      The browse listing sorts community-submitted managers to the front, which is right for
+      browsing. A four-field search is a different question: the server has ranked the whole match
+      set by how well each person fits the name, company and title that were typed, and the one it
+      put first is the answer. Re-sorting by who submitted them moves a stranger above the exact
+      match, on this surface only, for the identical search /find renders in the right order.
+
+      Later pages are appended, never re-sorted, for the same reason.
+    */
+    const all = isFullSearch ? [...bosses, ...extraResults] : bosses;
+    const filtered = all.filter((boss: any) =>
       minRating === 0 || (boss.overallRating != null && boss.overallRating >= minRating)
     );
-    if (!sortBy) {
+    if (!sortBy && !isFullSearch) {
       return [...filtered].sort((a, b) => {
         if (a.community && !b.community) return -1;
         if (!a.community && b.community) return 1;
@@ -175,7 +178,7 @@ export default function Directory() {
       });
     }
     return filtered;
-  }, [minRating, sortBy, bosses]);
+  }, [minRating, sortBy, bosses, isFullSearch, extraResults]);
 
 
   const clearFilters = useCallback(() => {
@@ -453,6 +456,16 @@ export default function Directory() {
                           )
                         )}
                       </div>
+                    )}
+
+                    {/* Only a four-field search pages this way; the browse listing has its own. */}
+                    {isFullSearch && (
+                      <ManagerSearchMore
+                        hasMore={hasMore}
+                        mayBeIncomplete={mayBeIncomplete}
+                        loading={loadingMore}
+                        onLoadMore={loadMore}
+                      />
                     )}
 
                     {!hasContributed && filteredBosses.length > 0 && (

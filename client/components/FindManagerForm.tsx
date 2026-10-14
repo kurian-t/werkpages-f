@@ -1,10 +1,6 @@
 import { validateManagerName } from "@/lib/managerName";
-import {
-  captureSearch as sharedCaptureSearch,
-  captureKey,
-  searchForManager,
-  CAPTURE_DEBOUNCE_MS,
-} from "@/lib/managerSearch";
+import { useManagerSearchFlow } from "@/hooks/useManagerSearchFlow";
+import ManagerSearchMore from "@/components/ManagerSearchMore";
 import { useState, useEffect, useRef } from "react";
 import { useCompanySelection } from "@/hooks/useCompanySelection";
 import { useNavigate } from "react-router-dom";
@@ -41,9 +37,20 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
   const [error,          setError]          = useState<string | null>(null);
   const [searched,       setSearched]       = useState(false);
 
-  const nameFilled    = firstName.trim().length > 0 && lastName.trim().length >= 2;
-  const detailsFilled = title.trim().length > 0 && company.name.trim().length >= 2;
-  const allFilled     = nameFilled && detailsFilled;
+  // The shared gate - see managerSearchReady. Every surface asks the same question, so every
+  // surface accepts the same answers.
+  /*
+    The shared workflow - gate, drop-off capture and submit - lives in useManagerSearchFlow and is
+    the SAME code /directory and the company profile run. This page owns its layout and its result
+    rendering, and nothing else about searching.
+  */
+  const { ready: allFilled, runSearch, loadMore, extraResults,
+          hasMore, mayBeIncomplete, loadingMore } = useManagerSearchFlow({
+    firstName, lastName, title,
+    companyName: company.name,
+    companyPayload: company.payload,
+    isLoggedIn: !!user,
+  });
 
   // Ref lets doSearch always see the current user without being a dependency
   const userRef = useRef(user);
@@ -53,52 +60,7 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
    * Builds the one shape {@link managerSearch} works in. The company is the only part that differs
    * between the three surfaces, so it arrives as a resolver rather than a value.
    */
-  const searchInput = (fn: string, ln: string, t: string) => ({
-    firstName: fn,
-    lastName: ln,
-    title: t,
-    companyPayload: company.payload,
-    companyName: company.name,
-    isLoggedIn: !!userRef.current,
-  });
 
-  const captureSearch = (
-    fn: string, ln: string, t: string,
-    geo: { country?: string; state?: string; city?: string },
-  ) => sharedCaptureSearch(searchInput(fn, ln, t), geo as any);
-
-  /**
-   * Captures a search the person never completed.
-   *
-   * The Find button stays gated on every field, so a half-filled search is never submitted and,
-   * until now, was never recorded either - somebody who typed a name and a company and then gave
-   * up left nothing behind. This fires as soon as there is enough to act on, without waiting for
-   * them to finish, which is the only way a partial search is ever captured at all.
-   *
-   * Keyed on what was actually sent, so refining the company or title captures the better version
-   * once, and idle keystrokes do not re-post the same thing.
-   */
-  const lastCapturedRef = useRef<string>("");
-  useEffect(() => {
-    const fn = firstName.trim();
-    const ln = lastName.trim();
-    const t  = title.trim();
-    const c  = company.name.trim();
-    if (!fn || !ln) return;
-    if (!c && !t) return;  // a bare name tells an admin nothing
-
-    const key = captureKey({ firstName: fn, lastName: ln, title: t, companyName: c });
-    if (lastCapturedRef.current === key) return;
-    lastCapturedRef.current = key;
-
-    const timer = setTimeout(() => {
-      void (async () => {
-        const geo = await fetchGeo().catch(() => ({}) as Awaited<ReturnType<typeof fetchGeo>>);
-        await captureSearch(fn, ln, t, geo);
-      })();
-    }, CAPTURE_DEBOUNCE_MS);  // let them finish typing before deciding they have stopped
-    return () => clearTimeout(timer);
-  }, [firstName, lastName, title, company.name]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doSearch = async (fn: string, ln: string, t: string, c: string) => {
     if (validateManagerName(fn, ln)) {
@@ -115,7 +77,7 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
     sessionStorage.setItem("rmm_find_search", JSON.stringify({ firstName: fn, lastName: ln, title: t, company: c }));
 
     try {
-      const outcome = await searchForManager(searchInput(fn, ln, t));
+      const outcome = await runSearch({ firstName: fn, lastName: ln, title: t });
       setResults(outcome.results);
       setHasContributed(outcome.hasContributed);
     } catch (err: any) {
@@ -228,7 +190,8 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
             </div>
           ) : results && results.length > 0 ? (
             <div className="flex flex-col gap-3">
-              {results.map((boss: any) =>
+              {/* Later pages come from the shared flow and continue the same ranking. */}
+              {[...results, ...extraResults].map((boss: any) =>
                 hasContributed ? (
                   <ManagerCard key={boss.id} boss={boss} />
                 ) : (
@@ -246,6 +209,12 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
                   />
                 )
               )}
+              <ManagerSearchMore
+                hasMore={hasMore}
+                mayBeIncomplete={mayBeIncomplete}
+                loading={loadingMore}
+                onLoadMore={loadMore}
+              />
               {hasContributed && (
                 <button
                   onClick={() => navigate(`/directory?search=${encodeURIComponent(`${firstName} ${lastName}`)}`)}
