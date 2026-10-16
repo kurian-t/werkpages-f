@@ -343,24 +343,95 @@ test.describe("Company profile page", () => {
     await page.addInitScript(() => {
       localStorage.removeItem("rmm_anon_ghost_created");
     });
+    /*
+      EVERY endpoint on the anonymous path is mocked here, and the person searched for is
+      deliberately NOT one the company fixture already holds. Both of those are the test, not
+      incidental setup.
+
+      This used to mock `GET /api/managers?...` and the ghost endpoint only, and search for
+      "Alex Johnson" - who is MOCK_COMPANY_PROFILE's own first manager. Two consequences:
+
+        - the anonymous path's FIRST call is `POST /api/managers/search`. It went unmocked, so it
+          rejected, and searchForManager threw before ever reaching the ghost call this test
+          exists to exercise;
+        - the assertion passed anyway, because Acme Corp's listing renders "Alex Johnson" on page
+          load. The text was already on screen, so the test could not distinguish a published
+          ghost from a search that never happened.
+
+      It went red only once CI was slow enough that the failed search replaced the company's
+      manager list before the assertion ran - CompanyProfile renders searchResults INSTEAD of
+      data.managers as soon as a search settles. The race is not the bug. The bug is that this
+      proved nothing from the day the search POST was introduced, and losing the race is merely
+      what made that visible.
+    */
+    // The IP lookup answers with a region and a city ON PURPOSE. Nothing below may carry them.
+    await page.route("**/api/geo", (route) =>
+      route.fulfill({ json: { country: "United States", state: "California", city: "San Francisco" } })
+    );
+    await page.route("**/api/managers/search", (route) =>
+      route.fulfill({ json: { data: [] } })
+    );
+    // The read-only twin. Reached only as a fallback, when a create response carries no id.
     await page.route(/\/api\/managers\?/, (route) =>
       route.fulfill({ json: { data: [] } })
     );
     await page.route("**/api/managers/ghost", (route) =>
-      route.fulfill({ json: { id: 4242, name: "Alex Johnson", created: true, published: true } })
+      route.fulfill({ json: { id: 4242, name: "Robin Vance", created: true, published: true } })
     );
-    await page.goto("/companies/Acme%20Corp");
 
-    await page.getByPlaceholder("First name").fill("Alex");
-    await page.getByPlaceholder("Last name").fill("Johnson");
+    // Awaited before the click so the location field's one-time country seed has landed: the
+    // payload assertions below are then about what the field holds, not about what raced.
+    const geoSeeded = page.waitForResponse("**/api/geo");
+    await page.goto("/companies/Acme%20Corp");
+    await geoSeeded;
+
+    // Registered BEFORE the click, so waiting cannot miss a request that already happened.
+    const ghostPost = page.waitForRequest(
+      (r) => r.url().includes("/api/managers/ghost") && r.method() === "POST"
+    );
+
+    await page.getByPlaceholder("First name").fill("Robin");
+    await page.getByPlaceholder("Last name").fill("Vance");
     await page.getByPlaceholder(/job title/i).fill("Engineering Manager");
     await page.getByRole("button", { name: /^search$/i }).click();
+
+    const ghostBody = (await ghostPost).postDataJSON();
+
+    /*
+      `fromSearch` is what keeps the TWO callers of this one endpoint apart: a deliberate search
+      that found nobody publishes a 'ghost', while the add form half-typed posts here without the
+      flag and gets a pending draft that is never published. Switching the endpoint wholesale to
+      pending is the outage CLAUDE.md section 41 describes - every tile led to "Manager not found"
+      - and asserting the flag is what would have caught it.
+    */
+    expect(ghostBody.fromSearch).toBe(true);
+
+    /*
+      A search asks for no location, so the manager it creates must carry no more than the country
+      the field offers. City and region here would be the SEARCHER's own, read off their address
+      and published on a profile they had just brought into existence, which reads as surveillance
+      rather than as a default. The mocked lookup above supplies both, so this fails if either one
+      ever reaches the payload by any route.
+    */
+    expect(ghostBody.country).toBe("United States");
+    expect(ghostBody.state ?? "").toBe("");
+    expect(ghostBody.city ?? "").toBe("");
+    expect(JSON.stringify(ghostBody)).not.toContain("California");
+    expect(JSON.stringify(ghostBody)).not.toContain("San Francisco");
+
+    /*
+      The tile is the manager just created, and the href is what proves it. A name alone cannot
+      tell the new ghost apart from the company's own listing when both are called the same thing,
+      which is exactly how this test came to pass while exercising nothing.
+    */
+    const tile = page.getByRole("link", { name: /Robin Vance/i });
+    await expect(tile).toBeVisible({ timeout: 10_000 });
+    await expect(tile).toHaveAttribute("href", "/manager/4242");
 
     /*
       The reader is never told a row was written. They searched for a manager and they found one -
       an ordinary locked tile, indistinguishable from a manager who was already here.
     */
-    await expect(page.getByText("Alex Johnson").first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/manager added/i)).toHaveCount(0);
     await expect(page.getByText(/added to the database/i)).toHaveCount(0);
   });
@@ -370,17 +441,45 @@ test.describe("Company profile page", () => {
     await page.addInitScript(() => {
       localStorage.setItem("rmm_anon_ghost_created", "true");
     });
+    await page.route("**/api/geo", (route) =>
+      route.fulfill({ json: { country: "United States", state: "California", city: "San Francisco" } })
+    );
+    await page.route("**/api/managers/search", (route) =>
+      route.fulfill({ json: { data: [] } })
+    );
     await page.route(/\/api\/managers\?/, (route) =>
       route.fulfill({ json: { data: [] } })
     );
+    /*
+      The once-ever allowance is already spent, so the ghost endpoint must not be called at all.
+
+      It is mocked with a PUBLISHED row rather than left unmocked on purpose: a regression that
+      called it would then publish a manager and render a tile, and fail loudly here. Left
+      unmocked it would merely reject, and the flow's own catch would produce the same "no
+      results" state this test asserts - so the test would stay green through the regression it
+      exists to catch.
+    */
+    let ghostCalls = 0;
+    await page.route("**/api/managers/ghost", (route) => {
+      ghostCalls += 1;
+      route.fulfill({ json: { id: 9999, name: "Robin Vance", created: true, published: true } });
+    });
+    // The lead is still recorded. A search that cannot publish must not be thrown away.
+    let captureCalls = 0;
+    await page.route("**/api/managers/anonymous-capture", (route) => {
+      captureCalls += 1;
+      route.fulfill({ json: { ok: true } });
+    });
     await page.goto("/companies/Acme%20Corp");
 
-    await page.getByPlaceholder("First name").fill("Alex");
-    await page.getByPlaceholder("Last name").fill("Johnson");
+    await page.getByPlaceholder("First name").fill("Robin");
+    await page.getByPlaceholder("Last name").fill("Vance");
     await page.getByPlaceholder(/job title/i).fill("Engineering Manager");
     await page.getByRole("button", { name: /^search$/i }).click();
 
     await expect(page.getByText(/no results found/i)).toBeVisible({ timeout: 5_000 });
+    await expect.poll(() => captureCalls).toBe(1);
+    expect(ghostCalls).toBe(0);
     await expect(page.getByText(/manager added!/i)).not.toBeVisible();
   });
 
