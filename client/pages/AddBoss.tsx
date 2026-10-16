@@ -255,6 +255,9 @@ export default function AddBoss() {
     title:     formData.title,
     companyName: companySelection.name,
     linkedinUrl: formData.linkedinUrl,
+    // Required. A typed answer satisfies it, so the corpus being unable to offer the place - or
+    // unreachable entirely - never blocks the form.
+    location: workLocation,
   };
   /*
     THE COUNTRY IS NOT A FIELD ON THIS FORM ANY MORE.

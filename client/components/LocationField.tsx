@@ -4,8 +4,7 @@ import { createPortal } from "react-dom";
 import { MapPin, Building2 } from "lucide-react";
 import {
   LocationValue, LocationSuggestion, formatLocation, fromSuggestion, fetchLocationSuggestions,
-  hasGeography, mergeWidenedSuggestions,
-} from "@/lib/location";
+  hasGeography, mergeWidenedSuggestions, fromManualText } from "@/lib/location";
 import { FormSubjectCard } from "@/components/RatingFormParts";
 import { RequiredMark } from "@/components/FormFields";
 import { useAnchoredPosition } from "@/lib/anchoredDropdown";
@@ -284,10 +283,30 @@ export function LocationField({
             had it silently thrown away and the old value put back, which reads as the form
             refusing an answer it was showing them. An exact match is not a guess.
           */
-          const typed = query.trim().toLowerCase();
+          const raw = query.trim();
+          const typed = raw.toLowerCase();
           const exact = suggestions.find(s => s.label.trim().toLowerCase() === typed
                                           || (s.detail ?? "").trim().toLowerCase() === typed);
-          if (exact) select(exact);
+          if (exact) {
+            select(exact);
+          } else if (raw && raw !== formatLocation(value).trim()) {
+            /*
+              AN ANSWER THE CORPUS COULD NOT OFFER IS STILL AN ANSWER.
+
+              Location is mandatory; choosing a suggestion is not. A workplace the corpus has never
+              held, a query it answers with nothing, or a corpus that is simply unreachable must
+              never be the reason somebody cannot say where they worked. Until now anything that
+              did not match a suggestion was discarded and the previous value restored - and since
+              the field no longer arrives prepopulated, "the previous value" is usually nothing at
+              all, so the answer vanished and Next stayed disabled with no way to satisfy it.
+
+              NOTHING IS INFERRED FROM THE TEXT. fromManualText keeps the string as written and
+              marks it unverified; it does not parse a city out of it or attach a corpus identity.
+              That rule - typed text is not normalized geography - is the one worth keeping, and
+              accepting an answer was never the same thing as corroborating it.
+            */
+            onChange(fromManualText(raw));
+          }
           setOpen(false);
           onEditDone();
         }}

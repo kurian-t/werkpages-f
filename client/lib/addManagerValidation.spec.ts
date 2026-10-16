@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { step1Errors, isStep1Valid } from "./addManagerValidation";
+import { EMPTY_LOCATION, fromManualText } from "./location";
 
 const complete = {
   firstName: "Jordan", lastName: "Smith", title: "Engineering Manager", companyName: "Acme Corp",
+  location: fromManualText("Ontario, Canada"),
 };
 
 describe("leaving step 1 of Add Manager", () => {
@@ -25,11 +27,26 @@ describe("leaving step 1 of Add Manager", () => {
     expect(Object.keys(complete)).not.toContain("country");
   });
 
-  it("REGRESSION: a location is never required either", () => {
-    // Required + startable-only-from a picker that itself needs a country was the second way the
-    // same form became unsubmittable. Starting EMPTY is what protects anonymity; refusing the
-    // submission adds nothing to that and loses the contribution.
+  it("a location IS required, and a typed one satisfies it", () => {
+    /*
+      POLICY CORRECTED 2026-10-14. This asserted that a location is never required.
+
+      The history behind that is real and worth keeping. Required + answerable-only-by-picking-a-
+      suggestion was the second way this form became unsubmittable, so the requirement was dropped
+      rather than fixed. The form then shipped in neither designed state: the field was left empty
+      AND optional, so Next advanced with no location at all and managers were published without
+      one.
+
+      The fix is the escape, not the exemption. A location is required; a typed answer satisfies
+      it; so the question can always be closed, including when the corpus holds no such place or
+      cannot be reached. What is forbidden is inventing structure from that text, which is a
+      separate rule living in location.ts.
+    */
     expect(isStep1Valid(complete)).toBe(true);
+    expect(isStep1Valid({ ...complete, location: EMPTY_LOCATION })).toBe(false);
+    expect(step1Errors({ ...complete, location: EMPTY_LOCATION })).toContain("Location is required");
+    // The corpus being unreachable cannot be what stops somebody contributing.
+    expect(isStep1Valid({ ...complete, location: fromManualText("Gorsebrook Mill") })).toBe(true);
   });
 
   it("still requires the things the form actually asks for", () => {
@@ -57,6 +74,10 @@ describe("leaving step 1 of Add Manager", () => {
 
   it("reports every problem at once, not one at a time", () => {
     // A form that reveals its objections one reload at a time is a form people abandon.
-    expect(step1Errors({ firstName: "", lastName: "", title: "", companyName: "" })).toHaveLength(4);
+    const nothing = step1Errors({
+      firstName: "", lastName: "", title: "", companyName: "", location: EMPTY_LOCATION,
+    });
+    expect(nothing).toHaveLength(5);
+    expect(nothing).toContain("Location is required");
   });
 });

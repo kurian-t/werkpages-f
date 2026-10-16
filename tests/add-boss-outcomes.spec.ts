@@ -232,7 +232,7 @@ test.describe("When the visitor's country cannot be determined", () => {
       route.fulfill({ json: { country: null, state: null, city: null } }));
   }
 
-  test("step 1 still advances with no country and no location", async ({ page }) => {
+  test("step 1 still advances with no country, once a location is given", async ({ page }) => {
     await mockAddBossPage(page);
     await geoUnavailable(page);
     await page.goto("/add");
@@ -243,7 +243,20 @@ test.describe("When the visitor's country cannot be determined", () => {
     await page.locator('input[name="company"]').fill("Acme Corp");
     await page.keyboard.press("Escape");
 
-    // The whole bug in one assertion: this button was permanently disabled.
+    /*
+      THE COUNTRY IS STILL NOT REQUIRED, which is what this test is for: it came from a bug where
+      Next was permanently disabled for anybody whose geography we could not read, pointing at a
+      country control that no longer exists.
+
+      The LOCATION is required now, and that is a different question - it has a visible field, and
+      it accepts a typed answer when the corpus cannot offer one, so it can always be closed. That
+      escape is exactly what stops it becoming the old bug again, and it is used here: no country,
+      no corpus, and the form still moves.
+    */
+    await page.getByRole("button", { name: /edit location details/i }).click();
+    await page.getByLabel("Location *").fill("Somewhere I typed");
+    await page.getByRole("button", { name: /done editing location/i }).click();
+
     await expect(next(page)).toBeEnabled({ timeout: 10_000 });
     await next(page).click();
     await expect(page.getByText(/step 2 of 3/i)).toBeVisible({ timeout: 10_000 });

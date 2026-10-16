@@ -140,6 +140,11 @@ test.describe("After a workplace rating", () => {
     await page.getByLabel(/first name/i).fill("Dana");
     await page.getByLabel(/last name/i).fill("Scully");
     await page.getByLabel(/title/i).first().fill("Engineering Manager");
+    // Step 1 also asks where the work happened. Answered here so the assertion below is about the
+    // COMPANY, which is what this test exists to check.
+    await page.getByRole("button", { name: /edit location details/i }).click();
+    await page.getByLabel("Location *").fill("Ontario, Canada");
+    await page.getByRole("button", { name: /done editing location/i }).click();
 
     await expect(page.getByRole("button", { name: /^next$/i }).first()).toBeEnabled({ timeout: 10_000 });
   });

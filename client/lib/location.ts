@@ -25,6 +25,23 @@ export interface LocationValue {
   corpusPlace: CorpusPlace | null;
   /** How the chosen place reads on one line. Display only — never sent, never parsed. */
   label: string;
+  /**
+   * Where this answer came from, which decides how much the product may claim about it.
+   *
+   * <p>`corpus` means the person chose a normalized place we hold, so the structured fields are
+   * corroborated. `manual` means they typed it: a real answer, and the ONLY answer available when
+   * the corpus lacks their workplace or cannot be reached, but one nothing has confirmed. `null`
+   * is a value from before the distinction existed.
+   */
+  source?: "corpus" | "manual" | null;
+  /**
+   * What the person actually wrote, kept verbatim for a manual entry.
+   *
+   * <p>Not parsed into country/state/city. Guessing structure out of free text is exactly what
+   * turns "Waterlooo" into a confirmed city, and a manual answer is worth more read back as it was
+   * given than tidied into something it never said.
+   */
+  text?: string;
 }
 
 /** A building as the corpus describes it, opaque to the client beyond display. */
@@ -42,7 +59,53 @@ export interface CorpusPlace {
 export const EMPTY_LOCATION: LocationValue = {
   country: "", state: "", city: "", precision: null,
   companyLocationId: null, corpusPlace: null, label: "",
+  source: null, text: "",
 };
+
+/**
+ * A location somebody typed, which the corpus did not supply.
+ *
+ * <p>Location is mandatory; choosing a suggestion is not. A workplace missing from the corpus, or
+ * a corpus that cannot be reached, must never be the reason somebody cannot say where they worked.
+ *
+ * <p>NOTHING IS INFERRED FROM THE TEXT. The string is kept as written and marked unverified. Only
+ * structured fields confirmed some other way - the visitor's own country, say - are carried, and
+ * they are passed in rather than parsed out. The precision rung therefore describes what was
+ * actually corroborated, which for a bare typed answer is nothing at all.
+ */
+export function fromManualText(
+  text: string,
+  confirmed?: { country?: string | null; state?: string | null; city?: string | null },
+): LocationValue {
+  const country = confirmed?.country?.trim() ?? "";
+  const state   = confirmed?.state?.trim()   ?? "";
+  const city    = confirmed?.city?.trim()    ?? "";
+  return {
+    country, state, city,
+    // Only rungs somebody else vouched for. A typed string confirms none of them.
+    precision: city ? "city" : state ? "state" : country ? "country" : null,
+    companyLocationId: null,
+    corpusPlace: null,
+    label: "",
+    source: "manual",
+    text,
+  };
+}
+
+/**
+ * Whether the question has been answered at all.
+ *
+ * <p>A manual entry counts: it has no precision rung, because nothing corroborated one, and it is
+ * still somebody telling us where they worked. Gating on `precision` alone is what let a form with
+ * a typed location be treated as having none.
+ */
+export function isLocationSet(value: LocationValue | null | undefined): boolean {
+  // Absent counts as unanswered. Callers reach this from form state that may not be built yet,
+  // and throwing there would turn "no location" into a blank page rather than a prompt.
+  if (!value) return false;
+  if (value.precision) return true;
+  return value.source === "manual" && (value.text ?? "").trim().length > 0;
+}
 
 /**
  * One row in the suggestion list.
@@ -79,6 +142,9 @@ export function hasDeclaredLocation(value: LocationValue): boolean {
 }
 
 export function formatLocation(value: LocationValue): string {
+  // As they wrote it. Re-casing or re-ordering a manual answer presents it as something we
+  // normalized, which is precisely the claim a manual entry is not allowed to make.
+  if (value.source === "manual" && (value.text ?? "").trim()) return value.text!;
   if (value.precision === "exact" && value.label) return value.label;
   const parts = [value.city, value.state, value.country].filter(p => p && p.trim());
   return parts.join(", ");
@@ -94,6 +160,9 @@ export function fromSuggestion(s: LocationSuggestion): LocationValue {
     companyLocationId: s.companyLocationId ?? null,
     corpusPlace: s.corpusPlace ?? null,
     label: s.detail ? `${s.detail}` : s.label,
+    // Chosen from the corpus, so the structured fields above are corroborated.
+    source: "corpus",
+    text: "",
   };
 }
 
@@ -104,20 +173,40 @@ export function fromSuggestion(s: LocationSuggestion): LocationValue {
  * value copied from a form that has since drifted would claim a city the address is not in.
  */
 export function declaredPayload(value: LocationValue) {
-  if (!value.precision) return {};
+  if (!isLocationSet(value)) return {};
+  /*
+    A MANUAL ENTRY IS SENT AS ONE, never dressed up as a corpus place.
+
+    The text goes as text, the source says it is unverified, and only coarse fields that were
+    independently confirmed travel with it. No corpusPlace, no companyLocationId: the server must
+    not be handed something that looks corroborated and promote it into a real location row.
+  */
+  if (value.source === "manual") {
+    return {
+      declaredCountry: value.country.trim() || null,
+      declaredState: value.state.trim() || null,
+      declaredCity: value.city.trim() || null,
+      declaredPrecision: value.precision,
+      declaredSource: "manual",
+      declaredText: value.text ?? "",
+    };
+  }
   if (value.precision === "exact") {
     // A building already in our database is sent by id. One picked from the corpus has no id yet,
     // so it is sent whole and the server promotes it to a real location on submit — creating rows
     // only for places somebody actually chose, rather than for everything they scrolled past.
     return value.companyLocationId
-      ? { declaredPrecision: "exact", companyLocationId: value.companyLocationId }
-      : { declaredPrecision: "exact", corpusPlace: value.corpusPlace };
+      ? { declaredPrecision: "exact", companyLocationId: value.companyLocationId,
+          declaredSource: "corpus" }
+      : { declaredPrecision: "exact", corpusPlace: value.corpusPlace,
+          declaredSource: "corpus" };
   }
   return {
     declaredCountry: value.country.trim() || null,
     declaredState: value.state.trim() || null,
     declaredCity: value.city.trim() || null,
     declaredPrecision: value.precision,
+    declaredSource: value.source ?? "corpus",
   };
 }
 
@@ -146,6 +235,9 @@ export function fromGeo(geo: { country?: string | null; state?: string | null; c
     companyLocationId: null,
     corpusPlace: null,
     label: "",
+    // Geography we were told, not a place anybody picked and not something typed.
+    source: null,
+    text: "",
   };
 }
 

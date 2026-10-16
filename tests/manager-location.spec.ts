@@ -167,11 +167,18 @@ test.describe("Choosing a place", () => {
     await expect(listbox.getByText("1005 Ottawa St N · Kitchener, ON")).toBeVisible();
   });
 
-  test("typing alone never becomes a location", async ({ page }) => {
+  test("typing never becomes NORMALIZED GEOGRAPHY, but is still an answer", async ({ page }) => {
     /*
-      Typed text is search input. Parsing arbitrary text into normalized geography is how a
-      directory fills up with places that do not exist, so a query matching nothing leaves the
-      previous answer standing.
+      POLICY CORRECTED 2026-10-14. This asserted that typed text is discarded entirely.
+
+      The half worth keeping is intact and asserted below: parsing arbitrary text into normalized
+      geography is how a directory fills with places that do not exist, so "Waterlooo" must never
+      become a confirmed city with a precision rung and a workplace identity.
+
+      What was wrong was throwing the words away. Location is mandatory and the corpus cannot
+      always answer - a workplace it has never held, or one that is simply unreachable - so
+      discarding an unmatched answer left the person with a required field they had no way to
+      fill. The text is kept, marked unverified, and nothing is derived from it.
     */
     await openForm(page, []);
 
@@ -179,9 +186,9 @@ test.describe("Choosing a place", () => {
     await page.getByLabel("Location *").fill("Waterlooo");
     await page.getByRole("button", { name: /done editing location/i }).click();
 
-    // Nothing matched, so nothing was chosen, so there is still no location - and specifically
-    // the typed text has NOT been turned into one.
-    await expect(page.getByText("Waterlooo")).toHaveCount(0);
+    // Kept, and shown back as written.
+    await expect(page.getByTestId("addboss-location-value")).toContainText("Waterlooo");
+    // The control still offers to edit it, exactly as it would for a chosen place.
     await expect(page.getByRole("button", { name: /edit location details/i })).toBeVisible();
   });
 });
@@ -205,7 +212,12 @@ test.describe("What reaches the server", () => {
       step 2, let alone agreed to it.
 
       The declared keys are the only ones the backend publishes, so the assertion that matters is
-      that they are absent until somebody picks a place.
+      that NO GEOGRAPHY IS INFERRED - not then, and not now that a location is required.
+
+      The form will not advance without a location any more, so one is given here. It is typed
+      rather than picked, which is the case the corpus cannot serve, and it is exactly what must
+      NOT be turned into a country, a province, a city or a precision rung. What reaches the
+      server is the person's own words, marked unverified, and nothing else.
     */
     await mockAddBossPage(page);
     const seen = await captureGhostBody(page);
@@ -215,12 +227,19 @@ test.describe("What reaches the server", () => {
     await page.locator('input[name="lastName"]').fill("Smith");
     await page.locator('input[name="title"]').fill("Engineering Manager");
     await page.locator('input[name="company"]').fill("Acme Corp");
+    await page.getByRole("button", { name: /edit location details/i }).click();
+    await page.getByLabel("Location *").fill("Somewhere I typed");
+    await page.getByRole("button", { name: /done editing location/i }).click();
 
     await expect(async () => expect(seen.body).not.toBeNull()).toPass({ timeout: 10_000 });
+    // Still nothing derived from an IP address, and nothing parsed out of the string.
     expect(seen.body.declaredCountry).toBeFalsy();
     expect(seen.body.declaredState).toBeFalsy();
     expect(seen.body.declaredCity).toBeFalsy();
     expect(seen.body.declaredPrecision).toBeFalsy();
+    // What IS sent: the words, said to be unverified.
+    expect(seen.body.declaredSource).toBe("manual");
+    expect(seen.body.declaredText).toBe("Somewhere I typed");
   });
 
   test("an exact pick sends the workplace id and no coarse values", async ({ page }) => {

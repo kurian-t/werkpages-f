@@ -1,4 +1,5 @@
 import { validateProfileUrl, validateManagerNamePart } from "@/lib/validators";
+import { isLocationSet, type LocationValue } from "@/lib/location";
 
 /**
  * Whether step 1 of the Add Manager form may be left, and why not.
@@ -27,14 +28,28 @@ export interface Step1Fields {
   /** The company as SELECTED, not as typed - the picker owns that distinction. */
   companyName: string;
   linkedinUrl?: string;
+  /**
+   * Where the work happened. Required.
+   *
+   * <p>A manual entry satisfies this exactly as a chosen suggestion does - see isLocationSet. The
+   * requirement is that the question is ANSWERED, not that the corpus could answer it.
+   */
+  location: LocationValue;
 }
 
 /**
  * Everything wrong with step 1, in the order a reader meets the fields.
  *
  * <p><b>The country is deliberately absent.</b> There is no country control on this form; the
- * country arrives attached to whatever location is chosen, and a location is not required either.
- * Nothing here may demand a value the reader has no way to supply - that is the whole bug.
+ * country arrives attached to whatever location is chosen. Nothing here may demand a value the
+ * reader has no way to supply - that is the whole bug this module was written for.
+ *
+ * <p><b>The location IS required, and that is not the same mistake.</b> The difference is whether
+ * a control exists to answer it. The country came from a Cloudflare header and had no control at
+ * all, so demanding it was unanswerable. The location has a visible field which accepts a typed
+ * answer when the corpus cannot offer one, so demanding it is a question the reader can always
+ * close. Requiring it without that escape WOULD be the old bug again, which is why
+ * {@link isLocationSet} counts a manual entry.
  */
 export function step1Errors(fields: Step1Fields): string[] {
   const errors: string[] = [];
@@ -54,6 +69,8 @@ export function step1Errors(fields: Step1Fields): string[] {
   const company = fields.companyName.trim();
   if (company.length === 0)                errors.push("Company is required");
   else if (company.length < 2)             errors.push("Company must be at least 2 characters");
+
+  if (!isLocationSet(fields.location)) errors.push("Location is required");
 
   if (fields.linkedinUrl) {
     const checked = validateProfileUrl(fields.linkedinUrl);
