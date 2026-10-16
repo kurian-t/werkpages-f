@@ -173,25 +173,32 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
             )}
           </div>
 
-
           {/*
-            THE SAME LOCATION QUESTION THE ADD FORM ASKS, on the same shared control.
+            "in <country>", on its own line.
 
-            Pre-filled with the visitor's COUNTRY and nothing finer, and fully editable: a country
-            is a default, not a claim about where the manager works. Choosing a suggestion replaces
-            the whole value, so switching country cannot leave a city from the previous one behind,
-            and a region or building is stored only when somebody actually picks one.
+            Inline beside the company it was squeezed into a few characters of width, which is no
+            way to show an autocomplete. The sentence continues onto this line instead.
+
+            Pre-filled with the visitor's COUNTRY and nothing finer, and editable. A country is a
+            default, not a claim about where the manager works, and a region or city is stored
+            only when somebody actually picks one - a search that asks for no location must never
+            stamp the SEARCHER's city onto the manager it creates.
           */}
-          <LocationField
-            value={searchLocation.location}
-            onChange={searchLocation.setLocation}
-            companyName={company.name}
-            editing={searchLocation.editing}
-            onEditStart={searchLocation.startEditing}
-            onEditDone={searchLocation.stopEditing}
-            heading="Country where your manager works"
-            id="find-search-location"
-          />
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span className="shrink-0">in</span>
+            <div className="flex-1 min-w-[200px]">
+              <LocationField
+                value={searchLocation.location}
+                onChange={searchLocation.setLocation}
+                companyName={company.name}
+                editing={searchLocation.editing}
+                onEditStart={searchLocation.startEditing}
+                onEditDone={searchLocation.stopEditing}
+                labelHidden
+                id="find-search-location"
+              />
+            </div>
+          </div>
           <button
             type="submit"
             disabled={!allFilled || loading}

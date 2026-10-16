@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { MapPin, Building2 } from "lucide-react";
 import {
   LocationValue, LocationSuggestion, formatLocation, fromSuggestion, fetchLocationSuggestions,
-  hasGeography, mergeWidenedSuggestions, fromManualText } from "@/lib/location";
+  mergeWidenedSuggestions, fromManualText, preferCountry } from "@/lib/location";
 import { FormSubjectCard } from "@/components/RatingFormParts";
 import { RequiredMark } from "@/components/FormFields";
 import { useAnchoredPosition } from "@/lib/anchoredDropdown";
@@ -26,23 +26,6 @@ import { useAnchoredPosition } from "@/lib/anchoredDropdown";
  * nobody is made to pick a street address to submit a rating. Somebody who only knows the province
  * should be able to say exactly that and stop.
  */
-/** Two country names meaning the same place, however they were written. */
-function sameCountry(a?: string | null, b?: string | null): boolean {
-  return !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
-}
-
-/**
- * A country the reader named in the query itself.
- *
- * <p>Somebody typing "Toronto, Ontario, Canada" has said which country they mean, and refusing to
- * look there because the field currently holds a UK location is the whole bug. Only the last
- * comma-separated part is considered, which is where a country goes.
- */
-function countryNamedIn(query: string): string | null {
-  const parts = query.split(",").map((p) => p.trim()).filter(Boolean);
-  return parts.length >= 2 ? parts[parts.length - 1] : null;
-}
-
 export function LocationField({
   value,
   onChange,
@@ -54,6 +37,7 @@ export function LocationField({
   id = "location",
   error,
   heading,
+  labelHidden,
 }: {
   value: LocationValue;
   onChange: (next: LocationValue) => void;
@@ -90,6 +74,18 @@ export function LocationField({
    * unlabelled for a screen reader to gain nothing.
    */
   heading?: string;
+  /**
+   * Hide the label VISUALLY, for a caller whose surrounding text already asks the question.
+   *
+   * <p>The search form reads "… at <company> in <location>", so a "Location *" label above the
+   * control repeats the word the sentence has already said and implies a required field in a form
+   * that has no required location.
+   *
+   * <p>Hidden with sr-only rather than removed: it is still the input's label, and deleting it
+   * would leave the control unnamed for anybody using a screen reader. A prop here rather than a
+   * second component, because that is how the two location fields drifted apart last time.
+   */
+  labelHidden?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
@@ -101,24 +97,6 @@ export function LocationField({
     that it is still the newest before touching the list.
   */
   const latestRef = useRef(0);
-  /*
-    The reader's own country, used only to widen a search that found nothing - never to overrule
-    what they typed or what the field already holds.
-  */
-  const [geoCountry, setGeoCountry] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/geo`);
-        const geo = await res.json();
-        if (!cancelled && geo?.country) setGeoCountry(geo.country as string);
-      } catch {
-        // A widened search is a convenience; failing to learn the country must break nothing.
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
 
@@ -176,26 +154,34 @@ export function LocationField({
           whether any geography came back, and the widened results are MERGED rather than
           substituted, because a genuine search for that pub should still find it.
         */
-        let found = await fetchLocationSuggestions(q, {
-          companyId, companyName, country: value.country, state: value.state,
-        });
-        // Show what we have straight away. The widening below is an extra round trip, and making
-        // the whole list wait for it is what made a search that already had answers feel slow.
-        if (seq === latestRef.current && found.length > 0) {
-          setSuggestions(found);
-          setOpen(true);
-          setActiveIndex(-1);
-        }
+        /*
+          ONE REQUEST, WORLDWIDE. The location being edited is never a filter on its replacement.
 
-        if (!hasGeography(found)) {
-          for (const fallback of [geoCountry, countryNamedIn(q)]) {
-            if (!fallback || sameCountry(fallback, value.country)) continue;
-            const widened = await fetchLocationSuggestions(q, { companyId, companyName, country: fallback });
-            const merged = mergeWidenedSuggestions(found, widened);
-            if (merged !== found) { found = merged; break; }
-            if (found.length === 0 && widened.length > 0) { found = widened; break; }
-          }
-        }
+          THE INVARIANT: an existing location must never prevent somebody searching for or
+          selecting a different one.
+
+          value.country and value.state used to be sent as hard filters, and a filter makes itself
+          permanent - a field holding "London, Ontario" could only ever find Canadian places, so
+          the country could not be changed from inside the field that held it. Three separate
+          symptoms, all this one cause: "United Kingdom" offered a freight company in Montreal,
+          "London, England" offered England in ARKANSAS, and a saved UK location could not be moved
+          to Toronto.
+
+          Two earlier attempts fixed it conditionally - widen when nothing came back, then widen
+          when no GEOGRAPHY came back - and each condition failed on a case nobody had thought of:
+          a pub called "Lord Kitchener" counted as success, and so did England, Arkansas. A
+          condition that decides in advance whether the narrow answer was good enough will always
+          have another case.
+
+          So there is no narrow answer and no second request. The corpus is worldwide and local,
+          measured at roughly 35ms, so one unrestricted query is cheaper than the two this
+          replaces. The country returns as a RANKING preference below, where it can order the list
+          but can never remove anything from it.
+        */
+        const found = preferCountry(
+          await fetchLocationSuggestions(q, { companyId, companyName }),
+          value.country,
+        );
 
         // A reply from a query the user has already typed past must never replace a newer one.
         // US partitions can take twenty seconds, so an abandoned request landing late would
@@ -259,13 +245,15 @@ export function LocationField({
     <div ref={containerRef}>
       <label
         htmlFor={id}
-        className={heading
+        className={labelHidden
+          ? "sr-only"
+          : heading
           // Matched to WorkTimelineFields' heading, so the two questions on this step are the
           // same size. If that one changes, this has to change with it.
           ? "block text-[22px] font-semibold text-foreground mb-2"
           : "block text-sm font-semibold text-foreground mb-2"}
       >
-        {heading ?? "Location"} <RequiredMark />
+        {heading ?? "Location"} {labelHidden ? null : <RequiredMark />}
       </label>
       <FormSubjectCard
         layout="inline"

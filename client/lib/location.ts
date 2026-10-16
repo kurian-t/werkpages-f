@@ -129,6 +129,32 @@ export interface LocationSuggestion {
   corpusPlace?: CorpusPlace;
 }
 
+/**
+ * The same suggestions, with the country already on the form shown first.
+ *
+ * <p>A SOFT preference, applied after the search rather than inside it. The country used to be
+ * sent as a filter, and a filter makes itself permanent: a field holding "London, Ontario" could
+ * only ever find Canadian places, so the country could never be changed. Typing "United Kingdom"
+ * returned a freight company in Montreal; typing "London, England" returned England, Arkansas.
+ *
+ * <p>Ranking cannot do that. Everything the corpus knows is still in the list and still
+ * selectable - "London" simply offers London, Ontario above London, England for somebody already
+ * in Canada, and offers both.
+ *
+ * <p>Stable, so the server's own ordering - leading-match first, then population - survives
+ * within each group. Anything the server ranked highly is still ranked highly among its peers.
+ */
+export function preferCountry(
+  list: LocationSuggestion[],
+  country: string | null | undefined,
+): LocationSuggestion[] {
+  const want = (country ?? "").trim().toLowerCase();
+  if (!want) return list;
+  const matching = list.filter((s) => (s.country ?? "").trim().toLowerCase() === want);
+  if (matching.length === 0 || matching.length === list.length) return list;
+  return [...matching, ...list.filter((s) => (s.country ?? "").trim().toLowerCase() !== want)];
+}
+
 /** How a stored location reads on one line, coarsest parts last. */
 /**
  * Whether somebody has actually stated a location.
