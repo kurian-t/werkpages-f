@@ -175,6 +175,72 @@ test.describe("country search against the real corpus", () => {
         `"${typed}" offered only ${[...countries].join(", ")}`).toBeGreaterThanOrEqual(3);
     }
   });
+  test("a city named with its COUNTRY resolves to that city", async ({ request }) => {
+    await requireLiveBackend(request);
+    /*
+      REPORTED: "Washington, United States" returned nothing at all.
+
+      The corpus's search_text for a locality is its name and its region - "washington district
+      of columbia" - and never the country. The country word was stripped from a query only when
+      it arrived as a request PARAMETER, so a country somebody typed after a comma stayed in the
+      token list and was required to appear in a string that cannot contain it. Every "city,
+      country" query therefore matched nothing: not Washington, not Toronto, Canada, not Paris,
+      France.
+
+      A comma means the location is STATED rather than guessed, so the country it names scopes the
+      search instead of being searched for.
+    */
+    const cases: Array<[string, RegExp]> = [
+      ["Washington, United States", /United States$/],
+      ["Toronto, Canada",           /^Toronto, Ontario, Canada$/],
+      ["Paris, France",             /France$/],
+      ["Cambridge, United Kingdom", /United Kingdom$/],
+    ];
+    for (const [typed, expected] of cases) {
+      const rows = await suggest(request, typed);
+      expect(rows.length, `"${typed}" returned nothing at all`).toBeGreaterThan(0);
+      expect(rows[0]?.label, `"${typed}" led with ${rows[0]?.label}`).toMatch(expected);
+    }
+  });
+});
+
+test.describe("the dropdown a person actually sees", () => {
+
+  async function openAddManager(page: any) {
+    await page.route("**/api/auth/me", (r: any) => r.fulfill({ json: MOCK_USER }));
+    await page.route(/\/api\/geo/, (r: any) => r.fulfill({ json: { country: "Canada" } }));
+    await page.route("**/api/companies/suggest**", (r: any) => r.fulfill({ json: [] }));
+    await page.goto("/add");
+    await page.locator('input[name="firstName"]').fill("Dana");
+    await page.locator('input[name="lastName"]').fill("Okafor");
+    await page.locator('input[name="title"]').fill("Operations Lead");
+  }
+
+  async function typeLocation(page: any, text: string) {
+    const edit = page.getByRole("button", { name: /edit location details/i });
+    if (await edit.count()) await edit.click();
+    const input = page.getByPlaceholder(/city, province, or the workplace itself/i);
+    await input.fill(text);
+    return input;
+  }
+
+  test("typing the full name of a country offers that country", async ({ page, request }) => {
+    await requireLiveBackend(request);
+    await openAddManager(page);
+    await typeLocation(page, "United States");
+    /*
+      Reported as not working in the browser even while the endpoint answered correctly, so this
+      asserts what is on SCREEN rather than what the server returned.
+    */
+    await expect(page.getByText(/^United States$/).first()).toBeVisible({ timeout: 20_000 });
+  });
+
+  test("typing a city with its country offers that city", async ({ page, request }) => {
+    await requireLiveBackend(request);
+    await openAddManager(page);
+    await typeLocation(page, "Washington, United States");
+    await expect(page.getByText(/Washington/).first()).toBeVisible({ timeout: 20_000 });
+  });
 });
 
 test.describe("the location field, against the real corpus", () => {
