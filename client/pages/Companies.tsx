@@ -67,10 +67,23 @@ export default function Companies() {
   // industrySlug is optional: the company cards know it, but the autocomplete only yields a
   // name, and the industry cannot be known until the company is resolved. Without it we send
   // the un-nested lookup URL, and CompanyProfile redirects to the canonical path on load.
-  const goToCompany = (name: string, slug?: string, industrySlug?: string) => {
+  /**
+   * @param picked the identity shown beside the suggestion that was clicked, when there was one.
+   *
+   * <p>Carried so the page renders the logo the reader actually clicked. Without it the pick died
+   * at this boundary and the company page fell back to guessing a logo from the NAME, which is how
+   * clicking one mark landed on a different one.
+   *
+   * <p>Navigation state rather than the URL: a hint for the next render, not part of the address.
+   */
+  const goToCompany = (name: string, slug?: string, industrySlug?: string,
+                       picked?: { logoUrl?: string; domain?: string }) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    navigate(slug ? companyPath(industrySlug, slug) : companyPathByName(trimmed));
+    navigate(slug ? companyPath(industrySlug, slug) : companyPathByName(trimmed),
+             picked?.logoUrl || picked?.domain
+               ? { state: { pickedLogoUrl: picked.logoUrl, pickedDomain: picked.domain } }
+               : undefined);
   };
 
   return (
@@ -118,7 +131,9 @@ export default function Companies() {
                   <CompanyAutocomplete
                     value={search}
                     onChange={setSearch}
-                    onSuggestionSelect={(name) => goToCompany(name)}
+                    onSuggestionSelect={(name, logoUrl) => goToCompany(name, undefined, undefined, { logoUrl })}
+                    onSuggestionPicked={(s) => goToCompany(s.name, s.slug, undefined,
+                                                           { logoUrl: s.logoUrl, domain: s.domain })}
                     onClear={() => setSearch("")}
                     placeholder="Search for a company…"
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
@@ -191,7 +206,8 @@ export default function Companies() {
                   company={co}
                   isLocked={isLocked}
                   showIndustry
-                  onClick={() => goToCompany(co.name, co.slug, co.industrySlug)}
+                  onClick={() => goToCompany(co.name, co.slug, co.industrySlug,
+                                             { logoUrl: (co as any).logoUrl, domain: (co as any).domain })}
                 />
               ))}
             </div>

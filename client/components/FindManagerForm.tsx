@@ -1,3 +1,5 @@
+import { useSearchLocation } from "@/hooks/useSearchLocation";
+import { LocationField } from "@/components/LocationField";
 import { validateManagerName } from "@/lib/managerName";
 import { useManagerSearchFlow } from "@/hooks/useManagerSearchFlow";
 import ManagerSearchMore from "@/components/ManagerSearchMore";
@@ -44,12 +46,14 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
     the SAME code /directory and the company profile run. This page owns its layout and its result
     rendering, and nothing else about searching.
   */
+  const searchLocation = useSearchLocation();
   const { ready: allFilled, runSearch, loadMore, extraResults,
           hasMore, mayBeIncomplete, loadingMore } = useManagerSearchFlow({
     firstName, lastName, title,
     companyName: company.name,
     companyPayload: company.payload,
     isLoggedIn: !!user,
+    location: searchLocation.location,
   });
 
   // Ref lets doSearch always see the current user without being a dependency
@@ -169,6 +173,25 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
             )}
           </div>
 
+
+          {/*
+            THE SAME LOCATION QUESTION THE ADD FORM ASKS, on the same shared control.
+
+            Pre-filled with the visitor's COUNTRY and nothing finer, and fully editable: a country
+            is a default, not a claim about where the manager works. Choosing a suggestion replaces
+            the whole value, so switching country cannot leave a city from the previous one behind,
+            and a region or building is stored only when somebody actually picks one.
+          */}
+          <LocationField
+            value={searchLocation.location}
+            onChange={searchLocation.setLocation}
+            companyName={company.name}
+            editing={searchLocation.editing}
+            onEditStart={searchLocation.startEditing}
+            onEditDone={searchLocation.stopEditing}
+            heading="Country where your manager works"
+            id="find-search-location"
+          />
           <button
             type="submit"
             disabled={!allFilled || loading}

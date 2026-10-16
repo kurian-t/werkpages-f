@@ -241,6 +241,32 @@ export function fromGeo(geo: { country?: string | null; state?: string | null; c
   };
 }
 
+/**
+ * The visitor's COUNTRY as a starting value, and nothing finer.
+ *
+ * <p>Deliberately not {@link fromGeo}, which copies the city and region too. Those describe the
+ * READER, not the manager, and writing them into a manager's location is how a search that asks
+ * for no location ended up publishing the searcher's own city on a profile. A country is a
+ * defensible default - coarse, visible in the field, and changeable. A city is not.
+ *
+ * <p>`source` stays null on purpose. It is what separates geography we were TOLD from a place
+ * somebody picked (`corpus`) or typed (`manual`), so an IP-derived default can never be mistaken
+ * later for a human declaration.
+ */
+export function countryFromGeo(geo: { country?: string | null }): LocationValue {
+  const country = geo.country?.trim() ?? "";
+  return {
+    ...EMPTY_LOCATION,
+    country,
+    precision: country ? "country" : null,
+  };
+}
+
+/** Whether this location was declared by a person, rather than defaulted from their address. */
+export function isDeclaredByPerson(value: LocationValue): boolean {
+  return value.source != null;
+}
+
 /** The stored value if there is one, the visitor's own geography if there is not. */
 export function orUserGeo(value: LocationValue, geo: Parameters<typeof fromGeo>[0]): LocationValue {
   return value.precision ? value : fromGeo(geo);

@@ -1,3 +1,5 @@
+import { useSearchLocation } from "@/hooks/useSearchLocation";
+import { LocationField } from "@/components/LocationField";
 import { SITE_HIDDEN_FROM_SEARCH } from "@/components/PageMeta";
 import API_BASE from "@/lib/api";
 import { validateManagerName } from "@/lib/managerName";
@@ -9,7 +11,7 @@ import { Stars } from "@/components/Stars";
 import { COMPANY_CATEGORIES, COMPANY_CATEGORY_LABELS } from "@/lib/companyRatings";
 import { useState, useEffect } from "react";
 import { Helmet } from "react-helmet-async";
-import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, Link, useLocation } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { gateKey } from "@/lib/gateKey";
 import { CompanyTabHeader } from "@/components/CompanyTabHeader";
@@ -409,6 +411,15 @@ export default function CompanyProfile() {
 
   // Detect whether the URL param is a slug (lowercase, no spaces) or a legacy name.
   // Name-based navigation from the search form still works through the by-name fallback.
+  /*
+    What the reader clicked in the company picker, if they arrived from it. Navigation state
+    rather than the URL: it is a hint for this one render, not part of the page's address, and it
+    must not end up shared or bookmarked as though it were the company's identity.
+  */
+  const pickedFromNav = (useLocation().state ?? {}) as { pickedLogoUrl?: string; pickedDomain?: string };
+  const pickedLogoUrl = pickedFromNav.pickedLogoUrl;
+  const pickedDomain  = pickedFromNav.pickedDomain;
+
   const isSlugParam = !!companySlug && /^[a-z0-9-]+$/.test(companySlug);
   const { data, isLoading, isError } = useQuery({
     queryKey: ["company-profile-slug", companySlug, gateKey(user)],
@@ -419,7 +430,23 @@ export default function CompanyProfile() {
       }
       const decoded = decodeURIComponent(companySlug ?? "");
       const res = await axios.get(`${API_BASE}/api/companies/by-name`, {
-        params: { company: decoded },
+        /*
+          THE IDENTITY THE READER CLICKED, carried through the navigation.
+
+          Picking a company in the dropdown shows one logo and used to land on a page showing
+          another: this page guesses a logo from the NAME - "Lime" becomes lime.com, a real and
+          unrelated company - while the picker had already resolved the true domain. The pick was
+          dropped at the navigation boundary, so the page had nothing better to go on.
+
+          Sent as hints, never as authority. The server validates them and applies them only where
+          they improve what is stored, so browsing can correct a guess and can never overwrite a
+          resolved or admin-set identity.
+        */
+        params: {
+          company: decoded,
+          ...(pickedLogoUrl ? { pickedLogoUrl } : {}),
+          ...(pickedDomain ? { pickedDomain } : {}),
+        },
       });
 
       return res.data as CompanyData;
@@ -441,6 +468,7 @@ export default function CompanyProfile() {
     It also gains the drop-off capture, which it never had. Somebody who half-filled this form
     previously left nothing behind, on the one surface where we already know the company.
   */
+  const searchLocation = useSearchLocation();
   const { ready: allFilled, runSearch, loadMore, extraResults,
           hasMore, mayBeIncomplete, loadingMore } = useManagerSearchFlow({
     firstName, lastName, title,
@@ -448,6 +476,7 @@ export default function CompanyProfile() {
     companyPayload: async () => ({ company: data?.name ?? "", companyId: data?.id ?? null }),
     companyFromPage: true,
     isLoggedIn: !!user,
+    location: searchLocation.location,
   });
 
   /*

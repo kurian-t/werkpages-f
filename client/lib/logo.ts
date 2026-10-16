@@ -14,9 +14,31 @@ import { companyLogoDomain } from "@/lib/utils";
  */
 export const LOGO_DEV_TOKEN = "pk_MXSjJV-uTC6-L5D_FbXZUA";
 
+/**
+ * Forces logo.dev to 404 rather than invent a letter image.
+ *
+ * <p>Measured against an unknown domain: the default reply is **HTTP 202, image/jpeg, 2558 bytes**
+ * - a monogram logo.dev generated, served as a success. An `img` tag renders that happily, so the
+ * code could not tell a real logo from the provider's placeholder, and the two placeholders do not
+ * match: logo.dev's is a white box in its own font, ours is a grey box in ours. Two companies side
+ * by side in the same grid showed two different-looking initials, which is what made this visible.
+ *
+ * <p>With `fallback=404` the same request returns **404**, the candidate is skipped, and OUR
+ * initial renders - one placeholder, everywhere.
+ *
+ * <p>Applied to STORED urls too, not only ones built here. A url saved before this existed has no
+ * such parameter and would still serve a monogram, and the stored url is the first candidate
+ * tried.
+ */
+export function noMonogram(url: string): string {
+  if (!url.startsWith("https://img.logo.dev/")) return url;
+  if (/[?&]fallback=/.test(url)) return url;
+  return url + (url.includes("?") ? "&" : "?") + "fallback=404";
+}
+
 /** A logo URL for a domain we actually know, e.g. one the picker returned. */
 export function logoDevUrlForDomain(domain: string): string {
-  return `https://img.logo.dev/${domain}?token=${LOGO_DEV_TOKEN}`;
+  return noMonogram(`https://img.logo.dev/${domain}?token=${LOGO_DEV_TOKEN}`);
 }
 
 /**
@@ -149,7 +171,9 @@ export function logoCandidates(
   // The resolved domain when we have one; otherwise the one the stored URL was built from.
   const domain = explicit ?? domainFromLogoDevUrl(storedUrl);
   const ordered = [
-    storedUrl || null,
+    // Normalised, because a url stored before fallback=404 existed would still serve a monogram
+    // and it is the FIRST thing tried.
+    storedUrl ? noMonogram(storedUrl) : null,
     domain ? logoDevUrlForDomain(domain) : null,
     // Brandfetch's Logo API, from the same domain. Generic - no stored anything required.
     domain ? brandfetchLogoUrl(domain) : null,

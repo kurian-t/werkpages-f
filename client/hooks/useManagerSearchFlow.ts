@@ -1,3 +1,4 @@
+import { LocationValue } from "@/lib/location";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchGeo } from "@/lib/geo";
 import {
@@ -52,6 +53,14 @@ export interface ManagerSearchFields {
    */
   companyFromPage?: boolean;
   isLoggedIn: boolean;
+  /**
+   * Where the manager works, from the shared LocationField this surface shows.
+   *
+   * <p>All three surfaces run this flow, so threading it here is what makes them agree instead of
+   * each page deciding separately what location a search carries - and what a ghost created by
+   * that search is stamped with.
+   */
+  location?: LocationValue;
 }
 
 export function useManagerSearchFlow(fields: ManagerSearchFields) {
@@ -71,6 +80,7 @@ export function useManagerSearchFlow(fields: ManagerSearchFields) {
         companyPayload: f.companyPayload,
         companyName: f.companyName,
         isLoggedIn: f.isLoggedIn,
+        location: f.location,
       };
     },
     [],

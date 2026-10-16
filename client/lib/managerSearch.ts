@@ -1,3 +1,4 @@
+import { LocationValue } from "@/lib/location";
 import axios from "axios";
 import API_BASE from "@/lib/api";
 import { fetchGeo } from "@/lib/geo";
@@ -38,6 +39,17 @@ export interface ManagerSearchInput {
   /** The company as displayed. Used for the capture gate and the locked tile. */
   companyName: string;
   isLoggedIn: boolean;
+  /**
+   * Where the manager works, as answered on the form.
+   *
+   * <p>Supplied by every surface that shows the shared LocationField, which is all three of them.
+   * Optional only so a caller that has not been migrated still compiles; when it is absent the
+   * visitor's geography is used as it always was, and that path is the one being retired.
+   *
+   * <p>Pre-filled with the COUNTRY alone. A city or region reaches this object only when somebody
+   * actually chose one.
+   */
+  location?: LocationValue;
 }
 
 export interface ManagerSearchOutcome {
@@ -188,7 +200,19 @@ export async function searchForManager(input: ManagerSearchInput): Promise<Manag
     return { results: [], hasContributed: false };
   }
 
-  const geo = await fetchGeo();
+  /*
+      THE LOCATION THE PERSON ANSWERED, not the one their address implies.
+
+      This was `await fetchGeo()`, and it sent the visitor's country, region AND city as the
+      manager's location on every search. /find asks for no location, so a ghost created here was
+      stamped with the SEARCHER's city and showed it on the profile - the reader seeing their own
+      town on a page they just created, which reads as surveillance rather than a default.
+
+      The field is now on the form, pre-filled with the country alone, and this is its value.
+      When nobody has touched it, that is a country and nothing finer; `source` stays null so it
+      can never be mistaken downstream for a place a human declared.
+  */
+  const geo = input.location ?? await fetchGeo();
 
   if (input.isLoggedIn) {
     const res = await axios.post(`${API_BASE}/api/managers/find-or-create`, {

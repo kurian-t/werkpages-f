@@ -1,3 +1,5 @@
+import { useSearchLocation } from "@/hooks/useSearchLocation";
+import { LocationField } from "@/components/LocationField";
 import API_BASE from "@/lib/api";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
@@ -59,12 +61,14 @@ export default function Directory() {
     submit all come from there; this page keeps its own layout, its filters and its free-text
     browse, which is a different feature from the manager-search form.
   */
+  const searchLocation = useSearchLocation();
   const { ready: allFilled, runSearch, loadMore, extraResults,
           hasMore, mayBeIncomplete, loadingMore } = useManagerSearchFlow({
     firstName, lastName, title: searchTitle,
     companyName: searchCompany,
     companyPayload: async () => ({ company: searchCompany.trim(), companyId: null }),
     isLoggedIn: !!user,
+    location: searchLocation.location,
   });
 
   const handleSearch = useCallback((e: React.FormEvent) => {

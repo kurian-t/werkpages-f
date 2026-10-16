@@ -151,13 +151,13 @@ export function toCss(s: TextStyle, extra?: CSSProperties): CSSProperties {
 const LOGO_TOKEN = "pk_MXSjJV-uTC6-L5D_FbXZUA";
 
 function CanvasLogo({ company, logoUrl }: { company: string; logoUrl?: string }) {
-  const logoDevUrl = `https://img.logo.dev/${companyLogoDomain(company)}?token=${LOGO_TOKEN}`;
+  const logoDevUrl = `https://img.logo.dev/${companyLogoDomain(company)}?token=${LOGO_TOKEN}&fallback=404`;
   const [src, setSrc] = useState(logoUrl ?? logoDevUrl);
   const [failed, setFailed] = useState(false);
 
   // Reset when company or logoUrl changes so the logo refreshes without a page reload.
   useEffect(() => {
-    const fresh = `https://img.logo.dev/${companyLogoDomain(company)}?token=${LOGO_TOKEN}`;
+    const fresh = `https://img.logo.dev/${companyLogoDomain(company)}?token=${LOGO_TOKEN}&fallback=404`;
     setSrc(logoUrl ?? fresh);
     setFailed(false);
   }, [company, logoUrl]);

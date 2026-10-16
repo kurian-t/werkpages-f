@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { logoCandidates, brandfetchIconUrl, brandfetchLogoUrl, domainFromLogoDevUrl, logoDevUrlForDomain } from "./logo";
+import { logoCandidates, brandfetchIconUrl, brandfetchLogoUrl, domainFromLogoDevUrl, logoDevUrlForDomain, noMonogram } from "./logo";
 
 /**
  * Which logo sources are tried, in what order, and - most importantly - what is NEVER tried.
@@ -117,5 +117,69 @@ describe("logoCandidates", () => {
   it("ignores a stored URL that is not a logo.dev one", () => {
     expect(domainFromLogoDevUrl("https://cdn.example/acme.png")).toBeNull();
     expect(domainFromLogoDevUrl(null)).toBeNull();
+  });
+});
+
+describe("logo.dev must never serve its own monogram", () => {
+  /*
+    THE BUG THIS EXISTS FOR.
+
+    Two company tiles side by side in the same grid showed two different-looking initials:
+    "Homeowners Financial" rendered OUR placeholder - a grey box, our font - and "Invest Alberta"
+    rendered logo.dev's - a white box, its font. Both companies had no real logo. The code could
+    not tell them apart because logo.dev answers an unknown domain with a GENERATED IMAGE rather
+    than an error.
+
+    Measured directly against the API: an unknown domain returns HTTP 202, image/jpeg, 2,558
+    bytes. An <img> renders that as a successful load, so the candidate chain stopped there and
+    never reached our own initial. With fallback=404 the same request returns 404, the candidate
+    is skipped, and one placeholder is used everywhere.
+
+    These assertions are on the URL rather than the network: the suite must never call a metered
+    API - a previous run exhausted logo.dev's monthly quota and blanked production logos.
+  */
+  it("every logo.dev URL this module builds refuses the monogram", () => {
+    expect(logoDevUrlForDomain("li.me")).toContain("fallback=404");
+    expect(logoDevUrlForDomain("amazon.com")).toContain("fallback=404");
+  });
+
+  it("a STORED url built before this existed is normalised on the way out", () => {
+    // The stored url is the FIRST candidate tried, so leaving it unguarded defeats the fix for
+    // every company whose logo was saved earlier - which is most of them.
+    const stored = "https://img.logo.dev/amazon.com?token=pk_x";
+    const list = logoCandidates("Amazon", stored);
+    expect(list[0]).toBe("https://img.logo.dev/amazon.com?token=pk_x&fallback=404");
+    expect(list.every((u) => !u.startsWith("https://img.logo.dev/") || u.includes("fallback=404")))
+      .toBe(true);
+  });
+
+  it("does not add the parameter twice", () => {
+    const already = "https://img.logo.dev/li.me?token=pk_x&fallback=404";
+    expect(noMonogram(already)).toBe(already);
+    expect(noMonogram(noMonogram(already))).toBe(already);
+  });
+
+  it("uses ? when the url has no query, & when it does", () => {
+    expect(noMonogram("https://img.logo.dev/li.me")).toBe("https://img.logo.dev/li.me?fallback=404");
+    expect(noMonogram("https://img.logo.dev/li.me?token=pk_x"))
+      .toBe("https://img.logo.dev/li.me?token=pk_x&fallback=404");
+  });
+
+  it("leaves urls from other providers alone", () => {
+    // Brandfetch has its own guard already, in its path rather than its query.
+    const bf = brandfetchLogoUrl("li.me");
+    if (bf) expect(noMonogram(bf)).toBe(bf);
+    expect(noMonogram("https://cdn.example/acme.png")).toBe("https://cdn.example/acme.png");
+  });
+
+  it("Lime: the real domain is used and the guessed one never renders", () => {
+    /*
+      The case that proves a guess is not being used. "Lime" guesses lime.com - a real and
+      unrelated company - so a test asserting only "an image rendered" passes straight through
+      the bug. The assertion has to be on WHICH domain.
+    */
+    const list = logoCandidates("Lime", null, "li.me");
+    expect(list.some((u) => u.includes("li.me"))).toBe(true);
+    expect(list.some((u) => u.includes("lime.com"))).toBe(false);
   });
 });
