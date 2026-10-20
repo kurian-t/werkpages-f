@@ -82,4 +82,36 @@ test.describe("The company logo you picked", () => {
     const src = await field.locator("img").first().getAttribute("src");
     expect(src).not.toContain("lime.com");
   });
+
+  test("goes away when the name no longer names that company", async ({ page }) => {
+    /*
+      REPORTED: a wrong logo that could not be deleted. The screenshot showed an EMPTY company
+      field with a logo still sitting in it and no control to remove it.
+
+      effectiveDomain = selectedDomain ?? (initialDomain || null). Typing sets selectedDomain to
+      null - "typing invalidates the selection" - and the ?? then fell straight back to
+      initialDomain, so the mark reverted to the company that was there BEFORE instead of
+      disappearing. Emptying the field made it worse: the clear control is gated on
+      value.length > 0, so it vanished too and the logo became unremovable.
+    */
+    await mock(page);
+    const field = await pickLime(page);
+
+    const edit = field.getByRole("button", { name: /Edit company/i });
+    if (await edit.count()) await edit.first().click();
+    const input = field.locator("input").first();
+    await input.fill("Something Else Entirely");
+
+    const typedOver = await field.locator("img").evaluateAll(
+      (els) => els.map((e) => (e as HTMLImageElement).src));
+    expect(typedOver.join(" "), "Lime's logo is still shown for a different company")
+      .not.toContain("li.me");
+
+    // And the case in the screenshot: nothing typed at all.
+    await input.fill("");
+    const emptied = await field.locator("img").evaluateAll(
+      (els) => els.map((e) => (e as HTMLImageElement).src));
+    expect(emptied.join(" "), "a logo is still shown in an empty company field")
+      .not.toContain("li.me");
+  });
 });

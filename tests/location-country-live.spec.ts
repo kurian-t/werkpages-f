@@ -65,24 +65,40 @@ const ALIASES: Array<[string, RegExp]> = [
   ["South Korea", /Korea/],
 ];
 
-type State = "ok" | "stale" | "absent";
+type State = "ok" | "stale" | "absent" | "throttled";
 let cached: State | null = null;
 
 async function suggest(request: APIRequestContext, q: string) {
   const res = await request.get(
     `/api/company-locations/suggest?q=${encodeURIComponent(q)}`, { timeout: 60_000 });
-  if (!res.ok()) throw new Error(`suggest("${q}") returned HTTP ${res.status()}`);
+  if (!res.ok()) throw new HttpError(res.status(), q);
   return (await res.json()) as Array<Record<string, any>>;
 }
 
+/** Carries the status, because 429, 503 and "nothing listening" are three different things. */
+class HttpError extends Error {
+  constructor(readonly status: number, q: string) {
+    super(`suggest("${q}") returned HTTP ${status}`);
+  }
+}
+
+/**
+ * Which of the four states the backend is in.
+ *
+ * <p>This collapsed every non-200 into "absent", and a full suite proved why that is wrong: the
+ * rate limiter answers 429 once a thousand other tests have been through the proxy, so a backend
+ * that was up and correct was reported as missing. An unavailable service, a throttled one and a
+ * stale one need different answers, and a test that cannot tell them apart sends whoever reads it
+ * looking for the wrong problem.
+ */
 async function backendState(request: APIRequestContext): Promise<State> {
   if (cached) return cached;
   try {
     const rows = await suggest(request, "United States");
     const top = rows[0];
     cached = top?.kind === "geo" && top?.precision === "country" ? "ok" : "stale";
-  } catch {
-    cached = "absent";
+  } catch (err) {
+    cached = err instanceof HttpError && err.status === 429 ? "throttled" : "absent";
   }
   return cached;
 }
@@ -105,10 +121,19 @@ const ABSENT = [
 ].join("\n");
 
 /** Fails on a stale backend, fails locally on a missing one, and skips only in CI. */
+const THROTTLED = [
+  "The backend is up and answering 429: the local rate limiter is exhausted.",
+  "A full suite puts a thousand requests through the same proxy, so these tests are skipped",
+  "rather than failed - the limiter saying no is not the search being wrong. Run this spec on",
+  "its own to exercise it for real.",
+].join("\n");
+
+/** Fails on a stale backend, fails locally on a missing one, and skips when CI or the limiter says so. */
 async function requireLiveBackend(request: APIRequestContext) {
   const state = await backendState(request);
   test.skip(state === "absent" && !!process.env.CI,
     "CI runs the client against a prebuilt bundle with no backend; nothing to query.");
+  test.skip(state === "throttled", THROTTLED);
   expect(state, state === "stale" ? STALE : ABSENT).toBe("ok");
 }
 

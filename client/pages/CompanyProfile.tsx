@@ -342,12 +342,28 @@ export default function CompanyProfile() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [renameMode, setRenameMode] = useState(false);
   const [newName, setNewName] = useState("");
+  /*
+    The admin's own choice of brand, edited alongside the name rather than in an editor of its own.
+
+    logo.dev answers a CORRECTLY resolved domain with the owner's mark - knotts.com returns Six
+    Flags, because Cedar Fair merged into it, and knottsberryfarmfoods.com returns Smucker's - so
+    no amount of better resolution produces the right image and somebody has to say. Left blank,
+    nothing about the brand is sent and the existing one is untouched.
+  */
+  const [newDomain, setNewDomain] = useState("");
+  const [newLogoUrl, setNewLogoUrl] = useState("");
   const [renaming, setRenaming] = useState(false);
   const handleRename = async () => {
     if (!data || !newName.trim()) return;
     setRenaming(true);
     try {
-      await axios.put(`${API_BASE}/api/admin/companies/${data.id}`, { name: newName.trim() });
+      await axios.put(`${API_BASE}/api/admin/companies/${data.id}`, {
+        name: newName.trim(),
+        // Omitted when blank: absent means "leave the brand alone", and a rename must never clear
+        // a logo as a side effect.
+        ...(newDomain.trim()  ? { domain:  newDomain.trim()  } : {}),
+        ...(newLogoUrl.trim() ? { logoUrl: newLogoUrl.trim() } : {}),
+      });
       setRenameMode(false);
       queryClient.invalidateQueries({ queryKey: ["company-profile-slug"] });
       queryClient.invalidateQueries({ queryKey: ["company-listing"] });
@@ -735,6 +751,26 @@ export default function CompanyProfile() {
                     autoFocus
                     className="text-2xl font-bold tracking-tight bg-background border border-border rounded-lg px-2 py-0.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary min-w-0"
                   />
+                  {/*
+                    Correcting the brand, for the case resolution cannot reach: a domain that is
+                    right and a logo that is somebody else's.
+                  */}
+                  <input
+                    type="text"
+                    value={newDomain}
+                    onChange={e => setNewDomain(e.target.value)}
+                    placeholder="Domain, e.g. knotts.com"
+                    aria-label="Company domain"
+                    className="text-sm bg-background border border-border rounded-lg px-2 py-1 text-foreground focus:outline-none focus:ring-2 focus:ring-primary min-w-0"
+                  />
+                  <input
+                    type="text"
+                    value={newLogoUrl}
+                    onChange={e => setNewLogoUrl(e.target.value)}
+                    placeholder="Logo image URL (https)"
+                    aria-label="Company logo URL"
+                    className="text-sm bg-background border border-border rounded-lg px-2 py-1 text-foreground focus:outline-none focus:ring-2 focus:ring-primary min-w-0"
+                  />
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <button
                       onClick={handleRename}
@@ -756,7 +792,12 @@ export default function CompanyProfile() {
                   <h1 className="text-2xl font-bold tracking-tight text-foreground">{data.name}</h1>
                   {user?.role === "admin" && (
                     <button
-                      onClick={() => { setNewName(data.name); setRenameMode(true); }}
+                      onClick={() => {
+                        setNewName(data.name);
+                        setNewDomain((data as any).domain ?? "");
+                        setNewLogoUrl((data as any).logoUrl ?? "");
+                        setRenameMode(true);
+                      }}
                       aria-label="Rename company"
                       className="text-muted-foreground hover:text-foreground transition-colors"
                     >

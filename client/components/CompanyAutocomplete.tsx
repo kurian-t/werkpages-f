@@ -85,6 +85,9 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
   /* The resolved Brandfetch icon for the picked company, so the field can show a
      real logo while logo.dev's monthly quota is exhausted. */
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
+  /** The value initialDomain arrived for, so a supplied logo cannot outlive the name it belongs to. */
+  const suppliedFor = useRef<string | null>(initialDomain ? value : null);
+  const lastSuppliedDomain = useRef(initialDomain);
   /*
     Whether the current value is mid-edit rather than a settled company name.
 
@@ -148,7 +151,28 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
         const data: Suggestion[] = await res.json();
         const results = data.slice(0, 6);
         setSuggestions(results);
-        setOpen(results.length > 0);
+        /*
+          Opened whenever there is something to show, and the create row IS something to show.
+
+          This read `results.length > 0`, so a company nobody holds produced no dropdown at all -
+          and "Not listed? Add ..." lives inside that dropdown. The one affordance for adding an
+          unknown company was reachable only when the company was already known.
+        */
+        /*
+          AND ONLY WHILE THE FIELD STILL HAS FOCUS.
+
+          This runs 300ms after the last keystroke, by which time the person may have moved on. It
+          opened regardless, so a list could appear over whatever they had moved to - and because
+          the list is portalled it then floats there until something dismisses it.
+
+          Observed as two open listboxes at once on the add-manager form: the company list, showing
+          "Not listed? Add Acme Corp", on top of the location list. At phone width it covered the
+          location suggestions and swallowed the click, so the suggestion was visible, enabled,
+          stable, and unselectable. It needed the company request to land after focus had already
+          left, which is why it only appeared under load and never in isolation.
+        */
+        const stillFocused = containerRef.current?.contains(document.activeElement);
+        setOpen(stillFocused ? (results.length > 0 || trimmed.length >= 2) : false);
         setActiveIndex(-1);
       } catch {
         // suggest unavailable - free-text still works
@@ -212,7 +236,12 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
   // default outcome of not recognising a name.
   const typed = value.trim();
   const exactMatch = suggestions.some(s => s.name.trim().toLowerCase() === typed.toLowerCase());
-  const showCreateRow = typed.length >= 2 && !exactMatch && suggestions.length > 0;
+  /*
+    No longer conditional on there being other suggestions. See the open condition above: gating
+    this on `suggestions.length > 0` hid the create row for precisely the companies that need
+    creating.
+  */
+  const showCreateRow = typed.length >= 2 && !exactMatch;
 
   const chooseCreate = () => {
     justSelectedRef.current = true;
@@ -223,7 +252,21 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
     setSuggestions([]);
   };
 
-  const hasClearButton = !!onClear && value.length > 0;
+  /*
+    Offered whenever there is something to clear.
+
+    It required the caller to pass onClear, and CompanyField never did - so on the add and edit
+    forms there was no way to empty the field in one action at all, which is the other half of the
+    report about a logo that could not be deleted. Emptying the text is the obvious default; a
+    caller that needs to do more still passes its own handler.
+  */
+  const clearField = () => {
+    setSelectedDomain(null);
+    setSelectedIcon(null);
+    onCompanyIdChange?.(undefined);
+    if (onClear) onClear(); else onChange("");
+  };
+  const hasClearButton = value.length > 0;
   /*
     The logo inside the field.
 
@@ -241,8 +284,28 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
     A domain is never derived from the typed NAME - that guess renders a different company's
     logo, which is the whole reason identity is resolved rather than invented.
   */
-  const effectiveDomain = selectedDomain ?? (initialDomain || null);
-  const effectiveIcon   = selectedIcon   ?? (initialBrandfetchIconUrl || null);
+  /*
+    WHICH COMPANY THE SUPPLIED IDENTITY BELONGS TO.
+
+    initialDomain arrives for the company the form OPENED with. Typing sets selectedDomain to null
+    - typing invalidates the selection - and `??` then fell straight back to initialDomain, so the
+    mark reverted to the PREVIOUS company instead of disappearing. Reported as a wrong logo that
+    could not be deleted: the field could be emptied completely and the old logo stayed in it.
+
+    So the value it arrived for is remembered, and the supplied identity is used only while the
+    text still names that company. Recorded during render rather than in an effect, so a company
+    that was already chosen shows its logo on the first paint instead of flickering in.
+  */
+  if (lastSuppliedDomain.current !== initialDomain) {
+    lastSuppliedDomain.current = initialDomain;
+    suppliedFor.current = initialDomain ? value : null;
+  }
+  const sameName = (a?: string | null, b?: string | null) =>
+    (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+  const suppliedBelongsToValue = !!initialDomain && sameName(suppliedFor.current, value);
+
+  const effectiveDomain = selectedDomain ?? (suppliedBelongsToValue ? initialDomain : null);
+  const effectiveIcon   = selectedIcon   ?? (suppliedBelongsToValue ? initialBrandfetchIconUrl : null);
   const inputLogoUrl = effectiveDomain ? logoDevUrlForDomain(effectiveDomain) : null;
 
   const dropdown = open ? (
@@ -344,7 +407,8 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
       {hasClearButton && (
         <button
           type="button"
-          onClick={() => { setSelectedDomain(null); onCompanyIdChange?.(undefined); onClear!(); }}
+          onClick={clearField}
+          aria-label="Clear company"
           className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           tabIndex={-1}
         >

@@ -131,4 +131,26 @@ test.describe("Company identity travels as an ID", () => {
     await expect(page.getByRole("option", { name: "Crumbl", exact: true })).toBeVisible();
     await expect(page.getByRole("option", { name: /Not listed\? Add/ })).toHaveCount(0);
   });
+
+  test("the create row appears when nothing matched at all", async ({ page }) => {
+    /*
+      REPORTED: "can't actually add a place when the drop down suggests i can and should be able
+      to", with a company the picker had never heard of.
+
+      showCreateRow required `suggestions.length > 0`, and the dropdown itself only opened on
+      `results.length > 0`. So a company nobody holds produced no options, no dropdown, and no way
+      to add it - the one affordance that exists FOR that case was reachable only when it was not
+      needed. Measured through the real picker: "Knotts Berry Farm" showed the row, while
+      "Zzqq Imaginary Widgets" returned zero options and no dropdown at all.
+    */
+    await mockPicker(page);
+    // Registered after mockPicker, so this one wins: a name the picker knows nothing about.
+    await page.route("**/api/companies/suggest**", (r: any) => r.fulfill({ json: [] }));
+    await page.goto("/find");
+
+    await page.getByPlaceholder("company").fill("Zzqq Imaginary Widgets");
+
+    await expect(page.getByRole("option", { name: /Not listed\? Add/ }))
+      .toBeVisible({ timeout: 10_000 });
+  });
 });
