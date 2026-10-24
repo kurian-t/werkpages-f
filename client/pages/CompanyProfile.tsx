@@ -669,6 +669,7 @@ export default function CompanyProfile() {
     <>
     {data && (
       <ContributionNextStep
+        direction="company_to_manager"
         open={nextStepOpen}
         onClose={() => setNextStepOpen(false)}
         confirmation="Your workplace rating was submitted"

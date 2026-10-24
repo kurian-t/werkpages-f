@@ -3,6 +3,8 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { toast } from "sonner";
+import { useAnalytics } from "@/hooks/useAnalytics";
+import { consumePromptFollow } from "@/lib/contributionPrompt";
 import { AlertCircle, ArrowLeft, Check, X } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { CompanyLogoImg } from "@/components/ManagerCard";
@@ -68,6 +70,7 @@ export default function RateCompany() {
   const { industrySlug, companySlug } = useParams<{ industrySlug?: string; companySlug: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { track } = useAnalytics();
   const [searchParams] = useSearchParams();
   const { user, refreshUser } = useAuth();
   /* Links a captured draft to the submission that follows, so finishing the form removes it. */
@@ -441,6 +444,21 @@ export default function RateCompany() {
       }
       queryClient.invalidateQueries({ queryKey: ["company-listing"] });
       toast.success(`Thanks, your rating of ${ratedName} is live.`);
+
+      /*
+        A SUCCESSFUL WORKPLACE RATING, counted where success is known.
+
+        Inside the try and after the write returned, so a refused or failed submission never
+        reaches it. Workplace ratings had no event at all, which made the whole second half of the
+        contribution funnel invisible: the prompt could be measured, and what it led to could not.
+
+        `is_edit` because this same form updates an existing rating, and the two are different
+        contributions. No company name, no reviewer, nothing identifying.
+      */
+      track("company_review_submitted", {
+        is_edit: Boolean(loadedExisting),
+        ...consumePromptFollow(),
+      });
       /*
         Land on the rating, then ask - in that order.
 

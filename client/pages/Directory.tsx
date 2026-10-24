@@ -85,6 +85,15 @@ export default function Directory() {
     setAppliedSearchCompany(searchCompany.trim());
     setPage(1);
     track("directory_searched", { query_length: combined.length });
+    /*
+      Armed from the values being applied, not from the state they are about to set: the applied*
+      state is not readable yet in this tick, and reading it here would report the PREVIOUS
+      search's shape.
+    */
+    searchArmed.current = {
+      mode: combined && searchTitle.trim() && searchCompany.trim() ? "full" : "browse",
+      queryLength: combined.length,
+    };
   }, [allFilled, firstName, lastName, searchTitle, searchCompany, track]);
 
   // Name + title + company is a search for one person. Anything less is browsing the directory,
@@ -136,6 +145,40 @@ export default function Directory() {
 
   const bosses: any[] = data?.data || [];
   const total: number = data?.total || 0;
+
+  /*
+    ONE EVENT PER DELIBERATE SEARCH, reported when its results arrive.
+
+    directory_searched fires when somebody presses search, which is the only moment the result
+    count is not yet known - so on its own it cannot answer the question that matters: how often
+    does a search find nothing.
+
+    Counting EXECUTIONS, not result states. An earlier version keyed on the search terms plus the
+    count, which looked careful and was wrong in both directions: searching the same thing twice
+    reported once, because the key had not changed, while anything that altered the count reported
+    again without anybody having searched.
+
+    So pressing search arms this, and the first settled result disarms it:
+
+      - repeating identical terms arms it again, and counts again;
+      - paging, background refetches and rerenders never arm it, and count nothing;
+      - a failed request disarms without reporting, so an error is never an empty result.
+  */
+  const searchArmed = useRef<{ mode: "full" | "browse"; queryLength: number } | null>(null);
+  useEffect(() => {
+    if (fetching || isLoading) return;
+    const armed = searchArmed.current;
+    if (!armed) return;
+    searchArmed.current = null;
+    if (isError) return;                       // a failure is not a result, empty or otherwise
+    track("search_completed", {
+      mode: armed.mode,
+      result_count: total,
+      is_empty: total === 0,
+      query_length: armed.queryLength,
+      surface: "directory",
+    });
+  }, [fetching, isLoading, isError, total, track]);
   const error = isError ? "Failed to fetch managers" : null;
 
   /*

@@ -338,6 +338,26 @@ export default function Admin() {
     }
   };
 
+  /*
+    Publishing one.
+
+    The server's message is shown verbatim on a refusal, because it is the only thing that says
+    WHY: either the draft is missing an answer, named in the words its author would have seen, or
+    somebody else already dealt with it. A generic "could not publish" would leave a button that
+    does not work and no way to find out what is wrong with the draft.
+  */
+  const publishDraft = async (id: number) => {
+    try {
+      const res = await axios.post(`${API_BASE}/api/admin/captured-drafts/${id}/publish`);
+      setCapturedDrafts(prev => prev.filter(d => d.id !== id));
+      toast.success(res.data?.kind === "interview"
+        ? "Published as an anonymous interview experience."
+        : "Published as an anonymous workplace rating.");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || "Could not publish that draft.");
+    }
+  };
+
   useEffect(() => { if (activeTab === "captured-drafts") fetchCapturedDrafts(); }, [activeTab]);
   useEffect(() => { if (activeTab === "live-profiles") fetchGhostManagers(); }, [activeTab]);
   useEffect(() => { if (activeTab === "bans") fetchBanData(); }, [activeTab]);
@@ -1112,10 +1132,11 @@ export default function Admin() {
           {activeTab === "captured-drafts" && (
             <div className="space-y-4" data-testid="captured-drafts-panel">
               <p className="text-sm text-muted-foreground">
-                Contribution forms somebody filled in but never submitted — usually because they were
-                sent to sign in at the last step and did not come back. Nothing here is published or
-                counted anywhere; it is kept so the work is not simply lost. Marking one as reviewed
-                clears it from this queue without deleting it.
+                Contribution forms somebody filled in but never submitted, usually because they
+                were sent to sign in at the last step and did not come back. Nothing here is
+                published or counted until you publish it. A complete one can be published as a
+                real anonymous rating, which is what a dropped-off manager rating already becomes.
+                Marking one as reviewed clears it from this queue without deleting it.
               </p>
               {capturedDraftsLoading ? (
                 <p className="text-sm text-muted-foreground">Loading...</p>
@@ -1146,13 +1167,32 @@ export default function Admin() {
                           {JSON.stringify(draft.payload, null, 2)}
                         </pre>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => markDraftReviewed(draft.id)}
-                        className="flex-shrink-0 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
-                      >
-                        Mark reviewed
-                      </button>
+                      <div className="flex flex-shrink-0 flex-col items-stretch gap-2">
+                        {/* Enabled only when the server says the real validator would accept it,
+                            so this cannot offer a publish that then fails. */}
+                        <button
+                          type="button"
+                          disabled={!draft.publishable}
+                          onClick={() => publishDraft(draft.id)}
+                          title={draft.blockedReason || undefined}
+                          data-testid={`publish-draft-${draft.id}`}
+                          className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          Publish
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => markDraftReviewed(draft.id)}
+                          className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
+                        >
+                          Mark reviewed
+                        </button>
+                        {!draft.publishable && draft.blockedReason && (
+                          <p className="max-w-[12rem] text-right text-xs text-muted-foreground">
+                            {draft.blockedReason}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))

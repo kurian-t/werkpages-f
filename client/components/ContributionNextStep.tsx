@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useAnalytics } from "@/hooks/useAnalytics";
+import { markPromptFollowed } from "@/lib/contributionPrompt";
 import { createPortal } from "react-dom";
 import { ChevronUp, Minus, X } from "lucide-react";
 
@@ -49,6 +51,7 @@ export function ContributionNextStep({
   secondaryLabel,
   onSecondary,
   dismissLabel = "Not now",
+  direction,
 }: {
   open: boolean;
   /** Dismiss. Always available, and never the only thing styled like an action. */
@@ -63,8 +66,17 @@ export function ContributionNextStep({
   secondaryLabel?: string;
   onSecondary?: () => void;
   dismissLabel?: string;
+  /**
+   * Which way this offer points, for analytics only.
+   *
+   * <p>The card is used from both profiles and the two offers perform very differently; without
+   * this they are one undifferentiated number. Named rather than inferred from the labels, because
+   * the labels are copy and will change.
+   */
+  direction: "manager_to_company" | "company_to_manager";
 }) {
   const [minimized, setMinimized] = useState(false);
+  const { track } = useAnalytics();
 
   /*
     Reopening always reopens expanded. Minimised is an answer about THIS offer, not a preference
@@ -74,6 +86,17 @@ export function ContributionNextStep({
   useEffect(() => {
     if (open) setMinimized(false);
   }, [open]);
+
+  /*
+    SHOWN, measured where it is shown.
+
+    Instrumented inside the card rather than at each call site, so the two directions cannot drift
+    apart and a third caller cannot forget. Keyed on `open` going true: minimising and restoring
+    are the same offer, not a second showing.
+  */
+  useEffect(() => {
+    if (open) track("contribution_prompt_shown", { direction });
+  }, [open, direction, track]);
 
   if (!open) return null;
 
@@ -136,7 +159,7 @@ export function ContributionNextStep({
               <Minus size={16} />
             </button>
             <button
-              onClick={onClose}
+              onClick={() => { track("contribution_prompt_dismissed", { direction, via: "close" }); onClose(); }}
               aria-label="Close"
               data-testid="next-step-close"
               className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
@@ -159,7 +182,7 @@ export function ContributionNextStep({
           {blurb && <p className="mt-1.5 text-sm text-muted-foreground">{blurb}</p>}
 
           <button
-            onClick={onPrimary}
+            onClick={() => { track("contribution_prompt_clicked", { direction, action: "primary" }); markPromptFollowed(direction); onPrimary(); }}
             data-testid="next-step-primary"
             className="mt-4 w-full rounded-xl bg-[#2e0562] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2e0562]/90"
           >
@@ -168,7 +191,7 @@ export function ContributionNextStep({
 
           {secondaryLabel && onSecondary && (
             <button
-              onClick={onSecondary}
+              onClick={() => { track("contribution_prompt_clicked", { direction, action: "secondary" }); markPromptFollowed(direction); onSecondary(); }}
               data-testid="next-step-secondary"
               className="mt-2 w-full rounded-xl border border-border px-5 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/60"
             >
@@ -181,7 +204,7 @@ export function ContributionNextStep({
             visually with the thing being offered.
           */}
           <button
-            onClick={onClose}
+            onClick={() => { track("contribution_prompt_dismissed", { direction, via: "not_now" }); onClose(); }}
             data-testid="next-step-dismiss"
             className="mt-3 w-full text-center text-xs font-medium text-muted-foreground underline-offset-2 hover:underline"
           >

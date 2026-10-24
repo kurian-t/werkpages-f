@@ -7,6 +7,8 @@ import { AlertCircle, Check, X, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useAnalytics } from "@/hooks/useAnalytics";
+import { consumePromptFollow } from "@/lib/contributionPrompt";
 import { markJustAddedManager } from "@/lib/rateCompanyNudge";
 import axios from "axios";
 import { validateProfileUrl, generateUsername } from "@/lib/validators";
@@ -69,6 +71,7 @@ export default function AddBoss() {
   */
   const markContributed = () => { void refreshUser(); };
   const queryClient = useQueryClient();
+  const { track } = useAnalytics();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
@@ -741,6 +744,17 @@ export default function AddBoss() {
       });
 
       const managerId = managerResponse.data.id;
+
+      /*
+        A MANAGER SOMEBODY ADDED ON PURPOSE, counted after the server returned its id.
+
+        Distinct from the automatic ghost a search creates: the two arrive through different
+        intents and different review paths, and one number covering both answers nothing. The
+        early capture higher up this file is NOT this - that is a drop-off draft, fire-and-forget,
+        and records a lead rather than a manager.
+      */
+      track("manager_created", { creation: "manual", source: "add_form", ...consumePromptFollow() });
+
       markContributed();
       queryClient.removeQueries({ queryKey: ["managers-directory"] });
       queryClient.removeQueries({ queryKey: ["managers-top"] });

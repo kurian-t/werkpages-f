@@ -1,5 +1,6 @@
 import { LocationValue } from "@/lib/location";
 import axios from "axios";
+import posthog from "@/lib/posthog";
 import API_BASE from "@/lib/api";
 import { fetchGeo } from "@/lib/geo";
 import { validateManagerName } from "@/lib/managerName";
@@ -224,6 +225,24 @@ export async function searchForManager(input: ManagerSearchInput): Promise<Manag
       state:     geo.state,
       city:      geo.city,
     });
+    /*
+      A MANAGER THE SEARCH CREATED FOR A SIGNED-IN READER.
+
+      This endpoint returns an existing manager far more often than it creates one, and says which
+      it did: `created` is true only on the path that actually writes a new row. Reading the flag
+      rather than inferring from "a row came back" is the difference between counting creations and
+      counting searches.
+
+      Wrapped, because nothing about analytics may interfere with a search: a throw here would
+      discard results the reader is waiting for.
+    */
+    try {
+      if (res.data?.created === true) {
+        posthog.capture("manager_created", { creation: "automatic", source: "search" });
+      }
+    } catch {
+      // Intentionally ignored - the search result matters, the data point does not.
+    }
     return { results: res.data.data ?? [], hasContributed: res.data.hasContributed ?? false };
   }
 
@@ -315,7 +334,7 @@ export async function searchForManager(input: ManagerSearchInput): Promise<Manag
     either published a 'ghost' or wrote a captured draft itself. The only case captureSearch ever
     covered is the one it now handles: the POST failing outright.
   */
-  let ghostRow: { id?: number | string; published?: boolean; candidates?: any[] } | null = null;
+  let ghostRow: { id?: number | string; created?: boolean; published?: boolean; candidates?: any[] } | null = null;
   try {
     const ghostRes = await axios.post(`${API_BASE}/api/managers/ghost`, {
       name: search,
@@ -349,6 +368,30 @@ export async function searchForManager(input: ManagerSearchInput): Promise<Manag
       - setting GHOST_KEY for a ghost that was never created burns this browser's one auto-add
         forever, for something it never received.
   */
+  /*
+    A MANAGER WAS AUTO-CREATED, and we only say so when the server confirms one.
+
+    OUTSIDE the try above, deliberately. That catch treats any throw as "the ghost write never
+    happened" - it re-captures the lead and returns an empty result set - so an analytics call
+    placed inside it could turn a successful creation into a reported miss. Nothing about tracking
+    may change what this function does.
+
+    Gated on the server's own `created` flag, not on a row coming back. This endpoint returns an
+    EXISTING manager just as readily as a new one - that is most of what it does - and every such
+    response carries created: false. Counting those would have reported a creation every time a
+    search found somebody who was already there.
+
+    And on `published`: when the site-wide ceiling is in force the server records a pending row and
+    publishes nobody, which is not a manager the directory gained.
+  */
+  if (ghostRow?.created === true && ghostRow.published !== false) {
+    try {
+      posthog.capture("manager_created", { creation: "automatic", source: "search" });
+    } catch {
+      // Intentionally ignored. The ghost was created; failing here would undo that for nothing.
+    }
+  }
+
   if (ghostRow?.published === false) {
     /*
       Nothing was published - but the server may still have found managers worth showing.

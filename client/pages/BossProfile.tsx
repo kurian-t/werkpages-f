@@ -20,6 +20,7 @@ import { ManagerAvatar, CompanyLogoImg, getInitials, getAvatarColor } from "@/co
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { consumePromptFollow } from "@/lib/contributionPrompt";
 import { AuthFlowModal } from "@/components/AuthFlowModal";
 import { CompanyField } from "@/components/CompanyField";
 import { LocationField } from "@/components/LocationField";
@@ -1505,7 +1506,19 @@ export default function BossProfile() {
 
     reviewDraftTokenRef.current = null;
     localStorage.removeItem("rmm_pending_review");
-    track("review_submitted");
+    /*
+      SAID AFTER THE SAVE, and only after it.
+
+      The failure branch above returns before reaching this line, so this cannot fire for a
+      rating that was not written. `disposition` is what the server actually did: a held rating is
+      saved but not publicly live, and counting it as published would overstate what readers can
+      see.
+    */
+    track("review_submitted", {
+      kind: "new",
+      disposition: created?.data?.disposition === "held" ? "held" : "published",
+      ...consumePromptFollow(),
+    });
 
     if (heldForProof) {
       // Straight to the proof screen, and the copy leads with the rating being safe. "One more
@@ -1824,6 +1837,15 @@ export default function BossProfile() {
       });
     } else {
       toast.success(`Your review of ${manager?.name} has been updated.`);
+
+    /*
+      An edit is a submission too, and it was invisible: this path had no tracking, so every
+      rating in the numbers was a first-time one and revisions did not exist. Same event name so
+      the existing charts keep working; `kind` is what tells them apart.
+
+      No disposition: an edit to a rating that is already live does not change whether it is live.
+    */
+    track("review_submitted", { kind: "edit" });
     }
 
     // Finished, so the draft is finished with. Only here and on a deliberate exit: a failed save
@@ -1984,6 +2006,7 @@ export default function BossProfile() {
     */}
     {manager && (
       <ContributionNextStep
+        direction="manager_to_company"
         open={nextStepOpen}
         onClose={() => {
           setNextStepOpen(false);

@@ -32,21 +32,49 @@ export function optOutDecision(search: string, stored: string | null): "out" | "
   return stored === "1" ? "out" : null;
 }
 
-function remembered(): string | null {
-  try { return window.localStorage.getItem(OPT_OUT_KEY); } catch { return null; }
+/** The storage this needs, so a test can supply one that works. */
+export interface OptOutStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
 }
 
-function remember(value: "out" | "in"): void {
-  try {
-    if (value === "out") window.localStorage.setItem(OPT_OUT_KEY, "1");
-    else window.localStorage.removeItem(OPT_OUT_KEY);
-  } catch {
-    /*
-      Private mode, or storage disabled. The opt-out still applies to THIS tab through the call
-      below; it just will not be remembered. Failing the whole analytics setup over it would be a
-      worse outcome than an opt-out that has to be re-applied.
-    */
+/** The posthog surface this needs, for the same reason. */
+export interface OptOutTarget {
+  opt_out_capturing(): void;
+  opt_in_capturing(): void;
+}
+
+/**
+ * Applies this browser's choice about being tracked, and remembers it.
+ *
+ * <p>Takes its storage and its target rather than reaching for globals, because the behaviour that
+ * matters - that an opt-out SURVIVES the browser being closed and reopened - cannot otherwise be
+ * tested: the unit environment has no window and a localStorage stub with no setItem, so a test
+ * written against the globals would pass without exercising anything.
+ *
+ * @returns what it did, for tests and for nothing else
+ */
+export function applyOptOut(search: string, storage: OptOutStorage, target: OptOutTarget):
+    "out" | "in" | null {
+  let stored: string | null = null;
+  try { stored = storage.getItem(OPT_OUT_KEY); } catch { /* unavailable; treat as unset */ }
+
+  const decision = optOutDecision(search, stored);
+  if (decision === "out") {
+    try { storage.setItem(OPT_OUT_KEY, "1"); } catch {
+      /*
+        Private mode, or storage disabled. The opt-out still applies to THIS tab through the call
+        below; it just will not be remembered. Failing the whole analytics setup over it would be
+        a worse outcome than an opt-out that has to be re-applied.
+      */
+    }
+    target.opt_out_capturing();
+  } else if (decision === "in") {
+    try { storage.removeItem(OPT_OUT_KEY); } catch { /* as above */ }
+    target.opt_in_capturing();
   }
+  return decision;
 }
 
 if (key && host) {
@@ -83,6 +111,19 @@ if (key && host) {
   });
 
   /*
+    WHICH PRODUCT SENT THIS, on every event including autocapture.
+
+    The two apps are configured from separate repositories' secrets, so whether they share a
+    PostHog project is not visible from the code. If they do, every chart silently mixes two
+    products; if they do not, this costs nothing. Registering it removes the question from the
+    dashboard entirely - filter or break down by `app` and the traffic is separated either way.
+
+    A super property, not a person property: it describes the source of an event, not a visitor,
+    so it changes nothing about the anonymous setup.
+  */
+  posthog.register({ app: "werkpages" });
+
+  /*
     A PER-BROWSER OPT-OUT, applied before anything is captured.
 
     Visit ?ph_optout=1 once on a browser used for testing and it stops sending events, on that
@@ -93,15 +134,9 @@ if (key && host) {
 
     Runs at module load, which is before PostHogProvider's first $pageview effect.
   */
+
   if (typeof window !== "undefined") {
-    const decision = optOutDecision(window.location.search, remembered());
-    if (decision === "out") {
-      remember("out");
-      posthog.opt_out_capturing();
-    } else if (decision === "in") {
-      remember("in");
-      posthog.opt_in_capturing();
-    }
+    applyOptOut(window.location.search, window.localStorage, posthog);
   }
 }
 
