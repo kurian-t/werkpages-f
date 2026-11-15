@@ -18,6 +18,11 @@ coverage/
 coverage-playwright/
 playwright-report/
 test-results/
+# Playwright's per-shard blob reports. CI writes these and uploads them as artifacts for the
+# merge job, and a local sharded run writes them too. One got committed on 2026-11-14, which
+# meant the shard jobs uploaded a stale report from a developer machine along with their own
+# and the merged HTML showed results that never ran in CI.
+blob-report/
 .nyc_output/
 
 # Debug logs

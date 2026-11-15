@@ -28,37 +28,25 @@ concurrency:
 jobs:
   test:
     name: Playwright Tests
-    timeout-minutes: 30
+    # 20, down from 30, and EVERY STEP CARRIES ITS OWN CAP.
+    #
+    # On 2026-11-14 both shards of this job hit a 30-minute job cap and were cancelled. The 117
+    # tests they were running take 22 SECONDS locally, so that was a hang, not slowness - and a
+    # single job-level cap is the worst possible way to find a hang, because it bills the full
+    # thirty minutes per shard and then tells you only that "the job" exceeded it. The per-step
+    # caps below exist so the next hang names itself, in minutes instead of half an hour.
+    timeout-minutes: 20
     runs-on: ubuntu-latest
 
-    # TWO SHARDS, down from four.
-    #
-    # Four was sized for the whole 1,411-test chromium project. Routine CI now runs the ~117-test
-    # @ci subset, so four runners would spend most of their budget on setup. The full suite still
-    # shards wider, in its own workflow.
-    #
-    # Nothing is skipped to make this fit: the tests CI does not run are run by the full-suite
-    # workflow and by the local command, and the subset is chosen by risk rather than by cost.
-    #
-    # fail-fast is OFF deliberately. A red shard must not cancel its siblings, or one
-    # failure hides every other failure in the run and the next push finds them one at
-    # a time.
-    #
-    # Each shard writes a BLOB report rather than HTML, because blobs are the only
-    # format that merges back into a single report afterwards. Four separate HTML
-    # reports cannot be read as one run. The `report` job below does the merge.
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2]
+    # NO MATRIX, NO SHARDING. 117 tests at 22 seconds do not need splitting; sharding them bought
+    # nothing and duplicated the whole setup - install, typecheck, build, browser deps - on a
+    # second runner. Two shards therefore cost roughly twice one job and saved no wall clock. On an
+    # account with a monthly Actions budget that is the wrong trade. Sharding belongs in
+    # full-suite.yml, where 1,418 tests actually justify it.
 
     steps:
       - uses: actions/checkout@v4
 
-      # No `version:` here on purpose. This repo's package.json pins
-      # packageManager: pnpm@10.14.0, and action-setup errors out if both are set.
-      # (RateMyManagers can specify a version because its repo root package.json
-      # has no packageManager field — the pinned one is a directory deeper.)
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
@@ -68,23 +56,15 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
+        timeout-minutes: 6
         run: pnpm install --frozen-lockfile
 
-      # Build the React app with placeholder secrets.
-      # All API/auth calls are mocked by Playwright — no real backend needed.
-      # VITE_AUTH0_AUDIENCE must be non-empty or isSocialLoginConfigured() returns false
-      # and the social login buttons never render.
-      # TYPE CHECK ON EVERY PUSH AND PULL REQUEST, not only in the manual full-suite workflow.
-      #
-      # 48 type errors had accumulated in this repository's resume builder, undetected, for the
-      # simple reason that no CI had ever run `tsc`. A dispatch-only check would not have caught
-      # them either - nobody dispatches a workflow to find out whether their own branch compiles.
-      # It is a few seconds and it runs before the expensive steps, so a type error is reported
-      # without paying for a browser install and a full shard.
       - name: Type check
+        timeout-minutes: 4
         run: npx tsc --noEmit
 
       - name: Build client
+        timeout-minutes: 5
         run: pnpm build:client
         env:
           VITE_AUTH0_DOMAIN: test.auth0.com
@@ -92,102 +72,47 @@ jobs:
           VITE_AUTH0_AUDIENCE: https://api.test.example/
           VITE_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
 
-      - name: Install Playwright system dependencies
-        run: pnpm exec playwright install-deps chromium
-
-      # ffmpeg ONLY, and no browser download.
+      # NO `playwright install-deps chromium`.
       #
-      # The chromium project sets `channel: process.env.CI ? "chrome" : undefined`, so on a
-      # runner every test launches Google Chrome, which ubuntu-latest already ships. This step
-      # used to be `install chromium ffmpeg`, which downloaded a browser that was never launched,
-      # once per job, on an account with a monthly Actions budget. install-deps above stays: it
-      # installs the shared libraries Chrome itself needs.
+      # It ran apt-get, with sudo, over the network, and it was the one step here capable of
+      # hanging for thirty minutes on a dpkg lock or a slow mirror. It was also unnecessary: the
+      # chromium project sets `channel: process.env.CI ? "chrome" : undefined`, so on a runner
+      # every test launches the Google Chrome that ubuntu-latest already ships, with its own
+      # dependencies already satisfied by the image.
       #
-      # ffmpeg is not optional.
+      # If Chrome ever does lack a library, the failure is an immediate and explicit launch error
+      # naming the missing library, which is a far better outcome than an apt-get that never
+      # returns.
       #
-      # The config sets `retries: 1` and `video: "on-first-retry"`, so a retry opens a context that
-      # records video - and recording needs Playwright's own ffmpeg binary, which install-deps does
-      # not fetch. Without it every retry died with "Executable doesn't exist ... ffmpeg-linux"
-      # before the test ran, so a single flake became a hard red build AND destroyed the retry
-      # result that was supposed to tell us whether it was a flake at all.
+      # ffmpeg stays, and it is not optional: `retries: 1` with `video: "on-first-retry"` means a
+      # retry records video, and recording needs Playwright's own ffmpeg binary. Without it a
+      # single flake dies with "Executable doesn't exist ... ffmpeg-linux" before the test runs.
+      # Measured cold: 2.3 MiB in 1.4 seconds.
       - name: Install Playwright ffmpeg
+        timeout-minutes: 3
         run: pnpm exec playwright install ffmpeg
 
-      # vite preview serves dist/spa on port 4174 (4173 is RateMyManagers').
-      # Playwright starts it automatically via playwright.config.ts.
-      # ROUTINE CI RUNS THE @ci SUBSET, NOT THE WHOLE SUITE.
-      #
-      # Every test stays in the repository and `npx playwright test` locally still discovers all
-      # of them. What changed is which ones a push pays for: the tag selects authentication,
-      # authorization, account erasure, data integrity, core submission and the regressions for
-      # defects that reached production.
-      #
-      # What this intentionally EXCLUDES, and where it still runs:
-      #   * the firefox and Mobile Chrome permutations        -> the full-suite workflow
-      #   * every legacy-form project                         -> the full-suite workflow
-      #   * coverage-raising specs with no security guarantee -> the full-suite workflow
-      #   * anything needing a live backend or the corpus     -> locally only, see ISSUE 1 and 2
-      #
-      # The exclusion is in this command rather than in a deleted file, so it is visible in a diff
-      # and reversible by one line. CI_GREP widens it without touching the config.
-      # EVERY RUN IS THE @ci SUBSET, push and pull request alike.
-      #
-      # THIS USED TO SPLIT: @ci on a pull request, the whole 1,418-test chromium project on a
-      # push to main, on the argument that a deploy gate must not run a subset. That argument
-      # was wrong here for two reasons, and it cost a real deploy.
-      #
-      # It assumed pull requests. Work on this product goes straight to main, so the PR path
-      # never ran and the fast subset was dead configuration. Every push paid for the full
-      # project before it could deploy.
-      #
-      # And the full project CANNOT pass on a runner. The ~1,300 tests outside @ci were never
-      # selected for CI, and they include the ones needing a live backend or the location
-      # corpus. `webServer` starts two static vite preview servers and nothing else, and /api
-      # proxies to localhost:8889, which exists on a development machine and not here. So the
-      # push path gated the deploy on tests that were always going to fail.
-      #
-      # The whole project, the other browsers and the legacy-form bundle run in full-suite.yml,
-      # on workflow_dispatch, where there is time for them and a person watching.
+      # The @ci subset, push and pull request alike. The whole project runs in full-suite.yml.
       - name: Run the tests
-        run: |
-          set -o pipefail
-          ARGS=(--project=chromium --reporter=blob --shard=${{ matrix.shard }}/2 --grep "$CI_SUBSET")
-          echo "playwright test ${ARGS[*]}"
-          pnpm exec playwright test "${ARGS[@]}"
+        timeout-minutes: 8
+        run: pnpm exec playwright test --project=chromium --grep "$CI_SUBSET"
         env:
-          # Overridable from repository variables without editing this file; the config reads the
-          # same name when it is set directly.
+          # Overridable from repository variables without editing this file.
           CI_SUBSET: ${{ vars.CI_GREP || '@ci' }}
 
-      # One shard's slice of the run. Kept for a day only: the merged report below
-      # is the one anybody reads, and these exist to build it.
-      - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: blob-report-${{ matrix.shard }}
-          path: blob-report/
-          retention-days: 1
-
-      # ── The role-aware journeys, in this job rather than their own ───────────
+      # ── The role-aware journeys ──────────────────────────────────────────────
       #
-      # WHY THEY NEED A SECOND BUILD AT ALL: VITE_ROLE_AWARE_SUBMISSION is baked into the bundle
-      # at build time. The standard build has it off, which is correct because that is what
-      # production serves, so these journeys skip in the normal run while the suite total looks
-      # as though they were covered. That was issue 36. The spec FAILS rather than skips when it
-      # runs without the flag, so a misconfiguration here is loud instead of invisible.
+      # VITE_ROLE_AWARE_SUBMISSION is baked into the bundle at BUILD time, and the standard build
+      # has it off because that is what production serves. So these journeys need a second bundle,
+      # and without one they skip in every run while the suite total looks as though they were
+      # covered. That was issue 36. The spec FAILS rather than skips when run without the flag, so
+      # a misconfiguration here is loud instead of invisible.
       #
-      # WHY NOT ITS OWN JOB ANY MORE: it was one, and it paid a second checkout, pnpm setup, node
-      # setup, dependency install and Playwright deps install in order to run a single spec file.
-      # On an account with a monthly Actions budget that overhead is most of the job. Here it
-      # reuses everything this job has already done and adds only the rebuild and the run.
-      #
-      # SHARD 1 ONLY, or it would run once per shard. It is one spec file and is not sharded.
-      #
-      # `!cancelled()` rather than `success()`, deliberately: these journeys ran in parallel with
-      # the sharded tests before and reported independently of them. Gating them on the shard
-      # passing would hide a role-aware regression behind an unrelated failure.
+      # `!cancelled()` rather than `success()`: a failure in the tests above must not hide a
+      # role-aware regression. Both answers come out of one run.
       - name: Rebuild the client WITH the role-aware flag
-        if: ${{ matrix.shard == 1 && !cancelled() }}
+        if: ${{ !cancelled() }}
+        timeout-minutes: 5
         run: pnpm build:client
         env:
           VITE_ROLE_AWARE_SUBMISSION: "true"
@@ -197,57 +122,25 @@ jobs:
           VITE_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
 
       - name: Run the role-aware contribution journeys
-        if: ${{ matrix.shard == 1 && !cancelled() }}
+        if: ${{ !cancelled() }}
+        timeout-minutes: 6
         run: pnpm exec playwright test tests/role-aware-contribution.spec.ts --project=chromium
         env:
           VITE_ROLE_AWARE_SUBMISSION: "true"
 
+      # ONE JOB MEANS ONE REPORT, so there is nothing to merge.
+      #
+      # The separate "Merge test reports" job is gone with the sharding. It existed only to stitch
+      # per-shard blob reports together, and on the cancelled run it failed on its own account with
+      # "Directory does not exist: .../all-blob-reports" - because the shards never got far enough
+      # to upload anything. A job whose only failure mode is a confusing second error is not worth
+      # its minutes.
       - uses: actions/upload-artifact@v4
-        if: ${{ matrix.shard == 1 && !cancelled() }}
-        with:
-          name: playwright-report-role-aware
-          path: playwright-report/
-          retention-days: 30
-
-  report:
-    name: Merge test reports
-    # Runs even when a shard failed: a merged report of a red run is exactly when
-    # somebody needs to read it.
-    if: ${{ !cancelled() }}
-    needs: test
-    timeout-minutes: 10
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Download every shard's blob report
-        uses: actions/download-artifact@v4
-        with:
-          path: all-blob-reports
-          pattern: blob-report-*
-          merge-multiple: true
-
-      - name: Merge them into one HTML report
-        run: pnpm exec playwright merge-reports --reporter html ./all-blob-reports
-
-      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
         with:
           name: playwright-report
           path: playwright-report/
           retention-days: 30
-
 
   deploy:
     name: Build & Deploy
