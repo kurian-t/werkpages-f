@@ -50,7 +50,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: ${{ fromJSON(github.event_name == 'push' && '[1,2,3,4]' || '[1,2]') }}
+        shard: [1, 2]
 
     steps:
       - uses: actions/checkout@v4
@@ -95,15 +95,23 @@ jobs:
       - name: Install Playwright system dependencies
         run: pnpm exec playwright install-deps chromium
 
-      # ffmpeg, explicitly, and it is not optional.
+      # ffmpeg ONLY, and no browser download.
+      #
+      # The chromium project sets `channel: process.env.CI ? "chrome" : undefined`, so on a
+      # runner every test launches Google Chrome, which ubuntu-latest already ships. This step
+      # used to be `install chromium ffmpeg`, which downloaded a browser that was never launched,
+      # once per job, on an account with a monthly Actions budget. install-deps above stays: it
+      # installs the shared libraries Chrome itself needs.
+      #
+      # ffmpeg is not optional.
       #
       # The config sets `retries: 1` and `video: "on-first-retry"`, so a retry opens a context that
       # records video - and recording needs Playwright's own ffmpeg binary, which install-deps does
       # not fetch. Without it every retry died with "Executable doesn't exist ... ffmpeg-linux"
       # before the test ran, so a single flake became a hard red build AND destroyed the retry
       # result that was supposed to tell us whether it was a flake at all.
-      - name: Install Playwright browsers and ffmpeg
-        run: pnpm exec playwright install chromium ffmpeg
+      - name: Install Playwright ffmpeg
+        run: pnpm exec playwright install ffmpeg
 
       # vite preview serves dist/spa on port 4174 (4173 is RateMyManagers').
       # Playwright starts it automatically via playwright.config.ts.
@@ -122,25 +130,28 @@ jobs:
       #
       # The exclusion is in this command rather than in a deleted file, so it is visible in a diff
       # and reversible by one line. CI_GREP widens it without touching the config.
-      # A PULL REQUEST RUNS THE @ci SUBSET. A PUSH TO MAIN RUNS THE WHOLE CHROMIUM PROJECT.
+      # EVERY RUN IS THE @ci SUBSET, push and pull request alike.
       #
-      # The split exists because this job is the deploy gate. Gating a production deploy on a
-      # tagged subset would be a real coverage cut dressed up as a CI optimisation - the thing
-      # that must not happen - whereas gating fast feedback on it costs nothing that the push
-      # run does not immediately recover.
+      # THIS USED TO SPLIT: @ci on a pull request, the whole 1,418-test chromium project on a
+      # push to main, on the argument that a deploy gate must not run a subset. That argument
+      # was wrong here for two reasons, and it cost a real deploy.
       #
-      # So: a PR gets an answer in a few minutes from the risk-selected tests, and nothing
-      # reaches production without the full chromium project having passed on the merge commit.
-      # The other browser projects and the legacy-form bundle run in the full-suite workflow.
+      # It assumed pull requests. Work on this product goes straight to main, so the PR path
+      # never ran and the fast subset was dead configuration. Every push paid for the full
+      # project before it could deploy.
+      #
+      # And the full project CANNOT pass on a runner. The ~1,300 tests outside @ci were never
+      # selected for CI, and they include the ones needing a live backend or the location
+      # corpus. `webServer` starts two static vite preview servers and nothing else, and /api
+      # proxies to localhost:8889, which exists on a development machine and not here. So the
+      # push path gated the deploy on tests that were always going to fail.
+      #
+      # The whole project, the other browsers and the legacy-form bundle run in full-suite.yml,
+      # on workflow_dispatch, where there is time for them and a person watching.
       - name: Run the tests
         run: |
           set -o pipefail
-          ARGS=(--project=chromium --reporter=blob)
-          if [ "${{ github.event_name }}" = "push" ]; then
-            ARGS+=(--shard=${{ matrix.shard }}/4)
-          else
-            ARGS+=(--shard=${{ matrix.shard }}/2 --grep "$CI_SUBSET")
-          fi
+          ARGS=(--project=chromium --reporter=blob --shard=${{ matrix.shard }}/2 --grep "$CI_SUBSET")
           echo "playwright test ${ARGS[*]}"
           pnpm exec playwright test "${ARGS[@]}"
         env:
@@ -156,6 +167,47 @@ jobs:
           name: blob-report-${{ matrix.shard }}
           path: blob-report/
           retention-days: 1
+
+      # ── The role-aware journeys, in this job rather than their own ───────────
+      #
+      # WHY THEY NEED A SECOND BUILD AT ALL: VITE_ROLE_AWARE_SUBMISSION is baked into the bundle
+      # at build time. The standard build has it off, which is correct because that is what
+      # production serves, so these journeys skip in the normal run while the suite total looks
+      # as though they were covered. That was issue 36. The spec FAILS rather than skips when it
+      # runs without the flag, so a misconfiguration here is loud instead of invisible.
+      #
+      # WHY NOT ITS OWN JOB ANY MORE: it was one, and it paid a second checkout, pnpm setup, node
+      # setup, dependency install and Playwright deps install in order to run a single spec file.
+      # On an account with a monthly Actions budget that overhead is most of the job. Here it
+      # reuses everything this job has already done and adds only the rebuild and the run.
+      #
+      # SHARD 1 ONLY, or it would run once per shard. It is one spec file and is not sharded.
+      #
+      # `!cancelled()` rather than `success()`, deliberately: these journeys ran in parallel with
+      # the sharded tests before and reported independently of them. Gating them on the shard
+      # passing would hide a role-aware regression behind an unrelated failure.
+      - name: Rebuild the client WITH the role-aware flag
+        if: ${{ matrix.shard == 1 && !cancelled() }}
+        run: pnpm build:client
+        env:
+          VITE_ROLE_AWARE_SUBMISSION: "true"
+          VITE_AUTH0_DOMAIN: test.auth0.com
+          VITE_AUTH0_CLIENT_ID: test_client_id_for_e2e
+          VITE_AUTH0_AUDIENCE: https://api.test.example/
+          VITE_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+
+      - name: Run the role-aware contribution journeys
+        if: ${{ matrix.shard == 1 && !cancelled() }}
+        run: pnpm exec playwright test tests/role-aware-contribution.spec.ts --project=chromium
+        env:
+          VITE_ROLE_AWARE_SUBMISSION: "true"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ matrix.shard == 1 && !cancelled() }}
+        with:
+          name: playwright-report-role-aware
+          path: playwright-report/
+          retention-days: 30
 
   report:
     name: Merge test reports
@@ -196,63 +248,10 @@ jobs:
           path: playwright-report/
           retention-days: 30
 
-  role-aware:
-    name: Role-aware contribution journeys
-    # ITS OWN JOB, because the flag is baked into the bundle at BUILD time.
-    #
-    # The standard build has VITE_ROLE_AWARE_SUBMISSION off, which is correct: it is what
-    # production serves. These journeys therefore need a second bundle, and without this job they
-    # skip in every run while the suite total looks as though they were covered. That was issue 36.
-    #
-    # The spec itself fails rather than skips when CI runs it without the flag, so a
-    # misconfiguration here is loud instead of invisible.
-    timeout-minutes: 15
-    runs-on: ubuntu-latest
-
-    env:
-      VITE_ROLE_AWARE_SUBMISSION: "true"
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build the client WITH the role-aware flag
-        run: pnpm build:client
-        env:
-          VITE_AUTH0_DOMAIN: test.auth0.com
-          VITE_AUTH0_CLIENT_ID: test_client_id_for_e2e
-          VITE_AUTH0_AUDIENCE: https://api.test.example/
-          VITE_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
-
-      - name: Install Playwright system dependencies
-        run: pnpm exec playwright install-deps chromium
-
-      - name: Install Playwright browsers and ffmpeg
-        run: pnpm exec playwright install chromium ffmpeg
-
-      - name: Run the role-aware journeys
-        run: pnpm exec playwright test tests/role-aware-contribution.spec.ts --project=chromium
-
-      - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: playwright-report-role-aware
-          path: playwright-report/
-          retention-days: 30
 
   deploy:
     name: Build & Deploy
-    needs: [test, role-aware]
+    needs: test
     if: github.event_name == 'push'
     timeout-minutes: 15
     runs-on: ubuntu-latest

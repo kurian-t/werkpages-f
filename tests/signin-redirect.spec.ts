@@ -117,18 +117,26 @@ test.describe("OAuth callback routing @ci", () => {
       route.fulfill({ status: 401, json: { error: "Unauthorized" } })
     );
 
+    /*
+      returnTo COMES BACK IN THE RESPONSE, not out of sessionStorage.
+
+      This test used to set an `oauth_return_to` sessionStorage slot and assert the redirect. The
+      slot no longer exists: AuthCallback.tsx:58 destructures `{ user, returnTo }` from the
+      callback response, and its own comment records that returnTo moved onto the server-side
+      transaction when the browser stopped building the authorize URL. So the test was seeding a
+      value nothing reads, the mocked response carried no returnTo, and the page fell back to its
+      default - which is the right behaviour for a response without one, and nothing to do with
+      what this test is for.
+
+      Putting returnTo in the response is what actually exercises the contract: a returning user
+      goes where the server said, not where the browser remembered.
+    */
     await page.route("**/api/auth/callback", (route) =>
       route.fulfill({
         status: 200,
-        json: { user: MOCK_USER, isNewUser: false },
+        json: { user: MOCK_USER, isNewUser: false, returnTo: "/directory" },
       })
     );
-
-    await page.goto("/");
-    await page.evaluate(() => {
-      sessionStorage.setItem("oauth_state", "test-state");
-      sessionStorage.setItem("oauth_return_to", "/directory");
-    });
 
     await page.goto("/auth/callback?code=test-code&state=test-state");
 

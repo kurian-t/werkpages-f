@@ -548,12 +548,21 @@ export async function mockAccountSettingsPage(
     route.fulfill({ json: { data: submittedManagers } })
   );
 
-  // Edit/delete review endpoint (PUT and DELETE)
+  // Edit review (PUT), legacy delete (DELETE), and unlink (POST .../unlink).
+  //
+  // THE UNLINK BRANCH IS NOT OPTIONAL. Rev 268 replaced deleting a rating with severing the
+  // ownership link, and that is a POST to .../unlink, which this pattern matches but which fell
+  // through to route.continue() - so it left the page, hit the vite proxy, and in CI found nothing
+  // on :8889. Every test of the unlink row failed on a connection error rather than on anything it
+  // was asserting. Matched on the suffix rather than on POST alone, so any other POST under a
+  // review keeps continuing as before.
   await page.route(new RegExp("/api/managers/.+/reviews/.+"), (route) => {
     const method = route.request().method();
     if (method === "PUT") {
       route.fulfill({ status: 200, json: { ...MOCK_MY_REVIEW } });
     } else if (method === "DELETE") {
+      route.fulfill({ status: 200, json: { success: true } });
+    } else if (method === "POST" && route.request().url().endsWith("/unlink")) {
       route.fulfill({ status: 200, json: { success: true } });
     } else {
       route.continue();

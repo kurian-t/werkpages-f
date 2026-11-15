@@ -184,11 +184,24 @@ test.describe("Two reviews of the same manager @ci", () => {
   });
 });
 
-test.describe("Deleting a review from the list @ci", () => {
+test.describe("Unlinking a rating from the list @ci", () => {
   /*
-    A separate path from the delete inside the editor - its own handler, its own confirmation
-    rendered inline on the row rather than as a dialog. Destructive, and it starts a 30-day
-    cooldown the reader cannot undo, so the warning and the outcome both have to be right.
+    A separate path from the edit inside the editor: its own handler, and its confirmation rendered
+    inline on the row rather than as a dialog. It cannot be undone and it costs the reader the
+    ability to rate this manager ever again, so the warning and the outcome both have to be right.
+
+    REWRITTEN 2026-11-14, having been written earlier the same day against a review DELETE that
+    Rev 268 had already replaced with an unlink. Every string was wrong: "Delete review" for a
+    control titled "Unlink rating", "Delete this review?" for "Unlink this rating?", "Yes, delete"
+    for "Yes, unlink", a "Review deleted." toast for "Rating unlinked from your account.", and a
+    30-day resubmission cooldown that the unlink contract does not have at all. The product was
+    right throughout. AccountSettings.tsx:328 states the rule: "POST .../unlink, NOT DELETE. The
+    rating stays published; only the ownership link is severed."
+
+    WHAT THE REWRITE ASSERTS THAT THE OLD VERSION COULD NOT. The cost of unlinking is not that the
+    rating goes away, which is what the old wording told the reader. It is that the rating STAYS
+    published and counted while the reader loses all control of it. That is a harder thing to
+    agree to, so the warning has to say all three parts, and now the test checks all three.
   */
 
   async function openList(page: any) {
@@ -197,55 +210,60 @@ test.describe("Deleting a review from the list @ci", () => {
     await expect(page.getByText("Alex Johnson").first()).toBeVisible({ timeout: 10_000 });
   }
 
-  const trash = (page: any) => page.getByTitle("Delete review");
+  const unlink = (page: any) => page.getByTitle("Unlink rating");
 
-  test("the row asks before it deletes, and says what it costs", async ({ page }) => {
+  test("the row asks before it unlinks, and says what it actually costs", async ({ page }) => {
     await openList(page);
 
-    await trash(page).click();
+    await unlink(page).click();
 
-    await expect(page.getByText("Delete this review?")).toBeVisible();
-    await expect(page.getByText(/won't be able to submit a new one for this manager for 30 days/i))
+    await expect(page.getByText("Unlink this rating?")).toBeVisible();
+    await expect(page.getByText(/permanently removes your ability to edit or manage this rating/i))
       .toBeVisible();
+    await expect(page.getByText(/remains published anonymously/i)).toBeVisible();
+    await expect(page.getByText(/not be able to rate this manager again/i)).toBeVisible();
   });
 
-  test("keeping it leaves the review and restores the row", async ({ page }) => {
+  test("keeping it leaves the rating and restores the row", async ({ page }) => {
     await openList(page);
-    await trash(page).click();
+    await unlink(page).click();
 
     await page.getByRole("button", { name: "Keep it" }).click();
 
-    await expect(page.getByText("Delete this review?")).toHaveCount(0);
+    await expect(page.getByText("Unlink this rating?")).toHaveCount(0);
     await expect(page.getByText("Alex Johnson").first()).toBeVisible();
-    await expect(trash(page)).toBeVisible();
+    await expect(unlink(page)).toBeVisible();
   });
 
-  test("confirming removes the review from the list", async ({ page }) => {
+  test("confirming unlinks it and takes the row off the list", async ({ page }) => {
     await openList(page);
-    await trash(page).click();
+    await unlink(page).click();
 
-    await page.getByRole("button", { name: "Yes, delete" }).click();
+    await page.getByRole("button", { name: "Yes, unlink" }).click();
 
-    await expect(page.getByText("Review deleted.")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Rating unlinked from your account.")).toBeVisible({
+      timeout: 10_000,
+    });
     await expect(page.getByText("Alex Johnson")).toHaveCount(0);
   });
 
-  test("a failed delete says so and keeps the review", async ({ page }) => {
+  test("a failed unlink says so and keeps the row", async ({ page }) => {
     /*
-      The row is removed from local state on success rather than by refetching, so a failure that
-      was reported as success would take the review off the screen while it still exists - and the
-      reader would find it back on the next visit, having been told it was gone.
+      The row leaves local state on success rather than by refetching, so a failure reported as a
+      success would take the rating off the screen while the account still owned it, and the reader
+      would find it back on the next visit having been told it was gone.
+
+      Registered after the fixture's handler deliberately: Playwright gives precedence to the most
+      recently added route, so this 500 wins for the unlink and the fixture still serves everything
+      else the page needs.
     */
     await openList(page);
-    await page.route(new RegExp("/api/managers/.+/reviews/.+"), (r: any) =>
-      r.request().method() === "DELETE"
-        ? r.fulfill({ status: 500, json: {} })
-        : r.continue());
+    await page.route(/\/unlink$/, (r: any) => r.fulfill({ status: 500, json: {} }));
 
-    await trash(page).click();
-    await page.getByRole("button", { name: "Yes, delete" }).click();
+    await unlink(page).click();
+    await page.getByRole("button", { name: "Yes, unlink" }).click();
 
-    await expect(page.getByText(/Failed to delete review/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Failed to unlink rating/i)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Alex Johnson").first()).toBeVisible();
   });
 });
@@ -265,7 +283,7 @@ test.describe("A suspended account @ci", () => {
     await expect(page.getByText("Alex Johnson").first()).toBeVisible({ timeout: 10_000 });
 
     await expect(page.getByRole("button", { name: "Edit review" }).first()).toBeDisabled();
-    await expect(page.getByTitle("Delete review")).toBeDisabled();
+    await expect(page.getByTitle("Unlink rating")).toBeDisabled();
     // filter to what this viewport actually shows: several controls carry the suspended title and
     // the first in the DOM is not necessarily one that is on screen at phone width.
     await expect(
