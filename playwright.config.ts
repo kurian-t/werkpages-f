@@ -81,7 +81,20 @@ export default defineConfig({
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:4174",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
-    video: "on-first-retry",
+    /*
+      NO VIDEO IN CI, and therefore no ffmpeg download there.
+
+      `playwright install ffmpeg` hung on a GitHub runner on 2026-11-14: the download reached
+      100% of 2.3 MiB and the process then never exited, so the step burned its whole cap. The
+      same command exits in 1.3s locally, so it is something about the runner and not worth
+      finding at twenty minutes a run.
+
+      Video was only ever recorded on a retry. `trace` is still on-first-retry and is strictly
+      more useful for diagnosing a CI failure anyway: it carries DOM snapshots, network and
+      console, and the report lets you step through them. Screenshots on failure are unchanged.
+      Locally, where the binary is already cached and the install works, video stays on.
+    */
+    video: process.env.CI ? "off" : "on-first-retry",
     launchOptions: {
       slowMo: process.env.SLOWMO ? parseInt(process.env.SLOWMO) : 0,
     },
