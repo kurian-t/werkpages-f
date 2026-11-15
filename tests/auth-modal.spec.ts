@@ -1,3 +1,4 @@
+/* ROUTINE CI: authentication: social-first disclosure and dismissal. Tagged @ci; see playwright.config.ts. */
 import { test, expect } from "./base";
 import {
   TEST_MANAGER_ID,
@@ -10,7 +11,7 @@ import {
   fillDatesAndAdvance,
 } from "./fixtures";
 
-test.describe("Auth modal - social-first flow", () => {
+test.describe("Auth modal - social-first flow @ci", () => {
   test.beforeEach(async ({ page }) => {
     await mockManagerPage(page);
   });
@@ -83,45 +84,25 @@ test.describe("Auth modal - social-first flow", () => {
     ).toBeVisible({ timeout: 10_000 });
   });
 
-  test("email signup form submit button is disabled until all fields valid and Turnstile completes", async ({
-    page,
-  }) => {
-    await mockTurnstile(page);
-    await openAuthModal(page);
+  /*
+    TWO TURNSTILE TESTS STOOD HERE, and what they guaranteed has moved rather than gone.
 
-    // Switch to email form
-    await page
-      .getByRole("button", { name: /continue with email/i })
-      .or(page.getByText(/continue with email/i).first())
-      .click();
+      "submit is disabled until all fields valid and Turnstile completes"
+      "shows error when Turnstile fails to load"
 
-    // Button should be disabled with empty form
-    const submitBtn = page.getByRole("button", { name: /create account/i });
-    await expect(submitBtn).toBeDisabled({ timeout: 3_000 });
+    Turnstile guarded THIS MODAL'S OWN account creation, which no longer exists: the account is
+    created on Auth0's hosted page, which has its own bot and brute-force protection. A CAPTCHA in
+    front of a button that only performs a redirect protects nothing, so keeping the widget would
+    have been theatre.
 
-    // Mock the username check API
-    await page.route(/\/api\/auth\/check-username/, (route) =>
-      route.fulfill({ json: { available: true } })
-    );
+    The abuse-prevention guarantee worth asserting is therefore not "a CAPTCHA renders" but that
+    no unprotected account-creation path leaves this client at all - which is asserted by
+    "no account-creation or sign-in request leaves the client" in auth-modal-flows.spec.ts.
 
-    // Fill all required fields
-    await page.locator('input[placeholder="John"]').fill("Jane");
-    await page.locator('input[placeholder="Doe"]').fill("Doe");
-    await page.locator('input[placeholder="john@example.com"]').fill("jane@example.com");
-    await page.locator('input[placeholder*="generate"]').fill("janedoe99");
-    await expect(page.getByText(/available/i).first()).toBeVisible({ timeout: 5_000 });
-
-    await page.locator('input[placeholder="At least 8 characters"]').fill("Password1!");
-    await page.locator('input[placeholder="Confirm your password"]').fill("Password1!");
-
-    // With Turnstile test key (1x00000000000000000000AA), onSuccess fires automatically
-    // and the button should become enabled
-    await expect(submitBtn).toBeEnabled({ timeout: 8_000 });
-  });
-
-  test("email signup form shows error when Turnstile fails to load", async ({
-    page,
-  }) => {
+    What remains here is the half of the old assertion that is still ours: the submit cannot be
+    pressed with nothing filled in.
+  */
+  test("the email step cannot be submitted empty", async ({ page }) => {
     await openAuthModal(page);
 
     await page
@@ -129,9 +110,11 @@ test.describe("Auth modal - social-first flow", () => {
       .or(page.getByText(/continue with email/i).first())
       .click();
 
-    // The @marsidev/react-turnstile component renders a <div id="cf-turnstile">.
-    // If the Turnstile siteKey were missing or invalid, this element would not render.
-    await expect(page.locator("#cf-turnstile")).toBeVisible({ timeout: 8_000 });
+    const submit = page.getByRole("dialog").getByRole("button", { name: /^continue$/i });
+    await expect(submit).toBeDisabled({ timeout: 5_000 });
+
+    await page.getByRole("dialog").getByLabel(/^email$/i).fill("someone@example.com");
+    await expect(submit).toBeEnabled({ timeout: 5_000 });
   });
 
   test("can switch between sign up and sign in views", async ({ page }) => {

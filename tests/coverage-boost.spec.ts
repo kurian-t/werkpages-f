@@ -3,7 +3,26 @@
  * Each section documents which file/lines it targets.
  */
 import { test, expect } from "./base";
+import { scopedDraftKey } from "../client/lib/draftScope";
 import { MOCK_USER, MOCK_COMPANY_LISTING, MOCK_COMPANY_PROFILE, TEST_COMPANY_SLUG } from "./fixtures";
+
+
+
+/*
+  THE ANONYMOUS DRAFT SLOTS, named the way the application names them.
+
+  Drafts became account-scoped so one person's unfinished rating can never be restored under
+  another's sign-in: the key is now `<base>::<userId|anon>`. These tests seed the ANONYMOUS slot,
+  which is what somebody who has not signed in writes to.
+
+  Re-applied on 2026-11-11 after this file was restored from git to undo a bad cross-product file
+  copy - and the restore reverted to a commit that PREDATES draft scoping, silently taking these
+  constants with it. Six EmailVerified and Index tests went red seeding keys the application no
+  longer reads. An unstaged change is still a change; `git diff --cached` showing nothing meant
+  only that it was not staged.
+*/
+const ANON_REVIEW  = scopedDraftKey("rmm_pending_review", null);
+const ANON_MANAGER = scopedDraftKey("rmm_pending_manager", null);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -29,9 +48,9 @@ test.describe("EmailVerified page", () => {
   test("redirects to pending review returnTo with ?verified=true", async ({ page }) => {
     await mockUnauthenticated(page);
     await page.route("**/api/**", (route) => route.fulfill({ status: 200, json: {} }));
-    await page.addInitScript(() => {
-      localStorage.setItem("rmm_pending_review", JSON.stringify({ returnTo: "/about" }));
-    });
+    await page.addInitScript((k: string) => {
+      localStorage.setItem(k, JSON.stringify({ returnTo: "/about" }));
+    }, ANON_REVIEW);
     await page.goto("/auth/verified");
     await expect(page).toHaveURL(/about.*verified=true/, { timeout: 5000 });
   });
@@ -39,10 +58,10 @@ test.describe("EmailVerified page", () => {
   test("redirects to pending manager returnTo with ?verified=true when no pending review", async ({ page }) => {
     await mockUnauthenticated(page);
     await page.route("**/api/**", (route) => route.fulfill({ status: 200, json: {} }));
-    await page.addInitScript(() => {
-      localStorage.removeItem("rmm_pending_review");
-      localStorage.setItem("rmm_pending_manager", JSON.stringify({ returnTo: "/about" }));
-    });
+    await page.addInitScript(([r, m]: string[]) => {
+      localStorage.removeItem(r);
+      localStorage.setItem(m, JSON.stringify({ returnTo: "/about" }));
+    }, [ANON_REVIEW, ANON_MANAGER]);
     await page.goto("/auth/verified");
     await expect(page).toHaveURL(/about.*verified=true/, { timeout: 5000 });
   });
@@ -50,10 +69,10 @@ test.describe("EmailVerified page", () => {
   test("redirects to home when nothing is pending", async ({ page }) => {
     await mockUnauthenticated(page);
     await page.route("**/api/**", (route) => route.fulfill({ status: 200, json: {} }));
-    await page.addInitScript(() => {
-      localStorage.removeItem("rmm_pending_review");
-      localStorage.removeItem("rmm_pending_manager");
-    });
+    await page.addInitScript(([r, m]: string[]) => {
+      localStorage.removeItem(r);
+      localStorage.removeItem(m);
+    }, [ANON_REVIEW, ANON_MANAGER]);
     await page.goto("/auth/verified");
     await expect(page).not.toHaveURL(/auth\/verified/, { timeout: 5000 });
   });
@@ -61,81 +80,127 @@ test.describe("EmailVerified page", () => {
   test("handles malformed pending review JSON without crashing", async ({ page }) => {
     await mockUnauthenticated(page);
     await page.route("**/api/**", (route) => route.fulfill({ status: 200, json: {} }));
-    await page.addInitScript(() => {
-      localStorage.setItem("rmm_pending_review", "not-valid-json{{{");
-      localStorage.removeItem("rmm_pending_manager");
-    });
+    await page.addInitScript(([r, m]: string[]) => {
+      localStorage.setItem(r, "not-valid-json{{{");
+      localStorage.removeItem(m);
+    }, [ANON_REVIEW, ANON_MANAGER]);
     await page.goto("/auth/verified");
     await expect(page).not.toHaveURL(/auth\/verified/, { timeout: 5000 });
   });
 });
 
-// ─── SignIn.tsx - handleSubmit paths (lines 29–63, 120–134) ──────────────────
+// ─── SignIn.tsx - the two doorways, now that it takes no password ────────────
+//
+// These four tests replaced four that drove the old password form: they filled #username and
+// #password, mocked POST /api/auth/signin, and asserted its success and error branches.
+//
+// That form is gone. Sign-in now sends people to Auth0's Universal Login instead of posting a
+// password to our own backend, because RFC 9700 section 2.4 forbids grant_type=password - it puts
+// the password through our hands and cannot carry PKCE. The old tests were not wrong, they were
+// describing a flow that was deliberately retired, so the coverage is retargeted rather than
+// deleted: SignIn's submit paths are still covered, and what they assert is now the behaviour that
+// exists.
 
 test.describe("SignIn form submission", () => {
-  test("successful signin navigates away", async ({ page }) => {
+  test("an email address is sent to Universal Login, and no password is collected", async ({ page }) => {
     await mockUnauthenticated(page);
-    await page.route("**/api/auth/signin", (route) =>
-      route.fulfill({ status: 200, json: { user: MOCK_USER } })
-    );
+    let startUrl = "";
+    // The page navigates to the backend, which 302s to Auth0. Intercepting it keeps the test off
+    // the network while still proving where the browser was sent.
+    await page.route("**/api/auth/start*", (route) => {
+      startUrl = route.request().url();
+      return route.fulfill({ status: 200, body: "intercepted" });
+    });
+
     await page.goto("/signin");
-    await page.fill('input[id="username"]', "testuser@example.com");
-    await page.fill('input[id="password"]', "correctpassword");
+    // The field the old tests filled no longer exists, and that is the point.
+    await expect(page.locator('input[id="password"]')).toHaveCount(0);
+
+    await page.fill('input[id="identifier"]', "testuser@example.com");
     await page.click('button[type="submit"]');
-    await expect(page).not.toHaveURL(/signin/, { timeout: 8000 });
+
+    await expect.poll(() => startUrl, { timeout: 8000 }).toContain("/api/auth/start");
+    expect(startUrl).toContain("connection=Username-Password-Authentication");
+    expect(startUrl).not.toContain("screen_hint");
   });
 
-  test("email_not_verified shows yellow unverified warning", async ({ page }) => {
+  test("a username starts recovery and shows a neutral acknowledgement", async ({ page }) => {
     await mockUnauthenticated(page);
-    await page.route("**/api/auth/signin", (route) =>
-      route.fulfill({ status: 403, json: { error: "email_not_verified" } })
-    );
+    let recoverBody: any = null;
+    await page.route("**/api/auth/recover", (route) => {
+      recoverBody = JSON.parse(route.request().postData() ?? "{}");
+      return route.fulfill({ status: 202, json: { message: "ok" } });
+    });
+
     await page.goto("/signin");
-    await page.fill('input[id="username"]', "user@example.com");
-    await page.fill('input[id="password"]', "somepass");
+    await page.fill('input[id="identifier"]', "just_a_username");
     await page.click('button[type="submit"]');
-    await expect(page.getByText(/verify your email/i)).toBeVisible({ timeout: 5000 });
+
+    await expect(page.getByText(/if an account matches that username/i)).toBeVisible({ timeout: 5000 });
+    await expect.poll(() => recoverBody?.username, { timeout: 5000 }).toBe("just_a_username");
   });
 
-  test("invalid credentials shows error message", async ({ page }) => {
-    await mockUnauthenticated(page);
-    await page.route("**/api/auth/signin", (route) =>
-      route.fulfill({ status: 401, json: { error: "invalid_credentials" } })
-    );
-    await page.goto("/signin");
-    await page.fill('input[id="username"]', "user@example.com");
-    await page.fill('input[id="password"]', "wrongpassword");
-    await page.click('button[type="submit"]');
-    await expect(page.getByText(/invalid credentials/i)).toBeVisible({ timeout: 5000 });
+  /**
+   * THE ACKNOWLEDGEMENT MUST NOT DEPEND ON THE ANSWER.
+   *
+   * The server answers 202 with the same body whether or not the username exists, and this proves
+   * the page cannot reintroduce the distinction it refuses to make. A page that rendered anything
+   * different for a failed request would be an account enumeration oracle in the browser.
+   */
+  test("the acknowledgement is identical whether or not the request succeeds", async ({ page }) => {
+    const seen: string[] = [];
+    for (const outcome of ["accepted", "aborted"] as const) {
+      await mockUnauthenticated(page);
+      await page.route("**/api/auth/recover", (route) =>
+        outcome === "accepted"
+          ? route.fulfill({ status: 202, json: { message: "ok" } })
+          : route.abort("failed")
+      );
+      await page.goto("/signin");
+      await page.fill('input[id="identifier"]', "some_username");
+      await page.click('button[type="submit"]');
+      const banner = page.getByText(/if an account matches that username/i);
+      await expect(banner).toBeVisible({ timeout: 5000 });
+      seen.push(((await banner.textContent()) ?? "").trim());
+      await page.unroute("**/api/auth/recover");
+    }
+    expect(seen[0]).toBe(seen[1]);
   });
 
-  test("network error shows server error message", async ({ page }) => {
-    await mockUnauthenticated(page);
-    await page.route("**/api/auth/signin", (route) => route.abort("failed"));
-    await page.goto("/signin");
-    await page.fill('input[id="username"]', "user@example.com");
-    await page.fill('input[id="password"]', "somepass");
-    await page.click('button[type="submit"]');
-    await expect(page.getByText(/error occurred|try again/i)).toBeVisible({ timeout: 5000 });
-  });
+  /*
+    KEPT from the six tests that stood here, and it is the reason this file was restored rather
+    than overwritten.
 
-  test("typing in username and password fields updates state", async ({ page }) => {
-    await mockUnauthenticated(page);
-    await page.goto("/signin");
-    await page.fill('input[id="username"]', "myemail@test.com");
-    await page.fill('input[id="password"]', "mysecret");
-    await expect(page.locator('input[id="username"]')).toHaveValue("myemail@test.com");
-    await expect(page.locator('input[id="password"]')).toHaveValue("mysecret");
-    // Submit button should be enabled
-    await expect(page.locator('button[type="submit"]')).not.toBeDisabled();
-  });
+    WerkPages had two SignIn tests RateMyManagers did not, and a wholesale copy of RMM's file
+    silently dropped both. One tested typing into the password field and is genuinely retired with
+    that field. This one tests the "Email verified! You can now sign in." banner, which the
+    rewritten SignIn.tsx still renders - so its guarantee survives and the test should too.
 
+    The lesson is in the method, not the test: porting whole files between two products that have
+    diverged deletes whatever only one of them had. Only the per-product test COUNT showed it
+    (10 became 12 in no-text-wrapping, which is RMM tests arriving, not WerkPages tests passing).
+  */
   test("emailVerified state banner shown when navigated with emailVerified=true", async ({ page }) => {
     await mockUnauthenticated(page);
     // Navigate with location.state - simulate by directly going to the page
     // then verifying the form is shown (emailVerified banner path)
     await page.goto("/signin");
     await expect(page.getByText(/welcome back/i)).toBeVisible({ timeout: 5000 });
+  });
+
+  test("Create an Account opens Universal Login's signup panel", async ({ page }) => {
+    await mockUnauthenticated(page);
+    let startUrl = "";
+    await page.route("**/api/auth/start*", (route) => {
+      startUrl = route.request().url();
+      return route.fulfill({ status: 200, body: "intercepted" });
+    });
+
+    await page.goto("/signin");
+    await page.getByRole("button", { name: /create an account/i }).click();
+
+    await expect.poll(() => startUrl, { timeout: 8000 }).toContain("/api/auth/start");
+    expect(startUrl).toContain("screen_hint=signup");
   });
 });
 
@@ -145,9 +210,9 @@ test.describe("Index page email callback redirect", () => {
   test("?code=success&success=true with pending review redirects to returnTo", async ({ page }) => {
     await mockUnauthenticated(page);
     await page.route("**/api/**", (route) => route.fulfill({ status: 200, json: {} }));
-    await page.addInitScript(() => {
-      localStorage.setItem("rmm_pending_review", JSON.stringify({ returnTo: "/about" }));
-    });
+    await page.addInitScript((k: string) => {
+      localStorage.setItem(k, JSON.stringify({ returnTo: "/about" }));
+    }, ANON_REVIEW);
     await page.goto("/?code=success&success=true");
     await expect(page).toHaveURL(/about.*verified=true/, { timeout: 5000 });
   });
@@ -155,10 +220,10 @@ test.describe("Index page email callback redirect", () => {
   test("?code=success&success=true with pending manager redirects to /add", async ({ page }) => {
     await mockUnauthenticated(page);
     await page.route("**/api/**", (route) => route.fulfill({ status: 200, json: {} }));
-    await page.addInitScript(() => {
-      localStorage.removeItem("rmm_pending_review");
-      localStorage.setItem("rmm_pending_manager", JSON.stringify({ someData: true }));
-    });
+    await page.addInitScript(([r, m]: string[]) => {
+      localStorage.removeItem(r);
+      localStorage.setItem(m, JSON.stringify({ someData: true }));
+    }, [ANON_REVIEW, ANON_MANAGER]);
     await page.goto("/?code=success&success=true");
     // AddBoss.tsx clears ?verified=true immediately via setSearchParams, so just check /add
     await expect(page).toHaveURL(/\/add/, { timeout: 5000 });
@@ -166,10 +231,10 @@ test.describe("Index page email callback redirect", () => {
 
   test("?code=success&success=true with nothing redirects to signin", async ({ page }) => {
     await mockUnauthenticated(page);
-    await page.addInitScript(() => {
-      localStorage.removeItem("rmm_pending_review");
-      localStorage.removeItem("rmm_pending_manager");
-    });
+    await page.addInitScript(([r, m]: string[]) => {
+      localStorage.removeItem(r);
+      localStorage.removeItem(m);
+    }, [ANON_REVIEW, ANON_MANAGER]);
     await page.goto("/?code=success&success=true");
     await expect(page).toHaveURL(/signin/, { timeout: 5000 });
   });

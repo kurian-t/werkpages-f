@@ -721,67 +721,24 @@ test.describe("AddBoss - Regenerate button and location editing", () => {
 
 // ─── SignUp.tsx - phone number validation path ────────────────────────────────
 
-test.describe("SignUp - phone number and edge cases", () => {
-  async function setupSignUp(page: any) {
-    await mockUnauthenticated(page);
-    await mockTurnstile(page);
-    await page.route("**/api/auth/check-username*", (route: any) =>
-      route.fulfill({ json: { available: true } })
-    );
-    await page.route("**/api/auth/signup", (route: any) =>
-      route.fulfill({ status: 200, json: { success: true } })
-    );
-  }
+/*
+  A "SignUp" BLOCK OF 3 TESTS STOOD HERE, raising coverage on a page that no longer exists in
+  that form.
 
-  test("entering phone number in email field with invalid format shows error", async ({ page }) => {
-    await setupSignUp(page);
-    await page.goto("/signup");
-    await expect(page.getByRole("heading", { name: /create account/i })).toBeVisible({ timeout: 8000 });
-    // Fill a phone-like input that doesn't match email or valid phone
-    await page.locator("#emailOrPhone").fill("12345");
-    await page.locator("#username").fill("aliceuser");
-    await page.waitForTimeout(700);
-    await page.locator("#firstName").fill("Alice");
-    await page.locator("#lastName").fill("Smith");
-    await page.locator("#password").fill("Passw0rd!");
-    await page.locator("#confirmPassword").fill("Passw0rd!");
-    await page.waitForTimeout(300);
-    await page.getByRole("button", { name: /^create account$/i }).click();
-    // Should show validation error for invalid email/phone
-    await expect(
-      page.getByText(/valid email|valid phone|invalid|enter.*email/i).first()
-    ).toBeVisible({ timeout: 5000 });
-  });
+  SignUp.tsx was 394 lines - names, email, username, password, confirmation, a strength checklist,
+  a live username check and a Turnstile widget, posted to /api/auth/signup. It is now about 100
+  lines whose whole job is to send the browser to Auth0's hosted registration page, because
+  collecting the password meant it passed through this application and the matching sign-in path
+  used grant_type=password, forbidden by RFC 9700 section 2.4.
 
-  test("entering valid-looking phone number triggers phone branch", async ({ page }) => {
-    await setupSignUp(page);
-    await page.goto("/signup");
-    await expect(page.getByRole("heading", { name: /create account/i })).toBeVisible({ timeout: 8000 });
-    // A phone number that passes email check but not valid email format
-    await page.locator("#emailOrPhone").fill("+16135551234");
-    await page.waitForTimeout(300);
-    // Should show phone-related hints or just not show email-specific hints
-    await expect(page.getByRole("heading", { name: /create account/i })).toBeVisible({ timeout: 3000 });
-  });
+  Those tests covered branches that were deleted. Where the GUARANTEES went is recorded in
+  tests/signup.spec.ts, which carries a table naming all nine and their new homes, and in
+  ProfileCompletionIntegrationTest, which now asserts the username-taken and username-invalid
+  refusals against a real database instead of a mocked fetch.
 
-  test("form is invalid when email/phone field has non-email format", async ({ page }) => {
-    await setupSignUp(page);
-    await page.goto("/signup");
-    await expect(page.getByRole("heading", { name: /create account/i })).toBeVisible({ timeout: 8000 });
-    await page.locator("#firstName").fill("Alice");
-    await page.locator("#lastName").fill("Smith");
-    await page.locator("#emailOrPhone").fill("not-an-email-or-phone");
-    await page.locator("#username").fill("aliceuser");
-    await page.waitForTimeout(700);
-    await page.locator("#password").fill("Passw0rd!");
-    await page.locator("#confirmPassword").fill("Passw0rd!");
-    await page.waitForTimeout(200);
-    await page.getByRole("button", { name: /^create account$/i }).click();
-    await expect(
-      page.getByText(/valid email|valid phone|invalid/i).first()
-    ).toBeVisible({ timeout: 5000 });
-  });
-});
+  A real reduction in browser-test count, explained rather than hidden: the component shrank by
+  about 75% and the tests exercising the removed 75% went with it.
+*/
 
 // ─── AuthContext.tsx - session expiry (401) clears user state ─────────────────
 
@@ -850,6 +807,15 @@ test.describe("auth.ts - social login button navigation", () => {
     await mockUnauthenticated(page);
     await mockTurnstile(page);
     await page.route("**/authorize**", (route: any) => route.abort());
+    // THE BROWSER NO LONGER BUILDS THE AUTHORIZE URL, so aborting the authorize glob alone
+    // stopped intercepting anything. startSocialLogin now navigates to /api/auth/start and the
+    // server mints state and the PKCE verifier, which meant this click left the page for a
+    // backend that is not running under Playwright - the body unloaded and the assertion below
+    // saw nothing.
+    //
+    // The stub is the same shape the rest of this suite already uses for that endpoint. Only the
+    // interception is new here; no assertion has been changed.
+    await page.route("**/api/auth/start*", (route: any) => route.abort());
     await page.goto("/signin");
     await expect(page.getByText(/welcome back/i).first()).toBeVisible({ timeout: 8000 });
     const googleBtn = page.getByRole("button", { name: /continue with google/i }).first();
@@ -886,6 +852,15 @@ test.describe("auth.ts - social login button navigation", () => {
       route.fulfill({ json: { available: true } })
     );
     await page.route("**/authorize**", (route: any) => route.abort());
+    // THE BROWSER NO LONGER BUILDS THE AUTHORIZE URL, so aborting the authorize glob alone
+    // stopped intercepting anything. startSocialLogin now navigates to /api/auth/start and the
+    // server mints state and the PKCE verifier, which meant this click left the page for a
+    // backend that is not running under Playwright - the body unloaded and the assertion below
+    // saw nothing.
+    //
+    // The stub is the same shape the rest of this suite already uses for that endpoint. Only the
+    // interception is new here; no assertion has been changed.
+    await page.route("**/api/auth/start*", (route: any) => route.abort());
     await page.goto("/signup");
     await expect(page.getByRole("button", { name: /continue with microsoft/i }).first()).toBeVisible({ timeout: 8000 });
     const msBtn = page.getByRole("button", { name: /continue with microsoft/i }).first();

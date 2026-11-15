@@ -1,4 +1,5 @@
 import { test, expect } from "./base";
+import { scopedDraftKey } from "../client/lib/draftScope";
 import {
   TEST_MANAGER_ID,
   MOCK_MANAGER,
@@ -69,12 +70,25 @@ async function returnFromAuth(
     beforeLoad,
   }: { pending?: unknown; existing?: unknown[]; beforeLoad?: () => Promise<void> } = {},
 ) {
+  /*
+    Seeded in THIS CONTRIBUTOR'S OWN draft scope.
+
+    Drafts are scoped per account now, because an unscoped one was being poured into whoever
+    loaded the form next - see tests/draft-isolation.spec.ts. The behaviour these tests are about,
+    a complete draft resuming and submitting itself once the rules can be checked, is the
+    behaviour of a draft its owner is known: a signed-in contributor whose review form was open,
+    who went away and came back.
+
+    The anonymous-to-signed-in journey is deliberately NOT this. That draft is offered rather than
+    applied, because a browser cannot tell the person who just signed in from the next person at a
+    shared machine, and draft-isolation.spec.ts covers it.
+  */
   await page.addInitScript(
-    ([u, d]: [unknown, unknown]) => {
+    ([u, key, d]: [unknown, string, unknown]) => {
       localStorage.setItem("authUser", JSON.stringify(u));
-      localStorage.setItem("rmm_pending_review", JSON.stringify(d));
+      localStorage.setItem(key, JSON.stringify(d));
     },
-    [CONTRIBUTOR, pending],
+    [CONTRIBUTOR, scopedDraftKey("rmm_pending_review", CONTRIBUTOR.id), pending],
   );
   await mockManagerPage(page, {
     loggedIn: true, user: CONTRIBUTOR, existingUserReviews: existing as any,
@@ -117,7 +131,8 @@ test.describe("Returning from sign-in with a review in progress", () => {
     });
 
     await expect(page.getByText(/is live/i)).toBeVisible({ timeout: 15_000 });
-    expect(await page.evaluate(() => localStorage.getItem("rmm_pending_review"))).toBeNull();
+    expect(await page.evaluate((k: string) => localStorage.getItem(k),
+      scopedDraftKey("rmm_pending_review", CONTRIBUTOR.id))).toBeNull();
   });
 
   test("somebody at the review limit is told, not silently refused", async ({ page }) => {
@@ -187,16 +202,17 @@ test.describe("Returning from sign-in with a review in progress", () => {
 
   test("a malformed draft is discarded rather than crashing the page", async ({ page }) => {
     // It is parsed from a browser key anyone can edit, so it is never trusted to be well-formed.
-    await page.addInitScript((u: unknown) => {
+    await page.addInitScript(([u, key]: [unknown, string]) => {
       localStorage.setItem("authUser", JSON.stringify(u));
-      localStorage.setItem("rmm_pending_review", "{ not json at all");
-    }, CONTRIBUTOR);
+      localStorage.setItem(key, "{ not json at all");
+    }, [CONTRIBUTOR, scopedDraftKey("rmm_pending_review", CONTRIBUTOR.id)]);
     await mockManagerPage(page, { loggedIn: true, user: CONTRIBUTOR });
     await page.goto(`/manager/${TEST_MANAGER_ID}`);
 
     await expect(page.getByRole("heading", { name: MOCK_MANAGER.name, exact: true }))
       .toBeVisible({ timeout: 10_000 });
-    expect(await page.evaluate(() => localStorage.getItem("rmm_pending_review"))).toBeNull();
+    expect(await page.evaluate((k: string) => localStorage.getItem(k),
+      scopedDraftKey("rmm_pending_review", CONTRIBUTOR.id))).toBeNull();
   });
 });
 
@@ -259,7 +275,8 @@ test.describe("Replacing a conflicting review", () => {
     await page.getByRole("button", { name: /Replace my existing review/i }).click();
 
     await expect(page.getByText(/replaced successfully/i)).toBeVisible({ timeout: 10_000 });
-    expect(await page.evaluate(() => localStorage.getItem("rmm_pending_review"))).toBeNull();
+    expect(await page.evaluate((k: string) => localStorage.getItem(k),
+      scopedDraftKey("rmm_pending_review", CONTRIBUTOR.id))).toBeNull();
   });
 
   test("a failed replace keeps the panel open and says what happened", async ({ page }) => {

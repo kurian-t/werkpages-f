@@ -9,8 +9,10 @@ import { generateUsername } from "@/lib/validators";
 import { formatReviewPeriod } from "@/lib/reviewPeriod";
 import { toast } from "sonner";
 import axios from "axios";
+import { REVIEW_DRAFT_KEY, draftSlot } from "@/lib/draftScope";
 import { formatDistanceToNow } from "date-fns";
 import { RequiredMark } from "@/components/FormFields";
+import { UnfinishedRatings } from "@/components/UnfinishedRatings";
 
 const RATING_CATEGORIES = [
   "Communication Style",
@@ -321,20 +323,23 @@ export default function AccountSettings() {
     }
   };
 
-  const handleDeleteReviewById = async (review: any) => {
+  const handleUnlinkReviewById = async (review: any) => {
     try {
-      await axios.delete(
-        `${API_BASE}/api/managers/${review.managerId}/reviews/${review.id}`
+      // POST .../unlink, NOT DELETE. The rating stays published; only the ownership link is
+      // severed. See ManagerService.unlinkReview. The row leaves this account's list because it
+      // is no longer theirs, which is why we filter it out of myReviews below.
+      await axios.post(
+        `${API_BASE}/api/managers/${review.managerId}/reviews/${review.id}/unlink`
       );
       setMyReviews((prev) => prev.filter((r) => r.id !== review.id));
       setConfirmDeleteReviewId(null);
-      queryClient.removeQueries({ queryKey: ["managers-directory"] });
-      queryClient.removeQueries({ queryKey: ["managers-top"] });
+      // The published figures are UNCHANGED by an unlink - the score keeps counting - so the
+      // directory/manager caches do not strictly need busting the way a delete did. Invalidated
+      // anyway so this account's own "my reviews" view is consistent immediately.
       queryClient.removeQueries({ queryKey: ["manager", String(review.managerId)] });
-      queryClient.removeQueries({ queryKey: ["stats"] });
-      toast.success("Review deleted.");
+      toast.success("Rating unlinked from your account.");
     } catch {
-      toast.error("Failed to delete review. Please try again.");
+      toast.error("Failed to unlink rating. Please try again.");
     }
   };
 
@@ -448,6 +453,13 @@ export default function AccountSettings() {
             </div>
           )}
 
+          {/*
+            Unfinished ratings, above the published ones. Work in progress is the thing somebody
+            came here to find: a rating they already published needs no attention, and a half
+            answered one is the only thing on this page with a deadline on it.
+          */}
+          <UnfinishedRatings />
+
           {/* My Reviews Section */}
           <div className="mb-8 rounded-2xl border border-border bg-background p-8 shadow-sm">
             <h3 className="text-lg font-bold text-foreground mb-6 flex items-center gap-2">
@@ -531,7 +543,7 @@ export default function AccountSettings() {
                               onClick={() => setConfirmDeleteReviewId(review.id)}
                               disabled={isBanned}
                               className="rounded-lg px-2.5 py-2 text-muted-foreground hover:text-red-600 hover:bg-red-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              title="Delete review"
+                              title="Unlink rating"
                             >
                               <Trash2 size={14} />
                             </button>
@@ -543,12 +555,15 @@ export default function AccountSettings() {
                     {confirmDeleteReviewId === review.id && (
                       <div className="mt-4 rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 px-4 py-4 space-y-3">
                         <div>
-                          <p className="text-sm font-semibold text-red-900 dark:text-red-200">Delete this review?</p>
+                          <p className="text-sm font-semibold text-red-900 dark:text-red-200">Unlink this rating?</p>
                           <p className="mt-1 text-sm text-red-800 dark:text-red-300">
-                            If you delete this review, you won't be able to submit a new one for this manager for 30 days.
+                            Unlinking permanently removes your ability to edit or manage this rating.
+                            Your numerical feedback remains published anonymously and continues
+                            contributing to statistics. We retain a limited private record that your
+                            account has previously rated this manager to prevent duplicate submissions.
                           </p>
                           <p className="mt-1.5 text-xs text-red-600 dark:text-red-400">
-                            Deleting a review removes it permanently from your profile.
+                            This cannot be undone, and you will not be able to rate this manager again.
                           </p>
                         </div>
                         <div className="flex gap-2">
@@ -559,10 +574,10 @@ export default function AccountSettings() {
                             Keep it
                           </button>
                           <button
-                            onClick={() => handleDeleteReviewById(review)}
+                            onClick={() => handleUnlinkReviewById(review)}
                             className="flex-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
                           >
-                            Yes, delete
+                            Yes, unlink
                           </button>
                         </div>
                       </div>
@@ -597,8 +612,10 @@ export default function AccountSettings() {
                 <p className="mt-1 text-muted-foreground">Sign out of your Rate My Managers account on this device.</p>
                 <button
                   onClick={async () => {
+                    // The leaving account's own review draft, by its scoped key. See Header.
+                    const leaving = user?.id;
                     logout();
-                    localStorage.removeItem("rmm_pending_review");
+                    draftSlot(REVIEW_DRAFT_KEY, leaving).clear();
                     queryClient.removeQueries({ queryKey: ["my-submitted-managers"] });
                     queryClient.removeQueries({ queryKey: ["auth-me"] });
                     toast.success("Signed out successfully!", { description: "See you next time!" });

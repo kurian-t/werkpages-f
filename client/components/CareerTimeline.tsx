@@ -1,4 +1,5 @@
 import { useMemo, useState, useRef, useLayoutEffect, Fragment } from "react"; // useLayoutEffect kept for scroll detection
+import { ExampleRatingBadge, EXAMPLE_TRAJECTORY_EXPLANATION } from "@/components/OpinionCard";
 import {
   Star, TrendingUp, TrendingDown, Minus, Activity,
   ChevronDown, ChevronUp, ArrowUp, ArrowDown, ChevronRight,
@@ -24,6 +25,13 @@ export const CARD_H      = 170;   // collapsed card height (used for Y positioni
 const CONN_W      = 180;
 export const TOP_PAD     = 24;
 export const VERT_RANGE  = 220;   // pixel span from 5.0 centre to 1.0 centre
+/*
+  How much of a company's role list is shown before it scrolls: two rows and a gap.
+
+  Two is enough to see at a glance that there is more than one, which is the fact that matters when
+  reading a career; the rest is one scroll away inside the card.
+*/
+const ROLES_WINDOW_H = 124;
 const AXIS_W      = 38;
 
 // X-axis sits one grid interval below the 1.0 line - same rhythm as all other intervals
@@ -161,14 +169,23 @@ function roleConfidence(reviewCount: number): string {
 
 // ── Role item - independent collapsible card inside a company card ────────────
 function RoleItem({
-  role, companyAvg, onEditCareerEntry, onDeleteCareerEntry,
+  role, companyAvg, expanded, onToggle, onEditCareerEntry, onDeleteCareerEntry,
 }: {
   role: CareerSegment;
   companyAvg: number;
+  /*
+    OWNED BY THE TRAJECTORY, NOT BY THE ROW.
+
+    Each row kept its own flag, so every breakdown a reader opened stayed open: five roles meant
+    five expanded panels, a card that had quietly tripled in height, and a chart that no longer
+    lined up with its own axis. One open at a time is a property of the whole trajectory, and a
+    row cannot enforce something it cannot see.
+  */
+  expanded: boolean;
+  onToggle: () => void;
   onEditCareerEntry?: (entry: { entryId: number | null; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
   onDeleteCareerEntry?: (stage: { entryId: number | null; company: string; role: string; reviewCount: number }) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const delta    = role.averageRating - companyAvg;
   const abs      = Math.abs(delta);
   const range    = segmentYearRange(role);
@@ -186,6 +203,14 @@ function RoleItem({
         background: "#f8fafc",
         overflow: "hidden",
         position: "relative",
+        /*
+          A ROW KEEPS ITS OWN HEIGHT. The roles list is a flex column with a capped height, and a
+          flex child shrinks to fit by default. These rows did, so three roles were squeezed into
+          the window instead of overflowing it: each one clipped its own title mid-word, and the
+          list never scrolled because it never overflowed - which is why no scrollbar appeared on
+          hover however long the hover lasted.
+        */
+        flexShrink: 0,
       }}
     >
       {/*
@@ -199,7 +224,7 @@ function RoleItem({
         nested in a button is invalid markup whose clicks go to the wrong handler.
       */}
       {(onEditCareerEntry || onDeleteCareerEntry) && (
-        <div className="absolute right-2.5 top-2.5 z-10 flex items-center gap-2">
+        <div className="absolute right-2.5 bottom-2 z-10 flex items-center gap-2">
           {onEditCareerEntry && (
             <button
               type="button"
@@ -242,8 +267,23 @@ function RoleItem({
         </div>
       )}
       <button
-        onClick={() => setExpanded(v => !v)}
-        className="w-full text-left px-3 py-2.5"
+        onClick={onToggle}
+      /*
+        ROOM FOR THE ADMIN CONTROLS, rather than a layer on top of the content.
+
+        Edit and Delete are absolutely positioned, and the row's first line is the job title, its
+        average and the stars, with the chevron at its right. Put at the top-right the controls
+        overlapped both: they sat on the stars and on the chevron, and each made the other
+        unreadable.
+
+        They sit at the row's foot instead, beside the year range, which is short and left-aligned
+        and the only thing on that line. That costs no height at all.
+
+        A band of top padding was tried first and is why this comment is long. It cost 28px on a
+        row inside a height-capped list, so the rows no longer fitted, and - being flex children -
+        they shrank and clipped their own titles rather than scrolling. Do not reintroduce it.
+      */
+      className="w-full text-left px-3 py-2.5"
         aria-expanded={expanded}
       >
         <div className="flex items-start justify-between gap-1">
@@ -259,7 +299,9 @@ function RoleItem({
               <Stars rating={role.averageRating} size={9} />
             </div>
 
-            <div className="flex items-center gap-2 mt-0.5">
+            <div className={`flex items-center gap-2 mt-0.5 ${
+              onEditCareerEntry || onDeleteCareerEntry ? "pr-16" : ""
+            }`}>
               {range && (
                 <span className="text-[10.5px] text-slate-500 tabular-nums">{range}</span>
               )}
@@ -308,16 +350,40 @@ function RoleItem({
   );
 }
 
+/**
+ * A role's identity for the one-open-at-a-time rule.
+ *
+ * The career_history id where there is one. Many stages have none - the chart groups reviews by
+ * the company they name, so a stage exists wherever a review does - and those fall back to the
+ * company, the role and their position, which is unique within one rendered trajectory.
+ */
+function roleKey(node: CompanyNode, role: CareerSegment, index: number): string {
+  return role.careerHistoryId != null
+    ? `ch:${role.careerHistoryId}`
+    : `n:${node.company}:${role.role}:${index}`;
+}
+
 // ── Company card ──────────────────────────────────────────────────────────────
 function CompanyCard({
-  node, hasLeft, hasRight, onEditCareerEntry, onDeleteCareerEntry,
+  node, hasLeft, hasRight, openRole, onToggleRole, onEditCareerEntry, onDeleteCareerEntry,
+  isExample = false,
 }: {
   node: CompanyNode; hasLeft: boolean; hasRight: boolean;
+  /**
+   * Every rating behind this card is a platform example, so the average on its face is a
+   * demonstration. Threaded from the trajectory rather than derived here: whether a rating is an
+   * example is a fact about the review rows, and a CompanyNode has already aggregated them away.
+   */
+  isExample?: boolean;
+  /** Which role's breakdown is open across the whole trajectory, or null. */
+  openRole: string | null;
+  onToggleRole: (key: string) => void;
   onEditCareerEntry?: (entry: { entryId: number | null; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
   onDeleteCareerEntry?: (stage: { entryId: number | null; company: string; role: string; reviewCount: number }) => void;
 }) {
   const top     = cardTopY(node.avg);
   const centerY = cardCenterY(node.avg);
+  const hasOpenRole = node.roles.some((role, j) => openRole === roleKey(node, role, j));
   const range   = dateRangeFromParts(node.startDate, node.endDate, node.isCurrent);
   const year    = node.startDate?.slice(0, 4);
 
@@ -391,14 +457,60 @@ function CompanyCard({
                 </span>
                 <Stars rating={node.avg} size={11} />
               </div>
+              {/*
+                DIRECTLY UNDER THE FIGURE IT QUALIFIES, and above the count.
+
+                This number is the one a reader takes away from the card, and on an example-only
+                manager nobody gave it. It sat beside the section heading for two revisions and was
+                reported missing both times: a reader doubting a figure looks at the figure.
+
+                                "Example rating", verbatim the same words as the pill on the rating card, so there is
+                one name for one thing and nobody has to work out whether two labels differ.
+
+                Not gated on the contribution gate: this card renders only for a reader who has
+                already contributed, so there is no blurred state to worry about here.
+              */}
+              {isExample && (
+                <ExampleRatingBadge
+                  className="mb-1"
+                  label="Example rating"
+                  explanation={EXAMPLE_TRAJECTORY_EXPLANATION}
+                />
+              )}
               <p className="text-[11px] text-slate-500 tabular-nums">
                 {node.totalReviews} {node.totalReviews === 1 ? "review" : "reviews"}
               </p>
               {range && <p className="text-[11px] text-slate-500 tabular-nums">{range}</p>}
+              {/*
+                DIRECTLY UNDER THE FIGURE IT QUALIFIES.
+
+                This number is the one a reader takes away from the card, and on an example-only
+                manager nobody gave it. The label belongs against the figure rather than against
+                the section heading, which is where it was and where it went unnoticed twice.
+
+                Not gated on the contribution gate: this card renders only for a reader who has
+                already contributed, so there is no blurred state to worry about here.
+              */}
             </div>
           )}
 
-          <div className="mt-3 flex flex-col gap-2">
+          {/*
+            THE ROLES SCROLL; THE CARD DOES NOT GROW TO FIT THEM.
+
+            A company with five positions produced a card three times the height of its neighbours,
+            and the chart places each card by its rating - so one long card pushed the whole row
+            out of line with the axis it is measured against. The list is capped and scrolls inside
+            instead, so a card's height is about where it sits, not how many jobs it holds.
+
+            It DOES grow for an open breakdown. That is the one case where the extra height is the
+            thing the reader asked for, and only one can be open at a time.
+          */}
+          <div
+            className={`mt-3 flex flex-col gap-2 ${
+              hasOpenRole ? "" : "hover-scroll overflow-y-auto"
+            }`}
+            style={hasOpenRole ? undefined : { maxHeight: ROLES_WINDOW_H }}
+          >
             {node.roles.map((role, j) => (
               node.isGhost
                 ? (
@@ -409,6 +521,8 @@ function CompanyCard({
                       border: "1px solid #e2e8f0",
                       background: "#f1f5f9",
                       padding: "10px 12px",
+                      /* See RoleItem: a flex child in a capped column shrinks unless told not to. */
+                      flexShrink: 0,
                     }}
                   >
                     <div className="flex items-start justify-between gap-1">
@@ -454,8 +568,15 @@ function CompanyCard({
                     )}
                   </div>
                 )
-                : <RoleItem key={j} role={role} companyAvg={node.avg}
-                    onEditCareerEntry={onEditCareerEntry} onDeleteCareerEntry={onDeleteCareerEntry} />
+                : <RoleItem
+                    key={j}
+                    role={role}
+                    companyAvg={node.avg}
+                    expanded={openRole === roleKey(node, role, j)}
+                    onToggle={() => onToggleRole(roleKey(node, role, j))}
+                    onEditCareerEntry={onEditCareerEntry}
+                    onDeleteCareerEntry={onDeleteCareerEntry}
+                  />
             ))}
           </div>
         </div>
@@ -769,8 +890,19 @@ export function CareerTimeline({
   segments,
   onEditCareerEntry,
   onDeleteCareerEntry,
+  isExample = false,
 }: {
   segments: CareerSegment[];
+  /**
+   * True when every rating behind this chart is a platform example, so the trajectory is a
+   * demonstration rather than a record of anybody's opinion. Labelled beside the heading with the
+   * same pill the rating cards and the average use.
+   *
+   * The caller decides this, not this component: whether a rating is an example is a fact about
+   * the review rows, which the profile holds and the timeline's segments have already aggregated
+   * away.
+   */
+  isExample?: boolean;
   onEditCareerEntry?: (entry: { entryId: number | null; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
   onDeleteCareerEntry?: (stage: { entryId: number | null; company: string; role: string; reviewCount: number }) => void;
 }) {
@@ -780,6 +912,8 @@ export function CareerTimeline({
   const consistency = useMemo(() => computeConsistencyScore(reviewedSegments), [reviewedSegments]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  // One breakdown open across the whole chart. See RoleItem for why it does not live on the row.
+  const [openRole, setOpenRole] = useState<string | null>(null);
   const [hintDismissed, setHintDismissed] = useState(false);
   const [scrollRatio, setScrollRatio] = useState(0); // 0 = at start, 1 = at end
 
@@ -869,6 +1003,12 @@ export function CareerTimeline({
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
+            {/*
+              THE PILL IS ON THE CARD, NOT HERE. It sat beside this heading for two revisions and
+              was reported missing both times, because the thing a reader is looking at when they
+              doubt a number is the number: "Avg at this company", inside the role card. A label up
+              here describes the section and leaves the figure itself unmarked.
+            */}
             <h2 className="text-[17px] font-semibold text-slate-800 tracking-tight">
               Career Performance Trajectory
             </h2>
@@ -990,8 +1130,11 @@ export function CareerTimeline({
                     node={node}
                     hasLeft={i > 0}
                     hasRight={true}
+                    openRole={openRole}
+                    onToggleRole={key => setOpenRole(prev => (prev === key ? null : key))}
                     onEditCareerEntry={onEditCareerEntry}
                     onDeleteCareerEntry={onDeleteCareerEntry}
+                    isExample={isExample}
                   />
                   {i < nodes.length - 1 && (
                     <Connector

@@ -164,21 +164,26 @@ test.describe("Getting hired tab", () => {
     await expect(page.getByRole("tab")).toHaveCount(3);
   });
 
-  test("a locked panel still says how much is behind it", async ({ page }) => {
+  test("a locked manager panel shows its notice and nothing behind it", async ({ page }) => {
     /*
-      A locked page that will not even say how much it holds gives someone arriving from search no
-      reason to come back. The ratings stay hidden; the size of what is hidden does not.
+      REVERSED BY PRODUCT DECISION, 27 October.
 
-      Asserted on the panel header rather than the tab. This read the count off the tab label, and
-      the redesign removed it from there for restating what the header already carries - which it
-      does whether or not the reader has contributed, so the property this test exists to protect
-      is intact and only its location moved.
+      This asserted that a locked panel still stated how much was behind the lock, so that
+      somebody arriving from search had a reason to come back.
+
+      The locked header now shows ONLY its notice, on a plain background. The half-visible text
+      behind it made the notice hard to read on a phone, and blurring that text was tried first
+      and made it worse: shapes behind the words you are trying to read.
+
+      WHAT THIS COSTS, recorded rather than glossed over: a locked panel no longer states its
+      sample size anywhere, so the search-visitor argument above is genuinely given up. The
+      blurred ratings list below the header is what now carries the sense that there is
+      something here.
     */
     await mockCompany(page, interviewStats(), false);
     await page.goto(COMPANY_URL);
-
-    await expect(page.getByText(/3 (manager )?(opinions|reviews)/).first())
-      .toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/are locked/i).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/\d+ (manager )?(opinions|reviews)/)).toHaveCount(0);
   });
 
   test("a hiring URL opens the hiring tab, signed in or not", async ({ page }) => {
@@ -207,15 +212,27 @@ test.describe("Getting hired tab", () => {
     await expect(page.getByRole("tab")).toHaveCount(3);
   });
 
-  test("the panel still says how much is behind the lock", async ({ page }) => {
-    // Same move as above: the count lives in the panel header now, not on the tab label, and it is
-    // shown to a locked reader on purpose.
+  test("a locked interview panel shows its notice and nothing behind it", async ({ page }) => {
+    /*
+      REVERSED BY PRODUCT DECISION, 27 October.
+
+      This asserted that a locked panel still stated how much was behind the lock, so that
+      somebody arriving from search had a reason to come back.
+
+      The locked header now shows ONLY its notice, on a plain background. The half-visible text
+      behind it made the notice hard to read on a phone, and blurring that text was tried first
+      and made it worse: shapes behind the words you are trying to read.
+
+      WHAT THIS COSTS, recorded rather than glossed over: a locked panel no longer states its
+      sample size anywhere, so the search-visitor argument above is genuinely given up. The
+      blurred ratings list below the header is what now carries the sense that there is
+      something here.
+    */
     await mockCompany(page, interviewStats({ gated: true, hasContributed: false, categoryAverages: null, categoryComparison: null }));
     await page.goto(COMPANY_URL);
-
     await page.getByRole("tab", { name: "Interviewing" }).click();
-    await expect(page.getByText(/12 (candidate )?experiences/).first())
-      .toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/are locked/i).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/\d+ (candidate )?experiences/)).toHaveCount(0);
   });
 
   test("the category breakdown is locked for a non-contributor", async ({ page }) => {

@@ -461,3 +461,129 @@ test.describe("BossProfile - locked 'Rate a manager' buttons", () => {
     await expect(page.getByText(/categories locked/i)).not.toBeVisible();
   });
 });
+
+/*
+  THE GATE IS ABOUT OTHER PEOPLE'S SCORES, AND NOTHING ELSE.
+
+  Two things it was doing that it was never meant to do, both visible the moment somebody added a
+  manager and was sent to the profile they had just created:
+
+  1. It blurred their OWN rating back at them. A rating held behind a pending manager is not live,
+     and hasContributed only counts live ratings, so the author of the single rating on the page
+     was locked out of it sixty seconds after writing it.
+
+  2. It filled the page with invented strangers. The placeholder stack is an advertisement for
+     contributing, aimed at a signed-out visitor; shown to somebody signed in, on a manager that
+     cannot have any other ratings because they created it a minute ago, it reads as four people
+     who have worked for somebody nobody had heard of.
+
+  What has NOT changed: a signed-in reader who has not contributed still cannot read other
+  people's scores. That is what contributing buys, and the last test here says so.
+*/
+test.describe("BossProfile - whose ratings the gate withholds", () => {
+  const MY_HELD = {
+    ...MOCK_EXISTING_REVIEW,
+    id: "my-held-review",
+    author: "rain-on-glass",
+    /*
+      NOT one of WITHHELD_SCORES (4.2 3.8 4.5 3.6 4.0 4.4 3.9 4.1 3.7 4.3).
+
+      Those are the plausible numbers drawn in place of a real score behind the gate, and they
+      are blurred by definition. A fixture score that collides with one makes "is this number
+      blurred anywhere on the page" answer yes for a reason that has nothing to do with the test.
+    */
+    overallRating: 4.7,
+    disposition: "held",
+  };
+  const SOMEBODY_ELSE = {
+    ...MOCK_EXISTING_REVIEW,
+    id: "other-review",
+    author: "distant-ferry",
+    overallRating: 2.3,
+  };
+  const PENDING = { ...MOCK_MANAGER, approvalStatus: "pending_approval" };
+  /** One of the invented handles the locked stack is built from. */
+  const INVENTED = "quiet-harbour";
+
+  const blurredText = (page: any, text: string) =>
+    page.locator('[class*="blur-sm"]').filter({ hasText: text });
+
+  test("the author's own held rating is not blurred back at them", async ({ page }) => {
+    await mockManagerPage(page, {
+      manager: PENDING, loggedIn: true, hasContributed: false,
+      reviews: [MY_HELD], existingUserReviews: [MY_HELD],
+    });
+    await page.goto(`/manager/${TEST_MANAGER_ID}`);
+    await expect(page.getByRole("heading", { name: "Alex Johnson", exact: true }))
+      .toBeVisible({ timeout: 10_000 });
+
+    // toHaveCount auto-retries; a bare .count() does not, and under parallel load it ran before
+    // the card had rendered. The visible assertion above is what proves the card is there, so
+    // the zero below is a real zero rather than a race.
+    await expect(page.getByText("4.7").first()).toBeVisible();
+    await expect(blurredText(page, "4.7")).toHaveCount(0);
+  });
+
+  test("a signed-in reader is never shown invented reviews", async ({ page }) => {
+    /*
+      LOCKED, and reading somebody else's review: the only setup where the invented stack could
+      still appear.
+
+      The first version of this test used the reader's OWN held rating, which makes the page
+      unlocked - every rating on it is theirs - so the placeholders were absent for a reason that
+      had nothing to do with being signed in. A mutation that showed invented cards to everybody
+      passed it. The feed here is a stranger's, so the gate is genuinely shut and the only thing
+      keeping the invention off the page is that they are signed in.
+    */
+    await mockManagerPage(page, {
+      loggedIn: true, hasContributed: false,
+      reviews: [SOMEBODY_ELSE], existingUserReviews: [],
+    });
+    await page.goto(`/manager/${TEST_MANAGER_ID}`);
+    await expect(page.getByRole("heading", { name: "Alex Johnson", exact: true }))
+      .toBeVisible({ timeout: 10_000 });
+
+    await expect(page.getByText("distant-ferry").first()).toBeAttached();
+    await expect(page.getByText(INVENTED)).toHaveCount(0);
+  });
+
+  test("a manager somebody just added shows their rating and nobody else's", async ({ page }) => {
+    // The case that prompted all of this: one rating, theirs, on a profile that cannot have any
+    // others. No invented stack, nothing blurred.
+    await mockManagerPage(page, {
+      manager: PENDING, loggedIn: true, hasContributed: false,
+      reviews: [MY_HELD], existingUserReviews: [MY_HELD],
+    });
+    await page.goto(`/manager/${TEST_MANAGER_ID}`);
+    await expect(page.getByRole("heading", { name: "Alex Johnson", exact: true }))
+      .toBeVisible({ timeout: 10_000 });
+
+    await expect(page.getByText("rain-on-glass").first()).toBeVisible();
+    await expect(page.getByText(INVENTED)).toHaveCount(0);
+    await expect(blurredText(page, "4.7")).toHaveCount(0);
+  });
+
+  test("a signed-out visitor still gets the stack, which is who it is for", async ({ page }) => {
+    await mockManagerPage(page, { loggedIn: false, reviews: [] });
+    await page.goto(`/manager/${TEST_MANAGER_ID}`);
+    await expect(page.getByRole("heading", { name: "Alex Johnson", exact: true }))
+      .toBeVisible({ timeout: 10_000 });
+
+    // The advertisement is deliberate and is not what changed.
+    await expect(page.getByText(INVENTED).first()).toBeAttached({ timeout: 5_000 });
+  });
+
+  test("somebody else's score is still withheld from a non-contributor", async ({ page }) => {
+    await mockManagerPage(page, {
+      loggedIn: true, hasContributed: false,
+      reviews: [SOMEBODY_ELSE], existingUserReviews: [],
+    });
+    await page.goto(`/manager/${TEST_MANAGER_ID}`);
+    await expect(page.getByRole("heading", { name: "Alex Johnson", exact: true }))
+      .toBeVisible({ timeout: 10_000 });
+
+    // The gate itself, intact: this is the half the change must not have opened.
+    await expect(page.getByText("2.3").first()).toBeAttached();
+    await expect(blurredText(page, "2.3")).not.toHaveCount(0);
+  });
+});

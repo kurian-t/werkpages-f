@@ -33,7 +33,11 @@ type LocalSurfaceStore = Record<string, LocalEntry>;
 
 type LocalContentStore = Partial<Record<SharedContentSurface, LocalSurfaceStore>>;
 
-type ResumeDesignWithLocalContent = ResumeDesign & {
+/**
+ * `ResumeDesign` plus the per-surface local content snapshots. Exported for the same reason as
+ * {@link ResumeDataWithProjects}: the widening belongs at the point of use, including in tests.
+ */
+export type ResumeDesignWithLocalContent = ResumeDesign & {
   formatLocalContent?: LocalContentStore;
 };
 

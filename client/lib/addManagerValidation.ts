@@ -83,3 +83,35 @@ export function step1Errors(fields: Step1Fields): string[] {
 export function isStep1Valid(fields: Step1Fields): boolean {
   return step1Errors(fields).length === 0;
 }
+
+/**
+ * The SEARCH screen's rule: a name, and nothing else.
+ *
+ * <h2>Why this is a second function rather than flags on the first</h2>
+ *
+ * <p>The two screens ask different questions, and a single function with "required unless" in it
+ * would be the place every future field goes to be made conditionally optional. The legacy screen
+ * collects a whole manager, because the next thing it does is create one. The search screen
+ * collects what a SEARCH needs, because the next thing it does is look.
+ *
+ * <p><b>The country is optional and is never validated here.</b> It ranks candidates and never
+ * filters them, so a contributor who does not know it - or whose manager has moved - must not be
+ * stopped by it. That is the same rule the matcher enforces on the server, said once more where
+ * the reader meets it.
+ *
+ * <p>The name is validated exactly as strictly as the other screen validates it: it is the same
+ * question about the same kind of person, and these names are published.
+ */
+export function searchStepErrors(fields: Pick<Step1Fields, "firstName" | "lastName">): string[] {
+  const errors: string[] = [];
+  const firstName = validateManagerNamePart(fields.firstName, "First name");
+  if (!firstName.valid) errors.push(firstName.error!);
+  const lastName = validateManagerNamePart(fields.lastName, "Last name");
+  if (!lastName.valid) errors.push(lastName.error!);
+  return errors;
+}
+
+/** Whether the search screen may be left. Same rule as {@link searchStepErrors}. */
+export function isSearchStepValid(fields: Pick<Step1Fields, "firstName" | "lastName">): boolean {
+  return searchStepErrors(fields).length === 0;
+}

@@ -12,11 +12,45 @@ env:
   FRONTEND_IMAGE: 138465306929.dkr.ecr.ca-central-1.amazonaws.com/werkpages-frontend
   BACKEND_IMAGE: 138465306929.dkr.ecr.ca-central-1.amazonaws.com/werkpages-api
 
+# Least privilege. These jobs read the repository and upload artifacts; nothing writes back to
+# it. The default token is broader than that on many org configurations, and the deploy job
+# below holds real AWS credentials, so the grant is stated rather than inherited.
+permissions:
+  contents: read
+
+# A second push to the same branch makes the first run's result irrelevant. Cancelling it frees
+# runners instead of paying for an answer nobody will read. Never cancels on main, because that
+# run is the deploy gate.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   test:
     name: Playwright Tests
     timeout-minutes: 30
     runs-on: ubuntu-latest
+
+    # TWO SHARDS, down from four.
+    #
+    # Four was sized for the whole 1,411-test chromium project. Routine CI now runs the ~117-test
+    # @ci subset, so four runners would spend most of their budget on setup. The full suite still
+    # shards wider, in its own workflow.
+    #
+    # Nothing is skipped to make this fit: the tests CI does not run are run by the full-suite
+    # workflow and by the local command, and the subset is chosen by risk rather than by cost.
+    #
+    # fail-fast is OFF deliberately. A red shard must not cancel its siblings, or one
+    # failure hides every other failure in the run and the next push finds them one at
+    # a time.
+    #
+    # Each shard writes a BLOB report rather than HTML, because blobs are the only
+    # format that merges back into a single report afterwards. Four separate HTML
+    # reports cannot be read as one run. The `report` job below does the merge.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(github.event_name == 'push' && '[1,2,3,4]' || '[1,2]') }}
 
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +74,16 @@ jobs:
       # All API/auth calls are mocked by Playwright — no real backend needed.
       # VITE_AUTH0_AUDIENCE must be non-empty or isSocialLoginConfigured() returns false
       # and the social login buttons never render.
+      # TYPE CHECK ON EVERY PUSH AND PULL REQUEST, not only in the manual full-suite workflow.
+      #
+      # 48 type errors had accumulated in this repository's resume builder, undetected, for the
+      # simple reason that no CI had ever run `tsc`. A dispatch-only check would not have caught
+      # them either - nobody dispatches a workflow to find out whether their own branch compiles.
+      # It is a few seconds and it runs before the expensive steps, so a type error is reported
+      # without paying for a browser install and a full shard.
+      - name: Type check
+        run: npx tsc --noEmit
+
       - name: Build client
         run: pnpm build:client
         env:
@@ -63,19 +107,152 @@ jobs:
 
       # vite preview serves dist/spa on port 4174 (4173 is RateMyManagers').
       # Playwright starts it automatically via playwright.config.ts.
-      - name: Run Playwright tests
-        run: pnpm exec playwright test --project=chromium
+      # ROUTINE CI RUNS THE @ci SUBSET, NOT THE WHOLE SUITE.
+      #
+      # Every test stays in the repository and `npx playwright test` locally still discovers all
+      # of them. What changed is which ones a push pays for: the tag selects authentication,
+      # authorization, account erasure, data integrity, core submission and the regressions for
+      # defects that reached production.
+      #
+      # What this intentionally EXCLUDES, and where it still runs:
+      #   * the firefox and Mobile Chrome permutations        -> the full-suite workflow
+      #   * every legacy-form project                         -> the full-suite workflow
+      #   * coverage-raising specs with no security guarantee -> the full-suite workflow
+      #   * anything needing a live backend or the corpus     -> locally only, see ISSUE 1 and 2
+      #
+      # The exclusion is in this command rather than in a deleted file, so it is visible in a diff
+      # and reversible by one line. CI_GREP widens it without touching the config.
+      # A PULL REQUEST RUNS THE @ci SUBSET. A PUSH TO MAIN RUNS THE WHOLE CHROMIUM PROJECT.
+      #
+      # The split exists because this job is the deploy gate. Gating a production deploy on a
+      # tagged subset would be a real coverage cut dressed up as a CI optimisation - the thing
+      # that must not happen - whereas gating fast feedback on it costs nothing that the push
+      # run does not immediately recover.
+      #
+      # So: a PR gets an answer in a few minutes from the risk-selected tests, and nothing
+      # reaches production without the full chromium project having passed on the merge commit.
+      # The other browser projects and the legacy-form bundle run in the full-suite workflow.
+      - name: Run the tests
+        run: |
+          set -o pipefail
+          ARGS=(--project=chromium --reporter=blob)
+          if [ "${{ github.event_name }}" = "push" ]; then
+            ARGS+=(--shard=${{ matrix.shard }}/4)
+          else
+            ARGS+=(--shard=${{ matrix.shard }}/2 --grep "$CI_SUBSET")
+          fi
+          echo "playwright test ${ARGS[*]}"
+          pnpm exec playwright test "${ARGS[@]}"
+        env:
+          # Overridable from repository variables without editing this file; the config reads the
+          # same name when it is set directly.
+          CI_SUBSET: ${{ vars.CI_GREP || '@ci' }}
 
+      # One shard's slice of the run. Kept for a day only: the merged report below
+      # is the one anybody reads, and these exist to build it.
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
+        with:
+          name: blob-report-${{ matrix.shard }}
+          path: blob-report/
+          retention-days: 1
+
+  report:
+    name: Merge test reports
+    # Runs even when a shard failed: a merged report of a red run is exactly when
+    # somebody needs to read it.
+    if: ${{ !cancelled() }}
+    needs: test
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download every shard's blob report
+        uses: actions/download-artifact@v4
+        with:
+          path: all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
+
+      - name: Merge them into one HTML report
+        run: pnpm exec playwright merge-reports --reporter html ./all-blob-reports
+
+      - uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: playwright-report/
           retention-days: 30
 
+  role-aware:
+    name: Role-aware contribution journeys
+    # ITS OWN JOB, because the flag is baked into the bundle at BUILD time.
+    #
+    # The standard build has VITE_ROLE_AWARE_SUBMISSION off, which is correct: it is what
+    # production serves. These journeys therefore need a second bundle, and without this job they
+    # skip in every run while the suite total looks as though they were covered. That was issue 36.
+    #
+    # The spec itself fails rather than skips when CI runs it without the flag, so a
+    # misconfiguration here is loud instead of invisible.
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+
+    env:
+      VITE_ROLE_AWARE_SUBMISSION: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the client WITH the role-aware flag
+        run: pnpm build:client
+        env:
+          VITE_AUTH0_DOMAIN: test.auth0.com
+          VITE_AUTH0_CLIENT_ID: test_client_id_for_e2e
+          VITE_AUTH0_AUDIENCE: https://api.test.example/
+          VITE_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+
+      - name: Install Playwright system dependencies
+        run: pnpm exec playwright install-deps chromium
+
+      - name: Install Playwright browsers and ffmpeg
+        run: pnpm exec playwright install chromium ffmpeg
+
+      - name: Run the role-aware journeys
+        run: pnpm exec playwright test tests/role-aware-contribution.spec.ts --project=chromium
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-role-aware
+          path: playwright-report/
+          retention-days: 30
+
   deploy:
     name: Build & Deploy
-    needs: test
+    needs: [test, role-aware]
     if: github.event_name == 'push'
     timeout-minutes: 15
     runs-on: ubuntu-latest

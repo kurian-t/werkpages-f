@@ -48,6 +48,8 @@ interface ManagerEntry {
   companyLogoUrl?: string;
   approvalStatus?: string;
   slug?: string;
+  /** Current, former or unknown at THIS company. Spread into the card below. */
+  employmentStatus?: string;
 }
 interface CompanyData {
   id: number;
@@ -66,6 +68,22 @@ interface CompanyData {
     use that does not cope with its absence.
   */
   categoryAverages?: Record<string, number>;
+  /*
+    EMPLOYMENT-ATTRIBUTED figures: experiences people had working under managers AT THIS COMPANY.
+
+    A different question from the three above, which are affiliation: who works here. When a
+    manager changes employer their ratings move with them in the affiliation figures, which is
+    right for a directory and wrong for a section promising what it was like to work here. These
+    stay with the employer the rating was made about.
+
+    Optional because a build served before V101 is applied will not carry them, and the section
+    falls back on ABSENCE rather than on zero. A real zero is "nobody has rated working here" and
+    must still read as zero.
+  */
+  employmentReviews?: number;
+  employmentAvgRating?: number | null;
+  employmentManagerCount?: number;
+  employmentCategoryAverages?: Record<string, number>;
   managers: ManagerEntry[];
   /** The company this one belongs to, when it belongs to one. */
   partOf?: GroupCompany;
@@ -634,7 +652,33 @@ export default function CompanyProfile() {
     became an error boundary. The identical question on the industry profile had a guard; this one
     did not. Both now go through one place - see client/lib/categoryAverages.
   */
-  const { ranked: catEntries, strongest, weakest } = rankCategoryAverages(data.categoryAverages);
+  /*
+    THE MANAGER OPINIONS SECTION READS THE EMPLOYMENT-ATTRIBUTED POPULATION.
+
+    Its own words are "What people experienced reporting to managers at <company>", and until
+    Phase 5 it answered that with affiliation figures: the sum of the cached counts of whoever is
+    currently linked to this company. So a manager leaving took their ratings out of this section
+    and into their new employer's, which is not what anybody experienced.
+
+    The count, the average, the manager count and the category breakdown all come from the same
+    employment-attributed population, so the footnote's "N opinions across M managers" describes
+    one set of ratings rather than two.
+
+    Falling back on `undefined`, not on falsiness: a company nobody has rated reports 0 and null,
+    and that must keep reading as zero rather than silently showing the affiliation figure
+    instead. Only a response that does not carry the fields at all - an older build, or the window
+    before V101 is applied - falls back.
+  */
+  const employmentReviews = data.employmentReviews ?? data.totalReviews ?? 0;
+  const employmentManagers = data.employmentManagerCount ?? data.managerCount ?? 0;
+  const employmentAvg = data.employmentReviews !== undefined
+    ? data.employmentAvgRating ?? null
+    : data.avgRating ?? null;
+  const employmentCategories = data.employmentReviews !== undefined
+    ? data.employmentCategoryAverages
+    : data.categoryAverages;
+
+  const { ranked: catEntries, strongest, weakest } = rankCategoryAverages(employmentCategories);
   // Whether to show unlocked tiles in the results column
   const resultsUnlocked = searchResults !== null ? searchHasContributed : !isLocked;
   const canonicalUrl = `https://werkpages.com${companyPath(data.industrySlug, data.slug ?? companySlug)}`;
@@ -1011,10 +1055,10 @@ export default function CompanyProfile() {
              themselves in three different ways. */
           eyebrow="Manager opinions"
           subtitle={`What people experienced reporting to managers at ${data.name}`}
-          score={data.avgRating ?? null}
+          score={employmentAvg}
           // Manager reviews only - the workplace and interview tabs count their own.
           countLabel="review"
-          countValue={data.totalReviews ?? 0}
+          countValue={employmentReviews}
           locked={isLocked}
           /*
             Names the gate and offers the way out.
@@ -1042,8 +1086,11 @@ export default function CompanyProfile() {
           */
           metrics={[
             { icon: "managers",
-              value: String(data.managerCount ?? 0),
-              label: (data.managerCount ?? 0) === 1 ? "manager" : "managers" },
+              // The managers these opinions are ABOUT, not everybody affiliated with the company.
+              // The directory still counts the second; this section counts the first, and both
+              // numbers on this row now come from one population.
+              value: String(employmentManagers),
+              label: employmentManagers === 1 ? "manager" : "managers" },
           ]}
           /*
             The three highest and three lowest scoring categories - the same set the boxes below
@@ -1051,9 +1098,10 @@ export default function CompanyProfile() {
             company with two categories still says what they are.
           */
           highlightsFootnote={
-            `Based on ${data.totalReviews} ${data.totalReviews === 1 ? "review" : "reviews"} across ` +
-            `${data.managerCount} ${data.managerCount === 1 ? "manager" : "managers"}.` +
-            (data.totalReviews < 10 ? " Small sample size - treat as indicative only." : "")
+            `Based on ${employmentReviews} ${employmentReviews === 1 ? "review" : "reviews"} across ` +
+            `${employmentManagers} ${employmentManagers === 1 ? "manager" : "managers"} ` +
+            `at ${data.name}.` +
+            (employmentReviews < 10 ? " Small sample size - treat as indicative only." : "")
           }
           highlights={
             !isLocked

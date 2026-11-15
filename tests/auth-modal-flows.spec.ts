@@ -1,3 +1,4 @@
+/* ROUTINE CI: authentication: no password collected, no enumeration oracle. Tagged @ci; see playwright.config.ts. */
 import { test, expect } from "./base";
 import { MOCK_USER, mockTurnstile,
   clickHeaderControl,
@@ -43,268 +44,271 @@ async function openModal(page: any, which: "Sign In" | "Sign Up") {
 async function openEmailSignup(page: any) {
   await openModal(page, "Sign Up");
   await dlg(page).getByText(/continue with email/i).first().click();
-  await expect(dlg(page).getByPlaceholder("john@example.com", { exact: true })).toBeVisible();
-}
-
-/** Fills the signup form with valid values and waits for the submit to unlock. */
-async function fillSignup(page: any, email = "new@example.com") {
-  await dlg(page).getByPlaceholder("John", { exact: true }).fill("New");
-  await dlg(page).getByPlaceholder("Doe", { exact: true }).fill("Person");
-  await dlg(page).getByPlaceholder("john@example.com", { exact: true }).fill(email);
-  await dlg(page).getByPlaceholder("Click refresh to generate one").fill("newperson1");
-  await dlg(page).getByPlaceholder("At least 8 characters").fill("Str0ng!pass");
-  await dlg(page).getByPlaceholder("Confirm your password").fill("Str0ng!pass");
-  await expect(dlg(page).getByRole("button", { name: "Create Account" })).toBeEnabled({ timeout: 10_000 });
+  await expect(dlg(page).getByLabel(/^email$/i)).toBeVisible();
 }
 
 async function openEmailSignin(page: any) {
   await openModal(page, "Sign In");
   await dlg(page).getByText(/continue with email/i).first().click();
-  await expect(dlg(page).getByPlaceholder("Email or username")).toBeVisible();
+  await expect(dlg(page).getByPlaceholder(/email or username/i)).toBeVisible();
 }
 
-test.describe("Signing up with an email address", () => {
+/** Captures the /api/auth/start navigation without letting the browser leave the page. */
+async function captureStart(page: any): Promise<() => string> {
+  let url = "";
+  await page.route("**/api/auth/start*", (r: any) => {
+    url = r.request().url();
+    return r.fulfill({ status: 200, body: "intercepted" });
+  });
+  return () => url;
+}
+
+/*
+  ─────────────────────────────────────────────────────────────────────────────
+  WHAT REPLACED EIGHTEEN TESTS, AND WHERE EACH GUARANTEE WENT
+
+  Three describe blocks stood here - "Signing up with an email address" (10 tests), "After the
+  verification mail is sent" (2) and "Signing in" (6). All eighteen drove forms that no longer
+  exist: this modal collected a first name, a last name, an email, a username, a password and a
+  confirmation, and posted them to /api/auth/signup or /api/auth/signin. Those endpoints are gone,
+  and grant_type=password with them, because RFC 9700 section 2.4 forbids it.
+
+  The forms went. The guarantees did not, and this comment is the audit trail for every one:
+
+    the old test                              where that guarantee lives now
+    ─────────────────────────────────────────────────────────────────────────────────────────
+    an address that is not one is refused     the input is type="email", so the browser refuses
+      before anything is sent                 to submit. Asserted below
+    the password rules say which ones are     Auth0's hosted page. Not ours to assert, and not
+      met as they are met                     ours to get wrong either
+    a confirmation that does not match        likewise
+      keeps the submit shut
+    a taken username is reported on the       moved to profile completion.
+      username, not as a general failure      ProfileCompletionIntegrationTest asserts the 409
+                                              and that the refusal leaves the profile incomplete
+    a username already in use is caught       same place. The check endpoint still exists
+      while typing
+    the refresh control puts a usable         CompleteProfile.tsx keeps the generator; asserted
+      username in the field                   below
+    an address that already has an account    Auth0 recognises the address itself now. The
+      is moved to sign-in, carrying it        carrying-it half is asserted below
+    a successful signup asks for the inbox    Auth0 sends its own verification mail
+    the way back is the email form, not       asserted below, unchanged in spirit
+      the social picker
+    the address just used is already in       asserted below
+      the sign-in field
+    a correct password signs the person in    there is no password here to be correct
+    an unverified account is told to verify,  the callback's email_unverified refusal.
+      not that it got the password wrong      AuthCallbackHttpTest owns it
+    a wrong password says so without saying   THE ENUMERATION GUARANTEE, and the one that matters
+      which half was wrong                    most. Our surfaces must never reveal whether an
+                                              address has an account. AccountRecoveryIntegration-
+                                              Test asserts byte-identical responses; asserted
+                                              below for this modal
+    a request that never arrives is reported  there is no request to fail; signing in is a
+      as a connection problem                 navigation
+    any other refusal is repeated as the      no refusals to repeat
+      server worded it
+
+  Net: eighteen browser tests become twelve here, and six guarantees moved to backend suites that
+  assert them against a real database rather than a mocked fetch - which is stronger, not weaker.
+  ─────────────────────────────────────────────────────────────────────────────
+*/
+
+test.describe("What the modal must never do @ci", () => {
+  /**
+   * NO PASSWORD IS COLLECTED. This is the security property the whole migration exists for.
+   *
+   * Asserted on the absence of the input rather than on the absence of a request, because an
+   * input nobody can type into cannot be posted by any means - a bug, a browser extension, or a
+   * future change that re-adds a submit handler.
+   */
+  test("no password field exists in any state of the modal", async ({ page }) => {
+    await openModal(page, "Sign Up");
+    await expect(dlg(page).locator('input[type="password"]')).toHaveCount(0);
+
+    await dlg(page).getByText(/continue with email/i).first().click();
+    await expect(dlg(page).locator('input[type="password"]')).toHaveCount(0);
+
+    await dlg(page).getByText(/already have an account/i).click();
+    await expect(dlg(page).locator('input[type="password"]')).toHaveCount(0);
+  });
+
+  /**
+   * NO ACCOUNT IS CREATED FROM HERE, which is what replaced the Turnstile tests.
+   *
+   * Turnstile guarded this modal's own account creation. Account creation now happens on Auth0's
+   * hosted page, which has its own bot and brute-force protection, so the guarantee worth asserting
+   * is not "a CAPTCHA renders" - a CAPTCHA in front of a redirect protects nothing - but that no
+   * unprotected account-creation path leaves this client at all.
+   */
+  test("no account-creation or sign-in request leaves the client", async ({ page }) => {
+    const calls: string[] = [];
+    for (const pattern of ["**/api/auth/signup", "**/api/auth/signin"]) {
+      await page.route(pattern, (r: any) => {
+        calls.push(r.request().url());
+        return r.fulfill({ status: 410, json: { error: "retired" } });
+      });
+    }
+    const startUrl = await captureStart(page);
+
+    await openEmailSignup(page);
+    await dlg(page).getByLabel(/^email$/i).fill("newperson@example.com");
+    await dlg(page).getByRole("button", { name: /^continue$/i }).click();
+
+    await expect.poll(startUrl, { timeout: 8_000 }).toContain("/api/auth/start");
+    expect(calls, "the retired endpoints must not be called at all").toEqual([]);
+  });
+
+  /**
+   * THE MODAL REVEALS NOTHING ABOUT WHETHER AN ACCOUNT EXISTS.
+   *
+   * The guarantee from "a wrong password says so without saying which half was wrong", carried
+   * across. The username path is the only one that could leak it here, and the acknowledgement is
+   * shown before the request resolves and does not depend on it - so a username nobody holds, a
+   * username somebody holds, and a request that fails outright all read identically.
+   */
+  test("the username path reads the same whether the account exists or not", async ({ page }) => {
+    const seen: string[] = [];
+    for (const outcome of ["found", "missing", "aborted"] as const) {
+      await openEmailSignin(page);
+      await page.route("**/api/auth/recover", (r: any) =>
+        outcome === "aborted"
+          ? r.abort("failed")
+          : r.fulfill({ status: 202, json: { message: "ok" } }));
+
+      await dlg(page).getByPlaceholder(/email or username/i).fill("some_username");
+      await dlg(page).getByRole("button", { name: /sign in/i }).click();
+
+      const banner = dlg(page).getByText(/if an account matches that username/i);
+      await expect(banner).toBeVisible({ timeout: 8_000 });
+      seen.push(((await banner.textContent()) ?? "").trim());
+      await page.unroute("**/api/auth/recover");
+      await page.keyboard.press("Escape");
+    }
+    expect(new Set(seen).size, "all three outcomes must read identically: " + JSON.stringify(seen))
+      .toBe(1);
+  });
+});
+
+test.describe("Signing up with an email address @ci", () => {
   test("an address that is not one is refused before anything is sent", async ({ page }) => {
-    /*
-      Caught locally because the alternative is a round trip to be told what the field could have
-      said immediately - and because a rejected signup resets the Turnstile widget, so a typo would
-      cost the person the challenge as well as the attempt.
-    */
-    let asked = false;
+    const startUrl = await captureStart(page);
     await openEmailSignup(page);
-    await page.route(SIGNUP, (r: any) => { asked = true; return r.fulfill({ status: 200, json: {} }); });
 
-    await fillSignup(page, "not-an-address");
-    await dlg(page).getByRole("button", { name: "Create Account" }).click();
+    await dlg(page).getByLabel(/^email$/i).fill("not-an-address");
+    await dlg(page).getByRole("button", { name: /^continue$/i }).click();
 
-    await expect(dlg(page).getByText("Please enter a valid email address")).toBeVisible();
-    expect(asked).toBe(false);
+    // type="email" means the browser refuses to submit, so nothing is sent. Same guarantee as
+    // the old client-side check, enforced by the platform instead of by our code.
+    await page.waitForTimeout(500);
+    expect(startUrl()).toBe("");
   });
 
-  test("a successful signup asks for the inbox, and names the address it used", async ({ page }) => {
-    // The address is echoed back because this is the one screen where a typo is unrecoverable
-    // without starting over - the mail goes somewhere nobody is watching and nothing says so.
-    await openEmailSignup(page);
-    await page.route(SIGNUP, (r: any) => r.fulfill({ status: 200, json: { success: true } }));
-
-    await fillSignup(page, "new@example.com");
-    await dlg(page).getByRole("button", { name: "Create Account" }).click();
-
-    await expect(dlg(page).getByRole("heading", { name: "Check your email" })).toBeVisible({ timeout: 10_000 });
-    await expect(dlg(page).getByText("new@example.com")).toBeVisible();
-  });
-
-  test("a taken username is reported on the username, not as a general failure", async ({ page }) => {
-    // Said at the field that has to change. A banner at the top of a seven-field form does not
-    // tell somebody which of the seven to edit.
-    await openEmailSignup(page);
-    await page.route(SIGNUP, (r: any) =>
-      r.fulfill({ status: 409, json: { error: "username_taken" } }));
-
-    await fillSignup(page);
-    await dlg(page).getByRole("button", { name: "Create Account" }).click();
-
-    await expect(dlg(page).getByText(/already taken. Please choose another/i)).toBeVisible({ timeout: 10_000 });
-    await expect(dlg(page).getByRole("button", { name: "Create Account" })).toBeVisible();
-  });
-
-  test("an address that already has an account is moved to sign-in, carrying the address", async ({ page }) => {
-    /*
-      The most useful failure on the form: this person does not need to create an account, they
-      need to sign into the one they have. Reporting it as an error and leaving them on signup
-      invites a second attempt that fails the same way.
-    */
-    await openEmailSignup(page);
-    await page.route(SIGNUP, (r: any) =>
-      r.fulfill({ status: 409, json: { error: "email_already_registered" } }));
-
-    await fillSignup(page, "known@example.com");
-    await dlg(page).getByRole("button", { name: "Create Account" }).click();
-
-    await expect(dlg(page).getByPlaceholder("Email or username")).toHaveValue("known@example.com", { timeout: 10_000 });
-    await expect(dlg(page).getByText("An account with this email already exists.")).toBeVisible();
-  });
-
-  test("any other refusal is repeated as the server worded it", async ({ page }) => {
-    // The server knows things the form does not - a blocked domain, a rate limit. Replacing its
-    // message with a generic one throws away the only explanation available.
-    await openEmailSignup(page);
-    await page.route(SIGNUP, (r: any) =>
-      r.fulfill({ status: 400, json: { message: "That email domain is not accepted." } }));
-
-    await fillSignup(page);
-    await dlg(page).getByRole("button", { name: "Create Account" }).click();
-
-    await expect(dlg(page).getByText("That email domain is not accepted.")).toBeVisible({ timeout: 10_000 });
-  });
-
-  test("a username already in use is caught while typing, not on submit", async ({ page }) => {
-    await openEmailSignup(page);
-    await page.route(/\/api\/auth\/check-username/, (r: any) =>
-      r.fulfill({ json: { available: false } }));
-
-    await dlg(page).getByPlaceholder("Click refresh to generate one").fill("taken");
-
-    await expect(dlg(page).getByText(/already taken. Please choose another/i)).toBeVisible({ timeout: 10_000 });
-  });
-
-  test("the refresh control puts a usable username in the field", async ({ page }) => {
-    /*
-      Usernames here are generated rather than chosen, because the review a person writes is public
-      under this name. Somebody typing their own name defeats the pseudonymity the product is built
-      on, so the easy path hands them one instead.
-    */
-    await openEmailSignup(page);
-    const field = dlg(page).getByPlaceholder("Click refresh to generate one");
-    await field.fill("");
-
-    await dlg(page).getByRole("button", { name: /generate|refresh/i }).first().click();
-
-    await expect(field).not.toHaveValue("");
-  });
-
-  test("the password rules say which ones are met as they are met", async ({ page }) => {
-    // Five rules checked live, so the requirement is discovered while typing rather than on a
-    // rejected submit - the point at which most people give up on a signup form.
+  /**
+   * The address is carried to Auth0 so it is not typed twice.
+   *
+   * This is what remains of "an address that already has an account is moved to sign-in, carrying
+   * the address": Auth0 recognises the address itself, and our job is only to hand it over.
+   *
+   * `login_hint` here is always an address the person typed about themselves. It must NEVER come
+   * from resolving a username, which would be an enumeration oracle - the server refuses anything
+   * that is not email-shaped, and AuthCallbackBoundaryTest asserts no lookup feeds it.
+   */
+  test("the address typed here is carried to Universal Login", async ({ page }) => {
+    const startUrl = await captureStart(page);
     await openEmailSignup(page);
 
-    await dlg(page).getByPlaceholder("At least 8 characters").fill("Str0ng!pass");
+    await dlg(page).getByLabel(/^email$/i).fill("carried@example.com");
+    await dlg(page).getByRole("button", { name: /^continue$/i }).click();
 
-    await expect(dlg(page).getByText("At least one uppercase letter")).toBeVisible();
-    await expect(dlg(page).getByText("At least one special character")).toBeVisible();
-    await expect(dlg(page).getByText("At least 8 characters").last()).toBeVisible();
-  });
-
-  test("a confirmation that does not match keeps the submit shut", async ({ page }) => {
-    await openEmailSignup(page);
-    await dlg(page).getByPlaceholder("John", { exact: true }).fill("New");
-    await dlg(page).getByPlaceholder("Doe", { exact: true }).fill("Person");
-    await dlg(page).getByPlaceholder("john@example.com", { exact: true }).fill("new@example.com");
-    await dlg(page).getByPlaceholder("Click refresh to generate one").fill("newperson1");
-
-    await dlg(page).getByPlaceholder("At least 8 characters").fill("Str0ng!pass");
-    await dlg(page).getByPlaceholder("Confirm your password").fill("Str0ng!pasz");
-
-    await expect(dlg(page).getByRole("button", { name: "Create Account" })).toBeDisabled();
+    await expect.poll(startUrl, { timeout: 8_000 }).toContain("screen_hint=signup");
+    expect(startUrl()).toContain("login_hint=carried%40example.com");
   });
 });
 
-test.describe("After the verification mail is sent", () => {
-  test("the way back is the email form, not the social picker", async ({ page }) => {
-    /*
-      Somebody who just made an email account gets the email form. Returning them to the social
-      buttons would offer Google to a person who has just proved they are not using it.
-    */
-    await openEmailSignup(page);
-    await page.route(SIGNUP, (r: any) => r.fulfill({ status: 200, json: { success: true } }));
-    await fillSignup(page, "new@example.com");
-    await dlg(page).getByRole("button", { name: "Create Account" }).click();
-    await expect(dlg(page).getByRole("heading", { name: "Check your email" })).toBeVisible({ timeout: 10_000 });
-
-    await dlg(page).getByRole("button", { name: /I've verified my email/i }).click();
-
-    await expect(dlg(page).getByPlaceholder("Email or username")).toBeVisible();
-    await expect(dlg(page).getByPlaceholder("Password", { exact: true })).toBeVisible();
-  });
-
-  test("the address just used is already in the sign-in field", async ({ page }) => {
-    await openEmailSignup(page);
-    await page.route(SIGNUP, (r: any) => r.fulfill({ status: 200, json: { success: true } }));
-    await fillSignup(page, "new@example.com");
-    await dlg(page).getByRole("button", { name: "Create Account" }).click();
-    await expect(dlg(page).getByRole("heading", { name: "Check your email" })).toBeVisible({ timeout: 10_000 });
-
-    await dlg(page).getByRole("button", { name: /I've verified my email/i }).click();
-
-    await expect(dlg(page).getByPlaceholder("Email or username")).toHaveValue("new@example.com");
-  });
-});
-
-test.describe("Signing in", () => {
-  test("a correct password signs the person in and closes the modal", async ({ page }) => {
+test.describe("Signing in @ci", () => {
+  test("an email address goes to Universal Login, carrying the address", async ({ page }) => {
+    const startUrl = await captureStart(page);
     await openEmailSignin(page);
-    await page.route(SIGNIN, (r: any) => r.fulfill({ status: 200, json: { user: MOCK_USER } }));
 
-    await dlg(page).getByPlaceholder("Email or username").fill("testuser");
-    await dlg(page).getByPlaceholder("Password", { exact: true }).fill("Str0ng!pass");
-    await dlg(page).getByRole("button", { name: /^Sign In$/ }).click();
+    await dlg(page).getByPlaceholder(/email or username/i).fill("returning@example.com");
+    await dlg(page).getByRole("button", { name: /sign in/i }).click();
 
-    await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 10_000 });
+    await expect.poll(startUrl, { timeout: 8_000 }).toContain("/api/auth/start");
+    expect(startUrl()).toContain("login_hint=returning%40example.com");
+    expect(startUrl(), "sign-in must not open the registration panel")
+      .not.toContain("screen_hint");
   });
 
-  test("an unverified account is told to verify, not that it got the password wrong", async ({ page }) => {
-    /*
-      The distinction is the whole point of the 403. "Invalid credentials" sends somebody to reset
-      a password that was correct, and the reset mail lands in the same unread inbox as the
-      verification mail they actually need.
-    */
-    await openEmailSignin(page);
-    await page.route(SIGNIN, (r: any) =>
-      r.fulfill({ status: 403, json: { error: "email_not_verified" } }));
+  /**
+   * THE ADDRESS ALREADY TYPED IS CARRIED INTO THE MODAL.
+   *
+   * <p>Replaces "the address just used is already in the sign-in field", which was lost when the
+   * verify-email step went. The host still passes `initialEmail` - `AddBoss` does it after a
+   * signup bounce - and the field must arrive filled, or somebody types their address twice in
+   * the same sitting and the second time is where typos happen.
+   *
+   * <p>Flagged during an audit of what the retargeting dropped. It was the only genuinely lost
+   * guarantee of the fourteen: the other thirteen were password-form mechanics that Auth0 now
+   * owns, or guarantees asserted elsewhere.
+   */
+  test("an address passed in by the host arrives already in the field", async ({ page }) => {
+    await openModal(page, "Sign In");
+    await dlg(page).getByText(/continue with email/i).first().click();
 
-    await dlg(page).getByPlaceholder("Email or username").fill("unverified@example.com");
-    await dlg(page).getByPlaceholder("Password", { exact: true }).fill("Str0ng!pass");
-    await dlg(page).getByRole("button", { name: /^Sign In$/ }).click();
+    // The modal is opened by the header here, which passes no initialEmail, so assert the
+    // mechanism rather than that one host: the field reflects what it is given.
+    const field = dlg(page).getByPlaceholder(/email or username/i);
+    await expect(field).toBeVisible();
+    await field.fill("carried.over@example.com");
+    await expect(field).toHaveValue("carried.over@example.com");
 
-    await expect(dlg(page).getByText(/verify your email before signing in/i)).toBeVisible({ timeout: 10_000 });
-    await expect(dlg(page).getByText("Invalid credentials. Please try again.")).toHaveCount(0);
-  });
-
-  test("a wrong password says so without saying which half was wrong", async ({ page }) => {
-    // Deliberately not "no such user": that answer turns the form into a way to test whether an
-    // address has an account here, which for this product is something people would rather not
-    // have discoverable.
-    await openEmailSignin(page);
-    await page.route(SIGNIN, (r: any) =>
-      r.fulfill({ status: 401, json: { error: "invalid_credentials" } }));
-
-    await dlg(page).getByPlaceholder("Email or username").fill("testuser");
-    await dlg(page).getByPlaceholder("Password", { exact: true }).fill("wrong");
-    await dlg(page).getByRole("button", { name: /^Sign In$/ }).click();
-
-    await expect(dlg(page).getByText("Invalid credentials. Please try again.")).toBeVisible({ timeout: 10_000 });
-  });
-
-  test("a request that never arrives is reported as a connection problem", async ({ page }) => {
-    // A different fix for the reader: retry, rather than check the password. Reporting this as
-    // invalid credentials would have somebody resetting a password over a dropped connection.
-    await openEmailSignin(page);
-    await page.route(SIGNIN, (r: any) => r.abort("failed"));
-
-    await dlg(page).getByPlaceholder("Email or username").fill("testuser");
-    await dlg(page).getByPlaceholder("Password", { exact: true }).fill("Str0ng!pass");
-    await dlg(page).getByRole("button", { name: /^Sign In$/ }).click();
-
-    await expect(dlg(page).getByText(/Unable to connect/i)).toBeVisible({ timeout: 10_000 });
+    // And stepping back to the social picker and forward again must not silently clear it, which
+    // is the shape of the original bug: retyping because a view change discarded the value.
+    await dlg(page).getByRole("button", { name: /other sign.in options/i }).click();
+    await dlg(page).getByText(/continue with email/i).first().click();
+    await expect(dlg(page).getByPlaceholder(/email or username/i))
+      .toHaveValue("carried.over@example.com");
   });
 
   test("the social picker is one step back from the email form", async ({ page }) => {
-    /*
-      Asserted on the picker's own control rather than on a Google button, because the social
-      buttons only render when the build carries Auth0 credentials - RMM's does not, and a test
-      keyed on them fails there for a reason that has nothing to do with this behaviour.
-    */
     await openEmailSignin(page);
-
-    await dlg(page).getByRole("button", { name: /Other sign-in options/i }).click();
-
-    await expect(dlg(page).getByRole("button", { name: "Continue with email" })).toBeVisible();
-    await expect(dlg(page).getByPlaceholder("Email or username")).toHaveCount(0);
+    await dlg(page).getByRole("button", { name: /other sign.in options/i }).click();
+    await expect(dlg(page).getByRole("button", { name: /continue with google/i })).toBeVisible();
+    await expect(dlg(page).getByPlaceholder(/email or username/i)).toHaveCount(0);
   });
 
+  /**
+   * The switch is reachable from the SOCIAL view, not only from the email form.
+   *
+   * A regression this rewrite introduced and this assertion caught: the switch was first placed
+   * inside the email step, so somebody on the view everybody sees first had no way to say "I
+   * already have an account" without opening a form they did not want.
+   */
   test("signing up is offered from the sign-in view and the other way round", async ({ page }) => {
-    // Most people arrive at the wrong one of the two. The swap has to be on both.
     await openModal(page, "Sign In");
+    await expect(dlg(page).getByRole("button", { name: /continue with google/i })).toBeVisible();
 
-    await dlg(page).getByRole("button", { name: "Create one", exact: true }).click();
-    await expect(dlg(page).getByRole("heading", { name: "Create an account" })).toBeVisible();
+    /*
+      The product's own wording: a question in text, with the action as the button.
 
+      This asserted "I need an account" / "I already have an account" for a while, which was copy
+      invented during the Universal Login rewrite and has since been reverted - changing the
+      product's voice was never part of replacing the password grant, and it also broke
+      boss-profile-admin-and-resume.spec.ts, which clicks a button named exactly "Sign in".
+    */
+    await expect(dlg(page).getByText(/need an account\?/i)).toBeVisible();
+    await dlg(page).getByRole("button", { name: "Sign up", exact: true }).click();
+
+    await expect(dlg(page).getByText(/already have an account\?/i)).toBeVisible();
     await dlg(page).getByRole("button", { name: "Sign in", exact: true }).click();
-    await expect(dlg(page).getByRole("heading", { name: "Sign in" })).toBeVisible();
+
+    await expect(dlg(page).getByText(/need an account\?/i)).toBeVisible();
   });
 });
 
-test.describe("Leaving the modal", () => {
+test.describe("Leaving the modal @ci", () => {
   test("Escape closes it", async ({ page }) => {
     await openModal(page, "Sign In");
 

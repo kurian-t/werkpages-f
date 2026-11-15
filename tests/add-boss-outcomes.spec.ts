@@ -1,4 +1,6 @@
+/* ROUTINE CI: core submission: what the server accepts and refuses on a rating. Tagged @ci; see playwright.config.ts. */
 import { test, expect } from "./base";
+import { scopedDraftKey } from "../client/lib/draftScope";
 import { MOCK_USER, mockAddBossPage, rateAllFiveStars, attestFirstHandExperience, pickLocation } from "./fixtures";
 
 /**
@@ -60,7 +62,7 @@ async function completeForm(page: any) {
   call. Noted here because the messages read like live code and are not.
 */
 
-test.describe("A submission that works", () => {
+test.describe("A submission that works @ci", () => {
   test("it says what was submitted and what happens next", async ({ page }) => {
     /*
       Named, because somebody who has just typed a real person's name wants to see that name back -
@@ -94,7 +96,13 @@ test.describe("A submission that works", () => {
     await completeForm(page);
     await expect(page).toHaveURL(/\/managers\//, { timeout: 15_000 });
 
-    expect(await page.evaluate(() => localStorage.getItem("rmm_pending_manager"))).toBeNull();
+    /*
+      The key the form actually writes, which is scoped to the account. Asserted against the
+      unscoped key this would pass without proving anything, because nothing writes there any
+      more - see tests/draft-isolation.spec.ts.
+    */
+    expect(await page.evaluate((k: string) => localStorage.getItem(k),
+      scopedDraftKey("rmm_pending_manager", MOCK_USER.id))).toBeNull();
   });
 
   test("it counts as a contribution straight away", async ({ page }) => {
@@ -112,7 +120,7 @@ test.describe("A submission that works", () => {
   });
 });
 
-test.describe("A submission the server refuses", () => {
+test.describe("A submission the server refuses @ci", () => {
   test("a session that expired asks for a sign-in rather than showing an error", async ({ page }) => {
     /*
       A 401 means the form is fine and the session is not. An error banner here reads as a problem
@@ -166,7 +174,7 @@ test.describe("A submission the server refuses", () => {
   });
 });
 
-test.describe("When the work was already saved", () => {
+test.describe("When the work was already saved @ci", () => {
   /*
     The form auto-saves as it is filled in, so the submit at the end can arrive after the manager
     already exists - and the server answers "you have already reviewed this role", which is true

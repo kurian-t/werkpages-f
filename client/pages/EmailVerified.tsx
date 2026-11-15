@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
+import { MANAGER_DRAFT_KEY, REVIEW_DRAFT_KEY, peekAnyScopeDraft } from "@/lib/draftScope";
 
 /**
  * Landing page for Auth0 email verification redirects.
@@ -9,31 +11,29 @@ import { useNavigate } from "react-router-dom";
  */
 export default function EmailVerified() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   useEffect(() => {
-    // Check for a pending review draft first (has a manager-specific returnTo)
-    try {
-      const reviewRaw = localStorage.getItem("rmm_pending_review");
-      if (reviewRaw) {
-        const data = JSON.parse(reviewRaw);
-        if (data.returnTo) {
-          navigate(`${data.returnTo}?verified=true`, { replace: true });
-          return;
-        }
-      }
-    } catch {}
+    /*
+      Looked for in the account's scope and then the anonymous one, because drafts are keyed per
+      account now and somebody following a verification link may be signed in or not.
 
-    // Fall back to a pending manager submission
-    try {
-      const managerRaw = localStorage.getItem("rmm_pending_manager");
-      if (managerRaw) {
-        const data = JSON.parse(managerRaw);
-        if (data.returnTo) {
-          navigate(`${data.returnTo}?verified=true`, { replace: true });
-          return;
-        }
-      }
-    } catch {}
+      Only `returnTo` is read. Whether the ANSWERS may be applied is the form's decision, and it
+      turns on something this page cannot establish.
+    */
+    // A pending review first: it has a manager-specific returnTo.
+    const review = peekAnyScopeDraft<any>(REVIEW_DRAFT_KEY, user?.id);
+    if (review?.payload?.returnTo) {
+      navigate(`${review.payload.returnTo}?verified=true`, { replace: true });
+      return;
+    }
+
+    // Fall back to a pending manager submission.
+    const manager = peekAnyScopeDraft<any>(MANAGER_DRAFT_KEY, user?.id);
+    if (manager?.payload?.returnTo) {
+      navigate(`${manager.payload.returnTo}?verified=true`, { replace: true });
+      return;
+    }
 
     /*
       Nothing pending: go to sign-in and SAY the verification worked.

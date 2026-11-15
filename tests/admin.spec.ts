@@ -407,13 +407,21 @@ test.describe("Admin Panel", () => {
 
       const nameInput = page.getByPlaceholder("Manager name");
       const titleInput = page.getByPlaceholder("Job title");
-      const companyInput = page.getByPlaceholder("Company");
       await expect(nameInput).toBeVisible({ timeout: 3_000 });
       await expect(titleInput).toBeVisible();
-      await expect(companyInput).toBeVisible();
       await expect(nameInput).toHaveValue("John Doe");
       await expect(titleInput).toHaveValue("VP Engineering");
-      await expect(companyInput).toHaveValue("Foo Inc");
+
+      /*
+        The company is asked with CompanyField now, the same control every contribution form
+        uses, so a settled value presents as a card with the name on it and the input opens
+        behind "Edit company details". The admin makes that click too; this test makes it as
+        well rather than reaching for a bare box that is no longer the shape of the question.
+      */
+      const companyField = page.getByTestId("company-field");
+      await expect(companyField).toContainText("Foo Inc");
+      await companyField.getByRole("button", { name: /Edit company/i }).first().click();
+      await expect(companyField.locator("input").first()).toHaveValue("Foo Inc");
     });
 
     test("saving inline edit calls PUT /api/admin/managers/:id and updates the card", async ({ page }) => {
@@ -453,7 +461,10 @@ test.describe("Admin Panel", () => {
       await page.getByRole("button", { name: /edit manager/i }).first().click();
       await page.getByPlaceholder("Manager name").fill("John Updated");
       await page.getByPlaceholder("Job title").fill("CTO");
-      await page.getByPlaceholder("Company").fill("New Corp");
+      // Same one extra click the administrator makes: the company input is behind the card.
+      const companyField = page.getByTestId("company-field");
+      await companyField.getByRole("button", { name: /Edit company/i }).first().click();
+      await companyField.locator("input").first().fill("New Corp");
       await page.getByRole("button", { name: /^save$/i }).click();
 
       await expect(page.getByText("John Updated")).toBeVisible({ timeout: 3_000 });

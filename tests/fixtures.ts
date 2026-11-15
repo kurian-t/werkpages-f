@@ -305,6 +305,14 @@ export async function mockManagerPage(
   opts: {
     manager?: typeof MOCK_MANAGER;
     existingUserReviews?: typeof MOCK_EXISTING_REVIEW[];
+    /**
+     * The PUBLIC review feed, which is a different question from existingUserReviews.
+     *
+     * The real endpoint serves an author their own held rating in this feed - withholding it
+     * would leave them no way to know it exists - so a test about what the author sees has to be
+     * able to say so. Defaults to empty, which is what every existing caller relied on.
+     */
+    reviews?: any[];
     loggedIn?: boolean;
     hasContributed?: boolean;
     user?: typeof MOCK_USER;
@@ -322,6 +330,7 @@ export async function mockManagerPage(
   const {
     manager = MOCK_MANAGER,
     existingUserReviews = [],
+    reviews = [],
     loggedIn = false,
     hasContributed = true,
     user = MOCK_USER,
@@ -372,7 +381,7 @@ export async function mockManagerPage(
       if (url.includes("userId=")) {
         route.fulfill({ json: { data: existingUserReviews } });
       } else {
-        route.fulfill({ json: { data: [] } });
+        route.fulfill({ json: { data: reviews } });
       }
     }
   );

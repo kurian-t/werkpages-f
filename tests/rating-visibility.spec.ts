@@ -330,23 +330,30 @@ test.describe("CompanyProfile - locked state (≤3 real managers)", () => {
     await expect(page.getByText(/\b2 managers\b/)).not.toBeVisible();
   });
 
-  test("the review count IS shown when locked - the ratings are what is hidden", async ({ page }) => {
+  test("a locked header shows its notice and nothing else", async ({ page }) => {
     /*
-      CHANGED DELIBERATELY. This asserted the opposite: that a locked company hid how many reviews
-      it held. That rule is gone, and interviews.spec states the replacement twice with its
-      reasoning - "a locked page that will not even say how much it holds gives someone arriving
-      from search no reason to come back. The ratings stay hidden; the size of what is hidden does
-      not."
+      REVERSED BY PRODUCT DECISION, 27 October.
 
-      Kept as an explicit assertion rather than deleted, because the two positions are genuinely
-      different products and this is the one currently shipped: the score is withheld (never in the
-      DOM at all, per CompanyTabHeader), the sample size is not.
+      This asserted that a locked panel still stated how much was behind the lock, on the
+      reasoning that "a locked page that will not even say how much it holds gives someone
+      arriving from search no reason to come back".
+
+      That was overridden deliberately. The locked header now shows ONLY its notice on a plain
+      background, because the half-visible text behind it made the notice itself hard to read on a
+      phone, which is where most of this traffic is. Blurring that text was tried first and made it
+      worse: shapes behind words you are trying to read.
+
+      WHAT THIS COSTS, recorded rather than glossed over: a locked company page no longer states
+      its sample size anywhere, so the search-visitor argument above is genuinely lost. The
+      ratings list below the header is still shown blurred, which is what carries the sense that
+      there is something here.
     */
     await mockCompanyProfile(page, { loggedIn: false, hasContributed: false });
     await page.goto(`/companies/${TEST_COMPANY_SLUG}`);
 
     await expect(page.getByText("Alex Johnson")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/\b12 reviews\b/).last()).toBeVisible();
+    await expect(page.getByText(/insights are locked/i).first()).toBeVisible();
+    await expect(page.getByText(/\b12 reviews\b/)).toHaveCount(0);
   });
 
   test("'Company insights are locked' message is shown", async ({ page }) => {

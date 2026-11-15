@@ -5839,10 +5839,28 @@ function DesignObjectToolbar({
                     const attachment = shape.attachment;
                     if (!attachment) return;
 
+                    /*
+                      ALL THREE ATTACHMENT KINDS, because the union has three.
+
+                      This read `attachment.kind === "header" ? header : section`, which treated
+                      "not header" as "therefore section". A `page` attachment carries no padding
+                      and no sectionId, so that branch would have written
+                      `{ kind: "section", sectionId: undefined, padding }` - a malformed section
+                      attachment - converting a page-attached shape into a broken section-attached
+                      one.
+
+                      The control only renders for section and header, so the page case is
+                      unreachable today. It is handled rather than cast away because the guard and
+                      this handler are twenty lines apart and read `shape.attachment` separately:
+                      whichever of them changes first, the other will not corrupt the object.
+                    */
                     onChange({
-                      attachment: attachment.kind === "header"
-                        ? { kind: "header", padding }
-                        : { kind: "section", sectionId: attachment.sectionId, padding },
+                      attachment:
+                        attachment.kind === "header"
+                          ? { kind: "header", padding }
+                          : attachment.kind === "section"
+                            ? { kind: "section", sectionId: attachment.sectionId, padding }
+                            : attachment,
                     } as Partial<ShapeDesignObject>);
                   }}
                   style={{ width: 40, height: 27, border: "1px solid #e2e8f0", borderRadius: 5, padding: "0 4px", fontSize: 10 }}

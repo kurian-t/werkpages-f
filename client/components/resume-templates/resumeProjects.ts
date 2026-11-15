@@ -18,7 +18,13 @@ export interface ResumeProjectEntry {
   imageUrl: string;
 }
 
-type ResumeDataWithProjects = ResumeData & {
+/**
+ * `ResumeData` plus the projects list.
+ *
+ * Exported for the same reason `ResumeDesignWithObjects` is: the base interface stays stable and
+ * callers widen at the point of use. Tests need the same widening the runtime already does.
+ */
+export type ResumeDataWithProjects = ResumeData & {
   projects?: ResumeProjectEntry[];
 };
 

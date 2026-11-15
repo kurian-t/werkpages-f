@@ -8,6 +8,8 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
+import { scopedDraftKey } from "../client/lib/draftScope";
+
 import {
   mockManagerPage,
   mockAddBossPage,
@@ -23,6 +25,23 @@ import {
   TEST_MANAGER_SLUG,
   TEST_COMPANY_SLUG,
   pickLocation, answerLocation } from "./fixtures";
+
+
+/*
+  THE ANONYMOUS DRAFT SLOTS, named the way the application names them.
+
+  Drafts became account-scoped so one person's unfinished rating can never be restored under
+  another's sign-in: the key is now `<base>::<userId|anon>`. These tests seed the ANONYMOUS slot,
+  which is what somebody who has not signed in writes to.
+
+  Re-applied on 2026-11-11 after this file was restored from git to undo a bad cross-product file
+  copy - and the restore reverted to a commit that PREDATES draft scoping, silently taking these
+  constants with it. Six EmailVerified and Index tests went red seeding keys the application no
+  longer reads. An unstaged change is still a change; `git diff --cached` showing nothing meant
+  only that it was not staged.
+*/
+const ANON_REVIEW  = scopedDraftKey("rmm_pending_review", null);
+const ANON_MANAGER = scopedDraftKey("rmm_pending_manager", null);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -421,10 +440,10 @@ test.describe("BossProfile - edit review flow", () => {
 // ─── AddBoss - draft lifecycle edge cases ─────────────────────────────────────
 
 test.describe("AddBoss - draft lifecycle", () => {
-  test("expired draft (>12h) is silently discarded (line 262)", async ({ page }) => {
+  test("expired draft (>24h) is silently discarded (line 262)", async ({ page }) => {
     await mockAddBossPage(page, { loggedIn: false });
-    await page.addInitScript(() => {
-      localStorage.setItem("rmm_pending_manager", JSON.stringify({
+    await page.addInitScript((k: string) => {
+      localStorage.setItem(k, JSON.stringify({
         formData: {
           firstName: "OldDraftFirst", lastName: "Draft", title: "Manager",
           company: "OldCo", country: "", state: "", linkedinUrl: "", status: "active",
@@ -432,9 +451,9 @@ test.describe("AddBoss - draft lifecycle", () => {
         ratings: {},
         workedFrom: { month: "", year: "" },
         step: "info",
-        savedAt: Date.now() - (13 * 60 * 60 * 1000), // 13 h > 12-h DRAFT_TTL
+        savedAt: Date.now() - (25 * 60 * 60 * 1000), // 25 h > 24-h DRAFT_TTL, raised from 12
       }));
-    });
+    }, ANON_MANAGER);
     await page.goto("/add");
     await expect(page.getByText(/who is this manager/i)).toBeVisible({ timeout: 10000 });
     // Expired draft discarded - firstName input should be empty
@@ -445,9 +464,9 @@ test.describe("AddBoss - draft lifecycle", () => {
 
   test("malformed JSON in localStorage is caught and page loads normally (line 294)", async ({ page }) => {
     await mockAddBossPage(page, { loggedIn: false });
-    await page.addInitScript(() => {
-      localStorage.setItem("rmm_pending_manager", "{ not valid json: !!!}}}");
-    });
+    await page.addInitScript((k: string) => {
+      localStorage.setItem(k, "{ not valid json: !!!}}}");
+    }, ANON_MANAGER);
     await page.goto("/add");
     // Catch block at line 294 swallows the parse error - page loads normally
     await expect(page.getByText(/who is this manager/i)).toBeVisible({ timeout: 10000 });
@@ -571,29 +590,21 @@ test.describe("AccountSettings - review management", () => {
 
 // ─── SignUp - Try again button (corrected selector) ───────────────────────────
 
-test.describe("SignUp - username check failure flow", () => {
-  test("failed username check shows Try again button and clicking it re-fires check (line 289)", async ({ page }) => {
-    await page.route("**/api/auth/me", (route: any) =>
-      route.fulfill({ status: 401, json: { error: "Unauthorized" } })
-    );
-    await page.route("**/api/auth/check-username**", (route: any) =>
-      route.fulfill({ status: 503, json: { error: "Service unavailable" } })
-    );
-    await page.route(/\/api\/geo/, (route: any) =>
-      route.fulfill({ json: { country: "Canada", state: "ON", city: "Toronto" } })
-    );
-    await page.goto("/signup");
-    await expect(page.getByRole("heading", { name: /create account/i })).toBeVisible({ timeout: 10000 });
-    // Correct selector: placeholder="Click refresh to generate one" → use id="username"
-    const usernameInput = page.locator("input#username");
-    await expect(usernameInput).toBeVisible({ timeout: 8000 });
-    await usernameInput.clear();
-    await usernameInput.fill("testusername123");
-    // Wait for debounced check to fail → "Try again" button (line 286-290)
-    await expect(page.getByRole("button", { name: /try again/i })).toBeVisible({ timeout: 10000 });
-    // Click "Try again" - calls handleUsernameChange again (line 289)
-    await page.getByRole("button", { name: /try again/i }).click();
-    // Still fails → button remains visible
-    await expect(page.getByRole("button", { name: /try again/i })).toBeVisible({ timeout: 8000 });
-  });
-});
+/*
+  A "SignUp" BLOCK OF 1 TEST STOOD HERE, raising coverage on a page that no longer exists in
+  that form.
+
+  SignUp.tsx was 394 lines - names, email, username, password, confirmation, a strength checklist,
+  a live username check and a Turnstile widget, posted to /api/auth/signup. It is now about 100
+  lines whose whole job is to send the browser to Auth0's hosted registration page, because
+  collecting the password meant it passed through this application and the matching sign-in path
+  used grant_type=password, forbidden by RFC 9700 section 2.4.
+
+  Those tests covered branches that were deleted. Where the GUARANTEES went is recorded in
+  tests/signup.spec.ts, which carries a table naming all nine and their new homes, and in
+  ProfileCompletionIntegrationTest, which now asserts the username-taken and username-invalid
+  refusals against a real database instead of a mocked fetch.
+
+  A real reduction in browser-test count, explained rather than hidden: the component shrank by
+  about 75% and the tests exercising the removed 75% went with it.
+*/

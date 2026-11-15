@@ -2,6 +2,7 @@ import API_BASE from "@/lib/api";
 import React, { createContext, useState, useCallback, useEffect, ReactNode } from "react";
 import axios from "axios";
 import queryClient from "@/lib/queryClient";
+import { forgetAcknowledgedDrafts } from "@/lib/draftScope";
 
 export interface User {
   id: string;
@@ -33,7 +34,6 @@ export interface AuthContextType {
    */
   refreshUser: () => Promise<void>;
   isAuthenticated: boolean;
-  login: (username: string, password: string) => Promise<void>;
   signup: (data: SignupData) => Promise<void>;
   logout: () => void;
   deleteAccount: () => Promise<void>;
@@ -78,53 +78,104 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, []);
 
-  // Validate session on startup - refresh user data (including role) from the server
+  /*
+    Validate the session on startup, and KEEP ASKING if the server could not answer.
+
+    The cached user carries hasContributed, which is what every contribution gate on the site
+    reads. It goes stale the moment somebody rates a manager in another tab or on another device,
+    and this request is what refreshes it.
+
+    It used to try exactly once, and a failed attempt was dismissed with "retry will happen
+    naturally". Nothing retried. So a backend that was restarting, or a network blip, left the
+    reader holding a stale `hasContributed: false` - every rating on the directory blurred, the
+    whole site telling somebody who HAD contributed to go and contribute - until they happened to
+    reload at a moment the server was up. A comment is not a retry.
+
+    Bounded and backed off: four attempts over twelve seconds, then it stops. An unauthenticated
+    answer is still final and still signs them out; only a server that could not answer is
+    retried.
+  */
   useEffect(() => {
     if (!user) return;
-    axios.get(`${API_BASE}/api/auth/me`).then((res) => {
-      const fresh = { ...user, ...res.data };
-      setUserState(fresh);
-      localStorage.setItem("authUser", JSON.stringify(fresh));
-    }).catch((err) => {
-      const status = err?.response?.status;
-      if (status === 401 || status === 403 || status === 404) {
-        setUserState(null);
-        localStorage.removeItem("authUser");
-        queryClient.clear();
-        // Also clear the stale auth_token cookie server-side
-        axios.post(`${API_BASE}/api/auth/signout`, {}).catch(() => {});
-      }
-      // 502/503/504 = server still starting - keep cached user state, retry will happen naturally
-    });
+    let cancelled = false;
+    let attempt = 0;
+    const RETRY_DELAYS_MS = [1_000, 3_000, 8_000];
+
+    const validate = () => {
+      axios.get(`${API_BASE}/api/auth/me`).then((res) => {
+        if (cancelled) return;
+        const fresh = { ...user, ...res.data };
+        setUserState(fresh);
+        localStorage.setItem("authUser", JSON.stringify(fresh));
+      }).catch((err) => {
+        if (cancelled) return;
+        const status = err?.response?.status;
+        if (status === 401 || status === 403 || status === 404) {
+          setUserState(null);
+          localStorage.removeItem("authUser");
+          queryClient.clear();
+          // Also clear the stale auth_token cookie server-side
+          axios.post(`${API_BASE}/api/auth/signout`, {}).catch(() => {});
+          return;
+        }
+        // 502/503/504, or no response at all: the server could not answer, which says nothing
+        // about this session. Ask again.
+        if (attempt < RETRY_DELAYS_MS.length) {
+          const wait = RETRY_DELAYS_MS[attempt];
+          attempt += 1;
+          setTimeout(() => { if (!cancelled) validate(); }, wait);
+        }
+      });
+    };
+
+    validate();
+    return () => { cancelled = true; };
   }, []);
 
-  const login = useCallback(async (username: string, password: string) => {
-    if (!username || !password) throw new Error("Username and password are required");
-    const response = await axios.post(
-      `${API_BASE}/api/auth/signin`,
-      { email: username, password },
-      { headers: { "Content-Type": "application/json" } }
-    );
-    // Token is now in an HttpOnly cookie - just store user display data
-    const { user: userData } = response.data;
-    setUserState(userData);
-    localStorage.setItem("authUser", JSON.stringify(userData));
-  }, []);
+  /*
+    `login` IS GONE, and nothing replaced it in this file.
+
+    It posted an email and a password to /api/auth/signin, which exchanged them with Auth0 using
+    grant_type=password - forbidden by RFC 9700 section 2.4, because the password passes through
+    our hands and the grant cannot carry PKCE.
+
+    Signing in is now a navigation, not a function call: `startPasswordLogin` in client/lib/auth.ts
+    sends the browser to Auth0's hosted page, and the session arrives through /auth/callback. There
+    is deliberately no function here that takes a password, so none can be called by mistake.
+
+    It had no callers when it was removed, which is worth recording: it was reachable only through
+    a context value nothing destructured.
+  */
 
   const signup = useCallback(async (_data: SignupData) => {
     // Signup is handled directly in SignUp.tsx
   }, []);
 
   const logout = useCallback(async () => {
+    /*
+      TWO REQUIREMENTS THAT PULL IN OPPOSITE DIRECTIONS, and both are mandatory.
+
+      Nothing this account typed may be shown or submitted under another account on this browser.
+      And nothing the server has not accepted may be thrown away merely because somebody signed
+      out - an unacknowledged draft is the ONLY copy of those answers that exists.
+
+      Account-scoped storage satisfies the first: a draft written while signed in lives under that
+      account's key and is never read back for anybody else. So this only has to satisfy the
+      second, and it does the narrow thing: forget the drafts the server has already accepted,
+      because those can be fetched again on any device, and keep the rest where their rightful
+      owner will find them.
+    */
+    const leaving = user?.id;
     try {
       await axios.post(`${API_BASE}/api/auth/signout`, {});
     } catch {
       // Best-effort - clear local state regardless
     }
+    if (leaving) forgetAcknowledgedDrafts(leaving);
     setUserState(null);
     localStorage.removeItem("authUser");
     queryClient.clear();
-  }, []);
+  }, [user?.id]);
 
   const deleteAccount = useCallback(async () => {
     if (!user) throw new Error("No user logged in");
@@ -139,7 +190,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser,
     refreshUser,
     isAuthenticated: !!user,
-    login,
     signup,
     logout,
     deleteAccount,

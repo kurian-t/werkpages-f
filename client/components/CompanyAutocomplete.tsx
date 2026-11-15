@@ -54,6 +54,17 @@ interface Props {
    */
   initialDomain?: string | null;
   initialBrandfetchIconUrl?: string | null;
+  /**
+   * A logo already resolved for the value in this field, used when no domain is known.
+   *
+   * The mark inside the field was derived from a DOMAIN and nothing else, so a caller holding a
+   * real logo URL - the one the collapsed card was already showing - had no way to hand it over.
+   * Opening the editor therefore replaced a correct logo with a guess from the name, and
+   * "Meta Blueprint" guesses metablueprint.com while the real one is facebookblueprint.com.
+   * Staleness is the caller's to decide: CompanyField only passes a logo it has already checked
+   * belongs to the current value.
+   */
+  logoUrl?: string;
   onClear?: () => void;
   placeholder?: string;
   className?: string;
@@ -77,7 +88,7 @@ function suggestionLogoUrl(s: Suggestion): string | undefined {
   return s.logoUrl;
 }
 
-export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCompanyIdChange, onSuggestionPicked, onClear, placeholder, className, autoFocus, name, id, initialDomain, initialBrandfetchIconUrl }: Props) {
+export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCompanyIdChange, onSuggestionPicked, onClear, placeholder, className, autoFocus, name, id, initialDomain, initialBrandfetchIconUrl, logoUrl }: Props) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -306,7 +317,32 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
 
   const effectiveDomain = selectedDomain ?? (suppliedBelongsToValue ? initialDomain : null);
   const effectiveIcon   = selectedIcon   ?? (suppliedBelongsToValue ? initialBrandfetchIconUrl : null);
-  const inputLogoUrl = effectiveDomain ? logoDevUrlForDomain(effectiveDomain) : null;
+  /*
+    A domain wins when we have one, because it is the company's own identity rather than a URL
+    somebody passed us. Failing that, a logo the caller has already resolved for this exact value
+    is far better than the name-guess the fallback would otherwise reach for.
+  */
+  const inputLogoUrl = effectiveDomain ? logoDevUrlForDomain(effectiveDomain) : (logoUrl ?? null);
+
+  /*
+    WHETHER THE FIELD SHOWS A MARK AT ALL, which is not the same question as whether we know a
+    domain for it.
+
+    This was gated on inputLogoUrl, so the mark appeared only when a domain was known: a pick made
+    in this input, or one the caller threaded in. Opening an existing value for editing has
+    neither - the input mounts fresh, nothing has been picked yet - so clicking "Edit company
+    details" made the logo vanish from a field that had just been showing it. The collapsed card
+    renders CompanyLogoImg with the NAME and lets it resolve, so the card had a mark and the input
+    did not, for the same company, one click apart.
+
+    Now a settled value is enough, and CompanyLogoImg does what it does on the card: logo.dev for
+    a known domain, the resolved Brandfetch icon where we hold one, the company's initial where we
+    hold neither. The `typing` guard is untouched and still does its job - nothing is resolved for
+    "Goo" on the way to "Google", because a mark flickering at every keystroke is worse than no
+    mark at all.
+  */
+  const settledName = value.trim().length > 1 && !typing;
+  const showInputLogo = !!inputLogoUrl || settledName;
 
   const dropdown = open ? (
     <ul
@@ -366,7 +402,7 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
 
   return (
     <div ref={containerRef} className="relative">
-      {inputLogoUrl && (
+      {showInputLogo && (
         /*
           The shared chain, not a bare <img>. This hid itself on error, so when logo.dev's
           monthly quota ran out the field showed no mark at all even for a company whose logo
@@ -374,8 +410,11 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
         */
         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10">
           <CompanyLogoImg
+            /* Keyed on the name, so changing company re-resolves rather than keeping the previous
+               company's mark - the same reason the collapsed card is keyed this way. */
+            key={value}
             company={value}
-            logoUrl={inputLogoUrl}
+            logoUrl={inputLogoUrl ?? undefined}
             from={{ domain: effectiveDomain, brandfetchIconUrl: effectiveIcon }}
             sizeClass="h-4 w-4 rounded"
             eager
@@ -402,7 +441,9 @@ export function CompanyAutocomplete({ value, onChange, onSuggestionSelect, onCom
         placeholder={placeholder}
         autoFocus={autoFocus}
         maxLength={100}
-        className={`${className ?? ""} ${hasClearButton ? "pr-8" : ""} ${inputLogoUrl ? "pl-8" : ""}`}
+        /* The padding follows the mark rather than the domain, or the text would run under a
+           logo that is on screen. */
+        className={`${className ?? ""} ${hasClearButton ? "pr-8" : ""} ${showInputLogo ? "pl-8" : ""}`}
       />
       {hasClearButton && (
         <button

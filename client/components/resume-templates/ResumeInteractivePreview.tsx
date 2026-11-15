@@ -127,6 +127,7 @@ import {
   interactiveBindingDisplayName,
   resolveInteractiveObjectBinding,
   type InteractiveBindingOption,
+  asFieldBag,
 } from "./resumeInteractiveBindings";
 import {
   getResumeWebExperienceState,
@@ -1432,9 +1433,7 @@ function interactiveBoundEditorFields(
     const index = Number(binding.entryId);
     const links = Array.isArray(data.extraLinks) ? data.extraLinks : [];
     if (!Number.isInteger(index) || index < 0 || index >= links.length) return [];
-    const link = links[index] && typeof links[index] === "object"
-      ? (links[index] as Record<string, unknown>)
-      : {};
+    const link = asFieldBag(links[index]);
     if (field === "entry") {
       return [
         { key: "label", label: "Label", value: resumeEditorText(link.label) },

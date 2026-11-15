@@ -65,17 +65,52 @@ const ALIASES: Array<[string, RegExp]> = [
   ["South Korea", /Korea/],
 ];
 
-type State = "ok" | "stale" | "absent" | "throttled";
+type State = "ok" | "stale" | "erroring" | "absent" | "throttled";
 let cached: State | null = null;
+/** Filled when the state is "erroring", so the message can name the status instead of guessing. */
+let erroringDetail = "";
 
-async function suggest(request: APIRequestContext, q: string) {
-  const res = await request.get(
-    `/api/company-locations/suggest?q=${encodeURIComponent(q)}`, { timeout: 60_000 });
-  if (!res.ok()) throw new HttpError(res.status(), q);
-  return (await res.json()) as Array<Record<string, any>>;
+/**
+ * HOW LONG A THROTTLED REQUEST WAITS FOR THE LIMITER TO LET IT THROUGH.
+ *
+ * <p>The limiter is 200 requests/min per IP on a sliding window (`RateLimitHandler`, constructed
+ * in `MainVerticle`). Every test here reaches the backend through the Vite proxy, so the whole
+ * suite arrives from one address and a heavier spec can spend the budget before this one starts.
+ * The window slides, so capacity returns on its own, which is what turns a drained budget from a
+ * verdict into a delay. Nothing waits unless a 429 actually arrives.
+ */
+const THROTTLE_BUDGET_MS = 75_000;
+const THROTTLE_RETRY_MS  = 5_000;
+
+/*
+  The test timeout has to cover that wait and nothing else. Every assertion keeps its own much
+  shorter timeout, so a dropdown that genuinely never fills still fails in 20 seconds rather than
+  sitting here for two minutes.
+*/
+test.beforeEach(() => {
+  test.setTimeout(THROTTLE_BUDGET_MS + 90_000);
+});
+
+/** The probe's query. Its answer is kept, so establishing the state costs no extra request. */
+const PROBE_QUERY = "United States";
+let probeRows: Array<Record<string, any>> | null = null;
+
+/** 429, at any stage. Its own type because it says nothing whatever about the search. */
+class Throttled extends Error {
+  constructor(q: string, waitedMs: number) {
+    super(`suggest("${q}") was still rate limited after ${Math.round(waitedMs / 1000)}s of waiting`);
+  }
 }
 
-/** Carries the status, because 429, 503 and "nothing listening" are three different things. */
+/** Nothing listening. Kept apart from a bad answer: one is an absent server, one is a defect. */
+class Unreachable extends Error {
+  constructor(q: string, reason: unknown) {
+    super(`suggest("${q}") reached no backend: `
+      + (reason instanceof Error ? reason.message : String(reason)));
+  }
+}
+
+/** Answered, but not 200 and not 429. A 500 is the server being wrong, which is not absence. */
 class HttpError extends Error {
   constructor(readonly status: number, q: string) {
     super(`suggest("${q}") returned HTTP ${status}`);
@@ -83,30 +118,99 @@ class HttpError extends Error {
 }
 
 /**
- * Which of the four states the backend is in.
+ * One suggest call, which waits out a drained rate limiter rather than reporting it as something
+ * it is not.
  *
- * <p>This collapsed every non-200 into "absent", and a full suite proved why that is wrong: the
- * rate limiter answers 429 once a thousand other tests have been through the proxy, so a backend
- * that was up and correct was reported as missing. An unavailable service, a throttled one and a
- * stale one need different answers, and a test that cannot tell them apart sends whoever reads it
- * looking for the wrong problem.
+ * <p>429 is checked on EVERY attempt, not only the first. The earlier version checked once, in
+ * the probe, so a limiter drained partway through a run surfaced as an ordinary assertion
+ * failure - "United States did not come back as a country" - which reads exactly like a backend
+ * older than the fix. Both verdicts were produced in one session against a jar built minutes
+ * earlier, while curl to the same endpoint answered correctly at the same moment.
+ */
+async function rawSuggest(request: APIRequestContext, q: string) {
+  const started = Date.now();
+  for (;;) {
+    let res;
+    try {
+      res = await request.get(
+        `/api/company-locations/suggest?q=${encodeURIComponent(q)}`, { timeout: 60_000 });
+    } catch (err) {
+      throw new Unreachable(q, err);
+    }
+    if (res.status() !== 429) {
+      if (!res.ok()) {
+        /*
+          A 5xx that is not JSON is the VITE PROXY reporting that it could not reach the
+          backend, not the backend answering badly. Through a proxy a refused connection
+          arrives as a 500 with text/plain, never as a connection error, so without this it
+          reads as a server fault and sends the reader to study a log that does not exist.
+          The backend's own errors are JSON.
+        */
+        const ctype = res.headers()["content-type"] ?? "";
+        if (res.status() >= 500 && !ctype.includes("json")) {
+          throw new Unreachable(q,
+            `the proxy answered ${res.status()} ${ctype || "with no content type"}`);
+        }
+        throw new HttpError(res.status(), q);
+      }
+      return (await res.json()) as Array<Record<string, any>>;
+    }
+    const waited = Date.now() - started;
+    if (waited >= THROTTLE_BUDGET_MS) throw new Throttled(q, waited);
+    await new Promise((resolve) => setTimeout(resolve, THROTTLE_RETRY_MS));
+  }
+}
+
+/**
+ * What the tests call: the same request, with the one outcome that is not about the search turned
+ * into a skip instead of a failure.
+ *
+ * <p>Everything else still fails. A 200 carrying the wrong country is the regression this whole
+ * file exists for, and nothing here softens it.
+ */
+async function suggest(request: APIRequestContext, q: string) {
+  try {
+    return await rawSuggest(request, q);
+  } catch (err) {
+    if (err instanceof Throttled) test.skip(true, [err.message, "", THROTTLED].join("\n"));
+    throw err;
+  }
+}
+
+/**
+ * Which state the backend is in.
+ *
+ * <p>This once collapsed every non-200 into "absent", and a full suite proved why that is wrong.
+ * An absent service, a throttled one, an erroring one and a stale one need four different
+ * answers, and a probe that cannot tell them apart sends whoever reads it after the wrong
+ * problem - which is exactly what happened: a correct backend was reported as stale.
  */
 async function backendState(request: APIRequestContext): Promise<State> {
   if (cached) return cached;
   try {
-    const rows = await suggest(request, "United States");
+    const rows = await rawSuggest(request, PROBE_QUERY);
+    probeRows = rows;
     const top = rows[0];
     cached = top?.kind === "geo" && top?.precision === "country" ? "ok" : "stale";
   } catch (err) {
-    cached = err instanceof HttpError && err.status === 429 ? "throttled" : "absent";
+    if (err instanceof Throttled) {
+      cached = "throttled";
+    } else if (err instanceof Unreachable) {
+      cached = "absent";
+    } else {
+      cached = "erroring";
+      erroringDetail = err instanceof Error ? err.message : String(err);
+    }
   }
   return cached;
 }
 
 const STALE = [
-  'The backend answered, but "United States" did not come back as a country.',
+  'The backend answered 200, but "United States" did not come back as a country.',
   "That is what a process older than the fix looks like: it serves the behaviour it was built",
-  "with. Rebuild and restart it, then run this again:",
+  "with. This is a REAL failure - the limiter was ruled out before you got here, because a 429",
+  "is waited out and then skipped, never reported as this. Rebuild and restart it, then run",
+  "this again:",
   "",
   "  cd <backend repo> && mvn -o clean package -DskipTests",
   "  kill <pid listening on the API port>   # exact pid, never pkill -f",
@@ -120,21 +224,79 @@ const ABSENT = [
   "Start the backend for this product and run again.",
 ].join("\n");
 
-/** Fails on a stale backend, fails locally on a missing one, and skips only in CI. */
+/** A server fault is not an environment problem, so it says so rather than blaming the limiter. */
+function erroring() {
+  return [
+    "The backend answered the suggest endpoint with an error status. That is neither a missing",
+    "server nor a throttled one:",
+    "",
+    `  ${erroringDetail}`,
+    "",
+    "Read the backend log. Nothing here is a test environment problem.",
+  ].join("\n");
+}
+
+/**
+ * INCONCLUSIVE, and deliberately not a pass.
+ *
+ * <p>A skip is the only honest verdict when the limiter never let the request through: country
+ * search was not verified, and it was not disproved either. It must never be counted as a
+ * successful location check, so read the skip count as work still to do.
+ */
 const THROTTLED = [
-  "The backend is up and answering 429: the local rate limiter is exhausted.",
-  "A full suite puts a thousand requests through the same proxy, so these tests are skipped",
-  "rather than failed - the limiter saying no is not the search being wrong. Run this spec on",
-  "its own to exercise it for real.",
+  `INCONCLUSIVE: the backend is up, but still answering 429 after ${THROTTLE_BUDGET_MS / 1000}s`,
+  "of waiting for the sliding window to let the request through.",
+  "",
+  "This is NOT a pass. Nothing about country search was verified, and nothing was disproved.",
+  "The limiter is 200 requests/min per IP and every spec in the suite arrives through the same",
+  "proxy, so a heavier spec can spend the budget before this one runs.",
+  "",
+  "Verify it for real by running this spec on its own:",
+  "",
+  "  npx playwright test tests/location-country-live.spec.ts --project=chromium",
 ].join("\n");
 
-/** Fails on a stale backend, fails locally on a missing one, and skips when CI or the limiter says so. */
+/**
+ * The browser's OWN suggest calls, watched for a 429.
+ *
+ * <p>The API tests can wait the limiter out because they own the request. A dropdown cannot: the
+ * page fires it, and a throttled response simply leaves the list empty - which looks identical to
+ * the server returning the wrong thing. Without this, a drained limiter reads as the reported bug.
+ */
+const throttledPages = new WeakSet<object>();
+
+function watchForThrottle(page: any) {
+  page.on("response", (res: any) => {
+    if (res.status() === 429 && res.url().includes("/api/company-locations/suggest")) {
+      throttledPages.add(page);
+    }
+  });
+}
+
+const DROPDOWN_THROTTLED = [
+  "INCONCLUSIVE: the dropdown stayed empty because the page's own suggest call was answered 429.",
+  "",
+  "An empty list is what the reported bug looked like as well, so this is deliberately neither a",
+  "failure nor a pass. Run this spec on its own to verify the dropdown for real.",
+].join("\n");
+
+/** Visible, or skipped when the limiter is why it is not. Every other reason still fails. */
+async function expectOffered(page: any, locator: any, what: string) {
+  try {
+    await expect(locator, what).toBeVisible({ timeout: 20_000 });
+  } catch (err) {
+    if (throttledPages.has(page)) test.skip(true, DROPDOWN_THROTTLED);
+    throw err;
+  }
+}
+
+/** Fails on a stale or erroring backend, fails locally on a missing one, skips when throttled. */
 async function requireLiveBackend(request: APIRequestContext) {
   const state = await backendState(request);
   test.skip(state === "absent" && !!process.env.CI,
     "CI runs the client against a prebuilt bundle with no backend; nothing to query.");
   test.skip(state === "throttled", THROTTLED);
-  expect(state, state === "stale" ? STALE : ABSENT).toBe("ok");
+  expect(state, state === "stale" ? STALE : state === "erroring" ? erroring() : ABSENT).toBe("ok");
 }
 
 test.describe("country search against the real corpus", () => {
@@ -142,7 +304,13 @@ test.describe("country search against the real corpus", () => {
   test("every full country name resolves to its own country", async ({ request }) => {
     await requireLiveBackend(request);
     for (const [typed, expected] of FULL_NAMES) {
-      const rows = await suggest(request, typed);
+      /*
+        The probe already asked PROBE_QUERY to establish the backend's state and kept the answer,
+        so reusing it here leaves this spec one request smaller against a budget it shares with
+        every other spec in the suite.
+      */
+      const rows = typed === PROBE_QUERY && probeRows
+        ? probeRows : await suggest(request, typed);
       const top = rows[0];
       expect(top, `"${typed}" returned nothing`).toBeTruthy();
       expect(top.kind, `"${typed}" led with a ${top?.kind}, not geography`).toBe("geo");
@@ -232,6 +400,7 @@ test.describe("country search against the real corpus", () => {
 test.describe("the dropdown a person actually sees", () => {
 
   async function openAddManager(page: any) {
+    watchForThrottle(page);
     await page.route("**/api/auth/me", (r: any) => r.fulfill({ json: MOCK_USER }));
     await page.route(/\/api\/geo/, (r: any) => r.fulfill({ json: { country: "Canada" } }));
     await page.route("**/api/companies/suggest**", (r: any) => r.fulfill({ json: [] }));
@@ -257,20 +426,23 @@ test.describe("the dropdown a person actually sees", () => {
       Reported as not working in the browser even while the endpoint answered correctly, so this
       asserts what is on SCREEN rather than what the server returned.
     */
-    await expect(page.getByText(/^United States$/).first()).toBeVisible({ timeout: 20_000 });
+    await expectOffered(page, page.getByText(/^United States$/).first(),
+      'the dropdown never offered "United States"');
   });
 
   test("typing a city with its country offers that city", async ({ page, request }) => {
     await requireLiveBackend(request);
     await openAddManager(page);
     await typeLocation(page, "Washington, United States");
-    await expect(page.getByText(/Washington/).first()).toBeVisible({ timeout: 20_000 });
+    await expectOffered(page, page.getByText(/Washington/).first(),
+      "the dropdown never offered Washington");
   });
 });
 
 test.describe("the location field, against the real corpus", () => {
 
   async function openAddManager(page: any) {
+    watchForThrottle(page);
     // Auth and company lookups are mocked because they are not what is under test. The location
     // suggest endpoint deliberately is NOT.
     await page.route("**/api/auth/me", (r: any) => r.fulfill({ json: MOCK_USER }));
@@ -299,7 +471,8 @@ test.describe("the location field, against the real corpus", () => {
       The reported symptom, in the browser, with nothing mocked between the field and the corpus:
       "nothing in the drop down appears". What actually appeared was eight businesses.
     */
-    await expect(page.getByText(/^United States$/).first()).toBeVisible({ timeout: 20_000 });
+    await expectOffered(page, page.getByText(/^United States$/).first(),
+      'the dropdown never offered "United States"');
   });
 
   test("an existing country can be replaced by a different one", async ({ page, request }) => {
@@ -308,7 +481,7 @@ test.describe("the location field, against the real corpus", () => {
 
     await typeLocation(page, "Toronto");
     const toronto = page.getByText(/Toronto, Ontario, Canada/).first();
-    await expect(toronto).toBeVisible({ timeout: 20_000 });
+    await expectOffered(page, toronto, 'the dropdown never offered "Toronto, Ontario, Canada"');
     await toronto.click();
 
     /*
@@ -318,7 +491,7 @@ test.describe("the location field, against the real corpus", () => {
     */
     await typeLocation(page, "United Kingdom");
     const uk = page.getByText(/^United Kingdom$/).first();
-    await expect(uk).toBeVisible({ timeout: 20_000 });
+    await expectOffered(page, uk, 'the dropdown never offered "United Kingdom"');
     await uk.click();
 
     await expect(page.getByText(/United Kingdom/).first()).toBeVisible();

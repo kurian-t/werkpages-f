@@ -1,155 +1,71 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-/**
- * Guards the build-time failure modes for social login:
- *
- *  1. An Auth0 value baked into the bundle with a trailing newline puts a control character
- *     inside the /authorize hostname.
- *  2. A build with the Auth0 vars missing entirely renders buttons that navigate to
- *     "https://undefined/authorize".
- *  3. A build missing VITE_AUTH0_AUDIENCE gets an opaque access token back from Auth0, which
- *     then fails JWT validation on every API call.
- *
- * The module reads import.meta.env at import time, so each case re-imports with a stubbed env.
- */
-async function loadAuth(env: Record<string, string | undefined>) {
-  vi.resetModules();
-  vi.stubEnv("VITE_AUTH0_DOMAIN", env.VITE_AUTH0_DOMAIN ?? "");
-  vi.stubEnv("VITE_AUTH0_CLIENT_ID", env.VITE_AUTH0_CLIENT_ID ?? "");
-  vi.stubEnv("VITE_AUTH0_AUDIENCE", env.VITE_AUTH0_AUDIENCE ?? "https://api.werkpages.com/");
-  return await import("./auth");
-}
+/*
+  WHAT THIS FILE USED TO TEST, AND WHY IT NO LONGER DOES.
 
-const CONFIGURED = {
-  VITE_AUTH0_DOMAIN: "ratemymanager.ca.auth0.com",
-  VITE_AUTH0_CLIENT_ID: "client-123",
-  VITE_AUTH0_AUDIENCE: "https://api.werkpages.com/",
-};
+  startSocialLogin used to build the Auth0 /authorize URL in the browser and keep `state` and the
+  returnTo in sessionStorage. Most of the old tests here were about that URL: trimming a trailing
+  newline out of the domain, never navigating to "https://undefined/authorize", remembering to
+  send the audience. They were good tests of a design that has been removed.
 
-describe("Auth0 build-time config", () => {
-  let hrefSetter: ReturnType<typeof vi.fn>;
+  The browser no longer builds that URL. The server mints the state and the PKCE verifier, keeps
+  the verifier where no script can reach it, and redirects. So the whole class of bug those tests
+  guarded - a malformed authorize URL assembled from build-time config - is now structurally
+  impossible rather than merely tested for.
+
+  What is left worth asserting is the new contract: both entry points navigate to the backend,
+  name their connection, and carry a returnTo.
+*/
+describe("starting a login", () => {
+  let href: string;
 
   beforeEach(() => {
-    hrefSetter = vi.fn();
-    // The suite runs in the node environment - provide only what lib/auth touches.
-    const store = new Map<string, string>();
-    vi.stubGlobal("sessionStorage", {
-      getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
-      setItem: (k: string, v: string) => void store.set(k, v),
-      removeItem: (k: string) => void store.delete(k),
-      clear: () => store.clear(),
-    });
+    href = "";
     vi.stubGlobal("window", {
       location: {
-        origin: "https://werkpages.com",
-        pathname: "/find",
-        search: "",
-        set href(v: string) {
-          hrefSetter(v);
-        },
-        get href() {
-          return "https://werkpages.com/find";
-        },
+        pathname: "/add", search: "", origin: "http://localhost",
+        set href(value: string) { href = value; },
+        get href() { return href; },
       },
     });
-    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("sends a social login to the backend, not to Auth0", async () => {
+    const { startSocialLogin } = await import("./auth");
+    startSocialLogin("google-oauth2", "/companies/acme");
+    expect(href).toContain("/api/auth/start");
+    expect(href).toContain("connection=google-oauth2");
+    expect(href).toContain("returnTo=%2Fcompanies%2Facme");
+    // The browser must not be constructing an Auth0 URL any more.
+    expect(href).not.toContain("/authorize");
   });
 
-  it("trims a trailing newline off the Auth0 domain", async () => {
-    const auth = await loadAuth({ ...CONFIGURED, VITE_AUTH0_DOMAIN: "ratemymanager.ca.auth0.com\n" });
-    expect(auth.AUTH0_DOMAIN).toBe("ratemymanager.ca.auth0.com");
+  it("sends email and password through the same flow, as a connection", async () => {
+    const { startPasswordLogin } = await import("./auth");
+    startPasswordLogin("/add");
+    expect(href).toContain("/api/auth/start");
+    expect(href).toContain("connection=Username-Password-Authentication");
   });
 
-  it("trims surrounding whitespace off the client id", async () => {
-    const auth = await loadAuth({ ...CONFIGURED, VITE_AUTH0_CLIENT_ID: "  client-123\n" });
-    expect(auth.AUTH0_CLIENT_ID).toBe("client-123");
+  it("falls back to the current page when no returnTo is given", async () => {
+    const { startSocialLogin } = await import("./auth");
+    startSocialLogin("google-oauth2");
+    expect(href).toContain("returnTo=%2Fadd");
   });
 
-  it("trims surrounding whitespace off the audience", async () => {
-    const auth = await loadAuth({
-      ...CONFIGURED,
-      VITE_AUTH0_AUDIENCE: "  https://api.werkpages.com/\n",
-    });
-    expect(auth.AUTH0_AUDIENCE).toBe("https://api.werkpages.com/");
-  });
-
-  it("builds an authorize URL with no control characters in the host", async () => {
-    const auth = await loadAuth({ ...CONFIGURED, VITE_AUTH0_DOMAIN: "ratemymanager.ca.auth0.com\n" });
-    auth.startSocialLogin("google-oauth2");
-
-    expect(hrefSetter).toHaveBeenCalledTimes(1);
-    const url = hrefSetter.mock.calls[0][0] as string;
-    expect(url).not.toMatch(/[\n\r\t]/);
-    expect(new URL(url).host).toBe("ratemymanager.ca.auth0.com");
-    expect(new URL(url).searchParams.get("redirect_uri")).toBe(
-      "https://werkpages.com/auth/callback"
-    );
-    expect(new URL(url).searchParams.get("connection")).toBe("google-oauth2");
-  });
-
-  it("sends the audience on the authorize URL so Auth0 issues a JWT access token", async () => {
-    const auth = await loadAuth(CONFIGURED);
-    auth.startSocialLogin("google-oauth2");
-
-    const url = hrefSetter.mock.calls[0][0] as string;
-    expect(new URL(url).searchParams.get("audience")).toBe("https://api.werkpages.com/");
-    // openid must survive alongside the audience - handleCallback calls /userinfo with this token.
-    expect(new URL(url).searchParams.get("scope")).toBe("openid profile email");
-  });
-
-  it("requests the Werkpages API, not RateMyManagers - the two share a tenant", async () => {
-    const auth = await loadAuth(CONFIGURED);
-    auth.startSocialLogin("google-oauth2");
-
-    const audience = new URL(hrefSetter.mock.calls[0][0] as string).searchParams.get("audience");
-    expect(audience).not.toBe("https://api.ratemymanager.com/");
-  });
-
-  it("reports social login as unconfigured when the domain is missing", async () => {
-    const auth = await loadAuth({ ...CONFIGURED, VITE_AUTH0_DOMAIN: "" });
-    expect(auth.isSocialLoginConfigured()).toBe(false);
-  });
-
-  it("reports social login as unconfigured when the client id is missing", async () => {
-    const auth = await loadAuth({ ...CONFIGURED, VITE_AUTH0_CLIENT_ID: "" });
-    expect(auth.isSocialLoginConfigured()).toBe(false);
-  });
-
-  it("reports social login as unconfigured when the audience is missing", async () => {
-    const auth = await loadAuth({ ...CONFIGURED, VITE_AUTH0_AUDIENCE: "" });
-    expect(auth.isSocialLoginConfigured()).toBe(false);
-  });
-
-  it("reports social login as configured when all three values are present", async () => {
-    const auth = await loadAuth(CONFIGURED);
-    expect(auth.isSocialLoginConfigured()).toBe(true);
-  });
-
-  it("never navigates to https://undefined/authorize when the config is missing", async () => {
-    const auth = await loadAuth({
-      VITE_AUTH0_DOMAIN: "",
-      VITE_AUTH0_CLIENT_ID: "",
-      VITE_AUTH0_AUDIENCE: "",
-    });
-    auth.startSocialLogin("google-oauth2");
-    expect(hrefSetter).not.toHaveBeenCalled();
-  });
-
-  it("stores the OAuth state and returnTo before redirecting", async () => {
-    const auth = await loadAuth(CONFIGURED);
-    auth.startSocialLogin("google-oauth2", "/add");
-
-    const state = sessionStorage.getItem("oauth_state");
-    expect(state).toBeTruthy();
-    expect(sessionStorage.getItem("oauth_return_to")).toBe("/add");
-    // The state in the URL must match what was stored, or AuthCallback cannot verify it.
-    const url = hrefSetter.mock.calls[0][0] as string;
-    expect(new URL(url).searchParams.get("state")).toBe(state);
+  it("keeps no OAuth state in sessionStorage", async () => {
+    /*
+      The regression test for the reason the old design failed. A value the browser holds cannot
+      bind a login to that browser, because an attacker owns their own browser's storage. If
+      state or returnTo ever go back into sessionStorage, the binding has been moved somewhere it
+      cannot work.
+    */
+    const setItem = vi.fn();
+    vi.stubGlobal("sessionStorage", { setItem, getItem: () => null, removeItem: vi.fn() });
+    const { startSocialLogin } = await import("./auth");
+    startSocialLogin("google-oauth2", "/add");
+    expect(setItem).not.toHaveBeenCalled();
   });
 });

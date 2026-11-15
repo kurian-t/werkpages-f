@@ -32,6 +32,35 @@ export interface ResolvedInteractiveBinding {
   empty?: boolean;
 }
 
+/**
+ * Treat a persisted resume record as a bag of fields.
+ *
+ * These objects come back from storage, where a resume saved under an older shape can carry keys
+ * the current interfaces no longer name - which is exactly why this code reads them by name
+ * rather than through their declared type. TypeScript refuses a direct cast from an interface
+ * with no index signature to `Record<string, unknown>` because the two genuinely do not overlap,
+ * and it is right to.
+ *
+ * So the conversion is stated ONCE, here, through `unknown`, instead of seven times at the call
+ * sites. Narrowing to object first means a null or a primitive yields an empty bag rather than
+ * throwing on the first property read, which is the behaviour every call site already wrote by
+ * hand.
+ */
+export function asFieldBag(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+/**
+ * The way back out, for when an edited bag has to be stored as its declared type again.
+ *
+ * Separate from {@link asFieldBag} and deliberately explicit: this direction is the unsound one,
+ * because nothing checks that the bag still satisfies `T`. Keeping it to one named function means
+ * the places that take that risk are greppable.
+ */
+export function fromFieldBag<T>(bag: Record<string, unknown>): T {
+  return bag as unknown as T;
+}
+
 function asText(value: unknown): string {
   if (value == null) return "";
   if (typeof value === "string") return value;
@@ -277,10 +306,7 @@ export function getInteractiveBindingOptions(
 
   (Array.isArray(data.extraLinks) ? data.extraLinks : []).forEach(
     (link, index) => {
-      const record =
-        link && typeof link === "object"
-          ? (link as Record<string, unknown>)
-          : {};
+      const record = asFieldBag(link);
       const label = asText(record.label).trim() || `Link ${index + 1}`;
       const url = asText(record.url).trim();
 
@@ -340,7 +366,7 @@ export function applyInteractiveBindingDraft(
     const workEntries = Array.isArray(source.workEntries)
       ? source.workEntries.map((raw, index) => {
           if (!raw || typeof raw !== "object") return raw;
-          const entry = raw as Record<string, unknown>;
+          const entry = asFieldBag(raw);
           const id = asText(entry.id).trim() || `work-${index}`;
           if (id !== asText(binding.entryId)) return raw;
           return { ...entry, ...draft };
@@ -361,7 +387,7 @@ export function applyInteractiveBindingDraft(
     const education = Array.isArray(source.education)
       ? source.education.map((raw, index) => {
           if (!raw || typeof raw !== "object") return raw;
-          const entry = raw as Record<string, unknown>;
+          const entry = asFieldBag(raw);
           const id = asText(entry.id).trim() || `education-${index}`;
           if (id !== asText(binding.entryId)) return raw;
           return { ...entry, ...draft };
@@ -384,10 +410,8 @@ export function applyInteractiveBindingDraft(
     if (!Number.isInteger(index)) return data;
     const links = Array.isArray(data.extraLinks) ? [...data.extraLinks] : [];
     if (index < 0 || index >= links.length) return data;
-    const current = links[index] && typeof links[index] === "object"
-      ? (links[index] as Record<string, unknown>)
-      : {};
-    links[index] = { ...current, ...draft } as typeof links[number];
+    const current = asFieldBag(links[index]);
+    links[index] = fromFieldBag<typeof links[number]>({ ...current, ...draft });
     return { ...data, extraLinks: links } as ResumeData;
   }
 
@@ -644,10 +668,7 @@ export function resolveInteractiveBinding(
     }
 
     const raw = links[index];
-    const record =
-      raw && typeof raw === "object"
-        ? (raw as Record<string, unknown>)
-        : {};
+    const record = asFieldBag(raw);
     const label = asText(record.label).trim();
     const url = asText(record.url).trim();
 

@@ -1,3 +1,4 @@
+/* ROUTINE CI: erasure: a moderator removing a rating, and what survives. Tagged @ci; see playwright.config.ts. */
 import { test, expect } from "./base";
 import { TEST_MANAGER_ID, MOCK_MANAGER, MOCK_USER, MOCK_ADMIN_USER, mockManagerPage } from "./fixtures";
 
@@ -72,7 +73,7 @@ test.describe("Who can delete somebody else's rating", () => {
   });
 });
 
-test.describe("The deletion reason", () => {
+test.describe("The deletion reason @ci", () => {
   test("is asked for before anything is deleted", async ({ page }) => {
     let called = false;
     await page.route("**/api/admin/reviews/**", (r: any) => { called = true; r.fulfill({ json: { success: true } }); });

@@ -18,6 +18,10 @@ import { AttestationCard } from "@/components/RatingFormParts";
 import { LocationField } from "@/components/LocationField";
 import { LocationValue, EMPTY_LOCATION, declaredPayload, hasDeclaredLocation } from "@/lib/location";
 import { useFormDraft, clearFormDraft } from "@/hooks/useFormDraft";
+import { useServerDraft } from "@/hooks/useServerDraft";
+import {
+  AdoptAnonymousDraftPrompt, DraftConflictPrompt, DraftSaveStatus, ResumeDraftPrompt,
+} from "@/components/DraftPrompts";
 import { markJustRatedCompany } from "@/lib/rateCompanyNudge";
 
 /** "2021-06" as the shared timeline control holds it, and back again. */
@@ -219,13 +223,26 @@ export default function RateCompany() {
 
     Keyed off an actual change rather than firing on mount, or it would wipe the draft that
     useFormDraft has just restored.
+
+    MOUNT IS NOT THE ONLY MOMENT THE SUBJECT ARRIVES, and skipping only the first run was not
+    enough. The field is empty for the first render and is filled a tick later - by the restored
+    draft, or by the company seeding once the profile loads. Both look exactly like somebody
+    typing a different company, so this cleared the answers that had just been restored, and the
+    save effect then wrote the emptied form back over the stored draft. A reload DESTROYED a
+    rating instead of resuming it, and a second reload could not get it back.
+
+    So an empty subject becoming a named one is the subject being ESTABLISHED, not changed.
+    Somebody actually changing the company edits a name that is already there, and the first
+    keystroke of that is a name-to-name change, which still clears on the spot.
   */
-  const lastSubjectRef = useRef<string | null>(null);
+  const lastSubjectRef = useRef<{ slug: string; subject: string } | null>(null);
   useEffect(() => {
-    const key = `${companySlug ?? ""}|${subject.toLowerCase()}`;
-    if (lastSubjectRef.current === null) { lastSubjectRef.current = key; return; }
-    if (lastSubjectRef.current === key) return;
-    lastSubjectRef.current = key;
+    const now = { slug: companySlug ?? "", subject: subject.toLowerCase() };
+    const was = lastSubjectRef.current;
+    lastSubjectRef.current = now;
+    if (was === null) return;
+    if (was.slug === now.slug && was.subject === now.subject) return;
+    if (was.slug === now.slug && was.subject === "") return;
 
     setDraft(emptyCompanyRatingDraft());
     setFromParts({ month: "", year: "" });
@@ -256,10 +273,25 @@ export default function RateCompany() {
     other, and cleared only when the rating is actually submitted.
   */
   const draftKey = `rmm_pending_company_rating_${companySlug ?? "unknown"}`;
-  useFormDraft(
+  /*
+    Minted HERE rather than lazily inside the sync options below, so the snapshot persisted on the
+    very first render already carries it.
+
+    ISSUE 32: this token is the capture's identity, and V96 uses it to remove an anonymous
+    publication when the author comes back and submits properly. It used to live only in this ref,
+    which a page load discards - and signing in IS a page load. So the returning form minted a
+    fresh token, the moderator's publication kept the old one, nothing matched, and the same
+    opinion went live twice: once anonymously, once authored. BossProfile had always persisted its
+    token; this form had not.
+  */
+  if (!draftTokenRef.current) draftTokenRef.current = crypto.randomUUID();
+  const { anonymous: anonDraft } = useFormDraft(
     draftKey,
-    { draft, location, fromParts, untilParts, generatedName, attested, companyText, step },
+    { draft, location, fromParts, untilParts, generatedName, attested, companyText, step,
+      draftToken: draftTokenRef.current },
     saved => {
+      // Before anything else: the captured form's identity, or the capture cannot be superseded.
+      if (saved.draftToken) draftTokenRef.current = saved.draftToken;
       if (saved.draft)        setDraft(saved.draft);
       if (saved.location)     setLocation(saved.location);
       if (saved.fromParts)    setFromParts(saved.fromParts);
@@ -271,8 +303,84 @@ export default function RateCompany() {
       if (saved.companyText) { setCompanyText(saved.companyText); setCompanySeeded(true); }
       if (saved.step)         setStep(saved.step);
     },
-    { enabled: !!companySlug },
+    {
+      enabled: !!companySlug,
+      /*
+        Also sent to the server, so a closed tab keeps its answers rather than only a reload.
+
+        The token is the one the submit path already mints, so an autosaved draft and the capture
+        at submit are the SAME row: finishing the form updates what is already there instead of
+        queueing a second copy of it.
+
+        `body` returns null below the meaningful-progress floor, so opening the page and leaving
+        writes nothing. The server applies the same rule again, because a client-side floor is a
+        courtesy rather than a guarantee.
+      */
+      sync: {
+        url: `${API_BASE}/api/companies/${companySlug}/rating/autosave`,
+        token: draftTokenRef.current,
+        body: (snap: any) => {
+          /*
+            Signed-in contributors do not autosave, matching the manager-rating form.
+
+            They are about to submit a real rating, and a server-side partial copy of it would be
+            the same opinion in two places with no purpose the submission does not already serve.
+            Their work is still kept locally, so a reload or a closed tab resumes exactly as
+            before; what changes is only that we do not also bank a draft.
+
+            The feature exists for the people who would otherwise be lost entirely: the ones with
+            no account, who answer several questions and never come back.
+          */
+          if (user) return null;
+          const r = snap?.draft?.ratings ?? {};
+          const anyCategory = Object.values(r).some((v) => typeof v === "number" && v > 0);
+          if (!anyCategory && !snap?.draft?.overallRating) return null;
+          return {
+            ...toCompanyRatingPayload(snap.draft),
+            ...declaredPayload(snap.location),
+            author: snap.generatedName,
+            companyName: (snap.companyText || "").trim() || companyName,
+          };
+        },
+      },
+    },
   );
+
+  /*
+    THE SIGNED-IN HALF, and the one the anonymous capture above deliberately does not do.
+
+    A signed-in contributor's unfinished rating is private: it is never read by moderation, and it
+    exists so they can come back to it on another device. Nothing about the anonymous path changes
+    - useFormDraft still posts to the capture endpoint for people with no account, because an
+    abandoned anonymous contribution is what moderation is there to see.
+  */
+  const serverDraft = useServerDraft({
+    baseKey: draftKey,
+    subjectType: "company",
+    subjectId: company?.id ?? null,
+    userId: user?.id ?? null,
+    payload: () => {
+      const anyCategory = Object.values(draft.ratings ?? {})
+        .some((v) => typeof v === "number" && v > 0);
+      if (!anyCategory && !draft.overallRating) return null;
+      return { draft, location, fromParts, untilParts, generatedName, attested, companyText, step };
+    },
+    deps: [draft, location, fromParts, untilParts, generatedName, attested, companyText, step],
+  });
+
+  /** Applies a payload the contributor chose to bring back. One place, three callers. */
+  const applyDraftPayload = (saved: any) => {
+    if (!saved) return;
+    if (saved.draft)            setDraft(saved.draft);
+    if (saved.location)         setLocation(saved.location);
+    if (saved.fromParts)        setFromParts(saved.fromParts);
+    if (saved.untilParts)       setUntilParts(saved.untilParts);
+    if (saved.generatedName)    setGeneratedName(saved.generatedName);
+    if (saved.attested != null) setAttested(saved.attested);
+    if (saved.companyText)      { setCompanyText(saved.companyText); setCompanySeeded(true); }
+    if (saved.step)             setStep(saved.step);
+  };
+
 
   useEffect(() => {
     if (companySeeded || !company?.name) return;
@@ -345,40 +453,86 @@ export default function RateCompany() {
     setErrors((prev) => ({ ...prev, [category]: undefined }));
   };
 
+  /*
+    One capture, used by both call sites: the one above the validation gate for a partial answer,
+    and the one below it for a complete one that is only missing an account. Written once so the
+    two can never drift into keeping different fields.
+
+    Fire-and-forget on purpose. Capturing is a courtesy to somebody who is already leaving and
+    must never be the reason the redirect does not happen, so every failure is swallowed.
+
+    Keyed on a token that survives the round trip to sign-in, so pressing submit repeatedly is one
+    form rather than one row per attempt.
+  */
+  const captureDraft = () => {
+    if (!draftTokenRef.current) draftTokenRef.current = crypto.randomUUID();
+    void axios.post(`${API_BASE}/api/companies/${companySlug}/rating/draft`, {
+      ...toCompanyRatingPayload(draft),
+      // The location goes into the draft as well. A draft exists so nothing a person answered is
+      // thrown away, and keeping every answer but the one about where they worked would make it
+      // a worse record than the form it came from.
+      ...declaredPayload(location),
+      author: generatedName,
+      companyName: companyText.trim() || companyName,
+      draftToken: draftTokenRef.current,
+    }).catch(() => {});
+  };
+
   const handleSubmit = async () => {
     setSubmitError(null);
     const found = validateCompanyRating(draft);
     // The location lives outside the draft, so the draft validator cannot see it. Checked here as
     // well as on the step, because a restored draft can reach this point without passing step 2.
     if (!hasDeclaredLocation(location)) found.location = LOCATION_REQUIRED;
+    /*
+      CAPTURED BEFORE THE VALIDATION GATE, not after it.
+
+      This used to sit below the early return, so a form with one category unrated reached
+      setErrors and stopped, and nothing was kept. The drop-offs most worth having were the only
+      ones being thrown away: a finished rating usually gets submitted, while a half-finished one
+      is abandoned and is gone for ever.
+
+      A partial answer is still evidence. Somebody started rating this employer, got this far, and
+      stopped here, which is worth keeping even if the rating itself never becomes publishable.
+
+      It is NOT a rating and must never be counted as one. It goes to captured_drafts, which is
+      JSONB, never aggregated and never served to a reader; the Publish button refuses anything
+      incomplete and says which answer is missing. The gate below still stops the submission, so
+      nothing about what this person sees has changed.
+    */
+    const worthKeeping =
+      Object.values(draft.ratings ?? {}).some((r) => typeof r === "number" && r > 0) ||
+      Boolean(draft.overallRating) ||
+      Boolean(draft.workedFrom);
+    if (!user && worthKeeping) captureDraft();
+
     if (Object.keys(found).length > 0) {
       setErrors(found);
       return;
     }
     if (!user) {
       /*
-        Keep the work before sending them away.
+        Keep the work, then send them to sign in. The rating is NOT published here.
 
-        Everything below this point is answered by now, and the very next thing that happens is a
-        redirect to sign in that most people do not come back from. The manager forms have captured
-        this moment for a long time; this one threw it away, which meant a complete rating was lost
-        every time somebody rated a workplace before making an account.
+        This briefly wrote the rating live at this point, on the reasoning that the manager forms
+        do. That was wrong and was reverted: a workplace rating must only become public once its
+        author has an account and has pressed submit themselves. What this moment is for is making
+        sure the answers are not lost in the meantime.
+
+        The draftToken ties the capture to the submission that follows, so returning and submitting
+        REPLACES this draft rather than leaving an admin to review work the author already
+        finished.
 
         Fire-and-forget on purpose: capturing is a courtesy to somebody who is already leaving, and
         must never be the reason the redirect does not happen.
       */
-      if (!draftTokenRef.current) draftTokenRef.current = crypto.randomUUID();
-      void axios.post(`${API_BASE}/api/companies/${companySlug}/rating/draft`, {
-        ...toCompanyRatingPayload(draft),
-        // The location goes into the draft as well. A draft exists so nothing a person answered is
-        // thrown away, and keeping every answer but the one about where they worked would make it
-        // a worse record than the form it came from.
-        ...declaredPayload(location),
-        author: generatedName,
-        companyName: companyText.trim() || companyName,
-        draftToken: draftTokenRef.current,
-      }).catch(() => {});
-      navigate(`/signin?returnTo=/companies/${companySlug}/rate`);
+      captureDraft();
+      /*
+        Encoded, because it is a query-parameter value. The path happens to contain nothing that
+        needs escaping today, so this changes no behaviour; it stops a slug that one day contains
+        an ampersand from truncating the destination and sending the author to the directory.
+      */
+      navigate(`/signin?returnTo=${encodeURIComponent(`/companies/${companySlug}/rate`)}`);
       return;
     }
 
@@ -531,6 +685,34 @@ export default function RateCompany() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
+        {/*
+          The forks only the contributor can settle, above the form so they are seen before any
+          more answering happens. Each one replaces answers, so none of them is automatic.
+        */}
+        {(anonDraft.available || serverDraft.offered || serverDraft.conflict) && (
+          <div className="mb-6 space-y-3">
+            {anonDraft.available && (
+              <AdoptAnonymousDraftPrompt
+                onAdopt={() => applyDraftPayload(anonDraft.adopt())}
+                onDismiss={anonDraft.dismiss}
+              />
+            )}
+            {serverDraft.offered && (
+              <ResumeDraftPrompt
+                version={serverDraft.offered.version}
+                onResume={() => applyDraftPayload(serverDraft.acceptOffered())}
+                onDismiss={serverDraft.dismissOffered}
+              />
+            )}
+            {serverDraft.conflict && (
+              <DraftConflictPrompt
+                conflict={serverDraft.conflict}
+                onTakeServer={() => applyDraftPayload(serverDraft.resolveWithServer())}
+                onKeepLocal={serverDraft.resolveWithLocal}
+              />
+            )}
+          </div>
+        )}
         {step === "details" && (
           <div className="mb-6 space-y-6">
             <FormIntro
@@ -787,6 +969,8 @@ export default function RateCompany() {
                 ? "Submitting…"
                 : mine ? "Update rating" : "Submit rating"}
           </button>
+          {/* Only ever says something a signed-in person can act on. */}
+          <div className="mt-2"><DraftSaveStatus status={serverDraft.status} /></div>
         </div>
         </div>
       </div>

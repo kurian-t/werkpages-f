@@ -1,3 +1,4 @@
+/* ROUTINE CI: regression: an interrupted action is sent once, not twice. Tagged @ci; see playwright.config.ts. */
 import { test, expect } from "./base";
 import {
   MOCK_ADMIN_USER,
@@ -25,7 +26,7 @@ import {
 
 const URL = `/manager/${TEST_MANAGER_ID}`;
 
-test.describe("Deleting a manager as an admin", () => {
+test.describe("Deleting a manager as an admin @ci", () => {
   async function openAsAdmin(page: any) {
     await mockManagerPage(page, { loggedIn: true, user: MOCK_ADMIN_USER, hasContributed: true });
     await page.goto(URL);
@@ -110,7 +111,7 @@ test.describe("Deleting a manager as an admin", () => {
   });
 });
 
-test.describe("Picking up an action interrupted by signing in", () => {
+test.describe("Picking up an action interrupted by signing in @ci", () => {
   /*
     Somebody part-way through something is asked to sign in, and the question is whether what they
     were doing survives it. Dropping it silently is the worst outcome: the page looks the same
@@ -124,17 +125,38 @@ test.describe("Picking up an action interrupted by signing in", () => {
     await expect(page.getByText(MOCK_MANAGER.name).first()).toBeVisible({ timeout: 10_000 });
   }
 
-  /** Signs in through the modal the interrupted action opened. */
-  async function signInThroughModal(page: any) {
+  /**
+   * The same page, now signed in, which is what coming back from Universal Login produces.
+   *
+   * <p>`page.reload()` after this is what runs the sessionStorage replay: the report written as a
+   * guest is picked up by the effect that watches for a user, exactly as it would after the real
+   * callback. Mocking the manager page again is necessary because the routes are per-page.
+   */
+  async function asUser(page: any) {
+    await mockManagerPage(page, { loggedIn: true });
+  }
+
+  /**
+   * The RETURN from signing in, simulated the way the callback produces it.
+   *
+   * <p>What this deliberately does NOT do is drive the redirect. Signing in now leaves for Auth0's
+   * hosted page, and an attempt to intercept that navigation escaped the route and reached the
+   * live tenant - the failure screenshot was a real `/u/login/...` URL. A test that needs the real
+   * Auth0 to behave is not a local test, and pretending otherwise is what the release gate on
+   * per-connection verification exists to prevent.
+   *
+   * <p>So the two halves are separated. That the modal sends the browser to Universal Login is
+   * asserted in `auth-modal-flows.spec.ts` and `coverage-boost.spec.ts`, against an intercepted
+   * `/api/auth/start` on a page that is not mid-journey. What is asserted HERE is the half those
+   * cannot reach: the interrupted action survives the round trip and fires exactly once.
+   *
+   * <p>The round trip's end is a signed-in page load, which is precisely what this produces.
+   */
+  async function returnSignedIn(page: any) {
     await expect(page.getByRole("dialog")).toBeVisible({ timeout: 10_000 });
-    await page.route(/\/api\/auth\/signin/, (r: any) =>
-      r.fulfill({ status: 200, json: { user: MOCK_USER } }));
-    // The gate opens on sign-up; swap to sign-in first, then reveal that step's email form.
-    await page.getByRole("dialog").getByRole("button", { name: "Sign in", exact: true }).click();
-    await page.getByRole("dialog").getByText(/continue with email/i).first().click();
-    await page.getByRole("dialog").getByPlaceholder("Email or username").fill("testuser");
-    await page.getByRole("dialog").getByPlaceholder("Password", { exact: true }).fill("Str0ng!pass");
-    await page.getByRole("dialog").getByRole("button", { name: /^Sign In/ }).click();
+    await asUser(page);
+    await page.reload();
+    await expect(page.getByText(MOCK_MANAGER.name).first()).toBeVisible({ timeout: 10_000 });
   }
 
   test("a report written before signing in is still sent afterwards", async ({ page }) => {
@@ -154,7 +176,7 @@ test.describe("Picking up an action interrupted by signing in", () => {
     await page.getByRole("radio").first().check();
     await page.getByRole("button", { name: /Submit Report/i }).click();
 
-    await signInThroughModal(page);
+    await returnSignedIn(page);
 
     await expect(async () => expect(reported).not.toBeNull()).toPass({ timeout: 15_000 });
     expect(reported.reason).toBeTruthy();
@@ -173,7 +195,7 @@ test.describe("Picking up an action interrupted by signing in", () => {
     await page.getByRole("button", { name: /Report/i }).first().click();
     await page.getByRole("radio").first().check();
     await page.getByRole("button", { name: /Submit Report/i }).click();
-    await signInThroughModal(page);
+    await returnSignedIn(page);
     await expect(async () => expect(count).toBeGreaterThan(0)).toPass({ timeout: 15_000 });
 
     await page.waitForTimeout(1000);

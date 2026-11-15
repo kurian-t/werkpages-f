@@ -528,7 +528,15 @@ test.describe("Company profile page", () => {
     await page.route("**/api/managers/similar**", (route) => route.fulfill({ json: { data: [] } }));
     await page.goto("/add?returnTo=/companies/Acme%20Corp");
 
-    await expect(page.getByText(/step 1 of 3/i)).toBeVisible({ timeout: 10_000 });
+    /*
+      The form is open, asserted without counting its steps.
+
+      This used to wait for "Step 1 of 3". The number is not what this test is about - it is about
+      where Cancel goes - and it is not stable either: the role-aware journey has four steps, so
+      the literal pinned this test to one of the two journeys for no reason.
+    */
+    await expect(page.getByRole("heading", { name: /who is this manager/i }))
+      .toBeVisible({ timeout: 10_000 });
 
     await page.getByRole("button", { name: /cancel/i }).click();
 

@@ -1,4 +1,6 @@
+/* ROUTINE CI: draft survival across the verification round trip. Tagged @ci; see playwright.config.ts. */
 import { test, expect } from "./base";
+import { scopedDraftKey } from "../client/lib/draftScope";
 import { mockTurnstile } from "./fixtures";
 
 /**
@@ -10,7 +12,7 @@ import { mockTurnstile } from "./fixtures";
  * "When I try with email, I'm not told to go verify my email or anything, so I can click create
  * account again and again and then I see: An account with this email already exists." And then,
  * after verifying: "I click the link to verify my account and it takes me back to
- * werkpages.com. Overall it's confusing."
+ * ratemymanagers.ca. Overall it's confusing."
  *
  * Two distinct faults, neither of which lost data and both of which made the product look broken:
  *
@@ -40,8 +42,13 @@ import { mockTurnstile } from "./fixtures";
  * database connections, and Google, Facebook and Microsoft assert the address themselves.
  */
 
-const PENDING_REVIEW_KEY  = "rmm_pending_review";
-const PENDING_MANAGER_KEY = "rmm_pending_manager";
+/*
+  The ANONYMOUS draft scope, which is where somebody bounced to sign-up midway through a form has
+  their answers: they had no account when they typed them. Drafts are keyed per account now, see
+  tests/draft-isolation.spec.ts. Only the keys changed; every assertion is as it was.
+*/
+const PENDING_REVIEW_KEY  = scopedDraftKey("rmm_pending_review", null);
+const PENDING_MANAGER_KEY = scopedDraftKey("rmm_pending_manager", null);
 
 /** The signup page with the username check and Turnstile stubbed, and the form filled in. */
 async function fillSignupPage(page: any, email = "new.person@example.com") {
@@ -62,60 +69,71 @@ async function fillSignupPage(page: any, email = "new.person@example.com") {
   await expect(page.getByRole("button", { name: "Create Account" })).toBeEnabled({ timeout: 10_000 });
 }
 
-test.describe("Signing up with an email address", () => {
-  test("a successful signup says to go and check the email", async ({ page }) => {
-    // The control. If this ever stops rendering, nobody is told to verify anything at all.
-    await fillSignupPage(page);
-    await page.route(/\/api\/auth\/signup/, (r: any) =>
-      r.fulfill({ status: 201, json: { id: "auth0|new", email: "new.person@example.com" } }));
+/*
+  THREE TESTS OF THE SIGN-UP FORM STOOD HERE. The form is gone; the guarantees moved.
 
-    await page.getByRole("button", { name: "Create Account" }).click();
+    "a successful signup says to go and check the email"
+    "a failed signup shows the reason WHERE IT CAN BE SEEN"
+    "a generic failure is also scrolled into view"
 
-    await expect(page.getByRole("heading", { name: /check your email/i })).toBeVisible({ timeout: 10_000 });
-    // The address is echoed back, because "check your email" is useless if you mistyped it.
-    await expect(page.getByText("new.person@example.com")).toBeVisible();
-  });
+  All three drove the 394-line form and mocked POST /api/auth/signup. The account is created on
+  Auth0's hosted page now, which sends its own verification mail and words its own refusals, so
+  there is no moment at which this application knows a signup succeeded or why one failed.
 
-  test("a failed signup shows the reason WHERE IT CAN BE SEEN", async ({ page }) => {
-    /*
-      The heart of the first report. toBeInViewport, not toBeVisible: the banner was always in the
-      DOM and always "visible" to Playwright, while being several hundred pixels above the button
-      the person had just pressed. An assertion on visibility alone passes against the exact bug
-      being reported here, which is why this one is about the viewport.
-    */
-    await fillSignupPage(page, "taken@example.com");
-    await page.route(/\/api\/auth\/signup/, (r: any) =>
-      r.fulfill({
-        status: 400,
-        json: { error: "email_already_registered",
-                message: "An account with this email already exists. Please sign in instead." },
-      }));
+  | the guarantee | where it is now |
+  | --- | --- |
+  | somebody is told to go and verify | Auth0's page says so, and the callback REFUSES an unverified address rather than letting it through - `AuthCallbackHttpTest` asserts the `email_unverified` refusal, which is the stronger half: being told is a courtesy, being refused is the control |
+  | the address is echoed back so a typo is visible | Auth0 shows the address it is sending to on its own page |
+  | a refusal is rendered WHERE IT CAN BE SEEN, not below the fold | this was a real usability bug once - an error rendered off-screen reads as nothing happening. It applies to any form this product still owns, and `/complete-profile` is now the one that can refuse. Asserted below |
 
-    await page.getByRole("button", { name: "Create Account" }).click();
+  What is NOT retargeted away: the four draft-preservation tests in the next block. Those are the
+  reason this file exists and they are untouched.
+*/
 
-    const banner = page.getByText(/an account with this email already exists/i);
-    await expect(banner).toBeVisible({ timeout: 10_000 });
-    await expect(banner).toBeInViewport({ timeout: 10_000 });
-  });
+test.describe("A refusal is rendered where it can be seen @ci", () => {
+  /**
+   * The usability guarantee from "a failed signup shows the reason WHERE IT CAN BE SEEN", carried
+   * to the form that can still refuse.
+   *
+   * An error rendered below the fold reads as nothing having happened, and somebody presses the
+   * button again. Profile completion can refuse for two reasons - the username is taken, or it is
+   * not valid - and both have to land in view.
+   */
+  test("a refused username is reported in view, not below the fold", async ({ page }) => {
+    const user = { id: "u1", username: "user_1a2b3c4d", email: "new@example.test",
+                   profileComplete: false };
+    await page.route("**/api/auth/me", (r: any) => r.fulfill({ status: 200, json: { user } }));
+    // AuthContext seeds from the stored copy before it validates, and this page decides whether to
+    // render on that first pass - so the endpoint mock alone leaves it redirecting to sign-in.
+    await page.addInitScript((u) => {
+      localStorage.setItem("authUser", JSON.stringify(u));
+    }, user);
+    await page.route("**/api/auth/complete-profile", (r: any) =>
+      r.fulfill({ status: 409, json: { error: "username_taken" } }));
 
-  test("a generic failure is also scrolled into view", async ({ page }) => {
-    // Same guarantee on the catch-all path, which is the one a new failure mode will land in.
-    await fillSignupPage(page);
-    await page.route(/\/api\/auth\/signup/, (r: any) =>
-      r.fulfill({ status: 500, json: { message: "Something went wrong on our side." } }));
+    await page.goto("/complete-profile");
+    await page.getByLabel(/^username$/i).fill("takenname");
+    await page.getByRole("button", { name: /continue/i }).click();
 
-    await page.getByRole("button", { name: "Create Account" }).click();
+    const error = page.getByText(/already taken/i);
+    await expect(error).toBeVisible({ timeout: 8_000 });
 
-    const banner = page.getByText(/something went wrong on our side/i);
-    await expect(banner).toBeVisible({ timeout: 10_000 });
-    await expect(banner).toBeInViewport({ timeout: 10_000 });
+    // In the viewport, not merely in the DOM. That distinction is the whole point of the original
+    // test: an error can be "visible" to Playwright and still be scrolled off a phone screen.
+    const box = await error.boundingBox();
+    const viewport = page.viewportSize();
+    expect(box, "the error must have a position at all").not.toBeNull();
+    if (box && viewport) {
+      expect(box.y, "the error is below the fold, where nobody will read it")
+        .toBeLessThan(viewport.height);
+    }
   });
 });
 
-test.describe("Landing on the site after clicking the verification link", () => {
+test.describe("Landing on the site after clicking the verification link @ci", () => {
   test("with nothing saved, it lands on sign-in and SAYS the email is verified", async ({ page }) => {
     /*
-      The second report: "it takes me back to werkpages.com ... overall it's confusing".
+      The second report: "it takes me back to ratemymanagers.ca ... overall it's confusing".
 
       Arriving at the homepage is indistinguishable from the link having done nothing. The
       acknowledgement matters more than the destination - somebody who has just clicked a link in

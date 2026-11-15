@@ -1,3 +1,4 @@
+/* ROUTINE CI: authentication: where an unauthenticated visitor is sent. Tagged @ci; see playwright.config.ts. */
 import { test, expect } from "./base";
 import { MOCK_USER } from "./fixtures";
 
@@ -11,7 +12,7 @@ async function mockAuthenticated(page: any) {
   }, MOCK_USER);
 }
 
-test.describe("Sign In / Sign Up redirect - authenticated users", () => {
+test.describe("Sign In / Sign Up redirect - authenticated users @ci", () => {
   test("authenticated user visiting /signin is redirected, not shown a blank page", async ({
     page,
   }) => {
@@ -80,7 +81,7 @@ test.describe("Sign In / Sign Up redirect - authenticated users", () => {
   });
 });
 
-test.describe("OAuth callback routing", () => {
+test.describe("OAuth callback routing @ci", () => {
   // AuthCallback sends new users to /explore, not /find - Werkpages' landing surface differs
   // from the RateMyManagers original this spec was forked from.
   test("new user (isNewUser=true) is redirected to /explore after OAuth callback", async ({

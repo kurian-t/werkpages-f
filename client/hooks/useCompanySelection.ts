@@ -66,6 +66,18 @@ export function useCompanySelection(initialName = ""): CompanySelection {
     // Typing invalidates the selection. This single line is what nine call sites each had to
     // remember on their own.
     setId(undefined);
+    /*
+      AND THE LOGO, which is part of the same selection.
+
+      It used to survive, so the id was dropped while the previous company's mark stayed. Nothing
+      downstream could catch it: the card asks "does this logo belong to the value on screen?" by
+      comparing the logo's company against `name` - and `name` is the LIVE text, so it compares
+      the new name against itself and always answers yes. Changing MSN to Adobe left Adobe wearing
+      MSN's logo, and once drafts started persisting the logo it survived a refresh too.
+
+      The text, the id and the mark describe one company or they describe none.
+    */
+    setLogoUrl(undefined);
   }, []);
 
   const set = useCallback((nextName: string, nextId?: number, nextLogo?: string) => {

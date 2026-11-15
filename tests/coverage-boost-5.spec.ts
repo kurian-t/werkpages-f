@@ -10,6 +10,8 @@
  *   SignUp (username check failure)
  */
 import { test, expect } from "./base";
+import { scopedDraftKey } from "../client/lib/draftScope";
+
 import {
   MOCK_USER,
   MOCK_ADMIN_USER,
@@ -29,6 +31,23 @@ import {
   openDirectoryFilters,
   pickLocation,
 } from "./fixtures";
+
+
+/*
+  THE ANONYMOUS DRAFT SLOTS, named the way the application names them.
+
+  Drafts became account-scoped so one person's unfinished rating can never be restored under
+  another's sign-in: the key is now `<base>::<userId|anon>`. These tests seed the ANONYMOUS slot,
+  which is what somebody who has not signed in writes to.
+
+  Re-applied on 2026-11-11 after this file was restored from git to undo a bad cross-product file
+  copy - and the restore reverted to a commit that PREDATES draft scoping, silently taking these
+  constants with it. Six EmailVerified and Index tests went red seeding keys the application no
+  longer reads. An unstaged change is still a change; `git diff --cached` showing nothing meant
+  only that it was not staged.
+*/
+const ANON_REVIEW  = scopedDraftKey("rmm_pending_review", null);
+const ANON_MANAGER = scopedDraftKey("rmm_pending_manager", null);
 
 // ─── Companies - clear autocomplete ──────────────────────────────────────────
 
@@ -629,7 +648,13 @@ test.describe("Admin - pending edit requests", () => {
     // Click Edit Requests tab (line 437)
     await page.getByRole("button", { name: /edit requests/i }).click();
     await expect(page.getByText(/alex johnson/i).first()).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText(/proposed/i)).toBeVisible({ timeout: 3000 });
+    /*
+     * The exact status label on the edit-request card. This was getByText(/proposed/i), an
+     * unanchored substring match over the whole page, so it also matched the "Proposed Jobs"
+     * admin tab and failed strict mode once that tab existed. The assertion is unchanged: the
+     * panel showing the proposed change is on screen after opening Edit Requests.
+     */
+    await expect(page.getByText("Proposed", { exact: true })).toBeVisible({ timeout: 3000 });
   });
 
   test("approving a pending edit removes it from the list", async ({ page }) => {
@@ -838,15 +863,15 @@ test.describe("AddBoss - draft restore and form interactions", () => {
   test("draft banner appears for anonymous user and clicking Start fresh clears it", async ({ page }) => {
     await mockAddBossPage(page, { loggedIn: false });
     // Pre-populate draft in localStorage (triggers showDraftBanner: true for anon user)
-    await page.addInitScript(() => {
-      localStorage.setItem("rmm_pending_manager", JSON.stringify({
+    await page.addInitScript((k: string) => {
+      localStorage.setItem(k, JSON.stringify({
         formData: { firstName: "Draft", lastName: "Person", title: "Manager", company: "DraftCo", country: "", state: "", linkedinUrl: "", status: "active" },
         ratings: {},
         workedFrom: { month: "", year: "" },
         step: "info",
         savedAt: Date.now(),
       }));
-    });
+    }, ANON_MANAGER);
     await page.goto("/add");
     // Draft banner should appear (lines 240-252 clearDraft)
     await expect(page.getByText(/draft restored/i)).toBeVisible({ timeout: 10000 });
@@ -941,28 +966,21 @@ test.describe("AddBoss - draft restore and form interactions", () => {
 
 // ─── SignUp - username check failure ─────────────────────────────────────────
 
-test.describe("SignUp - username check failure and retry", () => {
-  test("failed username availability check shows Try again button (line 289)", async ({ page }) => {
-    await page.route("**/api/auth/me", (route: any) =>
-      route.fulfill({ status: 401, json: { error: "Unauthorized" } })
-    );
-    await page.route("**/api/auth/check-username**", (route: any) =>
-      route.fulfill({ status: 500, json: { error: "Service unavailable" } })
-    );
-    await page.route(/\/api\/geo/, (route: any) =>
-      route.fulfill({ json: { country: "Canada", state: "ON", city: "Toronto" } })
-    );
-    await page.goto("/signup");
-    await expect(page.getByRole("heading", { name: /create account/i })).toBeVisible({ timeout: 10000 });
-    // Type a username to trigger availability check
-    const usernameInput = page.locator('input[placeholder*="username"]').first();
-    if (await usernameInput.isVisible()) {
-      await usernameInput.clear();
-      await usernameInput.fill("testusername123");
-      // Wait for check to fail → "Try again" button appears (line 286-290)
-      await expect(page.getByRole("button", { name: /try again/i })).toBeVisible({ timeout: 8000 });
-      // Click "Try again" (line 289)
-      await page.getByRole("button", { name: /try again/i }).click();
-    }
-  });
-});
+/*
+  A "SignUp" BLOCK OF 1 TEST STOOD HERE, raising coverage on a page that no longer exists in
+  that form.
+
+  SignUp.tsx was 394 lines - names, email, username, password, confirmation, a strength checklist,
+  a live username check and a Turnstile widget, posted to /api/auth/signup. It is now about 100
+  lines whose whole job is to send the browser to Auth0's hosted registration page, because
+  collecting the password meant it passed through this application and the matching sign-in path
+  used grant_type=password, forbidden by RFC 9700 section 2.4.
+
+  Those tests covered branches that were deleted. Where the GUARANTEES went is recorded in
+  tests/signup.spec.ts, which carries a table naming all nine and their new homes, and in
+  ProfileCompletionIntegrationTest, which now asserts the username-taken and username-invalid
+  refusals against a real database instead of a mocked fetch.
+
+  A real reduction in browser-test count, explained rather than hidden: the component shrank by
+  about 75% and the tests exercising the removed 75% went with it.
+*/

@@ -3,6 +3,7 @@ import {
   TEST_MANAGER_ID,
   MOCK_MANAGERS_LIST,
   MOCK_PENDING_SUBMISSION,
+  MOCK_USER,
   mockDirectoryPage,
 } from "./fixtures";
 
@@ -288,5 +289,63 @@ test.describe("Directory - search, filters, and pending submissions", () => {
       await page.getByText("Clear all").click();
       await expect(page.getByText(/result.*for/i)).not.toBeVisible({ timeout: 3_000 });
     });
+  });
+});
+
+/*
+  THE CONTRIBUTION GATE ON THE DIRECTORY, AND THE STALE SESSION THAT CLOSED IT WRONGLY.
+
+  Reported from the running site: "why is /directory blurred when I am logged in and have rated a
+  manager?" The account HAD a live, gate-eligible rating, and the server said so. What had gone
+  wrong was on this side: the cached session still carried `hasContributed: false`, the one request
+  that refreshes it had failed against a backend that was restarting, and nothing asked again. The
+  reader was told to go and contribute by a site they had already contributed to.
+
+  There were no tests here for any of it. The fixture had a hasContributed knob that no directory
+  test used, so the gate's two states were never asserted on this page, and the failed-refresh case
+  was not covered anywhere.
+*/
+test.describe("Directory - the contribution gate", () => {
+  test("a contributor sees the ratings", async ({ page }) => {
+    await mockDirectoryPage(page, { loggedIn: true, hasContributed: true });
+    await page.goto("/directory");
+
+    await expect(page.getByText(/rate a manager to unlock ratings/i)).toHaveCount(0);
+  });
+
+  test("somebody who has not contributed is asked to", async ({ page }) => {
+    await mockDirectoryPage(page, { loggedIn: true, hasContributed: false });
+    await page.goto("/directory");
+
+    await expect(page.getByText(/rate a manager to unlock ratings/i).first())
+      .toBeVisible({ timeout: 10_000 });
+  });
+
+  test("a session refresh that fails is retried, and the gate opens when it succeeds", async ({ page }) => {
+    /*
+      The reported bug, reproduced: the cached session says they have not contributed, the first
+      refresh cannot be answered, and the truth arrives on the retry.
+
+      Without the retry this page stays blurred for the whole visit - the request is made once,
+      on mount, and a 503 was treated as "keep what you have" with nothing to correct it.
+    */
+    let attempts = 0;
+    await mockDirectoryPage(page, { loggedIn: true, hasContributed: false });
+    // Registered AFTER the fixture, so this handler is the one that answers.
+    await page.route("**/api/auth/me", (route) => {
+      attempts += 1;
+      if (attempts === 1) {
+        route.fulfill({ status: 503, json: { error: "starting up" } });
+        return;
+      }
+      route.fulfill({ json: { ...MOCK_USER, hasContributed: true } });
+    });
+
+    await page.goto("/directory");
+
+    await expect(page.getByText(/rate a manager to unlock ratings/i)).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    expect(attempts).toBeGreaterThan(1);
   });
 });

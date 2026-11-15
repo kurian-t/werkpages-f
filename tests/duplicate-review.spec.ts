@@ -1,5 +1,7 @@
 import { test, expect } from "./base";
+import { scopedDraftKey } from "../client/lib/draftScope";
 import {
+  MOCK_USER,
   TEST_MANAGER_ID,
   TEST_MANAGER_SLUG,
   MOCK_MANAGER,
@@ -22,11 +24,18 @@ const CONFLICTING_SEGMENT = {
   categoryAverages: Object.fromEntries(RATING_CATEGORIES.map((c) => [c, 3])),
 };
 
-/** Injects a pending draft that matches the existing review's title+company */
+/**
+ * Injects a pending draft that matches the existing review's title+company.
+ *
+ * <p>In the signed-in contributor's OWN draft scope. Drafts are scoped per account now, because
+ * an unscoped one was being poured into whoever loaded the form next, and a complete one was
+ * auto-submitted under their name - see tests/draft-isolation.spec.ts. Resuming and submitting is
+ * what a draft does for the account that owns it; an anonymous draft is offered instead.
+ */
 async function injectPendingDraft(page: any) {
-  await page.addInitScript(({ managerId, ratings }: any) => {
+  await page.addInitScript(({ managerId, ratings, key }: any) => {
     localStorage.setItem(
-      "rmm_pending_review",
+      key,
       JSON.stringify({
         managerId,
         modalRatings: ratings,
@@ -38,7 +47,11 @@ async function injectPendingDraft(page: any) {
         savedAt: Date.now(),
       })
     );
-  }, { managerId: TEST_MANAGER_ID, ratings: FULL_RATINGS });
+  }, {
+    managerId: TEST_MANAGER_ID,
+    ratings: FULL_RATINGS,
+    key: scopedDraftKey("rmm_pending_review", MOCK_USER.id),
+  });
 }
 
 test.describe("Duplicate review - conflict UI after auth", () => {

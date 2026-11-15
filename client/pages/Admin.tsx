@@ -1,13 +1,17 @@
 import API_BASE from "@/lib/api";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/Layout";
 import { useAuth } from "@/hooks/useAuth";
 import { Shield, CheckCircle, XCircle, Ban, RotateCcw, Plus, X, Clock, GitMerge, Pencil, MessageSquare, Star, Building2 } from "lucide-react";
 import { toast } from "sonner";
-import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
+import { CompanyField } from "@/components/CompanyField";
 import { LocationField } from "@/components/LocationField";
+import {
+  ProposedEmploymentsQueue, ConflictsQueue, HeldRatingsQueue, useModerationSummary,
+} from "@/components/ModerationQueues";
+import { waitingFor } from "@/lib/moderation";
 import { LocationValue, EMPTY_LOCATION, formatLocation } from "@/lib/location";
 import type { ModerationReason } from "@/lib/moderationReasons";
 
@@ -66,7 +70,8 @@ export default function Admin() {
     paused: boolean; trippedBy: string | null;
   } | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"pending-managers" | "live-profiles" | "captured-drafts" | "approvals" | "bans" | "merge" | "companies" | "pending-companies" | "ai-suggestions">("pending-managers");
+  const [activeTab, setActiveTab] = useState<"pending-managers" | "live-profiles" | "captured-drafts" | "approvals" | "bans" | "merge" | "companies" | "pending-companies" | "ai-suggestions" | "proposed-employments" | "role-conflicts" | "held-ratings">("pending-managers");
+  const { summary: moderationSummary, reload: reloadModerationSummary } = useModerationSummary();
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
   const [aiSuggestionsTotal, setAiSuggestionsTotal] = useState(0);
   const [aiSuggestionsLoading, setAiSuggestionsLoading] = useState(false);
@@ -152,6 +157,18 @@ export default function Admin() {
   const [editingTitle, setEditingTitle] = useState("");
   // Both admin tabs edit one manager at a time, so one selection serves both.
   const editingCompany = useCompanySelection();
+  /*
+    The company's stored logo, and the NAME it belongs to.
+
+    Both halves are needed. The edit form used to seed only the company's name, so re-opening it
+    had nothing to render but an initial - and a logo an administrator had just changed was
+    invisible in the one screen where they would look for it. The name matters because the moment
+    somebody types a different company the stored logo is no longer about what is on screen;
+    CompanyField drops it on exactly that comparison, which is what stops Google's mark appearing
+    beside the word "Facebook".
+  */
+  const [editingCompanyLogo, setEditingCompanyLogo] =
+    useState<{ url?: string; forName: string } | null>(null);
   const [editSaving, setEditSaving] = useState(false);
 
   // Reviews per pending manager (lazy-loaded)
@@ -350,6 +367,8 @@ export default function Admin() {
     try {
       const res = await axios.post(`${API_BASE}/api/admin/captured-drafts/${id}/publish`);
       setCapturedDrafts(prev => prev.filter(d => d.id !== id));
+      // A captured form just became a real, public rating.
+      refreshSiteStats();
       toast.success(res.data?.kind === "interview"
         ? "Published as an anonymous interview experience."
         : "Published as an anonymous workplace rating.");
@@ -369,7 +388,25 @@ export default function Admin() {
       .catch(() => {})
       .finally(() => setAiSuggestionsLoading(false));
   }, [activeTab]);
-  useEffect(() => {
+  /*
+    READ ON DEMAND, NOT ONCE ON MOUNT.
+
+    REPORTED: "I approved a draft manager addition and rating, but the opinions shared counter did
+    not go up and I don't think user submitted went up either."
+
+    Both numbers were right in the database. This was a useEffect with an empty dependency array,
+    so it ran exactly once, when the panel mounted, and nothing re-read it afterwards. Approving
+    dropped the row from the pending list and raised a toast, and every tile kept the figure it had
+    been rendered with until somebody reloaded the page by hand.
+
+    That BOTH counters were wrong together is what names the cause. User Submitted counts managers
+    and Opinions Shared counts reviews joined to them: two different queries, which a data fault
+    would have to break identically. One request that is never sent again breaks every tile at
+    once.
+
+    So the read is a function, and every admin action that changes what the tiles count calls it.
+  */
+  const refreshSiteStats = useCallback(() => {
     axios.get(`${API_BASE}/api/stats`).then(r => {
       if (r.data && typeof r.data === "object" && "realManagers" in r.data) setStats(r.data);
     }).catch(() => {});
@@ -377,6 +414,7 @@ export default function Admin() {
       if (r.data?.managers && r.data?.reviews) setCountryStats(r.data);
     }).catch(() => {});
   }, []);
+  useEffect(() => { refreshSiteStats(); }, [refreshSiteStats]);
 
   /*
     What approving this manager would do to its slug, asked before approving.
@@ -403,6 +441,8 @@ export default function Admin() {
       await axios.post(`${API_BASE}/api/admin/pending-managers/${managerId}/approve`,
         slug ? { slug } : {});
       setPendingManagers((prev) => prev.filter((m) => String(m.id) !== String(managerId)));
+      // A manager just became live, and so did every rating submitted with it.
+      refreshSiteStats();
       toast.success(slug ? `Manager approved as /${slug}` : "Manager approved and is now live.");
     } catch {
       toast.error("Failed to approve manager.");
@@ -447,6 +487,12 @@ export default function Admin() {
         category: rejectCategory || undefined,
       });
       setPendingManagers((prev) => prev.filter((m) => String(m.id) !== String(managerId)));
+      /*
+        Rejecting a ghost takes a live row out of the counted set, so the tiles move here too.
+        A rejected PENDING row was never counted and this is simply a no-op for it, which is
+        cheaper than working out which case it was.
+      */
+      refreshSiteStats();
       /*
         Read back from the server rather than worked out from the category. "Junk" on a
         search-created ghost penalises nobody, because the person typed into a search box and was
@@ -743,11 +789,11 @@ export default function Admin() {
           {/* Site stats */}
           <div className="mb-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div className="rounded-xl border border-border bg-card p-4 text-center">
-              <p className="text-2xl font-semibold">{stats?.realManagers?.toLocaleString() ?? "-"}</p>
+              <p className="text-2xl font-semibold" data-testid="stat-user-submitted">{stats?.realManagers?.toLocaleString() ?? "-"}</p>
               <p className="text-xs text-muted-foreground mt-0.5">User Submitted</p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4 text-center">
-              <p className="text-2xl font-semibold">{stats?.realReviews?.toLocaleString() ?? "-"}</p>
+              <p className="text-2xl font-semibold" data-testid="stat-opinions-shared">{stats?.realReviews?.toLocaleString() ?? "-"}</p>
               <p className="text-xs text-muted-foreground mt-0.5">Opinions Shared</p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4 text-center">
@@ -833,17 +879,17 @@ export default function Admin() {
               )}
             </button>
             <button
-              onClick={() => setActiveTab("pending-companies")}
+              onClick={() => setActiveTab("live-profiles")}
               className={`whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
-                activeTab === "pending-companies"
+                activeTab === "live-profiles"
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
-              New Companies
-              {pendingCompanies.length > 0 && (
-                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-xs font-bold text-white">
-                  {pendingCompanies.length}
+              Live Profiles
+              {ghostManagers.length > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-emerald-500 px-1.5 py-0.5 text-xs font-bold text-white">
+                  {ghostManagers.length}
                 </span>
               )}
             </button>
@@ -863,17 +909,17 @@ export default function Admin() {
               )}
             </button>
             <button
-              onClick={() => setActiveTab("live-profiles")}
+              onClick={() => setActiveTab("pending-companies")}
               className={`whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
-                activeTab === "live-profiles"
+                activeTab === "pending-companies"
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
-              Live Profiles
-              {ghostManagers.length > 0 && (
-                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-emerald-500 px-1.5 py-0.5 text-xs font-bold text-white">
-                  {ghostManagers.length}
+              New Companies
+              {pendingCompanies.length > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-xs font-bold text-white">
+                  {pendingCompanies.length}
                 </span>
               )}
             </button>
@@ -942,7 +988,109 @@ export default function Admin() {
                 </span>
               )}
             </button>
+            {/*
+              Rev 268 phase 4C: the queues the role-aware contribution flow creates.
+
+              In the existing tab bar rather than a separate admin app, because a moderator should
+              not have to know which screen a held rating belongs to. The counts come from the
+              server on every load: a cached queue count is how two moderators end up working the
+              same row.
+            */}
+            <button
+              onClick={() => setActiveTab("proposed-employments")}
+              className={`whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                activeTab === "proposed-employments"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Proposed Jobs
+              {!!moderationSummary?.pendingEmployments && (
+                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-xs font-bold text-white">
+                  {moderationSummary.pendingEmployments}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("role-conflicts")}
+              className={`whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                activeTab === "role-conflicts"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Conflicts
+              {!!moderationSummary?.openConflicts && (
+                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-xs font-bold text-white">
+                  {moderationSummary.openConflicts}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("held-ratings")}
+              className={`whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                activeTab === "held-ratings"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Held Ratings
+              {!!moderationSummary?.heldRatings && (
+                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-xs font-bold text-white">
+                  {moderationSummary.heldRatings}
+                </span>
+              )}
+            </button>
           </div>
+
+          {/* ── Proposed Jobs Tab (Rev 268 phase 4C) ── */}
+          {activeTab === "proposed-employments" && (
+            <div>
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold">Proposed employment</h2>
+                {!!moderationSummary?.oldestEmploymentAt && (
+                  <p className="text-sm text-muted-foreground">
+                    Oldest has waited {waitingFor(moderationSummary.oldestEmploymentAt)}.
+                  </p>
+                )}
+              </div>
+              <ProposedEmploymentsQueue onChanged={reloadModerationSummary} />
+            </div>
+          )}
+
+          {/* ── Conflicts Tab (Rev 268 phase 4C) ── */}
+          {activeTab === "role-conflicts" && (
+            <div>
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold">Employment conflicts</h2>
+                {!!moderationSummary && (
+                  <p className="text-sm text-muted-foreground">
+                    {moderationSummary.openBlockingConflicts} of {moderationSummary.openConflicts} hold
+                    a rating back
+                    {moderationSummary.oldestConflictAt
+                      ? `. Oldest has waited ${waitingFor(moderationSummary.oldestConflictAt)}.`
+                      : "."}
+                  </p>
+                )}
+              </div>
+              <ConflictsQueue onChanged={reloadModerationSummary} />
+            </div>
+          )}
+
+          {/* ── Held Ratings Tab (Rev 268 phase 4C) ── */}
+          {activeTab === "held-ratings" && (
+            <div>
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold">Held ratings</h2>
+                {!!moderationSummary?.oldestHeldRatingAt && (
+                  <p className="text-sm text-muted-foreground">
+                    Oldest has waited {waitingFor(moderationSummary.oldestHeldRatingAt)}.
+                  </p>
+                )}
+              </div>
+              <HeldRatingsQueue onChanged={reloadModerationSummary} />
+            </div>
+          )}
 
           {/* ── Pending Managers Tab ── */}
           {activeTab === "pending-managers" && (
@@ -973,10 +1121,30 @@ export default function Admin() {
                               placeholder="Job title"
                               className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             />
-                            <CompanyAutocomplete
+                            {/*
+                              The same control every contribution form uses, not an admin-only
+                              lookalike - the identical reason the LocationField below says so.
+
+                              This was a bare CompanyAutocomplete, so the one place an
+                              administrator corrects a company was the only place in the product
+                              that showed no logo: no card, no mark, just a text box. CompanyField
+                              exists precisely because this shape had been hand-rolled on five
+                              forms and each had to be fixed separately; this was the sixth.
+
+                              The stored logo travels with the NAME it belongs to, never with the
+                              live text: passing the current value as logoUrlFor would defeat
+                              CompanyField's own staleness check, which is what once put Google's
+                              mark beside the word "Facebook". Once a suggestion is picked here,
+                              CompanyField's own memory of that pick takes over.
+                            */}
+                            <CompanyField
                               {...editingCompany.bind}
+                              logoUrl={editingCompanyLogo?.url}
+                              logoUrlFor={editingCompanyLogo?.forName}
+                              label={null}
+                              required={false}
                               placeholder="Company"
-                              className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                              inputClassName="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             />
                             {/* The same control every contribution form uses, not an admin-only lookalike. */}
                             <LocationField
@@ -1010,7 +1178,7 @@ export default function Admin() {
                             <div className="flex items-center gap-2">
                               <h3 className="text-lg font-bold text-foreground">{manager.name}</h3>
                               <button
-                                onClick={() => { setEditingManagerId(manager.id); setEditingName(manager.name); setEditingTitle(manager.title); editingCompany.set(manager.company); setEditingLocation(adminLocationOf(manager)); setEditingLocationOpen(false); }}
+                                onClick={() => { setEditingManagerId(manager.id); setEditingName(manager.name); setEditingTitle(manager.title); editingCompany.set(manager.company, (manager as any).companyId ?? undefined, (manager as any).logoUrl ?? undefined); setEditingCompanyLogo({ url: (manager as any).logoUrl ?? undefined, forName: manager.company }); setEditingLocation(adminLocationOf(manager)); setEditingLocationOpen(false); }}
                                 aria-label="Edit manager"
                                 className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
                               >
@@ -1233,10 +1401,30 @@ export default function Admin() {
                               placeholder="Job title"
                               className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             />
-                            <CompanyAutocomplete
+                            {/*
+                              The same control every contribution form uses, not an admin-only
+                              lookalike - the identical reason the LocationField below says so.
+
+                              This was a bare CompanyAutocomplete, so the one place an
+                              administrator corrects a company was the only place in the product
+                              that showed no logo: no card, no mark, just a text box. CompanyField
+                              exists precisely because this shape had been hand-rolled on five
+                              forms and each had to be fixed separately; this was the sixth.
+
+                              The stored logo travels with the NAME it belongs to, never with the
+                              live text: passing the current value as logoUrlFor would defeat
+                              CompanyField's own staleness check, which is what once put Google's
+                              mark beside the word "Facebook". Once a suggestion is picked here,
+                              CompanyField's own memory of that pick takes over.
+                            */}
+                            <CompanyField
                               {...editingCompany.bind}
+                              logoUrl={editingCompanyLogo?.url}
+                              logoUrlFor={editingCompanyLogo?.forName}
+                              label={null}
+                              required={false}
                               placeholder="Company"
-                              className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                              inputClassName="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             />
                             {/* The same control every contribution form uses, not an admin-only lookalike. */}
                             <LocationField
@@ -1270,7 +1458,7 @@ export default function Admin() {
                             <div className="flex items-center gap-2">
                               <h3 className="text-lg font-bold text-foreground">{manager.name}</h3>
                               <button
-                                onClick={() => { setEditingManagerId(manager.id); setEditingName(manager.name); setEditingTitle(manager.title); editingCompany.set(manager.company); setEditingLocation(adminLocationOf(manager)); setEditingLocationOpen(false); }}
+                                onClick={() => { setEditingManagerId(manager.id); setEditingName(manager.name); setEditingTitle(manager.title); editingCompany.set(manager.company, (manager as any).companyId ?? undefined, (manager as any).logoUrl ?? undefined); setEditingCompanyLogo({ url: (manager as any).logoUrl ?? undefined, forName: manager.company }); setEditingLocation(adminLocationOf(manager)); setEditingLocationOpen(false); }}
                                 aria-label="Edit manager"
                                 className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
                               >

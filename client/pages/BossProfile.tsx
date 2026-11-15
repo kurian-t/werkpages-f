@@ -2,12 +2,16 @@ import API_BASE from "@/lib/api";
 import { LockedOverlay, LockedPanelCard } from "@/components/LockedNotice";
 import { Stars } from "@/components/Stars";
 import { MIN_OPINIONS_FOR_CONFIDENCE } from "@/components/RatingColumns";
-import { OpinionCard, OpinionAuthor, LockedOpinions } from "@/components/OpinionCard";
+import { OpinionCard, OpinionAuthor, LockedOpinions, ExampleRatingBadge, EXAMPLE_AVERAGE_EXPLANATION, EXAMPLE_TRAJECTORY_EXPLANATION } from "@/components/OpinionCard";
 import { RatingHighlights } from "@/components/RatingHighlights";
 import { TopRatedPill } from "@/components/TopRatedPill";
 import { companyLogoDomain, toNameCase, toJobTitleCase } from "@/lib/utils";
 import { RatingBreakdown } from "@/components/RatingBreakdown";
 import { gateKey } from "@/lib/gateKey";
+import {
+  DEFAULT_DRAFT_TTL_MS, REVIEW_DRAFT_KEY, adoptAnonymousDraft, adoptLegacyDraft,
+  anonymousDraftOffer, draftSlot, takeExpiryNotice, withoutUnprovenEmail,
+} from "@/lib/draftScope";
 import { Helmet } from "react-helmet-async";
 import { isManagerIndexable } from "@/lib/indexability";
 import { NoIndex, SITE_HIDDEN_FROM_SEARCH } from "@/components/PageMeta";
@@ -46,6 +50,7 @@ import { LocationValue, EMPTY_LOCATION, formatLocation, declaredPayload, orUserG
 import { fetchGeo } from "@/lib/geo";
 import { formatReviewPeriod } from "@/lib/reviewPeriod";
 import { useFormDraft, clearFormDraft } from "@/hooks/useFormDraft";
+import { useDraftSync } from "@/hooks/useDraftSync";
 import { MonthYear } from "@/components/MonthYear";
 import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import { DeleteRatingControl } from "@/components/DeleteRatingControl";
@@ -498,6 +503,22 @@ export default function BossProfile() {
   const myHeldReview = cachedUserReviews.find((r: any) => r?.disposition === "held");
 
   /*
+    THE READER'S OWN RATINGS, WHICH ARE NEVER WITHHELD FROM THEM.
+
+    The gate exists so that somebody who has contributed nothing cannot read other people's
+    scores. It was never meant to blur a person's own words back at them, and it did: a rating
+    held behind a pending manager is not live, hasContributed only counts live ratings, so the
+    contributor who had just added a manager was locked out of the single rating on the page -
+    their own, written sixty seconds earlier.
+
+    Matched by id rather than by author handle, which is anonymised and not unique.
+  */
+  const myReviewIds = useMemo(
+    () => new Set((cachedUserReviews ?? []).map((r: any) => r?.id).filter(Boolean)),
+    [cachedUserReviews],
+  );
+
+  /*
     Only then ask what stage the challenge is at, because that is the one thing the review payload
     cannot say. Gated on a held rating existing, so the request fires for the handful of people who
     have one rather than on every profile view by every signed-in visitor.
@@ -528,10 +549,29 @@ export default function BossProfile() {
   const [showReadyBanner, setShowReadyBanner] = useState(false);
   const [showDraftBanner, setShowDraftBanner] = useState(false);
 
-  const DRAFT_TTL = 12 * 60 * 60 * 1000; // 12 hours
+  const DRAFT_TTL = DEFAULT_DRAFT_TTL_MS; // 24 hours; see draftScope for why it was 12
+
+  /*
+    THE DRAFT BELONGS TO ONE PERSON, and until now this form did not ask which.
+
+    "rmm_pending_review" had no account in it, so on a shared browser the next visitor was shown
+    the last one's ten ratings, their dates, their employer and the email they typed into the
+    sign-up step. Worse than shown: a complete draft plus any signed-in user auto-submitted, so
+    one person's words were published under another's name with neither of them doing anything
+    wrong. See draftScope, where the ownership decision now lives for every form.
+
+    A draft written before the key had an account in it is moved into the anonymous scope once, so
+    shipping this does not throw away whatever was open in somebody's browser at the deploy.
+  */
+  const legacyAdoptedRef = useRef(false);
+  if (!legacyAdoptedRef.current) { legacyAdoptedRef.current = true; adoptLegacyDraft(REVIEW_DRAFT_KEY); }
+
+  const reviewDraft = draftSlot<any>(REVIEW_DRAFT_KEY, user?.id, { ttlMs: DRAFT_TTL });
+  const [offeredReviewDraft, setOfferedReviewDraft] = useState<any | null>(null);
+  const [reviewDraftExpired, setReviewDraftExpired] = useState(false);
 
   const clearReviewDraft = () => {
-    localStorage.removeItem("rmm_pending_review");
+    reviewDraft.clear();
     setModalRatings(initializeRatings());
     setReviewAttested(false);
     setReviewWorkedFrom({ month: "", year: "" });
@@ -650,6 +690,14 @@ export default function BossProfile() {
   const [authFlowStep, setAuthFlowStep] = useState<AuthFlowStep | null>(null);
   const [authFlowEmail, setAuthFlowEmail] = useState("");
   const pendingAction = useRef<"edit" | "report" | "edit-submit" | "report-submit" | null>(null);
+
+  /**
+   * Where a report interrupted by sign-in waits.
+   *
+   * sessionStorage rather than localStorage: a report is one sitting's business and should not
+   * reappear in a new tab a week later. The sign-in round trip stays within the session.
+   */
+  const PENDING_REPORT_KEY = `rmm_pending_report_${managerSlug ?? "unknown"}`;
   const [timelineUnlocked, setTimelineUnlocked] = useState(false);
   const [timelineFadeIn, setTimelineFadeIn] = useState(false);
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
@@ -694,6 +742,45 @@ export default function BossProfile() {
     if (!sessionStorage.getItem("rmm_pending_rate")) return;
     sessionStorage.removeItem("rmm_pending_rate");
     navigate("/add");
+  }, [user]);
+
+  /*
+    A REPORT INTERRUPTED BY SIGN-IN, SENT ON RETURN.
+
+    Signing in is a full-page redirect to Auth0 now, which destroys this component and the ref
+    that used to hold the pending action - so the report is restored here instead, the same way
+    the rate gate above is.
+
+    REMOVED FROM STORAGE BEFORE SENDING, not after. The send is the thing that can fail or be
+    retried, and a key still present on a retry would file the report twice. The two tests that
+    guard this are "a report written before signing in is still sent afterwards" and "signing in
+    from an interrupted action does not send it twice" - the second exists because both the
+    restored action and the still-mounted form firing would file one person's report twice under
+    their name.
+  */
+  useEffect(() => {
+    if (!user) return;
+    let saved: string | null = null;
+    try { saved = sessionStorage.getItem(PENDING_REPORT_KEY); } catch { return; }
+    if (!saved) return;
+    try { sessionStorage.removeItem(PENDING_REPORT_KEY); } catch { /* best effort */ }
+
+    let pending: { reason?: string; comment?: string | null; managerId?: number | null } | null = null;
+    try { pending = JSON.parse(saved); } catch { return; }   // malformed: discard, do not send
+    if (!pending?.reason) return;
+
+    axios.post(`${API_BASE}/api/managers/${pending.managerId ?? manager?.id}/report`,
+               { reason: pending.reason, comment: pending.comment ?? null })
+      .then(() => {
+        setHasReported(true);
+        toast.success("Report submitted", {
+          description: "Thank you. Our team will review this profile.",
+        });
+      })
+      .catch(() => {
+        // Deliberately quiet. The person did not press anything on this page load, so an error
+        // toast about a report they may not remember writing would be more confusing than silence.
+      });
   }, [user]);
   const [reviewWorkedFrom, setReviewWorkedFrom] = useState({ month: "", year: "" });
   const [reviewWorkedUntil, setReviewWorkedUntil] = useState({ month: "", year: "" });
@@ -1109,82 +1196,162 @@ export default function BossProfile() {
   }, [pendingAutoSubmit, userReviewsFetched]);
 
   // Restore pending review data; open sign-in modal if returning after email verification
+  /*
+    Applying a review draft, separated from deciding whether it may be applied.
+
+    `mayAutoSubmit` is the part that matters. The branch at the end of this function used to fire
+    the submission for ANY signed-in user as soon as a complete draft was restored, and nothing
+    established that the draft was theirs - so a rating left on a shared browser was published
+    under whoever signed in next. It is now passed in, and it is false for a draft that had to be
+    offered.
+  */
+  const applyReviewDraft = (
+    data: any,
+    { isVerified, mayAutoSubmit }: { isVerified: boolean; mayAutoSubmit: boolean },
+  ) => {
+    if (data.modalRatings)         setModalRatings(data.modalRatings);
+    if (data.reviewAttested != null) setReviewAttested(data.reviewAttested);
+    if (data.generatedName)        setGeneratedName(data.generatedName);
+    if (data.reviewWorkedFrom)     setReviewWorkedFrom(data.reviewWorkedFrom);
+    if (data.reviewWorkedUntil)    setReviewWorkedUntil(data.reviewWorkedUntil);
+    if (data.reviewCurrentlyWorking != null) setReviewCurrentlyWorking(data.reviewCurrentlyWorking);
+    if (data.reviewManagerCompany != null)   setReviewManagerCompany(data.reviewManagerCompany);
+    if (data.reviewManagerTitle != null)     setReviewManagerTitle(data.reviewManagerTitle);
+    if (data.reviewManagerStatus != null)    setReviewManagerStatus(data.reviewManagerStatus);
+    if (data.reviewLocation)       setReviewLocation(data.reviewLocation);
+    if (data.draftToken)           reviewDraftTokenRef.current = data.draftToken;
+    if (data.signupEmail) {
+      setAuthFlowEmail(data.signupEmail);
+      setPendingVerificationEmail(data.signupEmail);
+      setPendingEmailVerified(isVerified || !!data.emailVerified);
+    }
+    skipResetRef.current = true;
+    if (isVerified) {
+      setReviewStep("details");
+      setFromVerified(true);
+      setAuthFlowStep("signin");
+    } else if (data.signupEmail) {
+      setReviewStep("details");
+      if (data.emailVerified) setFromVerified(true);
+      setAuthFlowStep(data.emailVerified ? "signin" : "verify_email");
+    } else if (user) {
+      /*
+        Returning from social OAuth: the person left a complete review behind to go and
+        sign in, so reopen it on its last step and let the validation effect decide
+        whether it can be submitted or has hit a conflict.
+
+        Gated on the ratings being complete rather than on the draft carrying a step.
+        Drafts written before the step was recorded - and the OAuth round trip itself -
+        have no `reviewStep`, and requiring one here silently stopped the whole
+        conflict-after-auth flow from reopening.
+      */
+      const allRated = data.modalRatings
+        && Object.keys(data.modalRatings).length > 0
+        && Object.values(data.modalRatings as Record<string, number>).every(r => r >= 1);
+      if (allRated) {
+        setReviewStep("ratings");
+        /*
+          ONLY for a draft this account is known to own. An offered draft that somebody has
+          just accepted is restored and reopened, and they press submit themselves: accepting
+          an offer says "these answers are mine", which is not the same as "publish them now".
+        */
+        if (mayAutoSubmit) setPendingAutoSubmit(user);
+      } else if (data.reviewStep) {
+        setReviewStep(data.reviewStep);
+      }
+    } else if (data.reviewStep) {
+      /*
+        A reload, most often. The form was open when this was saved, so it opens again, on
+        the step it was left on.
+
+        It used to restore the answers silently and leave the form shut, which put somebody
+        who refreshed mid-review back on the manager profile with no sign their work still
+        existed - indistinguishable from having lost it.
+      */
+      setReviewStep(data.reviewStep);
+    }
+  };
+
   useEffect(() => {
     const isVerified = searchParams.get("verified") === "true";
-    try {
-      const raw = localStorage.getItem("rmm_pending_review");
-      if (raw) {
-        const data = JSON.parse(raw);
-        if (data.managerId === (id || managerSlug)) {
-          // Expire after 12 hours
-          if (data.savedAt && Date.now() - data.savedAt > DRAFT_TTL) {
-            localStorage.removeItem("rmm_pending_review");
-          } else {
-            localStorage.removeItem("rmm_pending_review");
-            if (data.modalRatings)         setModalRatings(data.modalRatings);
-            if (data.reviewAttested != null) setReviewAttested(data.reviewAttested);
-            if (data.generatedName)        setGeneratedName(data.generatedName);
-            if (data.reviewWorkedFrom)     setReviewWorkedFrom(data.reviewWorkedFrom);
-            if (data.reviewWorkedUntil)    setReviewWorkedUntil(data.reviewWorkedUntil);
-            if (data.reviewCurrentlyWorking != null) setReviewCurrentlyWorking(data.reviewCurrentlyWorking);
-            if (data.reviewManagerCompany != null)   setReviewManagerCompany(data.reviewManagerCompany);
-            if (data.reviewManagerTitle != null)     setReviewManagerTitle(data.reviewManagerTitle);
-            if (data.reviewManagerStatus != null)    setReviewManagerStatus(data.reviewManagerStatus);
-            if (data.reviewLocation)       setReviewLocation(data.reviewLocation);
-            if (data.draftToken)           reviewDraftTokenRef.current = data.draftToken;
-            if (data.signupEmail) {
-              setAuthFlowEmail(data.signupEmail);
-              setPendingVerificationEmail(data.signupEmail);
-              setPendingEmailVerified(isVerified || !!data.emailVerified);
-            }
-            skipResetRef.current = true;
-            if (isVerified) {
-              setReviewStep("details");
-              setFromVerified(true);
-              setAuthFlowStep("signin");
-            } else if (data.signupEmail) {
-              setReviewStep("details");
-              if (data.emailVerified) setFromVerified(true);
-              setAuthFlowStep(data.emailVerified ? "signin" : "verify_email");
-            } else if (user) {
-              /*
-                Returning from social OAuth: the person left a complete review behind to go and
-                sign in, so reopen it on its last step and let the validation effect decide
-                whether it can be submitted or has hit a conflict.
+    const thisManager = id || managerSlug;
 
-                Gated on the ratings being complete rather than on the draft carrying a step.
-                Drafts written before the step was recorded - and the OAuth round trip itself -
-                have no `reviewStep`, and requiring one here silently stopped the whole
-                conflict-after-auth flow from reopening.
-              */
-              const allRated = data.modalRatings
-                && Object.keys(data.modalRatings).length > 0
-                && Object.values(data.modalRatings as Record<string, number>).every(r => r >= 1);
-              if (allRated) {
-                setReviewStep("ratings");
-                setPendingAutoSubmit(user);
-              } else if (data.reviewStep) {
-                setReviewStep(data.reviewStep);
-              }
-            } else if (data.reviewStep) {
-              /*
-                A reload, most often. The form was open when this was saved, so it opens again, on
-                the step it was left on.
+    /*
+      WHOSE DRAFT IS THIS?
 
-                It used to restore the answers silently and leave the form shut, which put somebody
-                who refreshed mid-review back on the manager profile with no sign their work still
-                existed - indistinguishable from having lost it.
-              */
-              setReviewStep(data.reviewStep);
-            }
-          }
-        }
-      }
-    } catch {
-      localStorage.removeItem("rmm_pending_review");
+      Read rather than taken, because a draft for a DIFFERENT manager must be left exactly where
+      it is - consuming it here would throw away a review in progress about somebody else.
+
+      Their own scope is theirs by construction, because only a signed-in session writes there.
+
+      An anonymous draft is OFFERED. Always, with no exceptions, and there were two: a draft whose
+      `signupEmail` matched the signed-in address, and a load carrying `?verified=true`. Both were
+      values written by whoever had the browser rather than facts about who wrote the draft. An
+      anonymous draft carries no identity, so there is nothing on it to verify.
+    */
+    const own = reviewDraft.read();
+    let data = own && own.managerId === thisManager ? own : null;
+    let trusted = false;
+    if (data) {
+      reviewDraft.clear();
+      trusted = true;
+      data = withoutUnprovenEmail(data, { accountEmail: user?.email });
+    } else if (!own && user?.id) {
+      const anon = anonymousDraftOffer<any>(REVIEW_DRAFT_KEY, user.id, DRAFT_TTL);
+      if (anon && anon.managerId === thisManager) setOfferedReviewDraft(anon);
     }
+
+    if (data) applyReviewDraft(data, { isVerified, mayAutoSubmit: trusted });
+    // Said rather than inferred; reading it is what clears it. Names nothing from the draft.
+    if (takeExpiryNotice(REVIEW_DRAFT_KEY, user?.id)) setReviewDraftExpired(true);
     if (isVerified) setSearchParams({}, { replace: true });
   }, [id, managerSlug]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** The contributor says an anonymous draft is theirs. Nothing is applied until they do. */
+  const acceptOfferedReviewDraft = () => {
+    if (!user?.id) return;
+    const taken = adoptAnonymousDraft<any>(REVIEW_DRAFT_KEY, user.id, DRAFT_TTL);
+    setOfferedReviewDraft(null);
+    // Same guard as any other restore: accepting answers is not a reason to show an address that
+    // may belong to somebody else.
+    if (taken) {
+      applyReviewDraft(withoutUnprovenEmail(taken, { accountEmail: user?.email }),
+                       { isVerified: false, mayAutoSubmit: false });
+    }
+  };
+
+  /** They say it is not. It stays in the anonymous scope rather than being destroyed here. */
+  const declineOfferedReviewDraft = () => setOfferedReviewDraft(null);
+
+  /*
+    ONE PAYLOAD, built in one place, because it is now written from two.
+
+    The effect keeps the draft current while the form is open. `persistReviewDraftNow` writes the
+    same payload SYNCHRONOUSLY, immediately before the form sends somebody away to authenticate,
+    which the effect cannot do: it runs after the render that follows a state change, so a handler
+    that navigates in the same tick leaves with the newest answer unsaved. Social sign-in already
+    leaves this page, and after Stage 4 every sign-in will.
+  */
+  const buildReviewDraftPayload = () => ({
+      returnTo: id ? `/manager/${id}` : `/companies/${companySlug}/managers/${managerSlug}`,
+      managerId: id || managerSlug,
+      // Where they were, so a reload reopens the form rather than dropping them on the profile.
+      reviewStep,
+      // Where the work happened. Not saved before, so a refresh silently reverted it to whatever
+      // the visitor's geography suggested.
+      reviewLocation,
+      modalRatings, authorType, generatedName, reviewAttested,
+      reviewWorkedFrom, reviewWorkedUntil, reviewCurrentlyWorking,
+      reviewManagerCompany, reviewManagerTitle, reviewManagerStatus,
+      ...(pendingVerificationEmail ? { signupEmail: pendingVerificationEmail, emailVerified: pendingEmailVerified } : {}),
+      ...(reviewDraftTokenRef.current ? { draftToken: reviewDraftTokenRef.current } : {}),
+  });
+
+  /** Writes the review draft right now, for a caller that is about to navigate. */
+  const persistReviewDraftNow = () => {
+    if (!reviewStep) return;
+    reviewDraft.write(buildReviewDraftPayload());
+  };
 
   // Continuously persist review data while review form is open so any navigation away preserves it
   useEffect(() => {
@@ -1199,22 +1366,38 @@ export default function BossProfile() {
       The form is only open because somebody deliberately opened it; that is reason enough to keep
       what is in it.
     */
-    localStorage.setItem("rmm_pending_review", JSON.stringify({
-      returnTo: id ? `/manager/${id}` : `/companies/${companySlug}/managers/${managerSlug}`,
-      managerId: id || managerSlug,
-      // Where they were, so a reload reopens the form rather than dropping them on the profile.
-      reviewStep,
-      // Where the work happened. Not saved before, so a refresh silently reverted it to whatever
-      // the visitor's geography suggested.
-      reviewLocation,
-      modalRatings, authorType, generatedName, reviewAttested,
-      reviewWorkedFrom, reviewWorkedUntil, reviewCurrentlyWorking,
-      reviewManagerCompany, reviewManagerTitle, reviewManagerStatus,
-      ...(pendingVerificationEmail ? { signupEmail: pendingVerificationEmail, emailVerified: pendingEmailVerified } : {}),
-      ...(reviewDraftTokenRef.current ? { draftToken: reviewDraftTokenRef.current } : {}),
-      savedAt: Date.now(),
-    }));
+    reviewDraft.write(buildReviewDraftPayload());
   }, [reviewStep, reviewLocation, isSubmittingReview, modalRatings, reviewAttested, reviewWorkedFrom, reviewWorkedUntil, reviewCurrentlyWorking, reviewManagerCompany, reviewManagerTitle, authorType, id, pendingVerificationEmail, pendingEmailVerified]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /*
+    The same answers, sent to the server while the form is still open.
+
+    NOT the drop-off endpoint. That one writes a real, public review and runs once, at submit.
+    This writes an internal draft and runs every few seconds, because half the categories answered
+    is not a rating and a profile showing one would be stating an opinion nobody finished forming.
+
+    Shares the token the submit path already mints, so finishing the form resolves this draft
+    rather than leaving a second record of the same opinion.
+  */
+  useDraftSync({
+    url: `${API_BASE}/api/managers/${manager?.id ?? id}/reviews/autosave`,
+    token: reviewDraftTokenRef.current ?? (reviewDraftTokenRef.current = crypto.randomUUID()),
+    enabled: !user && !!(manager?.id ?? id),
+    body: () => {
+      const answered = Object.values(modalRatings).filter((r) => r >= 1).length;
+      if (answered === 0) return null;
+      return {
+        ratings: modalRatings,
+        author: generatedName,
+        managerCompany: reviewManagerCompany,
+        managerTitle: reviewManagerTitle,
+        workedFrom: reviewWorkedFrom,
+        workedUntil: reviewCurrentlyWorking ? null : reviewWorkedUntil,
+      };
+    },
+    deps: [modalRatings, reviewManagerCompany, reviewManagerTitle,
+           reviewWorkedFrom, reviewWorkedUntil, reviewCurrentlyWorking],
+  });
 
   // Close review dropdown when clicking outside
   useEffect(() => {
@@ -1254,8 +1437,19 @@ export default function BossProfile() {
 
   const managerCategoryAverages = manager ? calculateCategoryAverages() : {};
 
-  // Sort reviews based on the selected option
+  /*
+    Sort reviews, with one rule ahead of whatever was chosen.
+
+    A review waiting on a moderator goes first. It is the one its author came back to look at, and
+    it is the only one on the page whose state they cannot otherwise see.
+
+    "Most recent" sorted on `b.id - a.id`, and review ids are UUIDs. Subtracting two strings gives
+    NaN, a comparator returning NaN is treated as 0, and the default sort therefore did nothing at
+    all - the list simply kept whatever order it arrived in. It sorts on the timestamp now.
+  */
   const sortedReviews = [...contextReviews].sort((a, b) => {
+    const pending = Number(a.published === false) - Number(b.published === false);
+    if (pending !== 0) return -pending;
     switch (sortBy) {
       case "helpful":
         return b.helpfulCount - a.helpfulCount;
@@ -1265,7 +1459,7 @@ export default function BossProfile() {
         return a.overallRating - b.overallRating;
       case "recent":
       default:
-        return b.id - a.id;
+        return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
     }
   });
 
@@ -1281,7 +1475,52 @@ export default function BossProfile() {
     worth unlocking. Real reviews lead; placeholders make up the difference behind them.
   */
   const MIN_LOCKED_CARDS = 5;
-  const reviewRows: any[] = !isLocked
+  /*
+    WHO THE INVENTED STACK IS FOR: a signed-out visitor, and nobody else.
+
+    It is an advertisement for contributing - five cards that read as a body of opinion worth
+    unlocking - and it is only honest as that. Shown to somebody signed in it is something else
+    entirely: a person who has just added a manager and rated them was shown their own held
+    rating plus four invented strangers on a profile that cannot have any, as though other people
+    had already worked for somebody nobody had heard of a minute earlier.
+
+    Signed in means no placeholders, whether or not they have contributed. The gate on real
+    scores is unchanged - that is what contributing buys - but nothing is invented for them.
+  */
+  const showInventedCards = !user;
+  /*
+    NOTHING IS WITHHELD WHEN EVERY RATING ON THE PAGE IS THE READER'S OWN.
+
+    The aggregate, the strongest/weakest block and the breakdown are all computed from the
+    reviews below, so on a manager somebody has just added - where the only rating is the one
+    they wrote - every one of those numbers IS their own, blurred back at them. The page showed
+    their card in full and the identical score smudged out directly above it.
+
+    It is the same rule as the card: the gate withholds OTHER PEOPLE'S scores. When there are
+    none, there is nothing to withhold.
+  */
+  const myDataOnly = sortedReviews.length > 0
+    && sortedReviews.every((r: any) => myReviewIds.has(r.id));
+  const gateLocked = isLocked && !myDataOnly;
+  /*
+    EVERY RATING ON THIS PROFILE IS A PLATFORM EXAMPLE, so the score, the trajectory and the one
+    card on the page are all demonstrations rather than anybody's opinion.
+
+    This is what the three example pills key on. It is computed from the review rows rather than
+    from the manager's cached figures BECAUSE those figures are already correct and already zero:
+    `recalculate` counts only `origin = 'contributor'`, so an example-only manager carries
+    reviews_count 0 and a NULL overall_rating. The number the page prints in that case comes from
+    the example ROW, which is exactly why it needs labelling and why `manager.overallRating` could
+    never tell us.
+
+    `.every` on a non-empty list, not `.some`: a manager holding one example AND one real rating is
+    not an example profile, and the example row there is labelled by its own card. In practice that
+    pair no longer arises for new ratings, because a genuine rating now deletes the example as it
+    lands - but it still exists in older data, and the pills must not appear on those profiles.
+  */
+  const exampleOnly =
+    contextReviews.length > 0 && contextReviews.every((r: any) => r.isExample === true);
+  const reviewRows: any[] = !gateLocked || !showInventedCards
     ? sortedReviews
     : [...sortedReviews,
        ...LOCKED_REVIEW_PLACEHOLDERS.slice(0, Math.max(0, MIN_LOCKED_CARDS - sortedReviews.length))];
@@ -1289,6 +1528,32 @@ export default function BossProfile() {
     if (!reportReason) return;
 
     if (!user && !overrideUser) {
+      /*
+        PERSISTED, not just held in a ref, because signing in is now a PAGE LOAD.
+
+        `pendingAction` is a useRef, and a ref does not survive a navigation. That was fine while
+        the auth modal signed somebody in without leaving the page; Universal Login replaced that
+        with a redirect to Auth0, so a guest who wrote a report, pressed Submit and signed in came
+        back to an empty form with their report silently gone.
+
+        Exactly the shape of ISSUE 32, where a draft token lived only in a ref and the round trip
+        discarded it. Two tests in boss-profile-admin-and-resume.spec.ts caught this one - "a
+        report written before signing in is still sent afterwards" and "does not send it twice" -
+        which is why they are worth retargeting rather than retiring.
+
+        Keyed per manager, so a report half-written about one profile cannot resurface on another.
+      */
+      try {
+        sessionStorage.setItem(PENDING_REPORT_KEY, JSON.stringify({
+          reason: reportReason,
+          comment: reportComment || null,
+          managerId: manager?.id ?? null,
+          savedAt: Date.now(),
+        }));
+      } catch {
+        // Private browsing can refuse sessionStorage. The in-page path still works, so a refusal
+        // degrades to the old behaviour rather than breaking the submit.
+      }
       pendingAction.current = "report-submit";
       setAuthFlowStep("signup");
       return;
@@ -1389,6 +1654,12 @@ export default function BossProfile() {
         datesHidden: reviewDatesHidden,
         draftToken: dropOffToken,
       }).catch(() => {});
+      /*
+        The answers are written BEFORE the auth flow opens, not by the effect that normally keeps
+        the draft current. Social sign-in inside that modal leaves this page, and the effect has
+        not run yet for whatever changed in this same tick.
+      */
+      persistReviewDraftNow();
       if (pendingVerificationEmail) {
         setAuthFlowEmail(pendingVerificationEmail);
         setAuthFlowStep(pendingEmailVerified ? "signin" : "verify_email");
@@ -1505,7 +1776,7 @@ export default function BossProfile() {
     }
 
     reviewDraftTokenRef.current = null;
-    localStorage.removeItem("rmm_pending_review");
+    reviewDraft.clear();
     /*
       SAID AFTER THE SAVE, and only after it.
 
@@ -1596,7 +1867,7 @@ export default function BossProfile() {
           author: generatedName,
         }
       );
-      localStorage.removeItem("rmm_pending_review");
+      reviewDraft.clear();
       await Promise.all([
         queryClient.refetchQueries({ queryKey: managerQueryKey }),
         queryClient.refetchQueries({ queryKey: ["manager-reviews", manager?.id] }),
@@ -1857,10 +2128,10 @@ export default function BossProfile() {
   /*
     A moderator removing somebody else's rating.
 
-    Deliberately separate from handleDeleteReview above, which is a PERSON withdrawing their OWN
-    rating: that one carries a 30-day cooldown, anonymises the row and auto-restores after three
-    days. None of that is right for a moderation decision, and the backend keeps them apart for
-    the same reason.
+    Deliberately separate from handleUnlinkReview above, which is a PERSON unlinking their OWN
+    rating: that one severs ownership permanently while leaving the rating published, with no
+    cooldown and no restore. A moderation removal is a different decision, and the backend keeps
+    the two apart for the same reason.
 
     The reason is not a formality - only "junk" debits the author's confidence, so it has to be
     chosen deliberately rather than defaulted.
@@ -1892,7 +2163,7 @@ export default function BossProfile() {
     setAdminDeleteBusy(false);
   };
 
-  const handleDeleteReview = async (reviewId?: string) => {
+  const handleUnlinkReview = async (reviewId?: string) => {
     const targetId = reviewId ?? editingReviewId;
     if (targetId === null) return;
 
@@ -1901,13 +2172,16 @@ export default function BossProfile() {
       return;
     }
 
-    // 1. DELETE the review
+    // 1. UNLINK the rating. POST .../unlink, not DELETE: the rating stays published and keeps
+    //    counting toward the manager's average; only this account's ownership is severed, and
+    //    permanently. The old DELETE path withdrew-and-restored-anonymous after three days, which
+    //    is a different lifecycle - see ManagerService.unlinkReview vs deleteReview.
     try {
-      await axios.delete(
-        `${API_BASE}/api/managers/${manager?.id}/reviews/${targetId}`
+      await axios.post(
+        `${API_BASE}/api/managers/${manager?.id}/reviews/${targetId}/unlink`
       );
     } catch {
-      toast.error("Failed to delete review. Please try again.");
+      toast.error("Failed to unlink rating. Please try again.");
       return;
     }
 
@@ -1919,8 +2193,8 @@ export default function BossProfile() {
     queryClient.removeQueries({ queryKey: ["managers-top"] });
     queryClient.removeQueries({ queryKey: ["stats"] });
 
-    toast.success("Review deleted", {
-      description: "Your review has been removed.",
+    toast.success("Rating unlinked", {
+      description: "It stays published anonymously; it is no longer linked to your account.",
     });
 
     setPendingDeleteReviewId(null);
@@ -2059,15 +2333,24 @@ export default function BossProfile() {
               "name": manager.name,
               "jobTitle": manager.title,
               "worksFor": { "@type": "Organization", "name": manager.company },
-              ...(manager.overallRating ? {
-                "aggregateRating": {
-                  "@type": "AggregateRating",
-                  "ratingValue": String(manager.overallRating),
-                  "bestRating": "5",
-                  "worstRating": "0",
-                  "ratingCount": String(manager.reviewsCount || contextReviews.length || 1),
-                },
-              } : {}),
+              /*
+                NO aggregateRating, and it is not an oversight.
+
+                Google supports review snippets on a fixed list of types - Book, Course, Event,
+                HowTo, LocalBusiness, Movie, Product, Recipe, SoftwareApplication - and Person is
+                not one of them. A rating hung on a Person is rejected outright and the page is
+                reported in Search Console as "Invalid object type for field <parent_node>",
+                which is Google saying the PARENT of the rating is a type that cannot carry it.
+                Six manager profiles were flagged that way.
+
+                Nothing is lost by removing it: invalid markup never produced a star in the first
+                place, so this trades a permanent error for the same zero rich results.
+
+                The tempting fix is to relabel the page as a Product or a LocalBusiness so the
+                stars become legal. That would be describing a human being as a product to game a
+                snippet, it misrepresents what the page is, and it is the kind of thing that earns
+                a manual action rather than a rating.
+              */
             },
             {
               "@type": "BreadcrumbList",
@@ -2288,8 +2571,8 @@ export default function BossProfile() {
               />
 
               {/* Compact rating strip */}
-              <div className={`flex items-center gap-3 ${isLocked ? "select-none" : ""}`}>
-                <span className={`text-2xl font-bold text-[#6d5091] tabular-nums leading-none whitespace-nowrap ${isLocked ? "blur-sm" : ""}`}>
+              <div className={`flex items-center gap-3 ${gateLocked ? "select-none" : ""}`}>
+                <span className={`text-2xl font-bold text-[#6d5091] tabular-nums leading-none whitespace-nowrap ${gateLocked ? "blur-sm" : ""}`}>
                   {managerCategoryAverages.overallRating
                     ? Number(managerCategoryAverages.overallRating).toFixed(1)
                     : manager.overallRating
@@ -2302,7 +2585,7 @@ export default function BossProfile() {
                     stars and understated the score exactly as rounding elsewhere overstated it.
                     Locked keeps its washed-out placeholder row - a shape, not a score.
                   */}
-                  {isLocked ? (
+                  {gateLocked ? (
                     <div className="flex items-center gap-0.5" role="img" aria-label="rating hidden until you contribute">
                       {Array.from({ length: 5 }).map((_, i) => (
                         <Star key={i} size={13} aria-hidden="true" className="fill-amber-300/40 text-amber-300/40" />
@@ -2315,13 +2598,28 @@ export default function BossProfile() {
                       showValue={false}
                     />
                   )}
-                  <p className={`mt-0.5 text-xs text-muted-foreground ${isLocked ? "blur-sm" : ""}`}>
+                  <p className={`mt-0.5 text-xs text-muted-foreground ${gateLocked ? "blur-sm" : ""}`}>
                     {(contextReviews.length || manager.reviews || 0) > 0
                       ? `${(contextReviews.length || manager.reviews || 0).toLocaleString()} ${(contextReviews.length || manager.reviews || 0) === 1 ? 'review' : 'reviews'}${(contextReviews.length || manager.opinions || 0) < MIN_OPINIONS_FOR_CONFIDENCE ? ' (limited data, interpret cautiously)' : ''}`
                       : 'No reviews yet'}
                   </p>
                 </div>
               </div>
+
+              {/*
+                THE SCORE IS AN EXAMPLE, said next to the score.
+
+                Behind the gate the number is blurred and means nothing to the reader, so the label
+                would be explaining a smudge; it is omitted there for the same reason the rating
+                card's is. Same pill, same wording pattern, different noun.
+              */}
+              {exampleOnly && !gateLocked && (
+                <ExampleRatingBadge
+                  className="self-start"
+                  label="Example score"
+                  explanation={EXAMPLE_AVERAGE_EXPLANATION}
+                />
+              )}
 
               {/* Primary CTA - Write / Edit review */}
               <div ref={reviewDropdownRef} className="relative">
@@ -2371,16 +2669,18 @@ export default function BossProfile() {
                       {pendingDeleteReviewId ? (
                         /* Inline delete confirmation */
                         <div className="px-4 py-4">
-                          <p className="text-sm font-semibold text-foreground">Delete this review?</p>
+                          <p className="text-sm font-semibold text-foreground">Unlink this rating?</p>
                           <p className="mt-1 text-xs text-muted-foreground">
-                            You won't be able to submit another review for this manager for <span className="font-medium text-foreground">30 days</span>.
+                            Your feedback stays published anonymously and keeps counting toward this
+                            manager's statistics. You will no longer be able to edit it, and you
+                            <span className="font-medium text-foreground"> will not be able to rate this manager again</span>.
                           </p>
                           <div className="mt-3 flex gap-2">
                             <button
-                              onClick={() => handleDeleteReview(pendingDeleteReviewId)}
+                              onClick={() => handleUnlinkReview(pendingDeleteReviewId)}
                               className="flex-1 rounded-lg bg-red-500 px-3 py-2 text-xs font-semibold text-white hover:bg-red-600 transition-colors"
                             >
-                              Yes, delete
+                              Yes, unlink
                             </button>
                             <button
                               onClick={() => setPendingDeleteReviewId(null)}
@@ -2466,7 +2766,7 @@ export default function BossProfile() {
                               <button
                                 onClick={(e) => { e.stopPropagation(); setPendingDeleteReviewId(review.id); }}
                                 className="px-3 py-2.5 text-muted-foreground hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
-                                title="Delete review"
+                                title="Unlink rating"
                               >
                                 <Trash2 size={14} />
                               </button>
@@ -3034,7 +3334,7 @@ export default function BossProfile() {
       <section className="border-b border-border py-8">
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
           <RatingHighlights
-            locked={isLocked}
+            locked={gateLocked}
             opinionCount={contextReviews.length || manager.reviews || 0}
             highlights={(() => {
             /*
@@ -3045,7 +3345,7 @@ export default function BossProfile() {
               Locked draws plausible placeholders: the blur needs a shape, and a gated reader
               should see that there is a breakdown here rather than an empty band.
             */
-            const scored = isLocked
+            const scored = gateLocked
               ? RATING_CATEGORIES.map((cat, i) => ({ cat, score: [5, 4.6, 4.3, 3.6, 3.4, 3.1][i % 6] }))
               : RATING_CATEGORIES
                   .map(cat => ({ cat, score: Math.round((managerCategoryAverages[cat] || 0) * 10) / 10 }))
@@ -3070,7 +3370,7 @@ export default function BossProfile() {
               Average scores across {RATING_CATEGORIES.length} rating categories
             </p>
           </div>
-          {isLocked ? (
+          {gateLocked ? (
             <div className="relative">
               <div className="grid gap-3 sm:grid-cols-2 blur-sm select-none pointer-events-none">
                 {RATING_CATEGORIES.map((category) => (
@@ -3156,7 +3456,7 @@ export default function BossProfile() {
       </section>
 
       {/* Career Performance Timeline - gated for non-contributors and signed-out users */}
-      {!isLocked && user ? (
+      {!gateLocked && user ? (
         <div
           style={{
             opacity: timelineUnlocked ? (timelineFadeIn ? 1 : 0) : 1,
@@ -3165,6 +3465,7 @@ export default function BossProfile() {
         >
           <CareerTimeline
             segments={effectiveCareerSegments}
+            isExample={exampleOnly}
             onEditCareerEntry={user?.role === "admin" ? (entry) => {
               /*
                 A card with no career_history row still needs its dates.
@@ -3194,7 +3495,25 @@ export default function BossProfile() {
       ) : (
         <section className="py-10 border-b border-border">
           <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-            <h2 className="text-[17px] font-semibold text-foreground tracking-tight mb-4">Career Performance Trajectory</h2>
+            {/*
+              THE PILL BELONGS ON THIS BRANCH TOO, and leaving it off is why it looked missing.
+
+              CareerTimeline carries it, but CareerTimeline only renders for a signed-in
+              contributor. A manager whose only rating is an example has, by definition, had nobody
+              contribute to them - so almost every visitor to exactly the profiles that need this
+              label is gate-locked and gets THIS block instead. The pill was present on the branch
+              those readers never see.
+            */}
+            <h2 className="text-[17px] font-semibold text-foreground tracking-tight mb-4">
+              Career Performance Trajectory
+              {exampleOnly && (
+                <ExampleRatingBadge
+                  className="ml-2 align-middle"
+                  label="Example rating"
+                  explanation={EXAMPLE_TRAJECTORY_EXPLANATION}
+                />
+              )}
+            </h2>
             <div className="relative rounded-xl border border-border overflow-hidden">
               <div className="h-40 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 blur-sm" />
               <LockedOverlay
@@ -3223,7 +3542,7 @@ export default function BossProfile() {
                     thing this section can say to somebody deciding whether to write one. It is
                     part of what contributing buys, not a label.
                   */
-                  <span className={`ml-2 text-sm font-normal text-muted-foreground ${isLocked ? "blur-sm select-none" : ""}`}>
+                  <span className={`ml-2 text-sm font-normal text-muted-foreground ${gateLocked ? "blur-sm select-none" : ""}`}>
                     {contextReviews.length}
                   </span>
                 )}
@@ -3265,7 +3584,31 @@ export default function BossProfile() {
                   could be invention and a reader has no reason to think otherwise. Its score is
                   withheld like every other: that is what contributing buys.
                 */
-                const revealIdentity = rowIndex === 0 && sortedReviews.length > 0;
+                /*
+                  A platform-generated example never takes the lead-card identity reveal: a demo
+                  must not be dressed up as "the proof there are real people behind the blur". It
+                  is labelled explicitly below instead.
+                */
+                const isExampleRow = review.isExample === true;
+                const revealIdentity = rowIndex === 0 && sortedReviews.length > 0 && !isExampleRow;
+                /*
+                  Their own rating is theirs to read, gate or no gate. See myReviewIds above:
+                  a held rating does not count towards hasContributed, so its author was being
+                  shown their own scores smudged out.
+                */
+                const mine = myReviewIds.has(review.id);
+                /*
+                  TWO SHAPES SAY THE SAME THING, and only one of them was being read.
+
+                  A row from the profile endpoint carries `published` - the aggregate projects
+                  `disposition = 'live'` into it and does not send `disposition` itself. A row that
+                  came back from submitting or editing a rating carries `disposition`. The badge
+                  below read only `disposition`, so on the profile it never rendered at all and an
+                  author's held rating sat in the list looking exactly like a published one.
+                */
+                const awaitingReview =
+                  review.published === false || review.disposition === "held";
+                const cardLocked = gateLocked && !mine;
                 const isExpanded = expandedReviews.has(review.id);
                 return (
                 /*
@@ -3278,15 +3621,35 @@ export default function BossProfile() {
                 */
                 <OpinionCard
                   key={review.id}
-                  tone={review.disposition === "held" ? "held" : "default"}
+                  tone={awaitingReview ? "held" : "default"}
                 >
+                  {/*
+                    EXAMPLE RATING LABEL, shown only in the unlocked view. Behind the gate the card
+                    is blurred and unchanged, so the label would be unreadable and is omitted. Once
+                    unlocked, the example must still read unmistakably as a platform demonstration
+                    and never as an employee opinion - so it is rendered outside anything blurred.
+
+                    A PILL, NOT A PANEL. What stood here was a full-width indigo box carrying a
+                    heading and a paragraph, on a card that ExampleRatingBadge's own notes describe
+                    being tinted and ringed to match. Between them they made the one rating nobody
+                    wrote the loudest thing on the page. The disclosure is unchanged in substance
+                    and still complete; it is one hover or one keyboard focus away instead of
+                    occupying four lines above every example.
+                  */}
+                  {/*
+                    THE EXAMPLE PILL MOVED into OpinionAuthor, beside the handle, where the
+                    "Registered" pill sits on an ordinary card. It was floating at the top of the
+                    card on its own line, which read as a banner over the whole thing and sat in a
+                    different place from the only other pill a card can carry. One slot for "what
+                    this card's author is", whichever of the two applies.
+                  */}
                   {/*
                     A held rating reaches this list only for its author or an admin - the public
                     query filters it out - so it must not sit here looking published. Marked rather
                     than hidden: an admin needs to see the thing they are deciding about, and its
                     author needs to see that the rating they wrote exists.
                   */}
-                  {review.disposition === "held" && (
+                  {awaitingReview && (
                     <p className="mb-3 inline-block rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
                       Not published yet, awaiting verification
                     </p>
@@ -3328,7 +3691,7 @@ export default function BossProfile() {
                     */}
                     {!review.datesHidden && (review.workedFrom || review.workedUntil) && (
                       <p className={`text-xs text-muted-foreground mt-0.5 ${
-                        isLocked && !revealIdentity ? "blur-sm select-none" : ""
+                        cardLocked && !revealIdentity ? "blur-sm select-none" : ""
                       }`}>
                         {formatReviewPeriod(review)}
                       </p>
@@ -3351,12 +3714,25 @@ export default function BossProfile() {
                     <OpinionAuthor
                       name={review.author}
                       when={getFormattedDate(review)}
-                      verified={review.verified}
-                      blurred={isLocked && !revealIdentity}
+                      /*
+                        NEVER "Registered" ON AN EXAMPLE.
+
+                        createSeedReview writes verified = true on the row, so passing the field
+                        straight through put the most credibility-lending mark on the card onto
+                        the one rating with no account behind it. It is a false statement about
+                        provenance, and it sat directly beside the pill saying the opposite.
+
+                        Suppressed here rather than by changing the row: the column is read by
+                        other things, and a display decision belongs at the point of display.
+                      */
+                      verified={review.verified && !isExampleRow}
+                      /* Behind the gate the card is blurred, so the label would be unreadable. */
+                      isExample={isExampleRow && !cardLocked}
+                      blurred={cardLocked && !revealIdentity}
                     />
 
                     {/* The one thing the gate actually withholds. */}
-                    <div className={`flex-shrink-0 flex items-center gap-1.5 ${isLocked ? "blur-sm select-none" : ""}`}>
+                    <div className={`flex-shrink-0 flex items-center gap-1.5 ${cardLocked ? "blur-sm select-none" : ""}`}>
                       <span className="text-lg font-bold text-foreground tabular-nums leading-none">{(review.overallRating ?? 0).toFixed(1)}</span>
                       {/* The shared Stars: half-filled where the score is, not rounded up. */}
                       <Stars rating={review.overallRating ?? 0} showValue={false} />
@@ -3386,7 +3762,7 @@ export default function BossProfile() {
                         <div key={category} className="flex items-center justify-between rounded-md bg-muted/40 px-2.5 py-1.5">
                           <span className="text-xs text-muted-foreground">{category}</span>
                           {/* Per-category scores are ratings too - blurred with the rest. */}
-                          <div className={`flex items-center gap-1 flex-shrink-0 ml-2 ${isLocked ? "blur-sm select-none" : ""}`}>
+                          <div className={`flex items-center gap-1 flex-shrink-0 ml-2 ${cardLocked ? "blur-sm select-none" : ""}`}>
                             <span className="text-xs font-semibold text-foreground tabular-nums">
                               {/*
                                 A stand-in where there is no real score to blur - a placeholder
@@ -3394,7 +3770,7 @@ export default function BossProfile() {
                                 broken control rather than a withheld one.
                               */}
                               {review.ratings?.[category as keyof typeof review.ratings]
-                                ?? (isLocked ? WITHHELD_SCORES[RATING_CATEGORIES.indexOf(category) % WITHHELD_SCORES.length] : "–")}
+                                ?? (cardLocked ? WITHHELD_SCORES[RATING_CATEGORIES.indexOf(category) % WITHHELD_SCORES.length] : "–")}
                             </span>
                             <Star size={10} aria-hidden="true" className="fill-amber-400 text-amber-400" />
                           </div>
@@ -3415,7 +3791,7 @@ export default function BossProfile() {
             )}
 
             {/* What is withheld and how to open it - after the cards it applies to. */}
-            {isLocked && (
+            {gateLocked && (
               <LockedPanelCard
                 title="Ratings are locked"
                 hint="Rate any manager to see the scores behind these reviews."
@@ -3462,6 +3838,53 @@ export default function BossProfile() {
         </section>
       )}
 
+      {/*
+        AN ANONYMOUS REVIEW DRAFT, OFFERED RATHER THAN APPLIED.
+
+        Fixed to the bottom of the viewport rather than placed in the page, because somebody
+        arriving back from signing in may be anywhere on a long profile and this is the only thing
+        standing between them and their own work.
+
+        It says nothing about what is in the draft - not the ratings, not the dates, not the email
+        on it - because the reason it is an offer at all is that this may not be the person who
+        wrote it. Describing the contents would disclose them to exactly that visitor.
+      */}
+      {/* A rating draft expired. Names nothing from it: the reader may not be its author. */}
+      {reviewDraftExpired && !reviewStep && (
+        <div className="fixed bottom-4 left-1/2 z-40 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 rounded-lg border border-border bg-background px-4 py-3 shadow-lg">
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm text-muted-foreground">
+              A saved rating expired and could not be restored.
+            </p>
+            <button type="button" onClick={() => setReviewDraftExpired(false)}
+              className="flex-shrink-0 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-muted">
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {offeredReviewDraft && !reviewStep && (
+        <div className="fixed bottom-4 left-1/2 z-40 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 rounded-lg border border-border bg-background px-4 py-3 shadow-lg">
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm text-foreground">
+              <span className="font-medium">You have an unfinished rating</span> from before you
+              signed in.
+            </p>
+            <div className="flex flex-shrink-0 gap-2">
+              <button type="button" onClick={acceptOfferedReviewDraft}
+                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90">
+                Restore
+              </button>
+              <button type="button" onClick={declineOfferedReviewDraft}
+                className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-muted">
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Write Review - Full-Screen Stepped Form */}
       {reviewStep && (() => {
         const steps = ["details", "dates", "ratings"] as const;
@@ -3475,7 +3898,7 @@ export default function BossProfile() {
             <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
               <button
                 onClick={() => {
-                  if (reviewStep === "details") { localStorage.removeItem("rmm_pending_review"); setReviewStep(null); setModalRatings(initializeRatings()); }
+                  if (reviewStep === "details") { reviewDraft.clear(); setReviewStep(null); setModalRatings(initializeRatings()); }
                   else if (reviewStep === "dates") setReviewStep("details");
                   else if (reviewStep === "ratings") { setReviewStep("dates"); setConflictAfterAuth(false); setShowCancelConfirm(false); }
                 }}
@@ -3489,7 +3912,7 @@ export default function BossProfile() {
                 <p className="text-xs text-muted-foreground">Step {stepIdx} of 3 · {manager.name}</p>
               </div>
               <button
-                onClick={() => { localStorage.removeItem("rmm_pending_review"); setReviewStep(null); setModalRatings(initializeRatings()); setPendingAutoSubmit(null); setConflictAfterAuth(false); setShowCancelConfirm(false); setIsReplacingReview(false); }}
+                onClick={() => { reviewDraft.clear(); setReviewStep(null); setModalRatings(initializeRatings()); setPendingAutoSubmit(null); setConflictAfterAuth(false); setShowCancelConfirm(false); setIsReplacingReview(false); }}
                 aria-label="Close"
                 className="text-muted-foreground hover:text-foreground transition-colors p-1 min-w-[60px] flex justify-end"
               >
@@ -3735,7 +4158,18 @@ export default function BossProfile() {
                       onChange={next => {
                         if (next.title !== undefined) { setReviewManagerTitle(next.title); setReviewTitleError(null); setConflictAfterAuth(false); }
                         if (next.company !== undefined) { setReviewManagerCompany(next.company); setReviewTitleError(null); setConflictAfterAuth(false); }
-                        if (next.location !== undefined) setReviewLocation(next.location);
+                        /*
+                          Answering the question clears the complaint about not answering it.
+
+                          Every other field on this step cleared its own error on change; the
+                          location did not, so "Where did this manager work? Add a location."
+                          stayed on screen after a location had been chosen - and the only way to
+                          get rid of it was to press Next and have it re-evaluated.
+                        */
+                        if (next.location !== undefined) {
+                          setReviewLocation(next.location);
+                          setReviewLocationError(null);
+                        }
                         if (next.status !== undefined) setReviewManagerStatus(next.status);
                       }}
                       locationError={reviewLocationError ?? undefined}
@@ -3776,7 +4210,7 @@ export default function BossProfile() {
                         <div className="flex gap-2">
                           <button
                             type="button"
-                            onClick={() => { localStorage.removeItem("rmm_pending_review"); setReviewSubmitError(null); setReviewStep(null); setConflictAfterAuth(false); setShowCancelConfirm(false); }}
+                            onClick={() => { reviewDraft.clear(); setReviewSubmitError(null); setReviewStep(null); setConflictAfterAuth(false); setShowCancelConfirm(false); }}
                             className="flex-1 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 transition-all"
                           >
                             Yes, discard it
@@ -3802,7 +4236,7 @@ export default function BossProfile() {
                           onClick={() => {
                             const conflicting = findConflictingReview();
                             if (!conflicting) return;
-                            localStorage.removeItem("rmm_pending_review");
+                            reviewDraft.clear();
                             setReviewSubmitError(null);
                             setReviewStep(null);
                             setConflictAfterAuth(false);
@@ -3887,7 +4321,13 @@ export default function BossProfile() {
                             to fill it in. Same rule as the workplace rating.
                           */
                           if (!hasDeclaredLocation(reviewLocation)) {
-                            setReviewLocationError("Where did you work? Add a location.");
+                            /*
+                              The subject is the MANAGER, not the contributor. "Where did you
+                              work?" asked about the reader on a form whose every other question
+                              is about the person being rated, which reads as a question about
+                              their own job history.
+                            */
+                            setReviewLocationError("Where did this manager work? Add a location.");
                             setReviewOpenField("location");
                             return;
                           }
@@ -3897,6 +4337,26 @@ export default function BossProfile() {
                         else if (reviewStep === "dates") setReviewStep("ratings");
                         else if (reviewStep === "ratings") handleSubmitReview();
                       }}
+                      /*
+                        GREYED OUT FOR A MISSING LOCATION, BUT STILL CLICKABLE.
+
+                        A real `disabled` button fires no click, so it can never say why it will
+                        not go. Left fully enabled it looked ready on a form that would refuse.
+
+                        So this is the middle: `aria-disabled` plus the disabled styling, which
+                        tells a reader and a screen reader that it is not ready, while the click
+                        still reaches the handler - and the handler is what says "Where did you
+                        work? Add a location" and opens the field.
+
+                        The other blocks stay hard-disabled below: a duplicate title and an invalid
+                        date already show their own message beside the field, so there is nothing
+                        for a click to add.
+                      */
+                      aria-disabled={
+                        reviewStep === "details" && !hasDeclaredLocation(reviewLocation)
+                          ? true
+                          : undefined
+                      }
                       disabled={
                         /*
                           Each step is gated on what that step asked for, and nothing else.
@@ -3910,7 +4370,7 @@ export default function BossProfile() {
                         (reviewStep === "dates" && (!reviewIsDateValid || !!reviewDateError)) ||
                         (isLastStep && submitDisabled)
                       }
-                      className={`w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#2e0562] px-4 py-3 font-medium text-white transition-all hover:bg-[#2e0562]/90 disabled:opacity-50 disabled:cursor-not-allowed ${isLastStep && showReadyBanner ? "ring-2 ring-[#2e0562] ring-offset-2" : ""}`}
+                      className={`w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#2e0562] px-4 py-3 font-medium text-white transition-all hover:bg-[#2e0562]/90 disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:bg-[#2e0562] ${isLastStep && showReadyBanner ? "ring-2 ring-[#2e0562] ring-offset-2" : ""}`}
                     >
                       {isLastStep && isSubmittingReview && (
                         <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">

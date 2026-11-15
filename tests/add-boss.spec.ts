@@ -1,4 +1,5 @@
 import { test, expect } from "./base";
+import { scopedDraftKey } from "../client/lib/draftScope";
 import { mockAddBossPage, rateAllFiveStars, attestFirstHandExperience, MOCK_USER, pickLocation } from "./fixtures";
 
 // Helper: fill Step 1 (manager info) using name attributes since inputs have no htmlFor.
@@ -264,9 +265,10 @@ test.describe("AddBoss - 3-step flow", () => {
     };
 
     await mockAddBossPage(page, { loggedIn: true });
-    await page.addInitScript((d) => {
-      localStorage.setItem("rmm_pending_manager", JSON.stringify(d));
-    }, draft);
+    // Scoped to the account that is signed in; drafts are keyed per account now.
+    await page.addInitScript(([k, d]: [string, any]) => {
+      localStorage.setItem(k, JSON.stringify(d));
+    }, [scopedDraftKey("rmm_pending_manager", MOCK_USER.id), draft]);
 
     await page.goto("/add");
 
@@ -328,9 +330,10 @@ test.describe("AddBoss - 3-step flow", () => {
       generatedName: "anon-user",
     };
 
-    await page.addInitScript((d: any) => {
-      localStorage.setItem("rmm_pending_manager", JSON.stringify(d));
-    }, draft);
+    // The anonymous scope: nobody is signed in here. Drafts are keyed per account now.
+    await page.addInitScript(([k, d]: [string, any]) => {
+      localStorage.setItem(k, JSON.stringify(d));
+    }, [scopedDraftKey("rmm_pending_manager", null), draft]);
 
     await page.goto("/add");
 

@@ -8,6 +8,7 @@ import { AuthFlowModal } from "@/components/AuthFlowModal";
 import { BrandLogo } from "@/components/BrandLogo";
 import type { AuthFlowStep } from "@/components/AuthFlowModal";
 import axios from "axios";
+import { REVIEW_DRAFT_KEY, draftSlot } from "@/lib/draftScope";
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -69,8 +70,14 @@ export function Header() {
   }, [isUserMenuOpen, isNotificationsOpen]);
 
   const handleLogout = () => {
+    /*
+      The leaving account's OWN review draft, by its scoped key. Captured before logout() clears
+      the user, and scoped so this still removes the thing it has always removed: drafts are keyed
+      per account now, and the bare key holds nobody's work.
+    */
+    const leaving = user?.id;
     logout();
-    localStorage.removeItem("rmm_pending_review");
+    draftSlot(REVIEW_DRAFT_KEY, leaving).clear();
     setIsUserMenuOpen(false);
     navigate("/");
   };

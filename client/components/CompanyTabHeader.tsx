@@ -210,6 +210,20 @@ export function CompanyTabHeader({
 
   const hasHeading = Boolean(eyebrow || subtitle);
 
+  /*
+    NOTHING BEHIND THE NOTICE.
+
+    Not blurred, not dimmed: not rendered. A blurred heading is still shapes behind the words you
+    are trying to read, and on a phone the notice sits directly on top of it, so the two fight.
+    Blur was the first attempt here and it was wrong for exactly that reason.
+
+    None of what disappears is a loss. The eyebrow and subtitle are a label and a sentence that
+    the page states again elsewhere, the counts are already withheld, and the score was never in
+    the DOM while locked. So the gate shows its reason, its instruction and its button on a plain
+    background, and nothing else.
+  */
+  const nothingBehindNotice = locked && Boolean(lockedOverlay);
+
   return (
     <div className="mb-6">
       {/*
@@ -224,6 +238,7 @@ export function CompanyTabHeader({
         Anchoring here covers the content the gate actually applies to.
       */}
       <div className="relative">
+      {!nothingBehindNotice && (
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           {eyebrow && (
@@ -320,6 +335,7 @@ export function CompanyTabHeader({
           {averages ?? scoreBlock}
         </div>
       </div>
+      )}
 
         {/*
           Transparent to the pointer, deliberately.
@@ -329,7 +345,16 @@ export function CompanyTabHeader({
           swallowed the click, so a locked reader was shown an instruction and then prevented from
           following it. Nothing inside here is interactive, so letting clicks through costs nothing.
         */}
-        {locked && lockedOverlay}
+        {/*
+          Its own height, because the content that used to give the box one is gone. An
+          `inset-0` overlay in a zero-height box is a zero-sized overlay, which is how this
+          header once passed its locked copy to a reader who never saw a word of it.
+        */}
+        {nothingBehindNotice && (
+          <div className="flex min-h-[9rem] items-center justify-center" data-testid="locked-only">
+            {lockedOverlay}
+          </div>
+        )}
       </div>
 
       <div className="mt-6 border-t border-border" />

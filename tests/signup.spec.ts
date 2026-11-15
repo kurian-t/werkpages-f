@@ -1,186 +1,99 @@
+/* ROUTINE CI: authentication: account creation leaves no unprotected path. Tagged @ci; see playwright.config.ts. */
 import { test, expect } from "./base";
 import { mockTurnstile } from "./fixtures";
 
-// Shared API mocks for the /signup page
-async function mockSignupPage(
-  page: any,
-  opts: {
-    usernameAvailable?: boolean;
-    signupResponse?: { status: number; json: any };
-  } = {}
-) {
-  const {
-    usernameAvailable = true,
-    signupResponse = { status: 201, json: { id: "auth0|abc", email: "jane@example.com" } },
-  } = opts;
+/**
+ * THE SIGN-UP PAGE, WHICH NO LONGER COLLECTS A PASSWORD.
+ *
+ * ## What stood here, and where each guarantee went
+ *
+ * Nine tests drove a 394-line form: first name, last name, email, username, password, confirm
+ * password, a password-strength checklist, a live username-availability check and a Turnstile
+ * widget, posted to `/api/auth/signup` which forwarded to Auth0's `/dbconnections/signup`.
+ *
+ * That form is gone. The account is created on Auth0's hosted page, because collecting the
+ * password meant it passed through this application and through our backend, and the matching
+ * sign-in path used `grant_type=password`, forbidden by RFC 9700 section 2.4.
+ *
+ * | the old test | where the guarantee lives now |
+ * | --- | --- |
+ * | renders all required fields including Turnstile | nothing to render; **account creation must not be possible from here at all**, asserted below |
+ * | submit disabled until all fields valid | Auth0's page validates its own fields |
+ * | password requirement checklist | Auth0 owns password policy. Ours cannot drift from it any more, which is the point |
+ * | passwords do not match | likewise |
+ * | username taken (while typing, and on submit) | moved to profile completion. `ProfileCompletionIntegrationTest` asserts the 409 for a taken name, a case-differing name, and that a refusal leaves the profile incomplete - against a real database, which the old mocked test could not do |
+ * | form submits successfully | asserted below as "the browser is sent to Universal Login" |
+ * | email already registered | Auth0 recognises its own accounts. Our callback's `email_already_registered` branch is covered by `AuthCallbackHttpTest` |
+ * | redirects authenticated users away | unchanged, and asserted below |
+ *
+ * Nine become four here; five moved to suites that assert them against a real database or a real
+ * HTTP stack instead of a mocked fetch.
+ */
+test.describe("Sign Up page @ci", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockTurnstile(page);
+    await page.route("**/api/auth/me", (r) => r.fulfill({ status: 401, json: {} }));
+  });
 
-  await page.route("**/api/auth/me", (route: any) =>
-    route.fulfill({ status: 401, json: { error: "Unauthorized" } })
-  );
+  /**
+   * NO PASSWORD, ANYWHERE ON THE PAGE.
+   *
+   * The security property the migration exists for, asserted on the absence of the input: a field
+   * nobody can type into cannot be posted by any route, including one a future change adds back.
+   */
+  test("collects no password and no account details", async ({ page }) => {
+    await page.goto("/signup");
+    await expect(page.locator('input[type="password"]')).toHaveCount(0);
+    await expect(page.locator("#cf-turnstile")).toHaveCount(0);
+    // The names and the username are asked for after the account exists, by /complete-profile.
+    await expect(page.locator('input[placeholder="John"]')).toHaveCount(0);
+    await expect(page.locator('input[placeholder*="generate"]')).toHaveCount(0);
+  });
 
-  await page.route(/\/api\/auth\/check-username/, (route: any) =>
-    route.fulfill({ json: { available: usernameAvailable } })
-  );
+  /**
+   * Replaces "form submits successfully": the page's whole job is now this redirect.
+   *
+   * `screen_hint=signup` is what opens Auth0's registration panel rather than its sign-in panel.
+   * Without it somebody who pressed "Create an account" lands on the wrong one and has to find the
+   * link themselves, which is the drop-off this page exists to avoid.
+   */
+  test("sends the browser to Universal Login's registration panel", async ({ page }) => {
+    let startUrl = "";
+    await page.route("**/api/auth/start*", (r) => {
+      startUrl = r.request().url();
+      return r.fulfill({ status: 200, body: "intercepted" });
+    });
 
-  await page.route("**/api/auth/signup", (route: any) => {
-    if (route.request().method() === "POST") {
-      route.fulfill({ status: signupResponse.status, json: signupResponse.json });
-    } else {
-      route.continue();
+    await page.goto("/signup");
+    await page.getByRole("button", { name: /sign up with email/i }).click();
+
+    await expect.poll(() => startUrl, { timeout: 8_000 }).toContain("/api/auth/start");
+    expect(startUrl).toContain("screen_hint=signup");
+    expect(startUrl).toContain("connection=Username-Password-Authentication");
+  });
+
+  /** The social options stay, and stay first: they are how most accounts are created. */
+  test("still offers the social providers", async ({ page }) => {
+    await page.goto("/signup");
+    for (const provider of [/continue with google/i, /continue with microsoft/i, /continue with facebook/i]) {
+      await expect(page.getByRole("button", { name: provider })).toBeVisible({ timeout: 5_000 });
     }
   });
 
-}
-
-/** Fills every field on the /signup form with valid values. */
-async function fillSignupForm(page: any) {
-  await page.getByLabel("First Name").fill("Jane");
-  await page.getByLabel("Last Name").fill("Doe");
-  await page.locator("#emailOrPhone").fill("jane@example.com");
-
-  // Username field - type a value so the availability check fires
-  await page.locator("#username").fill("janedoe99");
-
-  // Wait for the availability check to resolve ("Username is available!")
-  await expect(page.getByText(/username is available/i)).toBeVisible({ timeout: 5_000 });
-
-  await page.locator("#password").fill("Password1!");
-  await page.locator("#confirmPassword").fill("Password1!");
-}
-
-test.describe("Sign Up page - /signup", () => {
-  test("renders all required form fields including Turnstile widget", async ({ page }) => {
-    await mockSignupPage(page);
-    await page.goto("/signup");
-
-    await expect(page.getByLabel("First Name")).toBeVisible();
-    await expect(page.getByLabel("Last Name")).toBeVisible();
-    await expect(page.locator("#emailOrPhone")).toBeVisible();
-    await expect(page.locator("#username")).toBeVisible();
-    await expect(page.locator("#password")).toBeVisible();
-    await expect(page.locator("#confirmPassword")).toBeVisible();
-
-    // Turnstile widget must render - absence means siteKey is missing or CSP blocked it
-    await expect(page.locator("#cf-turnstile")).toBeVisible({ timeout: 8_000 });
-  });
-
-  test("submit button is disabled until all fields are valid", async ({ page }) => {
-    await mockSignupPage(page);
-    await page.goto("/signup");
-
-    const submitBtn = page.getByRole("button", { name: /create account/i });
-    await expect(submitBtn).toBeDisabled();
-  });
-
-  test("shows password requirement checklist when typing password", async ({ page }) => {
-    await mockSignupPage(page);
-    await page.goto("/signup");
-
-    await page.locator("#password").fill("a");
-
-    await expect(page.getByText(/at least 8 characters/i).first()).toBeVisible();
-    await expect(page.getByText(/at least one uppercase letter/i)).toBeVisible();
-  });
-
-  test("shows passwords do not match error", async ({ page }) => {
-    await mockSignupPage(page);
-    await page.goto("/signup");
-
-    await page.locator("#password").fill("Password1!");
-    await page.locator("#confirmPassword").fill("Different1!");
-
-    await expect(page.getByText(/passwords do not match/i)).toBeVisible();
-  });
-
-  test("shows username taken error when username is unavailable", async ({ page }) => {
-    await mockSignupPage(page, { usernameAvailable: false });
-    await page.goto("/signup");
-
-    await page.locator("#username").fill("takenuser");
-    await expect(page.getByText(/username is already taken/i)).toBeVisible({ timeout: 5_000 });
-  });
-
-  test("submit button enables and form submits successfully (Turnstile test key)", async ({ page }) => {
-    await mockSignupPage(page);
-    await mockTurnstile(page);
-    await page.goto("/signup");
-
-    await fillSignupForm(page);
-
-    // With VITE_TURNSTILE_SITE_KEY=1x00000000000000000000AA (CI test key), Turnstile
-    // auto-passes and onSuccess fires immediately - button should become enabled.
-    const submitBtn = page.getByRole("button", { name: /create account/i });
-    await expect(submitBtn).toBeEnabled({ timeout: 8_000 });
-
-    await submitBtn.click();
-
-    // Successful signup shows the email verification screen
-    await expect(page.getByText(/check your email/i)).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("jane@example.com")).toBeVisible();
-  });
-
-  test("shows error when email is already registered", async ({ page }) => {
-    await mockSignupPage(page, {
-      signupResponse: {
-        status: 409,
-        json: { error: "email_already_registered", message: "An account with this email already exists." },
-      },
-    });
-    await mockTurnstile(page);
-    await page.goto("/signup");
-    await fillSignupForm(page);
-
-    const submitBtn = page.getByRole("button", { name: /create account/i });
-    await expect(submitBtn).toBeEnabled({ timeout: 8_000 });
-    await submitBtn.click();
-
-    await expect(
-      page.getByText(/an account with this email already exists/i)
-    ).toBeVisible({ timeout: 5_000 });
-  });
-
-  test("shows error when username is taken on submit", async ({ page }) => {
-    // Username shows as available in check, but server rejects on submit (race condition)
-    await mockSignupPage(page, {
-      signupResponse: {
-        status: 409,
-        json: { error: "username_taken", message: "That username is already taken." },
-      },
-    });
-    await mockTurnstile(page);
-    await page.goto("/signup");
-    await fillSignupForm(page);
-
-    const submitBtn = page.getByRole("button", { name: /create account/i });
-    await expect(submitBtn).toBeEnabled({ timeout: 8_000 });
-    await submitBtn.click();
-
-    await expect(
-      page.getByText(/username is already taken/i)
-    ).toBeVisible({ timeout: 5_000 });
-  });
-
   test("redirects authenticated users away from signup", async ({ page }) => {
-    await page.route("**/api/auth/me", (route: any) =>
-      route.fulfill({
-        json: {
-          id: "u1", username: "existing", firstName: "Ex", lastName: "User",
-          email: "ex@example.com", role: "user", isBanned: false,
-        },
-      })
-    );
-    await page.addInitScript(() => {
-      localStorage.setItem(
-        "authUser",
-        JSON.stringify({
-          id: "u1", username: "existing", firstName: "Ex", lastName: "User",
-          email: "ex@example.com", role: "user", isBanned: false,
-        })
-      );
-    });
+    const user = { id: "u1", username: "someone", email: "s@e.test", profileComplete: true };
+    await page.unroute("**/api/auth/me");
+    await page.route("**/api/auth/me", (r) => r.fulfill({ status: 200, json: { user } }));
+    /*
+      localStorage as well as the endpoint. AuthContext seeds itself from the stored copy before
+      it validates against /api/auth/me, so mocking only the endpoint leaves the first render
+      signed out - and this page decides whether to redirect on that first render.
+    */
+    await page.addInitScript((u) => {
+      localStorage.setItem("authUser", JSON.stringify(u));
+    }, user);
 
     await page.goto("/signup");
-    // Should redirect to /find, not stay on /signup
-    await expect(page).toHaveURL(/\/search/, { timeout: 5_000 });
+    await expect(page).not.toHaveURL(/signup/, { timeout: 8_000 });
   });
 });

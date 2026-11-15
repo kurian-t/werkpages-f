@@ -9,7 +9,17 @@ import {
   unlinkSharedContentBinding,
   relinkSharedContentUsingShared,
   relinkSharedContentUsingLocal,
+  type ResumeDesignWithLocalContent,
 } from "./resumeSharedContentOverrides";
+import type { ResumeDataWithProjects } from "./resumeProjects";
+
+/*
+  `projects` and `formatLocalContent` are not on the base ResumeData/ResumeDesign interfaces, by
+  design - the runtime widens at the point of use through these same two types. This test was
+  reading them off the base types, which is why it never type-checked. Widening here changes no
+  assertion; it only says what the runtime already says.
+*/
+const withProjects = (data: unknown) => data as ResumeDataWithProjects;
 
 const SURFACE = "pdf" as any;
 
@@ -144,9 +154,9 @@ describe("applySnapshot (exercised via relinkUsingLocal) covers every binding ki
   });
 
   it("project: update, append, remove", () => {
-    expect(relinkLocal({ kind: "project", id: "p1" }, { id: "p1", title: "UpdatedP" }).projects.find((p: any) => p.id === "p1").title).toBe("UpdatedP");
-    expect(relinkLocal({ kind: "project", id: "p9" }, { id: "p9", title: "NewP" }).projects.some((p: any) => p.id === "p9")).toBe(true);
-    expect(relinkLocal({ kind: "project", id: "p1" }, null).projects.some((p: any) => p.id === "p1")).toBe(false);
+    expect(withProjects(relinkLocal({ kind: "project", id: "p1" }, { id: "p1", title: "UpdatedP" })).projects.find((p: any) => p.id === "p1").title).toBe("UpdatedP");
+    expect(withProjects(relinkLocal({ kind: "project", id: "p9" }, { id: "p9", title: "NewP" })).projects.some((p: any) => p.id === "p9")).toBe(true);
+    expect(withProjects(relinkLocal({ kind: "project", id: "p1" }, null)).projects.some((p: any) => p.id === "p1")).toBe(false);
   });
 
   it("education: update, append, remove", () => {
@@ -190,7 +200,9 @@ describe("mergeSurfaceResumeDataChange", () => {
     const merged = mergeSurfaceResumeDataChange(shared, next, SURFACE);
     // Shared summary stays canonical (from sharedData), local snapshot captures the surface edit.
     expect(merged.summary).toBe("Shared summary");
-    const store = merged.design.formatLocalContent.pdf.summary;
+    // `!` rather than a guard: if the store is missing this throws and the test fails, which is
+    // exactly what the untyped property access did before. The assertion is unchanged.
+    const store = (merged.design as ResumeDesignWithLocalContent).formatLocalContent!.pdf!.summary;
     expect(store.snapshot).toBe("edited in surface");
   });
 });

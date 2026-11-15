@@ -18,6 +18,14 @@ interface Manager {
   country?: string;
   companyLogoUrl?: string;
   approvalStatus?: string;
+  /**
+   * Current, former or unknown, for this manager AT THE COMPANY whose page is showing the tile.
+   *
+   * Absent everywhere else, and that is deliberate: the directory shows a manager without a
+   * company context, so there is no employment to be current at. An absent value renders nothing
+   * rather than rendering "Unknown".
+   */
+  employmentStatus?: string;
 }
 
 interface ManagerCardProps {
@@ -271,6 +279,33 @@ export default function ManagerCard({ boss, isPending = false, to }: ManagerCard
             <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 whitespace-nowrap mt-0.5">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
               Pending
+            </span>
+          )}
+          {/*
+            CURRENT OR FORMER, and nothing at all for unknown.
+
+            "Current" is a claim about somebody's present employment, so it is only shown where
+            there is accepted employment and the evidence for it is still fresh. "Former" only
+            claims that every known episode finished.
+
+            Unknown renders NOTHING rather than a third chip. It is the absence of information,
+            and the overwhelming majority of tiles have it: a manager reaching a company page by
+            the company string or by a rating has no accepted employment record at all, which is
+            the correct answer and not a thing to announce on every card. The API still returns
+            the value, so a surface that wants to show it can.
+          */}
+          {!isPending && (boss.employmentStatus === "current"
+            || boss.employmentStatus === "former") && (
+            <span
+              data-testid="employment-status"
+              data-status={boss.employmentStatus}
+              className={`mt-0.5 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${
+                boss.employmentStatus === "current"
+                  ? "bg-emerald-50 text-emerald-700"
+                  : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {boss.employmentStatus === "current" ? "Current" : "Former"}
             </span>
           )}
         </div>

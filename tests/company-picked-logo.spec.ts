@@ -68,6 +68,40 @@ test.describe("The company logo you picked", () => {
     await expect(logo).toHaveAttribute("src", /li\.me/, { timeout: 10_000 });
   });
 
+  test("stays in the field when you click Edit", async ({ page }) => {
+    /*
+      REPORTED: "when i click edit on the company textbox, the logo should NOT disappear from
+      within the textbox".
+
+      The mark inside the input was gated on knowing a DOMAIN, which arrives either from a pick
+      made in that input session or from one the caller threaded in. Opening an existing value for
+      editing has neither: the input mounts fresh and nothing has been picked yet. The collapsed
+      card, meanwhile, renders CompanyLogoImg with the NAME and lets it resolve - so the same
+      company showed a mark on the card and none in the input, one click apart.
+
+      Two assertions, because "an image rendered" would pass through the other half of this bug.
+      The mark must be PRESENT, and it must still be li.me rather than the lime.com a name-guess
+      produces for somebody else's company.
+    */
+    await mock(page);
+    const field = await pickLime(page);
+
+    const done = field.getByRole("button", { name: /Done editing/i });
+    if (await done.count()) await done.first().click();
+
+    const edit = field.getByRole("button", { name: /Edit company/i });
+    await expect(edit.first()).toBeVisible({ timeout: 10_000 });
+    await edit.first().click();
+
+    // The input is open for editing, and the mark is still beside it.
+    await expect(field.locator("input").first()).toBeVisible();
+    const logo = field.locator("img").first();
+    await expect(logo, "the logo disappeared when the editor opened").toBeVisible({ timeout: 10_000 });
+    await expect(logo).toHaveAttribute("src", /li\.me/);
+    const src = await logo.getAttribute("src");
+    expect(src, "the editor fell back to a logo guessed from the name").not.toContain("lime.com");
+  });
+
   test("is never replaced by one guessed from the company name", async ({ page }) => {
     /*
       The heart of it. "lime.com" is what the name guess produces and it belongs to somebody

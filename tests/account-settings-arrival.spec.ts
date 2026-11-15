@@ -1,5 +1,9 @@
 import { test, expect } from "./base";
-import { MOCK_MY_REVIEW, mockAccountSettingsPage } from "./fixtures";
+import { scopedDraftKey } from "../client/lib/draftScope";
+import { MOCK_MY_REVIEW, MOCK_USER, mockAccountSettingsPage } from "./fixtures";
+
+/** The signed-in account's own review-draft key; drafts are scoped per account. */
+const OWN_REVIEW_KEY = scopedDraftKey("rmm_pending_review", MOCK_USER.id);
 
 /**
  * How somebody arrives at the account page, and how they leave it.
@@ -168,8 +172,9 @@ test.describe("Signing out from the account page", () => {
       person's unfinished opinion of their manager handed to somebody else.
     */
     await mockAccountSettingsPage(page);
-    await page.addInitScript(() =>
-      localStorage.setItem("rmm_pending_review", JSON.stringify({ ratings: { a: 5 } })));
+    // In this account's OWN draft scope, which is where a signed-in contributor's rating is kept.
+    await page.addInitScript((k: string) =>
+      localStorage.setItem(k, JSON.stringify({ ratings: { a: 5 } })), OWN_REVIEW_KEY);
     await page.goto("/settings");
     await expect(page.getByText("Alex Johnson").first()).toBeVisible({ timeout: 10_000 });
     await page.route(/\/api\/auth\/signout/, (r: any) => r.fulfill({ status: 200, json: {} }));
@@ -177,6 +182,6 @@ test.describe("Signing out from the account page", () => {
     await page.getByRole("button", { name: /Sign Out/i }).click();
     await expect(page).toHaveURL(/\/$/, { timeout: 10_000 });
 
-    expect(await page.evaluate(() => localStorage.getItem("rmm_pending_review"))).toBeNull();
+    expect(await page.evaluate((k: string) => localStorage.getItem(k), OWN_REVIEW_KEY)).toBeNull();
   });
 });

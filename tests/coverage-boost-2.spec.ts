@@ -702,178 +702,21 @@ test.describe("AddBoss - multi-step form flow", () => {
 
 // ─── SignUp.tsx - form flows ──────────────────────────────────────────────────
 
-test.describe("SignUp - form coverage", () => {
-  async function setupSignUp(page: any) {
-    await mockUnauthenticated(page);
-    await mockTurnstile(page);
-    await page.route("**/api/auth/check-username*", (route: any) =>
-      route.fulfill({ json: { available: true } })
-    );
-    await page.route("**/api/auth/signup", (route: any) =>
-      route.fulfill({ status: 200, json: { success: true } })
-    );
-  }
+/*
+  A "SignUp" BLOCK OF 11 TESTS STOOD HERE, raising coverage on a page that no longer exists in
+  that form.
 
-  async function fillSignUpForm(page: any, opts: {
-    firstName?: string;
-    lastName?: string;
-    email?: string;
-    username?: string;
-    password?: string;
-    confirmPassword?: string;
-  } = {}) {
-    const {
-      firstName = "Alice",
-      lastName = "Smith",
-      email = "alice@example.com",
-      username = "alicesmith42",
-      password = "Passw0rd!",
-      confirmPassword = "Passw0rd!",
-    } = opts;
-    // Use id selectors - labels like "Confirm Password" contain "password"
-    // so getByLabel would be ambiguous
-    await page.locator("#firstName").fill(firstName);
-    await page.locator("#lastName").fill(lastName);
-    await page.locator("#emailOrPhone").fill(email);
-    await page.locator("#username").fill(username);
-    await page.locator("#password").fill(password);
-    await page.locator("#confirmPassword").fill(confirmPassword);
-  }
+  SignUp.tsx was 394 lines - names, email, username, password, confirmation, a strength checklist,
+  a live username check and a Turnstile widget, posted to /api/auth/signup. It is now about 100
+  lines whose whole job is to send the browser to Auth0's hosted registration page, because
+  collecting the password meant it passed through this application and the matching sign-in path
+  used grant_type=password, forbidden by RFC 9700 section 2.4.
 
-  test("page loads and renders signup form", async ({ page }) => {
-    await setupSignUp(page);
-    await page.goto("/signup");
-    // Use heading role to avoid matching the "Create Account" submit button
-    await expect(page.getByRole("heading", { name: /create account/i })).toBeVisible({ timeout: 8000 });
-  });
+  Those tests covered branches that were deleted. Where the GUARANTEES went is recorded in
+  tests/signup.spec.ts, which carries a table naming all nine and their new homes, and in
+  ProfileCompletionIntegrationTest, which now asserts the username-taken and username-invalid
+  refusals against a real database instead of a mocked fetch.
 
-  test("typing a valid username triggers availability check and shows 'available'", async ({ page }) => {
-    await setupSignUp(page);
-    await page.goto("/signup");
-    await expect(page.getByRole("heading", { name: /create account/i })).toBeVisible({ timeout: 8000 });
-    await page.locator("#username").fill("validuser42");
-    // Wait for 500ms debounce + API response
-    await page.waitForTimeout(700);
-    await expect(page.getByText(/username is available/i)).toBeVisible({ timeout: 5000 });
-  });
-
-  test("typing a taken username shows 'already taken' error", async ({ page }) => {
-    await mockUnauthenticated(page);
-    await mockTurnstile(page);
-    await page.route("**/api/auth/check-username*", (route: any) =>
-      route.fulfill({ json: { available: false } })
-    );
-    await page.goto("/signup");
-    await expect(page.getByRole("heading", { name: /create account/i })).toBeVisible({ timeout: 8000 });
-    await page.locator("#username").fill("takenusername");
-    await page.waitForTimeout(700);
-    await expect(page.getByText(/already taken/i)).toBeVisible({ timeout: 5000 });
-  });
-
-  test("generate username button populates username field", async ({ page }) => {
-    await setupSignUp(page);
-    await page.goto("/signup");
-    await expect(page.getByRole("heading", { name: /create account/i })).toBeVisible({ timeout: 8000 });
-    // Button has title="Generate a random username" with RotateCcw icon (no visible text)
-    await page.locator('[title="Generate a random username"]').click();
-    await expect(page.locator("#username")).not.toHaveValue("");
-  });
-
-  test("password rules display when typing password", async ({ page }) => {
-    await setupSignUp(page);
-    await page.goto("/signup");
-    await expect(page.getByRole("heading", { name: /create account/i })).toBeVisible({ timeout: 8000 });
-    await page.locator("#password").fill("Passw0rd!");
-    await expect(page.getByText(/at least 8 characters/i)).toBeVisible({ timeout: 3000 });
-    await expect(page.getByText(/uppercase/i)).toBeVisible({ timeout: 3000 });
-  });
-
-  test("confirm password mismatch shows error", async ({ page }) => {
-    await setupSignUp(page);
-    await page.goto("/signup");
-    await page.locator("#password").fill("Passw0rd!");
-    await page.locator("#confirmPassword").fill("DifferentPass1!");
-    await expect(page.getByText(/passwords do not match/i)).toBeVisible({ timeout: 3000 });
-  });
-
-  test("successful signup shows 'check your email' confirmation", async ({ page }) => {
-    await setupSignUp(page);
-    await page.goto("/signup");
-    await expect(page.getByRole("heading", { name: /create account/i })).toBeVisible({ timeout: 8000 });
-
-    await fillSignUpForm(page);
-    await page.waitForTimeout(700);
-    await expect(page.getByText(/username is available/i)).toBeVisible({ timeout: 5000 });
-    // Give Turnstile mock time to fire (50ms + margin)
-    await page.waitForTimeout(200);
-
-    await page.getByRole("button", { name: /^create account$/i }).click();
-    await expect(page.getByText(/check your email/i)).toBeVisible({ timeout: 8000 });
-  });
-
-  test("signup error: email_already_registered shows inline error", async ({ page }) => {
-    await mockUnauthenticated(page);
-    await mockTurnstile(page);
-    await page.route("**/api/auth/check-username*", (route: any) =>
-      route.fulfill({ json: { available: true } })
-    );
-    await page.route("**/api/auth/signup", (route: any) =>
-      route.fulfill({ status: 400, json: { error: "email_already_registered" } })
-    );
-    await page.goto("/signup");
-    await fillSignUpForm(page);
-    await page.waitForTimeout(700);
-    await expect(page.getByText(/username is available/i)).toBeVisible({ timeout: 5000 });
-    await page.waitForTimeout(200);
-    await page.getByRole("button", { name: /^create account$/i }).click();
-    await expect(page.getByText(/email.*already exists|already registered/i)).toBeVisible({ timeout: 8000 });
-  });
-
-  test("signup error: username_taken shows username error", async ({ page }) => {
-    await mockUnauthenticated(page);
-    await mockTurnstile(page);
-    await page.route("**/api/auth/check-username*", (route: any) =>
-      route.fulfill({ json: { available: true } })
-    );
-    await page.route("**/api/auth/signup", (route: any) =>
-      route.fulfill({ status: 400, json: { error: "username_taken" } })
-    );
-    await page.goto("/signup");
-    await fillSignUpForm(page);
-    await page.waitForTimeout(700);
-    await expect(page.getByText(/username is available/i)).toBeVisible({ timeout: 5000 });
-    await page.waitForTimeout(200);
-    await page.getByRole("button", { name: /^create account$/i }).click();
-    await expect(page.getByText(/already taken/i).first()).toBeVisible({ timeout: 8000 });
-  });
-
-  test("signup generic error shows error message", async ({ page }) => {
-    await mockUnauthenticated(page);
-    await mockTurnstile(page);
-    await page.route("**/api/auth/check-username*", (route: any) =>
-      route.fulfill({ json: { available: true } })
-    );
-    await page.route("**/api/auth/signup", (route: any) =>
-      route.fulfill({ status: 500, json: { message: "Server error occurred" } })
-    );
-    await page.goto("/signup");
-    await fillSignUpForm(page);
-    await page.waitForTimeout(700);
-    await expect(page.getByText(/username is available/i)).toBeVisible({ timeout: 5000 });
-    await page.waitForTimeout(200);
-    await page.getByRole("button", { name: /^create account$/i }).click();
-    await expect(page.getByText(/server error occurred|failed to sign up|error/i).first()).toBeVisible({ timeout: 8000 });
-  });
-
-  test("username check failure shows retry message", async ({ page }) => {
-    await mockUnauthenticated(page);
-    await mockTurnstile(page);
-    await page.route("**/api/auth/check-username*", (route: any) =>
-      route.fulfill({ status: 500, json: { error: "Server error" } })
-    );
-    await page.goto("/signup");
-    await page.locator("#username").fill("someuser");
-    await page.waitForTimeout(700);
-    await expect(page.getByText(/couldn.?t check|try again/i)).toBeVisible({ timeout: 5000 });
-  });
-});
+  A real reduction in browser-test count, explained rather than hidden: the component shrank by
+  about 75% and the tests exercising the removed 75% went with it.
+*/

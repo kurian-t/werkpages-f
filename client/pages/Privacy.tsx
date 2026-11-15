@@ -26,6 +26,7 @@ export default function Privacy() {
               <ul className="list-disc list-inside space-y-2 text-muted-foreground">
                 <li><span className="font-medium text-foreground">Account information:</span> your name, email address, and username when you register.</li>
                 <li><span className="font-medium text-foreground">Review data:</span> star ratings and perceived workplace interaction scores you submit.</li>
+                <li><span className="font-medium text-foreground">Unfinished rating answers:</span> the category scores you have entered are saved automatically as you complete a rating form, including if you leave without submitting it.</li>
                 <li><span className="font-medium text-foreground">Manager profile data:</span> names, job titles, company affiliations, and LinkedIn URLs submitted by users.</li>
                 <li><span className="font-medium text-foreground">Usage data:</span> standard server logs including IP address, browser type, and pages visited.</li>
               </ul>
@@ -35,6 +36,7 @@ export default function Privacy() {
               <h2 className="text-xl font-semibold mb-3">3. How We Use Your Information</h2>
               <p className="text-muted-foreground leading-relaxed mb-3">We use the information we collect to:</p>
               <ul className="list-disc list-inside space-y-2 text-muted-foreground">
+                <li>Produce anonymous, aggregated workplace statistics, which may be provided to companies on a commercial basis. These are derived from completed and unfinished ratings and never include your account, your identity, individual submissions, or internal identifiers.</li>
                 <li>Provide, operate, and maintain the Service.</li>
                 <li>Associate reviews with your account to prevent duplicate submissions.</li>
                 <li>Respond to reports of inaccurate or inappropriate content.</li>
@@ -79,6 +81,10 @@ export default function Privacy() {
                 is active. If you delete your account, your personal account data is removed from our
                 systems. Reviews are already pseudonymous and contain no personal account data, so they
                 are retained rather than deleted so that aggregate rating data remains accurate.
+              </p>
+              <p className="text-muted-foreground leading-relaxed mt-4">
+                Incomplete rating responses may be automatically saved and retained for the purpose
+                of generating anonymized, aggregated statistics and insights.
               </p>
             </section>
 

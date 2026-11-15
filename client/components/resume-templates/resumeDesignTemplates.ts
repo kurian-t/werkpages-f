@@ -40,7 +40,16 @@ export interface ResumeTemplateDefinition {
 
 export const RESUME_TEMPLATE_VERSION = 1;
 
-function style(base: TextStyle, patch: Partial<TextStyle>): TextStyle {
+/*
+  GENERIC IN THE BASE, because some of the slots it builds are not plain TextStyle.
+
+  `ResumeDesign.contact` is `TextStyle & { separator: string }` and `entryDate` is
+  `TextStyle & { position: DatePosition }`. Typed as `(base: TextStyle) => TextStyle` this helper
+  widened the base on the way in and returned the widened type on the way out, so the extra
+  property was erased from the type while the spread kept it at runtime - twelve assignment errors
+  from one signature, and twelve call sites that were in fact correct.
+*/
+function style<T extends TextStyle>(base: T, patch: Partial<TextStyle>): T {
   return { ...base, ...patch };
 }
 

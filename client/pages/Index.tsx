@@ -3,6 +3,8 @@ import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { Layout } from "@/components/Layout";
 import { startSocialLogin } from "@/lib/auth";
+import { useAuth } from "@/hooks/useAuth";
+import { MANAGER_DRAFT_KEY, REVIEW_DRAFT_KEY, peekAnyScopeDraft } from "@/lib/draftScope";
 import { GoogleIcon } from "@/components/SocialIcons";
 import { Star, ShieldCheck, EyeOff, AlertCircle, CheckCircle } from "lucide-react";
 
@@ -72,6 +74,7 @@ function HeroImage({ className, imgClass }: { className?: string; imgClass?: str
 
 export default function Index() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const location = useLocation();
   const { track } = useAnalytics();
 
@@ -80,12 +83,19 @@ export default function Index() {
 
     if (params.get("code") === "success" && params.get("success") === "true") {
       try {
-        const pendingReview = localStorage.getItem("rmm_pending_review");
-        const pendingManager = localStorage.getItem("rmm_pending_manager");
+        /*
+          Looked for in the account's scope and then the anonymous one, because drafts are keyed
+          per account now and this page runs at a moment when the person may be either: they have
+          just followed a verification link, which does not itself sign them in.
 
-        if (pendingReview) {
-          const d = JSON.parse(pendingReview);
-          navigate(`${d.returnTo}?verified=true`, { replace: true });
+          Only `returnTo` is read here. Deciding whether the ANSWERS may be applied is the form's
+          job, and it asks a question this page is in no position to answer.
+        */
+        const pendingReview = peekAnyScopeDraft<any>(REVIEW_DRAFT_KEY, user?.id);
+        const pendingManager = peekAnyScopeDraft<any>(MANAGER_DRAFT_KEY, user?.id);
+
+        if (pendingReview?.payload?.returnTo) {
+          navigate(`${pendingReview.payload.returnTo}?verified=true`, { replace: true });
           return;
         }
 

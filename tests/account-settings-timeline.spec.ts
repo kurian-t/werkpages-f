@@ -1,3 +1,4 @@
+/* ROUTINE CI: erasure: a contributor removing their own rating. Tagged @ci; see playwright.config.ts. */
 import { test, expect } from "./base";
 import { MOCK_MY_REVIEW, MOCK_USER, mockAccountSettingsPage } from "./fixtures";
 
@@ -35,7 +36,7 @@ async function openTimeline(page: any, reviews = [review()]) {
 /** The four date selects, in DOM order: from-month, from-year, to-month, to-year. */
 const dates = (page: any) => page.locator("select");
 
-test.describe("Anchoring a review to a period", () => {
+test.describe("Anchoring a review to a period @ci", () => {
   test("the end date stays shut until a start date is given", async ({ page }) => {
     /*
       An end with no beginning describes nothing, and the pair is read as a range everywhere it is
@@ -115,7 +116,7 @@ test.describe("Anchoring a review to a period", () => {
   });
 });
 
-test.describe("Two reviews of the same manager", () => {
+test.describe("Two reviews of the same manager @ci", () => {
   /*
     One review per manager per period. Overlapping periods would let one person's account of one
     stretch of time be counted twice in that manager's average, which is the cheapest way to move a
@@ -183,7 +184,7 @@ test.describe("Two reviews of the same manager", () => {
   });
 });
 
-test.describe("Deleting a review from the list", () => {
+test.describe("Deleting a review from the list @ci", () => {
   /*
     A separate path from the delete inside the editor - its own handler, its own confirmation
     rendered inline on the row rather than as a dialog. Destructive, and it starts a 30-day
@@ -249,7 +250,7 @@ test.describe("Deleting a review from the list", () => {
   });
 });
 
-test.describe("A suspended account", () => {
+test.describe("A suspended account @ci", () => {
   test("can still read what it wrote but cannot change it", async ({ page }) => {
     /*
       Read access is deliberate: a suspension stops somebody adding to the record, it does not hide

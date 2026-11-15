@@ -1,5 +1,15 @@
 import API_BASE from "@/lib/api";
 import { useState, useEffect, useRef } from "react";
+import { ManagerIdentityPicker } from "@/components/ManagerIdentityPicker";
+import {
+  roleAwareSubmissionEnabled,
+  rateWithRole,
+  autosaveRoleClaim,
+  RateWithRoleRefused,
+  RoleAwareDisabledError,
+  type IdentitySelection,
+  publicationNote,
+} from "@/lib/roleAwareSubmission";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { StarRating } from "@/components/StarRating";
@@ -27,6 +37,10 @@ import { useCompanySelection } from "@/hooks/useCompanySelection";
 import type { AuthFlowStep } from "@/components/AuthFlowModal";
 import type { User } from "@/contexts/AuthContext";
 import { RequiredMark } from "@/components/FormFields";
+import {
+  DEFAULT_DRAFT_TTL_MS, MANAGER_DRAFT_KEY, adoptAnonymousDraft, adoptLegacyDraft,
+  anonymousDraftOffer, draftSlot, takeExpiryNotice, withoutUnprovenEmail,
+} from "@/lib/draftScope";
 
 const currentYear = new Date().getFullYear();
 const currentMonth = new Date().getMonth() + 1;
@@ -55,7 +69,18 @@ const RATING_CATEGORIES = [
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-type AddBossStep = "info" | "timeline" | "ratings";
+/*
+  "identify" sits between info and timeline and exists ONLY in the role-aware flow.
+
+  It is where the contributor says which human they mean. Without it the form guessed: it took the
+  typed name, found candidates by exact company, compared by edit distance and attached the rating
+  to whichever manager was within one edit. One person ended up with eight profiles and twenty-one
+  people with two each, their reviews split between them.
+
+  One extra screen is the whole cost of removing that guess, and on the common path it is one tap:
+  "Is this who you worked for?" -> the job -> carry on.
+*/
+type AddBossStep = "info" | "identify" | "timeline" | "ratings";
 
 export default function AddBoss() {
   const navigate = useNavigate();
@@ -101,6 +126,35 @@ export default function AddBoss() {
   const [pendingEmailVerified, setPendingEmailVerified] = useState(false);
 
   const [step, setStep] = useState<AddBossStep>("info");
+
+  /*
+    OFF BY DEFAULT, and the server has its own flag that 404s these endpoints independently. Both
+    must be on for the new journey to run, and neither alone can expose it.
+
+    `useState` rather than a bare call so one render cannot disagree with the next about which
+    journey the contributor is in. Flipping mid-form would strand them on a step the other flow
+    does not have.
+  */
+  const [roleAware] = useState(() => roleAwareSubmissionEnabled());
+  /*
+    The form's own identity, minted once per session and kept. Every autosave and the submission
+    that finishes it carry the same value, which is what makes a repeat idempotent rather than a
+    duplicate: the server upserts on it instead of inserting again.
+  */
+  const proposalKeyRef = useRef<string>(crypto.randomUUID());
+  /* Monotonic, so an autosave in flight when a newer one lands cannot win on arrival. */
+  const revisionRef = useRef<number>(1);
+  const [identity, setIdentity] = useState<IdentitySelection | null>(null);
+  /* The server's flag is off: fall back to the legacy journey rather than showing a failure. */
+  const [roleAwareUnavailable, setRoleAwareUnavailable] = useState(false);
+  /*
+    The identify step was skipped because the search conclusively found nobody.
+
+    Kept so Back can skip it too. Reset whenever the typed identity changes, because the next
+    search is a different question and may well have candidates in it.
+  */
+  const [skippedIdentify, setSkippedIdentify] = useState(false);
+  const useRoleAware = roleAware && !roleAwareUnavailable;
   // First-hand-experience attestation. Required before any review is persisted - including the
   // silent auto-save below, which would otherwise store a review the user never attested to.
   const [attested, setAttested] = useState(false);
@@ -170,6 +224,24 @@ export default function AddBoss() {
   const [datesHidden, setDatesHidden] = useState(false);
   const [formTouched, setFormTouched] = useState(false);
   /*
+    THE DATE RULES BELONG TO THE DATE STEP, NOT TO THE WHOLE FORM.
+
+    They were shown whenever `formTouched` was set, and that flips on the first keystroke of the
+    manager's NAME - two steps earlier. So the work-timeline step opened already listing "Required"
+    and "Not in the future" against fields the contributor had not been shown yet, which reads as
+    the form telling somebody off for not having done something they had no chance to do. A refresh
+    cleared the flag and the same screen came up clean, which is the inconsistency you saw.
+
+    `datesTouched` is set by the date controls themselves: the rules appear when somebody starts
+    answering, and the checkmarks then tell them they got it right.
+
+    `datesAttempted` is separate and stricter. An empty field is only WRONG once they have tried to
+    move on; before that it is simply unanswered, so "Required" waits as a hollow circle rather
+    than shouting in red the moment they touch the first of two fields.
+  */
+  const [datesTouched, setDatesTouched] = useState(false);
+  const [datesAttempted, setDatesAttempted] = useState(false);
+  /*
     One slot, not one flag per field. Every populated field collapses to a line with a pencil, and
     exactly one may be open at a time - two half-edited fields on screen is how somebody loses the
     one they were not looking at.
@@ -234,6 +306,29 @@ export default function AddBoss() {
   const [showReadyBanner, setShowReadyBanner] = useState(false);
   const dropOffCaptureAttemptedRef = useRef(false);
   const draftTokenRef = useRef<string | null>(null);
+  /*
+    PHASE 1. One attempt at THIS form, minted when the early capture first posts and held for the
+    life of the form - through a reload and through the sign-in round trip, because it is saved in
+    the draft below alongside draftToken.
+
+    It is what lets the submission adopt the draft the capture left behind. The server used to find
+    that draft by resemblance - same name, the captured company a prefix of the submitted one,
+    under an hour old - which also described a stranger's half-typed namesake and handed their work
+    to whoever submitted next.
+
+    Three tokens, three different things, and they must not be conflated: captureToken is one
+    attempt at adding a MANAGER, draftToken is one attempt at a RATING.
+  */
+  /*
+    State rather than a ref, and that distinction is the whole of a bug this caught.
+
+    A ref does not re-render, so the effect that writes the draft never ran again after the token
+    was minted, and the token was posted to the server and then NOT saved. The round trip through
+    sign-in is exactly when it is needed, and exactly when it would have been lost - so the next
+    capture would have minted a second attempt and the submission could have adopted only one of
+    the two drafts.
+  */
+  const [captureToken, setCaptureToken] = useState<string | null>(null);
 
   // ── Derived numeric date values ───────────────────────────────────────────
   const revFromVal  = toYMVal(workedFrom.month, workedFrom.year);
@@ -282,7 +377,7 @@ export default function AddBoss() {
 
   // ── Rule builders ─────────────────────────────────────────────────────────
   const req = (val: number | null): RuleState =>
-    val ? "met" : formTouched ? "violated" : "pending";
+    val ? "met" : datesAttempted ? "violated" : "pending";
   const field = (val: number | null, ok: boolean): RuleState =>
     !val ? "pending" : ok ? "met" : "violated";
   const cross = (a: number | null, b: number | null, ok: boolean): RuleState =>
@@ -298,14 +393,46 @@ export default function AddBoss() {
     { label: "On or after your start date", state: cross(revUntilVal, revFromVal, revUntilVal! >= revFromVal!) },
   ];
 
-  const showRevFrom  = formTouched || !!revFromVal;
-  const showRevUntil = !currentlyWorking && (formTouched || !!revUntilVal);
+  const showRevFrom  = datesTouched || !!revFromVal;
+  const showRevUntil = !currentlyWorking && (datesTouched || !!revUntilVal);
 
   // ── Draft ─────────────────────────────────────────────────────────────────
-  const DRAFT_TTL = 12 * 60 * 60 * 1000;
+  const DRAFT_TTL = DEFAULT_DRAFT_TTL_MS;   // 24 hours; see draftScope for why it was 12
+  /*
+    THE DRAFT BELONGS TO ONE PERSON, and until now this form did not ask which.
+
+    It read "rmm_pending_manager", a key with no account in it, and poured whatever it found into
+    whoever was looking. On any browser used by more than one person, the next visitor was shown
+    the last one's answers - the ratings, the dates, the company, WHO the rating is about, the
+    server-side draft and capture tokens, and the email address typed into the sign-up step - and
+    the next thing this form does is publish them, under THEIR name.
+
+    `useFormDraft` has scoped every draft by account since it was written, and its own comment says
+    why: "a second account signing in was shown the first account's unfinished rating ... which is
+    how one person's words would be published under another's name." This form does not use that
+    hook, so it never got the fix. The decision now lives in draftScope and both use it.
+
+    Scoped on `user?.id`, which AuthContext hydrates synchronously from storage on the first
+    render, so it is already correct in the mount effect below rather than arriving a tick later.
+  */
+  /*
+    A draft written before the key had an account in it is moved into the anonymous scope, once.
+
+    Without this, shipping the scope would silently throw away every draft that was open in
+    somebody's browser at the moment of the deploy: their answers would still be there, under a
+    key nothing reads any more. A draft in progress is exactly what this whole mechanism exists to
+    protect, so losing a batch of them on the way to protecting them would be its own small
+    outage. `useFormDraft` has done the same thing, for the same reason, since it was written.
+  */
+  const legacyAdoptedRef = useRef(false);
+  if (!legacyAdoptedRef.current) { legacyAdoptedRef.current = true; adoptLegacyDraft(MANAGER_DRAFT_KEY); }
+
+  const managerDraft = draftSlot<any>(MANAGER_DRAFT_KEY, user?.id, { ttlMs: DRAFT_TTL });
+  const [offeredDraft, setOfferedDraft] = useState<any | null>(null);
+  const [draftExpired, setDraftExpired] = useState(false);
 
   const clearDraft = () => {
-    localStorage.removeItem("rmm_pending_manager");
+    managerDraft.clear();
     setFormData({ firstName: "", lastName: "", title: "", country: "", state: "", linkedinUrl: "", status: "active" });
     companySelection.clear();
     setWorkLocation(EMPTY_LOCATION);
@@ -321,16 +448,14 @@ export default function AddBoss() {
     setStep("info");
   };
 
-  useEffect(() => {
-    const isVerified = searchParams.get("verified") === "true";
-    try {
-      const raw = localStorage.getItem("rmm_pending_manager");
-      if (raw) {
-        const data = JSON.parse(raw);
-        if (data.savedAt && Date.now() - data.savedAt > DRAFT_TTL) {
-          localStorage.removeItem("rmm_pending_manager");
-        } else {
-          localStorage.removeItem("rmm_pending_manager");
+  /*
+    Applying a draft, separated from deciding whether it may be applied.
+
+    The deciding is in the effect below and in draftScope; this is only the "put the answers back"
+    half, which is unchanged. It is a function rather than inline because it now has two callers:
+    the mount effect, and the contributor accepting an offered draft.
+  */
+  const applyDraft = (data: any, isVerified: boolean) => {
           if (data.formData) {
             /*
               The company comes from the URL, not from a stale draft.
@@ -361,7 +486,11 @@ export default function AddBoss() {
             */
             const companyFromUrl = searchParams.get("company");
             if (!companyFromUrl && typeof draftCompany === "string" && draftCompany) {
-              companySelection.set(draftCompany, typeof data.companyId === "number" ? data.companyId : undefined);
+              companySelection.set(
+                draftCompany,
+                typeof data.companyId === "number" ? data.companyId : undefined,
+                typeof data.companyLogoUrl === "string" ? data.companyLogoUrl : undefined,
+              );
             }
             // Where the work happened, as they left it. Never re-derived from visitor geography on
             // a restore - that would quietly move an answer somebody had already given.
@@ -369,12 +498,37 @@ export default function AddBoss() {
           }
           if (data.ratings)     setRatings(data.ratings);
           if (data.workedFrom)  setWorkedFrom(data.workedFrom);
-          if (data.step)        setStep(data.step);
+          // The form's identity first: a restored selection without it would submit as a new form.
+          if (data.proposalKey) proposalKeyRef.current = data.proposalKey;
+          // Before the step, so the identify step is never shown with nothing selected on it.
+          if (data.identity)    setIdentity(data.identity);
+          /*
+            A DRAFT NEVER RESTORES PAST THE STEP IT HAS NO ANSWER FOR.
+
+            Drafts saved before the role-aware journey existed - and any saved on the "none of
+            these" path, which carries no identity - hold a step from the three-step journey. The
+            step was restored as it stood, so the form opened on the WORK TIMELINE with nobody
+            selected: the contributor never saw the new question, filled the rest in, and was
+            refused at submit with "choose the person you worked for" about a screen they had
+            never been shown.
+
+            It is also how this looked like "the flag did nothing". Anybody who had used the form
+            before had a draft, so /add kept opening two steps in and the redesign appeared not to
+            be there at all.
+
+            Clamping rather than discarding: every answer they gave is kept, and the one question
+            with no answer in the draft is the one they are put on.
+          */
+          const restoredStep: AddBossStep | undefined = data.step;
+          const needsIdentity = useRoleAware && !data.identity
+            && (restoredStep === "timeline" || restoredStep === "ratings");
+          if (restoredStep)     setStep(needsIdentity ? "identify" : restoredStep);
           if (data.workedUntil) setWorkedUntil(data.workedUntil);
           if (data.currentlyWorking != null) setCurrentlyWorking(data.currentlyWorking);
           if (data.datesHidden != null) setDatesHidden(data.datesHidden);
           if (data.generatedName) setGeneratedName(data.generatedName);
           if (data.draftToken) draftTokenRef.current = data.draftToken;
+          if (data.captureToken) setCaptureToken(data.captureToken);
           /*
             A manager was already written for this draft, before the reload. Recording it here
             stops the auto-save running a second time - it returns early unless the status is idle
@@ -403,19 +557,68 @@ export default function AddBoss() {
           } else {
             setShowDraftBanner(true);
           }
-        }
-      }
-    } catch {
-      localStorage.removeItem("rmm_pending_manager");
+  };
+
+  useEffect(() => {
+    const isVerified = searchParams.get("verified") === "true";
+
+    /*
+      WHOSE DRAFT IS THIS?
+
+      Their own scope is theirs by construction, because only a signed-in session writes there. So
+      it is restored as it always was.
+
+      An anonymous draft is OFFERED. Always, with no exceptions, and there were two: a draft whose
+      `signupEmail` matched the signed-in address, and a load carrying `?verified=true`. Both were
+      wrong for the same reason. An anonymous draft has no identity on it to check, and everything
+      that looked like proof was written by whoever had the browser: localStorage by anybody who
+      can reach it, a query parameter by anybody who can type. A draft that merely NAMES the next
+      person's address is exactly what somebody leaving a rating on a shared machine would write.
+    */
+    let data = managerDraft.take();
+    if (data) {
+      data = withoutUnprovenEmail(data, { accountEmail: user?.email });
+    } else if (user?.id) {
+      const anon = anonymousDraftOffer<any>(MANAGER_DRAFT_KEY, user.id, DRAFT_TTL);
+      if (anon) setOfferedDraft(anon);
     }
+
+    if (data) applyDraft(data, isVerified);
+    /*
+      Said rather than left to be inferred. A form that opens empty is indistinguishable from one
+      that threw the answers away, and "it expired" is the one thing that explains it. Read after
+      the restore, because reading it is what clears it.
+    */
+    if (takeExpiryNotice(MANAGER_DRAFT_KEY, user?.id)) setDraftExpired(true);
     if (isVerified) setSearchParams({}, { replace: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    const hasData = formData.firstName || formData.lastName || companySelection.name || formData.title ||
-      Object.values(ratings).some(r => r > 0) || workedFrom.month;
-    if (!hasData) return;
-    localStorage.setItem("rmm_pending_manager", JSON.stringify({
+  /** The contributor says an anonymous draft is theirs. Nothing is applied until they do. */
+  const acceptOfferedDraft = () => {
+    if (!user?.id) return;
+    const taken = adoptAnonymousDraft<any>(MANAGER_DRAFT_KEY, user.id, DRAFT_TTL);
+    setOfferedDraft(null);
+    /*
+      The address goes through the same guard as any other restore. Accepting an offer says "these
+      answers are mine"; it is not a reason to show whoever clicked it an email address that may
+      belong to somebody else.
+    */
+    if (taken) applyDraft(withoutUnprovenEmail(taken, { accountEmail: user?.email }), false);
+  };
+
+  /** They say it is not. It stays in the anonymous scope rather than being destroyed here. */
+  const declineOfferedDraft = () => setOfferedDraft(null);
+
+  /*
+    ONE PAYLOAD, built in one place, because it is now written from two.
+
+    The effect keeps the draft current as somebody types. `persistDraftNow` writes the same
+    payload SYNCHRONOUSLY, immediately before the form sends them away to authenticate, which the
+    effect cannot do: an effect runs after the render that follows a state change, so a handler
+    that navigates in the same tick leaves with the newest keystroke unsaved. Social sign-in
+    already leaves this page, and after Stage 4 every sign-in will.
+  */
+  const buildDraftPayload = () => ({
       returnTo: "/add",
       // Written back under formData.company, where it has always lived on disk, so a draft saved
       // by an older build still restores and one saved here still opens in an older tab.
@@ -429,24 +632,89 @@ export default function AddBoss() {
         answers is worse than one that keeps none, because the gaps are not obvious.
       */
       companyId: companySelection.id ?? null,
+      /*
+        THE COMPANY'S MARK, not just its name and id.
+
+        The draft kept the name and the id and dropped the logo, so a restored form showed the
+        employer as a grey initial - a company the form had already identified well enough to draw,
+        reduced to "M". Re-deriving it from the name is not an option: this product deliberately
+        never guesses a domain from a company name, because the guess is confidently wrong often
+        enough to show a different company's logo.
+      */
+      companyLogoUrl: companySelection.logoUrl ?? null,
       workLocation,
       ratings,
       workedFrom, workedUntil, currentlyWorking, datesHidden,
       authorType, generatedName,
+      /*
+        THE FORM'S OWN IDENTITY, which is what makes a retry a retry.
+
+        proposalKey lived in a useRef, so every page load minted a fresh one - and signing in IS a
+        page load. The server then had no way to know the returning submission was the same form,
+        which on path 3 meant it created a SECOND pending manager. Issue 34: the server-side fix
+        resolves the manager from the claim this key identifies, and that only engages if the key
+        survives the round trip.
+
+        Third time this exact shape has bitten: the capture token (issue 32) and the autosave
+        writeId were both stable identities held in a ref and lost on the one load that mattered.
+      */
+      proposalKey: proposalKeyRef.current,
+      /*
+        THE SELECTION, which was simply not saved.
+
+        Everything else about the form survived the signup round trip - the name, the company, the
+        ratings, the dates - and the one answer that did not was the most consequential one: WHO
+        the rating is about. The form came back complete, refused to submit, and sent the person
+        back to the identify step to choose the person again.
+
+        It is restored as it was stored, not re-resolved. A selection that has gone stale while
+        they were signing up is refused by the server with isStale, and that already sends them
+        back to choose again - so a stale restore degrades to exactly the behaviour there was
+        before, while a fresh one saves them redoing the choice.
+      */
+      identity,
       step,
       ...(autoSavedManagerId != null ? { autoSavedManagerId } : {}),
       ...(draftTokenRef.current ? { draftToken: draftTokenRef.current } : {}),
+      ...(captureToken ? { captureToken } : {}),
       ...(pendingVerificationEmail ? { signupEmail: pendingVerificationEmail, emailVerified: pendingEmailVerified } : {}),
-      savedAt: Date.now(),
-    }));
-  }, [formData, companySelection.name, companySelection.id, workLocation, ratings, workedFrom, workedUntil, currentlyWorking, datesHidden, authorType, generatedName, step, pendingVerificationEmail, pendingEmailVerified, autoSavedManagerId]); // eslint-disable-line react-hooks/exhaustive-deps
+  });
+
+  const draftHasAnswers = () => Boolean(
+    formData.firstName || formData.lastName || companySelection.name || formData.title ||
+    Object.values(ratings).some(r => r > 0) || workedFrom.month);
+
+  /** Writes the draft right now, for a caller that is about to navigate. */
+  const persistDraftNow = () => {
+    if (!draftHasAnswers()) return;
+    managerDraft.write(buildDraftPayload());
+  };
+
+  useEffect(() => {
+    persistDraftNow();
+  }, [formData, companySelection.name, companySelection.id, workLocation, ratings, workedFrom, workedUntil, currentlyWorking, datesHidden, authorType, generatedName, identity, step, pendingVerificationEmail, pendingEmailVerified, autoSavedManagerId, captureToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Early ghost capture (works for all users, including unauthenticated) ─────
   useEffect(() => {
+    /*
+      THE ROLE-AWARE JOURNEY CREATES NOTHING BY TYPING.
+
+      This effect publishes a provisional manager the moment the first step validates, so merely
+      entering a name put a profile in the directory. Removing fuzzy attachment while keeping this
+      would have swapped one source of duplicate profiles for another: identification is read-only,
+      and a manager is created only when the contributor explicitly says "none of these".
+
+      The legacy journey keeps it exactly as it was. Nothing about the old path changes here.
+    */
+    if (useRoleAware) return;
     if (!step1Valid || ghostCaptureAttemptedRef.current) return;
     ghostCaptureAttemptedRef.current = true;
     // Sends the picked ID, or resolves one first by creating the company explicitly. Either way
     // the server receives an identity rather than a name to interpret.
+    // Minted once per form session and kept: the same value goes to every capture this form
+    // makes and to the submission that finishes it.
+    const attempt = captureToken ?? crypto.randomUUID();
+    if (!captureToken) setCaptureToken(attempt);
     void (async () => {
       axios.post(`${API_BASE}/api/managers/ghost`, {
         name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
@@ -455,14 +723,92 @@ export default function AddBoss() {
         country: workLocation.country || formData.country,
         state: formData.state.trim() || null,
         ...declaredPayload(workLocation),
+        // However many times this fires for one form session, the server writes one manager for
+        // it, and the submission below adopts exactly that one.
+        captureToken: attempt,
       }).catch(() => {});
     })();
-  }, [step1Valid]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step1Valid, useRoleAware]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /*
+    ROLE-AWARE AUTOSAVE: the SELECTION, not the rating.
+
+    The legacy autosave below posts the whole contribution to POST /api/managers, which runs the
+    fuzzy attachment, so it is switched off in this journey. This replaces the part worth keeping:
+    if somebody picks the right person and then reloads, signs in, or comes back tomorrow, the
+    choice they already made is still there.
+
+    DEBOUNCED, because it fires on every keystroke in the timeline step otherwise, and each save is
+    a write. REVISION MONOTONIC and the server's answer wins: it may hold a newer number than ours
+    if another tab got there first, and adopting it is what stops two tabs fighting.
+
+    It STOPS once the claim is finalized. After submission the claim is a saved observation, and a
+    tab left open must not rewrite the assertion behind a published rating. The server refuses it
+    anyway; stopping here means we also stop asking.
+  */
+  const claimFinalizedRef = useRef(false);
+  useEffect(() => {
+    if (!useRoleAware) return;
+    if (claimFinalizedRef.current) return;
+    // Nothing to draft until they have chosen a person: a claim cannot exist before the manager.
+    if (!identity || identity.kind === "proposeManager") return;
+
+    const handle = setTimeout(() => {
+      revisionRef.current += 1;
+      void autosaveRoleClaim({
+        proposalKey: proposalKeyRef.current,
+        revision: revisionRef.current,
+        managerId: identity.managerId,
+        selectedRoleId: identity.kind === "existing" ? identity.roleId : null,
+        /* The claim describes the employment that will be submitted, for the same reason. */
+        title: (identity.kind === "existing"
+          ? identity.employment.title ?? formData.title
+          : formData.title).trim(),
+        company: (identity.kind === "existing"
+          ? identity.employment.company
+          : companySelection.name)?.trim() || null,
+        companyId: (identity.kind === "existing"
+          ? identity.employment.companyId
+          : companySelection.id) ?? null,
+        startDate: toYearMonth(workedFrom.month, workedFrom.year),
+        endDate: currentlyWorking ? null : toYearMonth(workedUntil.month, workedUntil.year),
+        stillThere: currentlyWorking,
+      })
+        .then(result => {
+          if (result.finalized) claimFinalizedRef.current = true;
+          // The server's number, not ours. See above.
+          if (typeof result.revision === "number") {
+            revisionRef.current = Math.max(revisionRef.current, result.revision);
+          }
+        })
+        // Silent: autosave is a safety net, and a failed one must never interrupt somebody
+        // mid-form. The submission is what reports failure, because that is the act.
+        .catch(() => {});
+    }, 800);
+    return () => clearTimeout(handle);
+  }, [useRoleAware, identity, formData.title, companySelection.name, companySelection.id,
+      workedFrom, workedUntil, currentlyWorking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-save when all ratings filled ────────────────────────────────────
   // Fires silently as soon as the user completes all 10 categories while logged in.
   // Captures drop-offs where the user fills everything but never clicks Submit.
   useEffect(() => {
+    /*
+      NOT IN THE ROLE-AWARE JOURNEY, and a Playwright test is what found this.
+
+      This autosave posts the whole contribution to POST /api/managers as soon as the tenth rating
+      is filled - and that endpoint runs findFuzzyNameMatch and attaches the rating to whichever
+      manager is within one edit of the typed name. So in the new journey, simply completing the
+      ratings reached the fuzzy attachment silently, no matter what the contributor had explicitly
+      selected two screens earlier. The identity protection would have been bypassed by the very
+      feature meant to protect the contribution.
+
+      The legacy journey keeps it unchanged. The role-aware equivalent is a revision-guarded
+      role-claim autosave, which is not written yet, so the new journey currently has NO autosave
+      rather than the wrong one. That is a deliberate gap and it is reported as such: a missing
+      safety net costs somebody a retype, while this one cost correct attribution.
+    */
+    if (useRoleAware) return;
     if (step !== "ratings") return;
     if (!user) return;
     if (!attested) return;
@@ -499,6 +845,7 @@ export default function AddBoss() {
           startDate: toYearMonth(workedFrom.month, workedFrom.year),
           endDate: formData.status === "retired" ? toYearMonth(workedUntil.month, workedUntil.year) : null,
           draftToken: draftTokenRef.current ?? undefined,
+          captureToken: captureToken ?? undefined,
           review: {
             authorType,
             author: generatedName,
@@ -542,6 +889,8 @@ export default function AddBoss() {
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const touch = () => { if (!formTouched) setFormTouched(true); };
+  /** Touching a date answers for the date rules, which nothing else on the form should trigger. */
+  const touchDates = () => { touch(); if (!datesTouched) setDatesTouched(true); };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     touch();
@@ -618,10 +967,20 @@ export default function AddBoss() {
     if (step === "info") {
       const errs = infoErrors();
       if (errs.length > 0) { setErrors(errs); return; }
+      // Entering the identify step is a fresh question, so no previous skip applies: this answer
+      // may have candidates where the last one had none.
+      setSkippedIdentify(false);
+      setStep(useRoleAware ? "identify" : "timeline");
+    } else if (step === "identify") {
+      if (!identity) {
+        setErrors(["Choose the person you worked for, or add them as someone new."]);
+        return;
+      }
       setStep("timeline");
     } else if (step === "timeline") {
       const errs = timelineErrors();
-      if (errs.length > 0) { setErrors(errs); return; }
+      // Trying to move on is what turns an unanswered date into a missing one.
+      if (errs.length > 0) { setDatesAttempted(true); setErrors(errs); return; }
       setStep("ratings");
     }
   };
@@ -684,6 +1043,12 @@ export default function AddBoss() {
           },
         }).catch(() => {});
       }
+      /*
+        The answers are written BEFORE the auth flow opens, not by the effect that normally keeps
+        the draft current. Social sign-in inside that modal leaves this page, and the effect has
+        not run yet for whatever changed in this same tick.
+      */
+      persistDraftNow();
       if (pendingVerificationEmail) {
         setAuthFlowEmail(pendingVerificationEmail);
         setAuthFlowStep(pendingEmailVerified ? "signin" : "verify_email");
@@ -696,7 +1061,7 @@ export default function AddBoss() {
     // Auto-save already captured the review - skip the re-submit and navigate directly
     if (autoSubmitStatusRef.current === "success" && autoSavedManagerIdRef.current != null) {
       markContributed();
-      localStorage.removeItem("rmm_pending_manager");
+      managerDraft.clear();
       sessionStorage.setItem("rmm_just_rated", "1");
       markJustAddedManager();
       toast.success(`${formData.firstName} ${formData.lastName} submitted for review!`, {
@@ -713,6 +1078,117 @@ export default function AddBoss() {
     setErrors([]);
     setIsSubmitting(true);
 
+    /*
+      THE ROLE-AWARE SUBMISSION, AND THERE IS NO ROUTE FROM HERE INTO THE OLD ONE.
+
+      Everything below this block posts to /api/managers, which runs findFuzzyNameMatch and
+      attaches the rating to whichever manager is within one edit of the typed name. That is the
+      behaviour this phase removes, so a role-aware submission must never reach it - not on an
+      error, not on a timeout, not as a "retry the old way".
+
+      A failure therefore sets an error and RETURNS, leaving every answer and the selection exactly
+      where they were. A submission somebody can retry is recoverable; a rating silently filed
+      against the wrong human is not.
+    */
+    if (useRoleAware) {
+      if (!identity) {
+        setErrors(["Choose the person you worked for before submitting."]);
+        setIsSubmitting(false);
+        setStep("identify");
+        return;
+      }
+      try {
+        /*
+          AN EXISTING EMPLOYMENT CARRIES ITS OWN EMPLOYER AND JOB TITLE.
+
+          The payload took the company and title from the FIRST screen, which is where somebody
+          typed the employer they were searching with - not necessarily the employer of the job
+          they went on to pick. Choose a job at a different company and the server was asked for
+          that role at the typed company, found nothing, and answered "The employment you selected
+          is no longer available. Choose again." The employment was fine; we had described it
+          wrongly.
+
+          It also stops `payload()` creating a company row for a name that was only ever a search
+          term.
+
+          The two propose paths keep the typed values on purpose: there, what was typed IS the
+          proposal.
+        */
+        const chosen = identity.kind === "existing" ? identity.employment : null;
+        const companyPayload = chosen
+          ? { company: chosen.company ?? "", companyId: chosen.companyId ?? null }
+          : await companySelection.payload();
+        const submittedTitle = (chosen?.title ?? formData.title).trim();
+        const result = await rateWithRole(
+          {
+            firstName: formData.firstName.trim(),
+            lastName: formData.lastName.trim(),
+            title: submittedTitle,
+            ...companyPayload,
+            // Null on both "propose" paths, and NEVER filled in with a guess: an absent role id
+            // means "the employment is missing", which is what the contributor chose.
+            managerId: identity.kind === "proposeManager" ? null : identity.managerId,
+            selectedRoleId: identity.kind === "existing" ? identity.roleId : null,
+            // Stable across autosaves and retries, which is what makes a repeat idempotent rather
+            // than a second rating.
+            proposalKey: proposalKeyRef.current,
+            revision: revisionRef.current,
+            startDate: toYearMonth(workedFrom.month, workedFrom.year),
+            endDate: currentlyWorking ? null : toYearMonth(workedUntil.month, workedUntil.year),
+            stillThere: currentlyWorking,
+            status: formData.status,
+            country: workLocation.country || formData.country,
+            state: formData.state.trim() || null,
+            author: generatedName,
+            overallRating:
+              Object.values(ratings).reduce((a, b) => a + b, 0) / Object.values(ratings).length,
+            ratings: toApiRatings(ratings),
+          });
+
+        markContributed();
+        managerDraft.clear();
+        sessionStorage.setItem("rmm_just_rated", "1");
+        markJustAddedManager();
+        toast.success(
+          result.live
+            ? `Your rating of ${formData.firstName} ${formData.lastName} is live.`
+            : `Thanks. Your rating will appear once someone checks it.`,
+          result.heldBecause ? { description: result.heldBecause } : undefined,
+        );
+        /*
+          WHERE THEY LAND, and it is the profile in every case.
+
+          This used to interpolate an empty string on the propose-manager path, because the client
+          had no id for a manager it had just asked the server to create - so a completed
+          contribution ended on /manager/ and a 404 page. The server now names the manager it
+          wrote, and the profile shows "Profile under review. Awaiting admin approval before going
+          public." exactly as the legacy journey does.
+
+          The server's id is preferred over the selected one even when both exist: a replayed
+          submission resolves to the manager the first attempt landed on, which is the one their
+          rating is actually against.
+        */
+        const landOn = result.managerId
+          ?? (identity.kind === "proposeManager" ? null : identity.managerId);
+        if (landOn) navigate(`/manager/${landOn}`);
+        else navigate("/");
+        return;
+      } catch (err) {
+        if (err instanceof RateWithRoleRefused) {
+          setErrors([err.message]);
+          // A stale selection sends them back to choose again. Their answers are untouched.
+          if (err.isStale) setStep("identify");
+        } else if (err instanceof RoleAwareDisabledError) {
+          setRoleAwareUnavailable(true);
+          setErrors(["This form isn't available right now. Nothing you typed has been lost."]);
+        } else {
+          setErrors(["We couldn't save your rating. Nothing you typed has been lost."]);
+        }
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
     try {
       const managerResponse = await axios.post(`${API_BASE}/api/managers`, {
         name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
@@ -728,6 +1204,7 @@ export default function AddBoss() {
         startDate: toYearMonth(workedFrom.month, workedFrom.year),
         endDate: formData.status === "retired" ? toYearMonth(workedUntil.month, workedUntil.year) : null,
         draftToken: draftTokenRef.current ?? undefined,
+        captureToken: captureToken ?? undefined,
         review: {
           authorType,
           author: generatedName,
@@ -761,7 +1238,7 @@ export default function AddBoss() {
       queryClient.removeQueries({ queryKey: ["stats"] });
       queryClient.removeQueries({ queryKey: ["company-listing"] });
 
-      localStorage.removeItem("rmm_pending_manager");
+      managerDraft.clear();
       sessionStorage.setItem("rmm_just_rated", "1");
       markJustAddedManager();
       toast.success(`${formData.firstName} ${formData.lastName} submitted for review!`, {
@@ -783,6 +1260,7 @@ export default function AddBoss() {
         "Failed to submit manager and review";
       if (error?.response?.status === 401) {
         setErrors([]);
+        persistDraftNow();        // same reason as the submit path: this can end in a redirect
         setAuthFlowStep("signin");
       } else if (
         (error?.response?.data?.error === "already_reviewed_this_role" ||
@@ -804,10 +1282,15 @@ export default function AddBoss() {
   };
 
   // ── Step meta ─────────────────────────────────────────────────────────────
-  const steps: AddBossStep[] = ["info", "timeline", "ratings"];
+  const steps: AddBossStep[] = useRoleAware
+    ? ["info", "identify", "timeline", "ratings"]
+    : ["info", "timeline", "ratings"];
   const stepIdx = steps.indexOf(step) + 1;
   const stepTitles: Record<AddBossStep, string> = {
     info: "Manager information",
+    // Their words, not ours. "Confirm the person" says what the screen is for without naming a
+    // claim, a canonicalization or an employment resolution.
+    identify: "Confirm the person",
     timeline: "Work timeline",
     ratings: "Rate your experience",
   };
@@ -815,18 +1298,30 @@ export default function AddBoss() {
   const handleBack = () => {
     setErrors([]);
     if (step === "ratings") setStep("timeline");
-    else if (step === "timeline") setStep("info");
+    /*
+      BACK SKIPS WHAT FORWARD SKIPPED.
+
+      When the search found nobody the identify step was never shown, and sending Back to it would
+      run the same search, reach the same conclusion and push straight forward again - a Back
+      button that does nothing, and no way to the name they typed. The question they can actually
+      revise is on the information step, so that is where Back goes.
+    */
+    else if (step === "timeline") setStep(useRoleAware && !skippedIdentify ? "identify" : "info");
+    else if (step === "identify") setStep("info");
     else leaveForm();
   };
 
   const handleClose = () => {
-    localStorage.removeItem("rmm_pending_manager");
+    managerDraft.clear();
     leaveForm();
   };
 
   const isLastStep = step === "ratings";
   const nextDisabled =
     (step === "info"     && !step1Valid) ||
+    // Nothing is pre-selected, so there is nothing to continue with until they choose. The button
+    // is disabled rather than hidden: an inert Continue is readable, a missing one is not.
+    (step === "identify" && !identity) ||
     (step === "timeline" && !step2Valid) ||
     (step === "ratings"  && (unratedCount > 0 || !attested || isSubmitting));
 
@@ -850,7 +1345,15 @@ export default function AddBoss() {
           </button>
           <div className="text-center">
             <p className="text-sm font-semibold text-foreground">{stepTitles[step]}</p>
-            <p className="text-xs text-muted-foreground">Step {stepIdx} of 3 · {managerName}</p>
+            {/*
+              steps.length, not 3. The role-aware journey has FOUR steps - the identify step sits
+              between the information and the timeline - so a hardcoded 3 told the contributor
+              "Step 2 of 3" while they were on the second of four, and would have said "Step 4 of
+              3" on the last one. The legacy journey still has three and still reads as three.
+            */}
+            <p className="text-xs text-muted-foreground">
+              Step {stepIdx} of {steps.length} · {managerName}
+            </p>
           </div>
           <button
             onClick={handleClose}
@@ -871,9 +1374,77 @@ export default function AddBoss() {
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
+          {/*
+            THE PERSON-CHOOSING STEP IS WIDER THAN THE REST OF THE FORM.
+
+            Every other step is one question at a time and reads best in a narrow column. This one
+            is a comparison between people, and a comparison is only as good as how many of the
+            things you can see at once. In a 672px column that is two cards; given the width the
+            browse surfaces already use, it is four.
+
+            Only while the choice is on screen: once somebody has picked a person, this is a form
+            again and goes back to the column everything else uses.
+          */}
+          <div
+            className={`mx-auto px-4 py-8 sm:px-6 ${
+              /*
+                The whole step, not just the half of it showing the comparison. Switching back the
+                moment an identity was chosen resized the card being chosen, under the pointer that
+                chose it - the outer padding changes with the container, so even a child pinned to
+                the form column moved. The job screen pins its own width instead.
+              */
+              step === "identify" && !roleAwareUnavailable
+                ? "max-w-6xl"
+                : "max-w-2xl"
+            }`}
+          >
 
             {/* Draft banner */}
+            {/*
+              AN ANONYMOUS DRAFT, OFFERED RATHER THAN APPLIED.
+
+              It deliberately says nothing about what is in it - no name, no company, no email -
+              because the whole reason it is being offered is that this may not be the person who
+              wrote it. Describing the contents would disclose them to exactly the visitor who
+              should not see them.
+            */}
+            {/*
+              A DRAFT EXPIRED, which is why this form is empty.
+
+              It names no answer from it, and no address, and no company: whoever is reading this
+              may not be whoever typed it. "There was one, and it is gone" is the whole message.
+            */}
+            {draftExpired && step === "info" && (
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/40 px-4 py-3 mb-6">
+                <p className="text-sm text-muted-foreground">
+                  A saved draft expired, so this form has started fresh.
+                </p>
+                <button type="button" onClick={() => setDraftExpired(false)}
+                  className="flex-shrink-0 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted transition-colors">
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            {offeredDraft && step === "info" && (
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-[#2e0562]/30 bg-[#2e0562]/5 px-4 py-3 mb-6">
+                <p className="text-sm text-foreground">
+                  <span className="font-medium">You have unfinished answers</span> from before you
+                  signed in.
+                </p>
+                <div className="flex flex-shrink-0 gap-2">
+                  <button type="button" onClick={acceptOfferedDraft}
+                    className="rounded-md bg-[#2e0562] px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-[#2e0562]/90 transition-colors">
+                    Restore
+                  </button>
+                  <button type="button" onClick={declineOfferedDraft}
+                    className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted transition-colors">
+                    Start fresh
+                  </button>
+                </div>
+              </div>
+            )}
+
             {showDraftBanner && step === "info" && (
               <div className="flex items-center justify-between gap-4 rounded-lg border border-[#2e0562]/30 bg-[#2e0562]/5 px-4 py-3 mb-6">
                 <p className="text-sm text-foreground">
@@ -935,6 +1506,18 @@ export default function AddBoss() {
                     }
                     if (errors.length > 0) setErrors([]);
                   }}
+                  /*
+                    THE MANAGER'S STATUS IS NOT ASKED HERE IN THE ROLE-AWARE JOURNEY.
+
+                    This screen exists to say WHO the manager is. Whether they still hold the job
+                    is a fact about an employment, and the work-timeline step already asks it of
+                    the employment the contributor actually picked. Asking it before the person is
+                    even identified gets an answer about a manager nobody has chosen yet.
+
+                    The legacy journey keeps it, because nothing else there collects it and that
+                    journey is what production serves.
+                  */
+                  showStatus={!useRoleAware}
                   lockName={false}
                   open={openField}
                   onOpen={setOpenField}
@@ -953,8 +1536,122 @@ export default function AddBoss() {
             )}
 
             {/* ── Step 2: Work Timeline ─────────────────────────────────────── */}
+            {step === "identify" && roleAwareUnavailable && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <p className="font-medium">This form isn't available right now.</p>
+                <p className="mt-1">
+                  Nothing you've typed has been lost. Please try again in a few minutes.
+                </p>
+              </div>
+            )}
+
+            {step === "identify" && !roleAwareUnavailable && (
+              <ManagerIdentityPicker
+                firstName={formData.firstName.trim()}
+                lastName={formData.lastName.trim()}
+                /*
+                  The selection owns the company, name and id both. formData deliberately holds no
+                  second copy: a duplicate is what let the two disagree about which employer the
+                  contributor meant.
+                */
+                company={companySelection.name?.trim() || null}
+                companyId={companySelection.id ?? null}
+                companyLogoUrl={companySelection.logoUrl ?? null}
+                title={formData.title.trim() || null}
+                value={identity}
+                /*
+                  The rating answers are NOT touched when the selection changes. They live in their
+                  own state, so switching person or job keeps everything already typed - which is
+                  the behaviour somebody expects after realising on the rating screen that they
+                  picked the wrong Priya. The confirmation strip below then shows the new choice, so
+                  the change is visible rather than silent.
+                */
+                onChange={setIdentity}
+                /*
+                  NOBODY TO CHOOSE BETWEEN, SO NOTHING IS ASKED.
+
+                  A conclusively empty search means this screen has no question on it: the
+                  contributor typed a name, nobody is listed under it, and the only available
+                  answer is the one they already gave by typing it. Showing "we don't have them
+                  yet - add them?" there is asking somebody to confirm a decision they have
+                  already made, and on a form headed "Add a manager" it reads as a mistake.
+
+                  So the selection is taken and the step is skipped. Nothing is created by this:
+                  the proposed manager and employment are written when the rating is SUBMITTED,
+                  which is the same for every path. The picker only calls this when the lookup
+                  succeeded AND the scan was complete; a failure or a truncated scan still asks.
+                */
+                onNobodyFound={() => {
+                  setIdentity({ kind: "proposeManager" });
+                  setSkippedIdentify(true);
+                  setStep("timeline");
+                }}
+                /*
+                  THE SERVER SAYS THE FLOW IS OFF, AND WE DO NOT QUIETLY USE THE OLD ONE.
+
+                  Falling back to the legacy journey here would be a silent downgrade into fuzzy
+                  attachment: the contributor would carry on, the rating would be filed against
+                  whichever manager was within one edit of the typed name, and nobody would learn
+                  that the identity protection had not applied. A visible failure on a
+                  misconfigured deployment is strictly better than an invisible wrong attribution.
+
+                  This is only reachable when the two flags disagree, which is a deployment
+                  mistake rather than a state a contributor can cause.
+                */
+                onUnavailable={() => setRoleAwareUnavailable(true)}
+                /*
+                  They saw the candidates and none was theirs. Straight on to the details, with
+                  skippedIdentify left alone so Back returns to the list they just rejected.
+                */
+                onChooseNewManager={() => setStep("timeline")}
+                /* Same destination the Back control uses from this step. */
+                onEditEntry={() => setStep("info")}
+              />
+            )}
+
+            {/*
+              WHO THIS RATING IS ABOUT, on every screen after the choice.
+
+              Shown because the contributor is about to write about a person and must be able to see
+              which one at the moment they do it, not only on the screen where they chose. It also
+              states plainly whether the rating publishes immediately, because "held for review"
+              arriving afterwards reads as rejection.
+            */}
+            {/*
+              NO CONFIRMATION STRIP ON THESE STEPS AT ALL.
+
+              It restated a choice the contributor had just made, one screen earlier, and offered a
+              second route back on a form whose header already has Back. On the new-manager path it
+              was worse: there had been no list and no choice, so it echoed the name they typed two
+              steps ago as though it were a decision to confirm.
+
+              This is the rating flow. A confirmation nobody asked for is friction, and friction
+              here costs submissions rather than mistakes - the choice is one Back away, visible,
+              where they made it.
+            */}
             {step === "timeline" && (
               <div className="space-y-8">
+                {/*
+                  WHAT WILL HAPPEN TO THIS RATING, SAID BEFORE IT IS WRITTEN.
+
+                  This notice used to live on the confirmation strip above the questions. The
+                  strip was removed because it restated a choice the contributor had just made,
+                  but it was ALSO carrying this, which is a different thing entirely: a warning
+                  that the rating will be held. Removing the strip orphaned it, and
+                  `publicationNote` sat exported with no caller.
+
+                  It belongs here rather than at submission. "Held for review" arriving after
+                  somebody has written ten answers reads as rejection; arriving before they start
+                  reads as the honest description of what happens next.
+                */}
+                {useRoleAware && identity && publicationNote(identity) && (
+                  <p
+                    data-testid="publication-note"
+                    className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900"
+                  >
+                    {publicationNote(identity)}
+                  </p>
+                )}
                 {/* The same timeline control the review form uses, so the same mistake produces
                     the same message on either page. */}
                 <WorkTimelineFields
@@ -963,9 +1660,9 @@ export default function AddBoss() {
                   from={workedFrom}
                   until={workedUntil}
                   current={currentlyWorking}
-                  onFromChange={v => { touch(); setWorkedFrom(v); }}
-                  onUntilChange={v => { touch(); setWorkedUntil(v); }}
-                  onCurrentChange={v => { touch(); setCurrentlyWorking(v); }}
+                  onFromChange={v => { touchDates(); setWorkedFrom(v); }}
+                  onUntilChange={v => { touchDates(); setWorkedUntil(v); }}
+                  onCurrentChange={v => { touchDates(); setCurrentlyWorking(v); }}
                   allowCurrent={formData.status !== "retired"}
                 />
                 {showRevFrom  && <RuleList rules={revFromRules} />}
@@ -1080,6 +1777,16 @@ export default function AddBoss() {
               </div>
             )}
             <button
+              /*
+                THE FORM'S ONE NAVIGATION CONTROL, addressable without guessing at its label.
+
+                Its text changes with the step - "Next", "Submit Review", "Continue to Sign In" -
+                so tests reached for it by matching /continue|next/i, which quietly also matched
+                "Continue with a new Priya Raghunathan" on the identification step and resolved to
+                two buttons. A test that cannot say which control it means is a test that will one
+                day assert against the wrong one.
+              */
+              data-testid="form-next"
               onClick={isLastStep ? handleSubmit : handleNext}
               disabled={nextDisabled}
               className={`w-full rounded-lg px-6 py-3 font-semibold text-sm transition-all ${

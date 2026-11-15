@@ -12,6 +12,8 @@ export interface Review {
   text?: string;
   managerCompany: string;
   managerTitle: string;
+  /** Platform-generated demonstration rating; never a real employee opinion. See V106 origin. */
+  isExample?: boolean;
 }
 
 export interface CareerHistory {

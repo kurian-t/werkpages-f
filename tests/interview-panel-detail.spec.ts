@@ -210,12 +210,24 @@ test.describe("What a locked reader sees", () => {
     await expect(page.getByText(/Share an interview experience to unlock/i)).toBeVisible();
   });
 
-  test("the size of what is behind the lock is still stated", async ({ page }) => {
-    // A locked page that will not say how much it holds gives somebody arriving from search no
-    // reason to come back.
-    await open(page, { gated: true, categoryAverages: null, categoryComparison: null });
+  test("a locked panel shows its notice and nothing behind it", async ({ page }) => {
+    /*
+      REVERSED BY PRODUCT DECISION, 27 October.
 
-    await expect(page.getByText(/12 (candidate )?(interviews|experiences)/).first())
-      .toBeVisible({ timeout: 10_000 });
+      This asserted that a locked panel still stated how much was behind the lock, so that
+      somebody arriving from search had a reason to come back.
+
+      The locked header now shows ONLY its notice, on a plain background. The half-visible text
+      behind it made the notice hard to read on a phone, and blurring that text was tried first
+      and made it worse: shapes behind the words you are trying to read.
+
+      WHAT THIS COSTS, recorded rather than glossed over: a locked panel no longer states its
+      sample size anywhere, so the search-visitor argument above is genuinely given up. The
+      blurred ratings list below the header is what now carries the sense that there is
+      something here.
+    */
+    await open(page, { gated: true, categoryAverages: null, categoryComparison: null });
+    await expect(page.getByText(/are locked/i).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/\d+ (candidate )?(interviews|experiences)/)).toHaveCount(0);
   });
 });

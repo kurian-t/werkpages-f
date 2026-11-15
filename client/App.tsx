@@ -50,6 +50,7 @@ const About = lazy(() => import("./pages/About"));
 const SupportUs = lazy(() => import("./pages/SupportUs"));
 const EmailVerified = lazy(() => import("./pages/EmailVerified"));
 const AuthCallback = lazy(() => import("./pages/AuthCallback"));
+const CompleteProfile = lazy(() => import("./pages/CompleteProfile"));
 const WhatIsWerkpages = lazy(() => import("./pages/WhatIsWerkpages"));
 const ResumeBuilder = lazy(() => import("./pages/ResumeBuilder"));
 
@@ -136,6 +137,7 @@ const App = () => (
             <Route path="/industries" element={<Industries />} />
             <Route path="/industries/:slug" element={<IndustryProfile />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/complete-profile" element={<CompleteProfile />} />
             <Route path="/companies" element={<Companies />} />
             <Route path="/companies/:companySlug/add-interview" element={<AddInterview />} />
             {/* Rating the workplace itself. Both URL shapes, like the company page it returns to. */}

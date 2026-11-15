@@ -24,7 +24,13 @@
     "test:e2e:coverage": "PLAYWRIGHT_COVERAGE=true playwright test --project=chromium",
     "build:coverage": "PLAYWRIGHT_COVERAGE=true pnpm build:client",
     "format.fix": "prettier --write .",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "test:ci": "playwright test --project=chromium --grep @ci",
+    "test:full": "npm run test:full:standard && npm run test:full:role-aware",
+    "test:full:standard": "pnpm build:client && playwright test",
+    "test:full:role-aware": "VITE_ROLE_AWARE_SUBMISSION=true pnpm build:client && VITE_ROLE_AWARE_SUBMISSION=true playwright test tests/role-aware-contribution.spec.ts",
+    "test:list": "playwright test --list",
+    "test:list:ci": "playwright test --list --project=chromium --grep @ci"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

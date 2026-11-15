@@ -1,4 +1,9 @@
 import type { ResumeDesign } from "./types";
+/*
+  Type-only, so it is erased at compile time and creates no runtime cycle - resumeDesignTemplates
+  imports values from this module, and a value import back would be circular.
+*/
+import type { ResumeTemplateId } from "./resumeDesignTemplates";
 
 /**
  * Page-local visual objects that decorate a resume without becoming part of
@@ -65,6 +70,21 @@ export interface DesignObjectBase {
    * size + appearance edits are mirrored across compatible peers.
    */
   linkId?: string;
+
+  /**
+   * WHERE THIS OBJECT CAME FROM, when a template put it there.
+   *
+   * Both were already being written by `smart()` and read back by
+   * `getAppliedResumeTemplateId` and the template-reapply path; they were simply never declared,
+   * so every read was an error and every write was silently unchecked. Declaring them is the fix
+   * - not adding them, which would be a feature.
+   *
+   * Optional because an object a person drew themselves has no template provenance, and because
+   * every resume saved before templates existed has none either.
+   */
+  templateId?: ResumeTemplateId;
+  /** Which slot within that template this object fills, e.g. "sidebar" or "timeline". */
+  templateRole?: string;
 }
 
 export interface ShapeDesignObject extends DesignObjectBase {
@@ -222,6 +242,20 @@ export type ResumeDesignObject =
  */
 export type ResumeDesignWithObjects = ResumeDesign & {
   designObjects?: ResumeDesignObject[];
+
+  /*
+    THE APPLIED TEMPLATE, recorded on the design itself.
+
+    Written when a template is applied and read by `getAppliedResumeTemplateId`, so the editor can
+    tell a template-derived design from a hand-built one and replace the former's objects without
+    touching the latter's. `templateVersion` is what lets a newer template revision be detected
+    against a resume saved under an older one.
+
+    Both were already written and read; neither was declared. Optional for the same reason as the
+    object-level fields: a design that no template produced carries neither.
+  */
+  templateId?: ResumeTemplateId;
+  templateVersion?: number;
 };
 
 

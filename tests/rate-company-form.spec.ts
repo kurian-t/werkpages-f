@@ -1,3 +1,4 @@
+/* ROUTINE CI: core submission: the workplace rating form. Tagged @ci; see playwright.config.ts. */
 import { test, expect } from "./base";
 import { MOCK_USER, answerLocation } from "./fixtures";
 
@@ -110,7 +111,7 @@ async function rateEverything(page: any, stars = 4) {
   await page.getByRole("button", { name: `Overall: ${stars} stars` }).click();
 }
 
-test.describe("Rating a workplace", () => {
+test.describe("Rating a workplace @ci", () => {
   test("the form opens on company information, naming the company being rated", async ({ page }) => {
     await openForm(page);
 

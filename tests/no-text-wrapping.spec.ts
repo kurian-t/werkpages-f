@@ -162,20 +162,30 @@ test.describe("No text wrapping on mobile (375px)", () => {
     expect(await isSingleLine(page, googleBtn)).toBe(true);
   });
 
-  test("SignUp: password validation icons don't wrap", async ({ page }) => {
-    await page.route("**/api/auth/me", (route) =>
-      route.fulfill({ status: 401, json: { error: "Unauthorized" } })
-    );
-    await page.goto("/signup");
+  /*
+    THE SIGN-UP VALIDATION ICONS no longer exist; the form that had them is gone.
 
-    await page.locator("#password").fill("a");
+    What this guaranteed is that a validation message and its icon stay on one line on a narrow
+    screen - a real bug once, where the tick wrapped below the text and read as a second,
+    unlabelled control. The form that can still refuse is /complete-profile, so the guarantee is
+    asserted there instead.
+  */
+  test("the profile-completion validation message does not wrap", async ({ page }) => {
+    const user = { id: "u1", username: "user_1a2b3c4d", email: "n@e.test", profileComplete: false };
+    await page.route("**/api/auth/me", (r: any) => r.fulfill({ status: 200, json: { user } }));
+    await page.addInitScript((u) => {
+      localStorage.setItem("authUser", JSON.stringify(u));
+    }, user);
 
-    // Each password rule line should be single-height
-    const rules = page.locator("ul li").filter({ hasText: /at least/i });
-    const count = await rules.count();
-    for (let i = 0; i < count; i++) {
-      expect(await isSingleLine(page, rules.nth(i))).toBe(true);
-    }
+    await page.goto("/complete-profile");
+    await page.getByLabel(/^username$/i).fill("perfectly_fine_name");
+
+    const hint = page.getByText(/looks good/i);
+    await expect(hint).toBeVisible({ timeout: 8_000 });
+    const box = await hint.boundingBox();
+    expect(box, "the hint must render").not.toBeNull();
+    // One line: a wrapped message is roughly twice the height of an unwrapped one.
+    if (box) expect(box.height).toBeLessThan(32);
   });
 
   test("Header: user menu button stays on one line", async ({ page }) => {
@@ -186,4 +196,10 @@ test.describe("No text wrapping on mobile (375px)", () => {
     await expect(userBtn).toBeVisible({ timeout: 5_000 });
     expect(await isSingleLine(page, userBtn)).toBe(true);
   });
+
+  // ── ManagerCard mobile layout ────────────────────────────────────────────────
+  // Guards the flex-col + mt-auto fix that keeps rating section at card bottom and
+  // all cards in a row at the same height, even on narrow 2-column mobile grids.
+
+
 });

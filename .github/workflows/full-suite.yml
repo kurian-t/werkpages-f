@@ -1,0 +1,145 @@
+name: Full suite (manual)
+
+# NOT ON PUSH, DELIBERATELY.
+#
+# This runs everything routine CI leaves out. It is expensive by design and exists so that
+# "the full suite is available" is a command somebody can run rather than a claim in a document.
+#
+# Routine CI (ci.yml) runs the @ci subset on chromium: roughly 117 tests covering
+# authentication, authorization, erasure, data integrity, core submission and production
+# regressions. This workflow runs the other ~4,400, including every browser permutation and
+# every legacy-form project.
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "What to run"
+        required: true
+        default: "frontend-all-projects"
+        type: choice
+        options:
+          - frontend-all-projects     # every project, every test
+          - frontend-role-aware       # the flagged bundle only
+          - frontend-legacy-form      # the pre-Rev-268 submission journey
+      grep:
+        description: "Optional --grep to narrow it further (regex)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend, ${{ inputs.scope }}
+    # 90 minutes because the whole suite across three browser projects takes about 8 minutes per
+    # project locally and CI runners are slower. Sharded six ways to stay inside it.
+    timeout-minutes: 90
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+
+    env:
+      # The role-aware bundle is a BUILD-time flag, so the scope has to reach the build step.
+      VITE_ROLE_AWARE_SUBMISSION: ${{ inputs.scope == 'frontend-role-aware' && 'true' || 'false' }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # BLOCKING. It was briefly `continue-on-error` while 48 pre-existing errors in the resume
+      # builder were outstanding; those are fixed, `tsc --noEmit` exits 0, and the gate is back.
+      # Leaving it non-blocking would let the next one accumulate silently, which is exactly how
+      # 48 of them got there - no CI had ever run tsc on this repository.
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build client
+        run: pnpm build:client
+        env:
+          VITE_AUTH0_DOMAIN: test.auth0.com
+          VITE_AUTH0_CLIENT_ID: test_client_id_for_e2e
+          VITE_AUTH0_AUDIENCE: https://api.test.example/
+          VITE_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+
+      - name: Install Playwright system dependencies
+        run: pnpm exec playwright install-deps
+
+      # Every browser this config declares, not just chromium: the permutations ARE the point of
+      # this workflow. ffmpeg for the retry videos, as in ci.yml.
+      - name: Install browsers and ffmpeg
+        run: pnpm exec playwright install chromium firefox ffmpeg
+
+      # AN ARRAY, AND THE INPUTS ARRIVE THROUGH THE ENVIRONMENT. Both matter.
+      #
+      # This was a single string expanded unquoted, which broke on the one project name that
+      # contains a space: `--project=legacy-form-Mobile\ Chrome` word-split into
+      # `--project=legacy-form-Mobile\` and a stray positional `Chrome`, so the legacy-form
+      # scope asked for a project that does not exist and filtered the files to nothing. A
+      # backslash does not survive word splitting; an array element does.
+      #
+      # And `${{ inputs.grep }}` was pasted straight into the script, so a perfectly ordinary
+      # regex containing a space or a quote changed the shell's parse of the line. Reading it
+      # from the environment means the value is data to bash, never syntax.
+      - name: Run
+        run: |
+          set -o pipefail
+          ARGS=(--shard=${{ matrix.shard }}/6 --reporter=blob)
+          case "$SCOPE" in
+            frontend-legacy-form)
+              ARGS+=(--project=legacy-form-chromium
+                     --project=legacy-form-firefox
+                     --project="legacy-form-Mobile Chrome") ;;
+            frontend-role-aware)
+              ARGS+=(tests/role-aware-contribution.spec.ts) ;;
+          esac
+          if [ -n "$GREP_INPUT" ]; then ARGS+=(--grep "$GREP_INPUT"); fi
+          echo "playwright test ${ARGS[*]}"
+          pnpm exec playwright test "${ARGS[@]}"
+        env:
+          SCOPE: ${{ inputs.scope }}
+          GREP_INPUT: ${{ inputs.grep }}
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: full-blob-${{ matrix.shard }}
+          path: blob-report/
+          retention-days: 1
+
+  report:
+    if: ${{ !cancelled() }}
+    needs: frontend
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          path: all-blob-reports
+          pattern: full-blob-*
+          merge-multiple: true
+      - run: pnpm exec playwright merge-reports --reporter html ./all-blob-reports
+      - uses: actions/upload-artifact@v4
+        with:
+          name: full-suite-report
+          path: playwright-report/
+          retention-days: 30
