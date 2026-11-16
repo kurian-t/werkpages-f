@@ -14,6 +14,16 @@ interface Manager {
   industry?: string;
   overallRating?: number;
   reviews?: number;
+  /**
+   * The platform example's own number, when this manager has no genuine rating.
+   *
+   * Separate from overallRating on purpose. An example is outside every statistic by provenance,
+   * so the genuine figure is correctly absent for a brand-new ghost - and the tile, reading only
+   * that, drew an empty space where the rating goes. Keeping them apart is what stops a fabricated
+   * number reaching the Top Rated pill or any sort order.
+   */
+  exampleRating?: number | null;
+  exampleReviews?: number | null;
   status?: string;
   country?: string;
   companyLogoUrl?: string;
@@ -258,6 +268,13 @@ export function CompanyRow({ company, title, industry, logoUrl, from, domain, br
 
 export default function ManagerCard({ boss, isPending = false, to }: ManagerCardProps) {
   const rating = Number(boss.overallRating);
+  /*
+    Shown ONLY when there is no genuine rating. A manager with both has been rated by a person,
+    and the example is retired the moment that happens, so the two should never coincide; the
+    guard is here because a tile must not be the place that discovers otherwise.
+  */
+  const exampleRating = Number(boss.exampleRating);
+  const showExample = !(rating > 0) && exampleRating > 0;
   return (
     // The shared box, not this file's own copy of it. See ManagerTile.
     <ManagerTile to={to ?? `/manager/${boss.id}`} tone={isPending ? "pending" : "default"}>
@@ -317,7 +334,23 @@ export default function ManagerCard({ boss, isPending = false, to }: ManagerCard
       {/* Row 3: rating always owns its own rows on narrow cards */}
       {!isPending && (
         <div className="mt-auto min-w-0 pt-3">
-          {rating > 0 ? (
+          {showExample ? (
+            /*
+              THE EXAMPLE, LABELLED IN WORDS rather than with the ExampleRatingBadge pill.
+
+              That pill is an InfoPill carrying a tooltip, and this whole tile is a link. Nesting
+              an interactive tooltip inside an anchor is how a tile stops being clickable, which
+              is the failure mode this flow has had in production more than once. The label still
+              says plainly what the number is, which is the point of it.
+            */
+            <div className="flex min-w-0 flex-col items-start"
+                 data-testid="manager-card-example-rating">
+              <Stars rating={exampleRating} />
+              <div className="mt-1.5 whitespace-nowrap text-[11px] leading-none text-muted-foreground">
+                Example rating
+              </div>
+            </div>
+          ) : rating > 0 ? (
             <div className="flex min-w-0 flex-col items-start">
               {/*
                 The shared Stars, not a local five-star loop.

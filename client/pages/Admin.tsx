@@ -94,6 +94,24 @@ export default function Admin() {
   const [ghostManagers, setGhostManagers] = useState<any[]>([]);
   const [ghostManagersLoading, setGhostManagersLoading] = useState(false);
 
+  /*
+    CORRECTIONS AN ADMIN MAKES TO AN EDIT REQUEST BEFORE APPROVING IT.
+
+    Keyed by edit id and sent as the approve body. Only the fields actually touched are held, so
+    an untouched field is ABSENT from the request and the backend leaves the contributor's own
+    answer alone. Posting a whole form back would overwrite their submission with this form's
+    defaults, which is the opposite of correcting one field.
+
+    This is what makes the queue workable. Approve and Reject could not express "right that they
+    moved, wrong about the company", so the only way out was to reject a real contribution and
+    redo it by hand, losing its attribution.
+  */
+  const [editFix, setEditFix] = useState<Record<string, Record<string, any>>>({});
+  const [editFixOpen, setEditFixOpen] = useState<string | null>(null);
+
+  const setFix = (editId: string, field: string, value: any) =>
+    setEditFix((prev) => ({ ...prev, [editId]: { ...(prev[editId] ?? {}), [field]: value } }));
+
   // Pending edits state
   const [pendingEdits, setPendingEdits] = useState<any[]>([]);
   const [editsLoading, setEditsLoading] = useState(true);
@@ -558,11 +576,24 @@ export default function Admin() {
 
   const handleApprove = async (editId: string) => {
     try {
-      await axios.post(`${API_BASE}/api/admin/pending-edits/${editId}/approve`);
+      // Corrections only when there are some. An empty body would be indistinguishable from
+      // "approve exactly what was asked for", which is what no body already means.
+      const fix = editFix[editId];
+      await axios.post(
+        `${API_BASE}/api/admin/pending-edits/${editId}/approve`,
+        fix && Object.keys(fix).length > 0 ? fix : undefined,
+      );
       setPendingEdits((prev) => prev.filter((e) => e.id !== editId));
+      setEditFix((prev) => { const next = { ...prev }; delete next[editId]; return next; });
+      setEditFixOpen(null);
       toast.success("Edit approved and applied.");
-    } catch {
-      toast.error("Failed to approve edit.");
+    } catch (err: any) {
+      /*
+        THE SERVER'S REASON, not a generic failure. The refusal when a request names no company
+        is actionable - choose one and approve again - and a bare "Failed to approve edit" threw
+        that away, so the queue looked broken rather than waiting on one decision.
+      */
+      toast.error(err?.response?.data?.message ?? "Failed to approve edit.");
     }
     setConfirmAction(null);
   };
@@ -1585,13 +1616,90 @@ export default function Admin() {
                       </div>
                     </div>
 
-                    <div className="flex gap-3">
+                    {/*
+                      CORRECT BEFORE APPROVING.
+
+                      The fields reuse the shared components the contribution forms use, per the
+                      one-field-one-implementation rule: CompanyField asks the company question
+                      everywhere, and it is what supplies the company ID. That ID is the point.
+                      Approval refuses to resolve a typed company name, because matching text to
+                      whichever row currently holds it is what produced duplicate companies - so
+                      a request naming a company with no row yet could not be approved at all.
+                      Choosing it here is a human resolving identity, which is exactly what the
+                      refusal was asking for.
+
+                      Prefilled with what the contributor proposed, so opening this and changing
+                      one word does not silently blank the rest.
+                    */}
+                    {editFixOpen === edit.id && (
+                      <div className="mb-4 rounded-lg border border-border bg-muted/30 p-4 space-y-3"
+                           data-testid={`edit-correct-${edit.id}`}>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase">
+                          Correct before approving
+                        </p>
+                        <CompanyField
+                          value={editFix[edit.id]?.company ?? edit.newCompany ?? edit.currentCompany ?? ""}
+                          onChange={(v) => setFix(edit.id, "company", v)}
+                          onCompanyIdChange={(id) => setFix(edit.id, "companyId", id ?? null)}
+                          onSuggestionPicked={(sug) => {
+                            setFix(edit.id, "company", sug.name);
+                            setFix(edit.id, "companyId", sug.id ?? null);
+                            if (sug.logoUrl) setFix(edit.id, "companyLogoUrl", sug.logoUrl);
+                          }}
+                          logoUrl={edit.newCompanyLogoUrl ?? undefined}
+                          logoUrlFor={edit.newCompany ?? undefined}
+                          label="Company"
+                          hint="Pick the company so approval knows which one is meant."
+                        />
+                        <div>
+                          <label htmlFor={`fix-title-${edit.id}`}
+                                 className="block text-sm font-medium text-foreground mb-1">
+                            Title
+                          </label>
+                          <input
+                            id={`fix-title-${edit.id}`}
+                            type="text"
+                            value={editFix[edit.id]?.title ?? edit.newTitle ?? edit.currentTitle ?? ""}
+                            onChange={(e) => setFix(edit.id, "title", e.target.value)}
+                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor={`fix-linkedin-${edit.id}`}
+                                 className="block text-sm font-medium text-foreground mb-1">
+                            LinkedIn URL
+                          </label>
+                          <input
+                            id={`fix-linkedin-${edit.id}`}
+                            type="text"
+                            value={editFix[edit.id]?.linkedinUrl ?? edit.newLinkedinUrl ?? ""}
+                            onChange={(e) => setFix(edit.id, "linkedinUrl", e.target.value)}
+                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                          />
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          A field left as submitted is not sent, so the contributor's own answer stands.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-3">
                       <button
                         onClick={() => setConfirmAction({ type: "approve", id: edit.id, label: edit.managerName })}
                         className="flex items-center gap-2 rounded-lg bg-[#2e0562] px-4 py-2 text-sm font-medium text-white hover:bg-[#2e0562]/90 transition-colors"
                       >
                         <CheckCircle size={16} />
-                        Approve
+                        {editFix[edit.id] && Object.keys(editFix[edit.id]).length > 0
+                          ? "Approve with corrections"
+                          : "Approve"}
+                      </button>
+                      <button
+                        onClick={() => setEditFixOpen(editFixOpen === edit.id ? null : edit.id)}
+                        className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent/10 transition-colors"
+                        data-testid={`edit-correct-toggle-${edit.id}`}
+                      >
+                        <Pencil size={16} />
+                        {editFixOpen === edit.id ? "Done editing" : "Edit"}
                       </button>
                       <button
                         onClick={() => setConfirmAction({ type: "reject", id: edit.id, label: edit.managerName })}

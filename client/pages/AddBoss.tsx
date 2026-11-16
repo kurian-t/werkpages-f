@@ -39,7 +39,7 @@ import type { User } from "@/contexts/AuthContext";
 import { RequiredMark } from "@/components/FormFields";
 import {
   DEFAULT_DRAFT_TTL_MS, MANAGER_DRAFT_KEY, adoptAnonymousDraft, adoptLegacyDraft,
-  anonymousDraftOffer, draftSlot, takeExpiryNotice, withoutUnprovenEmail,
+  anonymousDraftOffer, draftSlot, takeAuthHandoff, takeExpiryNotice, withoutUnprovenEmail,
 } from "@/lib/draftScope";
 
 const currentYear = new Date().getFullYear();
@@ -526,6 +526,26 @@ export default function AddBoss() {
           if (data.workedUntil) setWorkedUntil(data.workedUntil);
           if (data.currentlyWorking != null) setCurrentlyWorking(data.currentlyWorking);
           if (data.datesHidden != null) setDatesHidden(data.datesHidden);
+          /*
+            THE ATTESTATION, which was simply not saved - and it is the one that made the form
+            unsubmittable.
+
+            `nextDisabled` on the ratings step is `unratedCount > 0 || !attested || isSubmitting`.
+            So a round trip restored the name, the company, the dates, the ratings and the
+            selection, reset this to false, and left the only control on the page inert and grey
+            with nothing on screen saying why. Reported from production: somebody filled the whole
+            form, signed in, came back and pressing Submit did nothing at all.
+
+            This is the fourth answer kept outside the draft and lost on the one load that
+            matters - the capture token, the autosave writeId and the identity selection were the
+            same shape, each with its own comment above. It is an answer the person gave, so it
+            belongs in the draft exactly like the ratings beside it.
+
+            Restoring it is not attesting on their behalf: the box was ticked by them, in this
+            flow, and the draft is that flow in progress. Nothing auto-submits on the strength of
+            it; the submit guard still re-checks it.
+          */
+          if (typeof data.attested === "boolean") setAttested(data.attested);
           if (data.generatedName) setGeneratedName(data.generatedName);
           if (data.draftToken) draftTokenRef.current = data.draftToken;
           if (data.captureToken) setCaptureToken(data.captureToken);
@@ -576,14 +596,38 @@ export default function AddBoss() {
       person's address is exactly what somebody leaving a rating on a shared machine would write.
     */
     let data = managerDraft.take();
+    let viaAuthHandoff = false;
     if (data) {
       data = withoutUnprovenEmail(data, { accountEmail: user?.email });
     } else if (user?.id) {
-      const anon = anonymousDraftOffer<any>(MANAGER_DRAFT_KEY, user.id, DRAFT_TTL);
-      if (anon) setOfferedDraft(anon);
+      /*
+        AN AUTH ROUND-TRIP IS NOT AN OFFER. It is this form's own in-flight work coming back.
+
+        The paragraph above is right that nothing inside a draft can prove whose it is. But the
+        case it rules out and the case below are not the same case. This contributor filled the
+        form in seconds ago, in THIS TAB, and the form itself sent them to Auth0; the marker was
+        written by the redirect as the page unloaded and dies with the tab. A stranger sitting
+        down at a shared machine opens a new tab, carries no marker, and still gets the offer.
+
+        Without this they came back signed in to an EMPTY form and had to click a banner to get
+        their own answers back - which, per CLAUDE.md section 44, is indistinguishable from the
+        work having been thrown away. Section 44's whole point is that it never is.
+
+        takeAuthHandoff() consumes the marker, so a remount cannot adopt twice.
+      */
+      viaAuthHandoff = takeAuthHandoff();
+      if (viaAuthHandoff) {
+        const taken = adoptAnonymousDraft<any>(MANAGER_DRAFT_KEY, user.id, DRAFT_TTL);
+        if (taken) data = withoutUnprovenEmail(taken, { accountEmail: user?.email });
+      } else {
+        const anon = anonymousDraftOffer<any>(MANAGER_DRAFT_KEY, user.id, DRAFT_TTL);
+        if (anon) setOfferedDraft(anon);
+      }
     }
 
-    if (data) applyDraft(data, isVerified);
+    // `isVerified || viaAuthHandoff`: both ARE auth round-trips, and applyDraft keys the company
+    // restore and the ready-to-submit banner off that, so a sign-in has to count as one too.
+    if (data) applyDraft(data, isVerified || viaAuthHandoff);
     /*
       Said rather than left to be inferred. A form that opens empty is indistinguishable from one
       that threw the answers away, and "it expired" is the one thing that explains it. Read after
@@ -645,6 +689,8 @@ export default function AddBoss() {
       workLocation,
       ratings,
       workedFrom, workedUntil, currentlyWorking, datesHidden,
+      // Gates Submit, so a draft without it comes back unsubmittable. See applyDraft.
+      attested,
       authorType, generatedName,
       /*
         THE FORM'S OWN IDENTITY, which is what makes a retry a retry.
@@ -692,7 +738,7 @@ export default function AddBoss() {
 
   useEffect(() => {
     persistDraftNow();
-  }, [formData, companySelection.name, companySelection.id, workLocation, ratings, workedFrom, workedUntil, currentlyWorking, datesHidden, authorType, generatedName, identity, step, pendingVerificationEmail, pendingEmailVerified, autoSavedManagerId, captureToken]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [formData, companySelection.name, companySelection.id, workLocation, ratings, workedFrom, workedUntil, currentlyWorking, datesHidden, attested, authorType, generatedName, identity, step, pendingVerificationEmail, pendingEmailVerified, autoSavedManagerId, captureToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Early ghost capture (works for all users, including unauthenticated) ─────
   useEffect(() => {

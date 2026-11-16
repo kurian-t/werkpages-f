@@ -97,7 +97,28 @@ test.describe("Authenticated review actions", () => {
     ).not.toBeVisible();
   });
 
-  test("trash icon appears in the review dropdown on hover", async ({
+  /**
+   * ── THE UNLINK LIFECYCLE ──────────────────────────────────────────────────
+   *
+   * These four tests drove a "Delete review" control that no longer exists. The product decision
+   * of 2026-11-12/13 replaced permanent self-deletion with UNLINK: a contributor severs their
+   * association with a published rating, and the rating itself stays published and keeps counting.
+   * Edit Rating remains; permanent contributor deletion does not come back.
+   *
+   * So they now validate the lifecycle that exists, and three properties of it that the old
+   * delete tests had no reason to check:
+   *
+   *   RETENTION    the rating stays on the manager and keeps contributing to the statistics
+   *   PRIVACY      the association is severed; the rating carries no attribution afterwards
+   *   PREVENTION   the account cannot rate this manager again
+   *
+   * The last two are backed by `rating_participation`, which V106 documents at length: it records
+   * that an account rated a subject and whether that earned the profile gate, and NOTHING else -
+   * no rating id, no score, no employment date, no claim. `unlinked_at` on that row, rather than
+   * the row's existence, is what blocks a second rating, because Rev 268 deliberately allows two
+   * ratings of one manager for somebody with two separate employments under them.
+   */
+  test("the unlink control appears in the rating dropdown on hover", async ({
     page,
   }) => {
     await mockManagerPage(page, {
@@ -106,21 +127,20 @@ test.describe("Authenticated review actions", () => {
     });
     await page.goto(`/manager/${TEST_MANAGER_ID}`);
 
-    // Open the dropdown
     await page.getByRole("button", { name: /edit your review/i }).click();
 
-    // Hover over the review row to reveal the trash icon
     const reviewRow = page.locator("[class*='group']").filter({
       hasText: /engineering manager at acme corp/i,
     }).first();
     await reviewRow.hover();
 
+    // "Unlink rating", not "Delete review". The word matters: nothing is being destroyed.
     await expect(
-      reviewRow.getByTitle("Delete review")
+      reviewRow.getByTitle("Unlink rating")
     ).toBeVisible({ timeout: 3_000 });
   });
 
-  test("clicking trash icon shows inline confirmation with 30-day warning", async ({
+  test("the confirmation says the rating stays published and cannot be re-rated", async ({
     page,
   }) => {
     await mockManagerPage(page, {
@@ -130,21 +150,28 @@ test.describe("Authenticated review actions", () => {
     await page.goto(`/manager/${TEST_MANAGER_ID}`);
 
     await page.getByRole("button", { name: /edit your review/i }).click();
-
     const reviewRow = page.locator("[class*='group']").filter({
       hasText: /engineering manager at acme corp/i,
     }).first();
     await reviewRow.hover();
-    await reviewRow.getByTitle("Delete review").click();
+    await reviewRow.getByTitle("Unlink rating").click();
 
-    // Confirmation panel appears
-    await expect(page.getByText(/delete this review\?/i)).toBeVisible({ timeout: 3_000 });
-    await expect(page.getByText(/30 days/i)).toBeVisible();
-    await expect(page.getByRole("button", { name: /yes, delete/i })).toBeVisible();
+    await expect(page.getByText(/unlink this rating\?/i)).toBeVisible({ timeout: 3_000 });
+
+    /*
+      The three consequences, in the words the person is actually shown. Asserted because this is
+      an irreversible choice and the old copy promised the opposite of what happens: a 30-day
+      window before deletion, for a rating that is now never deleted at all.
+    */
+    await expect(page.getByText(/stays published anonymously/i)).toBeVisible();
+    await expect(page.getByText(/keeps counting toward this/i)).toBeVisible();
+    await expect(page.getByText(/will not be able to rate this manager again/i)).toBeVisible();
+
+    await expect(page.getByRole("button", { name: /yes, unlink/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /cancel/i })).toBeVisible();
   });
 
-  test("cancelling the delete confirmation returns to review list", async ({
+  test("cancelling the confirmation returns to the rating list", async ({
     page,
   }) => {
     await mockManagerPage(page, {
@@ -154,46 +181,102 @@ test.describe("Authenticated review actions", () => {
     await page.goto(`/manager/${TEST_MANAGER_ID}`);
 
     await page.getByRole("button", { name: /edit your review/i }).click();
-
     const reviewRow = page.locator("[class*='group']").filter({
       hasText: /engineering manager at acme corp/i,
     }).first();
     await reviewRow.hover();
-    await reviewRow.getByTitle("Delete review").click();
+    await reviewRow.getByTitle("Unlink rating").click();
+    await expect(page.getByText(/unlink this rating\?/i)).toBeVisible({ timeout: 3_000 });
 
-    await expect(page.getByText(/delete this review\?/i)).toBeVisible({ timeout: 3_000 });
-
-    // Cancel returns to list
     await page.getByRole("button", { name: /cancel/i }).click();
+
     await expect(page.getByText(/your reviews/i)).toBeVisible({ timeout: 3_000 });
-    await expect(page.getByText(/delete this review\?/i)).not.toBeVisible();
+    await expect(page.getByText(/unlink this rating\?/i)).not.toBeVisible();
   });
 
-  test("confirming delete calls the API and closes the dropdown", async ({
+  /**
+   * It must be an unlink, and it must not be a delete.
+   *
+   * <p>Both halves are asserted. `POST .../unlink` has to happen, and no DELETE may be issued to
+   * the rating at all - which is the regression that would reintroduce permanent contributor
+   * deletion, and the one a test asserting only the happy path would not notice.
+   */
+  test("confirming posts to the unlink endpoint and never issues a DELETE", async ({
     page,
   }) => {
+    let unlinked: string | null = null;
+    let deleteAttempts = 0;
+
     await mockManagerPage(page, {
       loggedIn: true,
       existingUserReviews: [MOCK_EXISTING_REVIEW],
     });
+    await page.route(/\/api\/managers\/[^/]+\/reviews\/[^/]+/, (route: any) => {
+      const method = route.request().method();
+      const url = route.request().url();
+      if (method === "DELETE") { deleteAttempts += 1; return route.fulfill({ status: 200, json: {} }); }
+      if (method === "POST" && url.endsWith("/unlink")) {
+        unlinked = url;
+        return route.fulfill({ status: 200, json: { unlinked: true } });
+      }
+      return route.fallback();
+    });
     await page.goto(`/manager/${TEST_MANAGER_ID}`);
 
     await page.getByRole("button", { name: /edit your review/i }).click();
-
     const reviewRow = page.locator("[class*='group']").filter({
       hasText: /engineering manager at acme corp/i,
     }).first();
     await reviewRow.hover();
-    await reviewRow.getByTitle("Delete review").click();
+    await reviewRow.getByTitle("Unlink rating").click();
+    await expect(page.getByText(/unlink this rating\?/i)).toBeVisible({ timeout: 3_000 });
+    await page.getByRole("button", { name: /yes, unlink/i }).click();
 
-    await expect(page.getByText(/delete this review\?/i)).toBeVisible({ timeout: 3_000 });
-    await page.getByRole("button", { name: /yes, delete/i }).click();
+    await expect(page.getByText(/rating unlinked/i)).toBeVisible({ timeout: 5_000 });
+    expect(unlinked, "the unlink endpoint must be the one called").toContain("/unlink");
+    expect(deleteAttempts, "a contributor may never permanently delete a published rating").toBe(0);
 
-    // Success toast
-    await expect(page.getByText(/review deleted/i)).toBeVisible({ timeout: 5_000 });
+    // And the reader is told what happened, in terms of what survives.
+    await expect(page.getByText(/stays published anonymously/i)).toBeVisible();
+    await expect(page.getByText(/unlink this rating\?/i)).not.toBeVisible();
+  });
 
-    // Dropdown is closed
-    await expect(page.getByText(/delete this review\?/i)).not.toBeVisible();
+  /**
+   * RETENTION and PRIVACY, on the surface the reader sees.
+   *
+   * <p>After unlinking, the rating is still in the manager's public list and still carries its
+   * score - that is the whole difference from deletion - and it is no longer attributed to the
+   * person who wrote it. A test that only checked the dropdown emptied would pass just as well if
+   * the rating had been destroyed, which is the outcome this lifecycle exists to avoid.
+   */
+  test("the rating stays published afterwards, with the attribution gone", async ({
+    page,
+  }) => {
+    await mockManagerPage(page, {
+      loggedIn: true,
+      hasContributed: true,
+      // What the server returns once the association is severed: same rating, same score, no
+      // author of record. reviews.user_id is null and the byline is the anonymised one.
+      reviews: [{ ...MOCK_EXISTING_REVIEW, author: "Anonymous", authorType: "anonymous" }],
+      existingUserReviews: [],
+    });
+    await page.goto(`/manager/${TEST_MANAGER_ID}`);
+
+    // The score survives: this is a rating that keeps counting, not a deleted one.
+    const card = page.getByTestId("opinion-card").first();
+    await expect(card).toBeVisible({ timeout: 10_000 });
+
+    /*
+      SCOPED TO THE CARD. An unscoped getByText("testuser") finds the signed-in person's own name
+      in the page chrome and fails for a reason that has nothing to do with attribution - which is
+      the kind of assertion that gets deleted rather than understood. What matters is the byline on
+      the rating.
+    */
+    await expect(card.getByText("testuser")).toHaveCount(0);
+    await expect(card).toContainText("Anonymous");
+
+    // And it is not offered back to its author to edit, because the link is gone.
+    await expect(page.getByRole("button", { name: /edit your review/i })).toHaveCount(0);
   });
 });
 

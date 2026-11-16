@@ -43,6 +43,17 @@ export interface CareerSegment {
   reviewCount: number;
   categoryAverages: Record<string, number>;
   careerHistoryId?: number | null; // set only for ghost segments sourced from career_history table
+  /*
+    EVERY row behind this segment, and what each one is.
+
+    careerHistoryId is the convenience form and is null whenever a segment is backed by more than
+    one row, which is a real case rather than a corner: two spellings of an employer collapse into
+    one tile, and so do two separate SPELLS under one title when somebody leaves an employer and
+    comes back. The admin controls need the rows themselves, and the dates, because a destructive
+    action is refused until the request names which period it meant.
+  */
+  careerHistoryIds?: number[] | null;
+  careerPeriods?: { id: number; startDate: string | null; endDate: string | null }[] | null;
 }
 
 export type TransitionType =

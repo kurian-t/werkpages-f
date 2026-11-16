@@ -1,4 +1,5 @@
 import API_BASE from "@/lib/api";
+import { markAuthHandoff } from "@/lib/draftScope";
 // Auth0 config is baked in at build time by Vite. Values are trimmed because a secret stored with
 // a trailing newline silently corrupts the /authorize URL that every social login is built from.
 export const AUTH0_DOMAIN = ((import.meta.env.VITE_AUTH0_DOMAIN as string) ?? "").trim();
@@ -35,6 +36,19 @@ export function startSocialLogin(connection: SocialConnection, returnTo?: string
   const params = new URLSearchParams({ connection });
   const target = returnTo ?? (window.location.pathname + window.location.search);
   if (target) params.set("returnTo", target);
+  /*
+    THE LAST THING BEFORE THE PAGE GOES, on every one of the three paths out of here.
+
+    A contribution form that sends somebody to sign in keeps its answers in the ANONYMOUS draft
+    scope, and the form they come back to reads the ACCOUNT scope. Without a marker saying "this
+    tab just left for auth", the form cannot tell its own in-flight work from a stale draft
+    somebody else left in the browser, so it opens empty and offers the draft behind a banner.
+    See markAuthHandoff for why the tab, and not the draft, is what carries the proof.
+
+    Here rather than in each form: this is the single place every form leaves the page for auth,
+    so one line covers the manager, review, workplace and interview journeys alike.
+  */
+  markAuthHandoff();
   window.location.href = `${API_BASE}/api/auth/start?${params}`;
 }
 
@@ -56,6 +70,19 @@ export function startPasswordLogin(returnTo?: string, emailHint?: string) {
   if (emailHint && emailHint.includes("@")) params.set("login_hint", emailHint);
   const target = returnTo ?? (window.location.pathname + window.location.search);
   if (target) params.set("returnTo", target);
+  /*
+    THE LAST THING BEFORE THE PAGE GOES, on every one of the three paths out of here.
+
+    A contribution form that sends somebody to sign in keeps its answers in the ANONYMOUS draft
+    scope, and the form they come back to reads the ACCOUNT scope. Without a marker saying "this
+    tab just left for auth", the form cannot tell its own in-flight work from a stale draft
+    somebody else left in the browser, so it opens empty and offers the draft behind a banner.
+    See markAuthHandoff for why the tab, and not the draft, is what carries the proof.
+
+    Here rather than in each form: this is the single place every form leaves the page for auth,
+    so one line covers the manager, review, workplace and interview journeys alike.
+  */
+  markAuthHandoff();
   window.location.href = `${API_BASE}/api/auth/start?${params}`;
 }
 
@@ -78,6 +105,19 @@ export function startRegistration(returnTo?: string, emailHint?: string) {
   if (emailHint && emailHint.includes("@")) params.set("login_hint", emailHint);
   const target = returnTo ?? (window.location.pathname + window.location.search);
   if (target) params.set("returnTo", target);
+  /*
+    THE LAST THING BEFORE THE PAGE GOES, on every one of the three paths out of here.
+
+    A contribution form that sends somebody to sign in keeps its answers in the ANONYMOUS draft
+    scope, and the form they come back to reads the ACCOUNT scope. Without a marker saying "this
+    tab just left for auth", the form cannot tell its own in-flight work from a stale draft
+    somebody else left in the browser, so it opens empty and offers the draft behind a banner.
+    See markAuthHandoff for why the tab, and not the draft, is what carries the proof.
+
+    Here rather than in each form: this is the single place every form leaves the page for auth,
+    so one line covers the manager, review, workplace and interview journeys alike.
+  */
+  markAuthHandoff();
   window.location.href = `${API_BASE}/api/auth/start?${params}`;
 }
 

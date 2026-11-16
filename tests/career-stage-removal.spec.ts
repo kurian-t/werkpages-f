@@ -76,10 +76,12 @@ test.describe("Removing a career stage with no career-history row", () => {
     await expect(dialog.getByRole("combobox")).toBeVisible();
   });
 
-  test("deleting the stage posts the company, not an entry id", async ({ page }) => {
+  test("deleting the stage posts the role, not an entry id", async ({ page }) => {
     /*
-      The id is what the old endpoint needed and what this stage does not have. The company is the
-      only thing that identifies it, because that is what the chart grouped on.
+      The id is what the old endpoint needed and what this stage does not have. The (company,
+      title) pair identifies it, because that is what the chart groups on. The company alone is
+      NOT enough: a manager with two roles at one employer has two stages there, and a company-only
+      delete took both roles' ratings.
     */
     let body: any = null;
     await openProfile(page);
@@ -95,6 +97,7 @@ test.describe("Removing a career stage with no career-history row", () => {
     await expect(async () => expect(body).not.toBeNull()).toPass({ timeout: 10_000 });
     expect(body.action).toBe("delete");
     expect(body.company).toBe("Ro");
+    expect(body.title).toBe("Co-Founder and Chief Executive Officer");
     // Sent deliberately: the server refuses to destroy genuine reviews unless the caller confirms
     // it was told. The dialog has just shown the count, so it can.
     expect(body.confirmRealReviews).toBe(true);
@@ -110,13 +113,18 @@ test.describe("Removing a career stage with no career-history row", () => {
 
     await page.getByRole("button", { name: "Delete Ro career entry" }).first().click();
     const dialog = page.getByTestId("career-stage-dialog");
-    await dialog.getByRole("combobox").selectOption("ROCKY MOUNTAIN TURF CLUB");
+    await dialog.getByRole("combobox")
+      .selectOption({ label: "Chief Executive Officer at ROCKY MOUNTAIN TURF CLUB" });
     await dialog.getByRole("button", { name: /Move ratings/i }).click();
 
     await expect(async () => expect(body).not.toBeNull()).toPass({ timeout: 10_000 });
     expect(body.action).toBe("reassign");
     expect(body.company).toBe("Ro");
+    // The title rides along on both ends. The endpoint identifies a stage by the pair and refuses
+    // a request that cannot say which role it means.
+    expect(body.title).toBe("Co-Founder and Chief Executive Officer");
     expect(body.toCompany).toBe("ROCKY MOUNTAIN TURF CLUB");
+    expect(body.toTitle).toBe("Chief Executive Officer");
   });
 
   test("Move ratings stays disabled until a destination is chosen", async ({ page }) => {

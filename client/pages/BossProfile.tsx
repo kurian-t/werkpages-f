@@ -55,6 +55,7 @@ import { MonthYear } from "@/components/MonthYear";
 import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import { DeleteRatingControl } from "@/components/DeleteRatingControl";
 import { RequiredMark } from "@/components/FormFields";
+import { roleKey, sameCompany, sameRole } from "@/lib/careerRoles";
 
 const RATING_CATEGORIES = [
   "Communication Style",
@@ -345,9 +346,36 @@ export default function BossProfile() {
         companyDomain:            ch.companyDomain ?? (isCurrentCompany ? ((manager as any).companyDomain ?? null) : null),
         companyBrandfetchIconUrl: ch.companyBrandfetchIconUrl ?? (isCurrentCompany ? ((manager as any).companyBrandfetchIconUrl ?? null) : null),
         careerHistoryId:  ch.id ?? null,
+        /*
+          THIS TILE IS EXACTLY ONE ROW, and saying so is what keeps it unambiguous.
+
+          A segment built straight from a career_history row is one employment period by
+          construction. Sending that as the period list means the admin dialog names the row on
+          every request, so the backend's "which period did you mean" refusal - which exists for
+          tiles the segments endpoint groups from several rows - can never fire on one of these and
+          leave an admin with a message and no control to answer it.
+        */
+        careerHistoryIds: ch.id != null ? [ch.id] : null,
+        careerPeriods:    ch.id != null
+          ? [{ id: ch.id,
+               startDate: ch.startDate ? String(ch.startDate).slice(0, 10) : null,
+               endDate:   ch.endDate   ? String(ch.endDate).slice(0, 10)   : null }]
+          : null,
       };
     };
 
+    /*
+      THE ROW BEHIND A TILE IS NAMED BY THE SERVER. It is not worked out from the name here.
+
+      This used to match career_history rows by company name and then break ties on the start
+      month. For a manager promoted inside one employer that resolves to the wrong row - so Edit
+      rewrote the other stretch of their history - or to no row at all, so the admin controls
+      quietly disappeared from a role that plainly had one.
+
+      The segments endpoint groups on the (company, title) pair and now returns the ids in each
+      group as careerHistoryIds, with careerHistoryId set when there is exactly one. Where the
+      server says there is no single row, there genuinely is not one.
+    */
     /*
       Reattaches each reviewed segment to the career-history row it came from.
 
@@ -356,23 +384,24 @@ export default function BossProfile() {
       vanished from every company the manager had actually been reviewed at. On a real profile that
       is nearly all of them, which made an admin-only feature look deleted.
 
-      Matched on company, and on the start date when more than one entry shares a company: somebody
-      who returned to a former employer has two rows there, and editing the wrong one silently
-      rewrites the wrong stretch of their history. Where that cannot be resolved the id is left off
-      and the controls stay hidden, which is the safe way to be unsure.
+      That is what careerHistoryIds fixes. Where it cannot be resolved to exactly one row the id is
+      left off and the controls stay hidden, which is the safe way to be unsure.
     */
     const idForSegment = (seg: any): number | null => {
-      const key = (seg.company ?? "").toLowerCase().trim();
+      // What the server grouped, in the server's own words.
+      if (seg.careerHistoryId != null) return seg.careerHistoryId;
+      const ids: any[] = seg.careerHistoryIds ?? [];
+      if (ids.length === 1 && ids[0] != null) return ids[0];
+      /*
+        An older backend sends neither field. Fall back to the PAIR - never to the company alone,
+        which is the defect - and only when it resolves to exactly one row. Unsure stays null, and
+        unsure is the safe answer for a control that deletes things.
+      */
+      const key = roleKey(seg.company, seg.role);
       const candidates = history.filter(
-        (ch: any) => (ch.company ?? "").toLowerCase().trim() === key && ch.id != null,
+        (ch: any) => roleKey(ch.company, ch.title) === key && ch.id != null,
       );
-      if (candidates.length === 1) return candidates[0].id;
-      const sameStart = candidates.filter(
-        (ch: any) =>
-          ch.startDate && seg.startDate &&
-          String(ch.startDate).slice(0, 7) === String(seg.startDate).slice(0, 7),
-      );
-      return sameStart.length === 1 ? sameStart[0].id : null;
+      return candidates.length === 1 ? candidates[0].id : null;
     };
 
     if (careerSegments.length === 0) {
@@ -381,13 +410,20 @@ export default function BossProfile() {
       return [toGhost({ company: manager.company, title: manager.title, startDate: null, endDate: null })];
     }
 
-    // Reviews exist - include ghosts for any career_history entry (active or past) whose
-    // company isn't already covered by a reviewed segment.
-    const reviewedCompanies = new Set(
-      careerSegments.map((s: any) => s.company.toLowerCase().trim())
+    /*
+      Reviews exist - include ghosts for any career_history entry, active or past, that no reviewed
+      segment already covers.
+
+      Covered means the same ROLE, not the same employer. Keyed on the company this dropped the
+      unrated role of a promoted manager from the timeline altogether: one rated role at that
+      company made the whole employer "covered", so the other job they actually held was never
+      drawn and had no controls on it.
+    */
+    const reviewedRoles = new Set(
+      careerSegments.map((s: any) => roleKey(s.company, s.role))
     );
     const ghostEntries = history.filter(
-      (ch: any) => !reviewedCompanies.has((ch.company ?? "").toLowerCase().trim())
+      (ch: any) => !reviewedRoles.has(roleKey(ch.company, ch.title))
     );
     if (ghostEntries.length > 0) {
       const ghosts = ghostEntries.map(toGhost);
@@ -535,6 +571,75 @@ export default function BossProfile() {
     retry: false,
     refetchOnWindowFocus: false,
   });
+
+  /*
+    ADMIN: every rating held on THIS manager, with why and what would release it.
+
+    Narrowed to this manager through the same endpoint the moderation queue uses, deliberately.
+    `whyHeld` and `actionToRelease` are computed from the publication predicate rather than stored,
+    so a second query written for this page would be a second answer, and a moderator seeing one
+    reason here and another in the queue would have no way to tell which was current.
+
+    Gated on the role, so an ordinary visitor's profile view makes no admin request. The backend
+    gates it too - requireAdmin - and that is the authority; this only avoids a guaranteed 403.
+  */
+  const heldRatingsQueryKey = ["admin-held-ratings", manager?.id] as const;
+  const { data: adminHeldRatings = [] } = useQuery({
+    queryKey: heldRatingsQueryKey,
+    queryFn: async () => {
+      const res = await axios.get(
+        `${API_BASE}/api/admin/moderation/held-ratings?managerId=${manager!.id}&limit=50`,
+        { withCredentials: true },
+      );
+      return (res.data?.data ?? res.data ?? []) as any[];
+    },
+    enabled: !!manager?.id && user?.role === "admin",
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const [publishingHeldId, setPublishingHeldId] = useState<string | null>(null);
+
+  /*
+    Publishing one held rating.
+
+    The button is disabled unless the server said `wouldPublishNow`, and the server checks again
+    inside its transaction: another moderator can change the answer in between, and a refusal must
+    come back as the explanation rather than as a database constraint at commit. So the 409 path
+    here is a real path, not defensive decoration.
+  */
+  const publishHeldRating = async (reviewId: string) => {
+    setPublishingHeldId(reviewId);
+    try {
+      await axios.post(
+        `${API_BASE}/api/admin/moderation/held-ratings/${reviewId}/publish`,
+        {},
+        { withCredentials: true },
+      );
+      await queryClient.invalidateQueries({ queryKey: heldRatingsQueryKey });
+      queryClient.invalidateQueries({ queryKey: managerQueryKey });
+      queryClient.invalidateQueries({ queryKey: ["manager-reviews", manager?.id] });
+      toast.success("Rating published", {
+        description: "It is live on this profile and counted in the average.",
+      });
+    } catch (err: any) {
+      /*
+        The server's own words, and `message` is the key it uses.
+
+        This read `data?.error` and showed the fallback every time, because
+        ManagersHandler.handleError serialises a ServiceException as {"message": ...} - only the
+        security handler's own refusals use {"error": ...}. Both are read, message first, so a
+        refusal from either layer reaches the moderator. Caught by
+        AdminModerationJourneyIntegrationTest, which asks the real server; a mocked test cannot catch it,
+        because the mock is written by whoever got the key wrong.
+      */
+      const refusal = err?.response?.data?.message ?? err?.response?.data?.error;
+      toast.error(refusal ?? "Could not publish that rating.");
+      await queryClient.invalidateQueries({ queryKey: heldRatingsQueryKey });
+    } finally {
+      setPublishingHeldId(null);
+    }
+  };
 
   const userHasReviewedState = cachedUserReviews.length > 0;
   const atReviewLimit = cachedUserReviews.length >= 5;
@@ -895,8 +1000,22 @@ export default function BossProfile() {
     The company names it, and the review count decides what the dialog has to ask.
   */
   const [adminCareerDeleteStage, setAdminCareerDeleteStage] =
-    useState<{ entryId: number | null; company: string; role: string; reviewCount: number } | null>(null);
+    useState<{
+      entryId: number | null; company: string; role: string; reviewCount: number;
+      // The rows behind the tile, with the dates that tell two spells at one title apart.
+      careerHistoryIds?: number[] | null;
+      careerPeriods?: { id: number; startDate: string | null; endDate: string | null }[] | null;
+    } | null>(null);
   const [adminStageReassignTo, setAdminStageReassignTo] = useState<string>("");
+  /*
+    WHICH EMPLOYMENT PERIOD, when one tile is two jobs.
+
+    Somebody can leave an employer and come back to the same title, and the trajectory draws both
+    spells as ONE tile because it groups on the (company, title) pair. A destructive action on such
+    a tile is refused by the backend until the request names the period - so the admin has to be
+    able to say. "all" means every period of the stage, said explicitly rather than assumed.
+  */
+  const [adminStagePeriod, setAdminStagePeriod] = useState<string>("");
   const [adminCareerDeleting, setAdminCareerDeleting] = useState(false);
 
   // Helper: parse "YYYY-MM" to a numeric key for comparison
@@ -2573,11 +2692,19 @@ export default function BossProfile() {
               {/* Compact rating strip */}
               <div className={`flex items-center gap-3 ${gateLocked ? "select-none" : ""}`}>
                 <span className={`text-2xl font-bold text-[#6d5091] tabular-nums leading-none whitespace-nowrap ${gateLocked ? "blur-sm" : ""}`}>
+                  {/*
+                    The example's number is the LAST fallback, not an alternative to the genuine
+                    one. A ghost holds only a platform example, which is deliberately absent from
+                    manager.overallRating, so this read "-" while the "Example score" pill beside
+                    it and the rating card below it both showed 3.5. The pill was labelling a dash.
+                  */}
                   {managerCategoryAverages.overallRating
                     ? Number(managerCategoryAverages.overallRating).toFixed(1)
                     : manager.overallRating
                       ? Number(manager.overallRating).toFixed(1)
-                      : "-"}
+                      : (manager as any).exampleRating
+                        ? Number((manager as any).exampleRating).toFixed(1)
+                        : "-"}
                 </span>
                 <div>
                   {/*
@@ -2593,7 +2720,7 @@ export default function BossProfile() {
                     </div>
                   ) : (
                     <Stars
-                      rating={Number(managerCategoryAverages.overallRating || manager.overallRating || 0)}
+                      rating={Number(managerCategoryAverages.overallRating || manager.overallRating || (manager as any).exampleRating || 0)}
                       size={13}
                       showValue={false}
                     />
@@ -3117,9 +3244,50 @@ export default function BossProfile() {
       {adminCareerDeleteStage != null && (() => {
         const stage = adminCareerDeleteStage;
         const hasReviews = stage.reviewCount > 0;
-        // Every other stage on this profile is a candidate to receive the reviews.
+        /*
+          Every other ROLE on this profile is a candidate to receive the ratings.
+
+          This filtered out every stage at the same company, which removed the one destination an
+          admin most needs: a manager promoted inside one employer has two roles there, and moving
+          a rating from the junior one to the senior one is the repair that was asked for by name.
+          Excluding it left "Delete role and ratings" as the only available action on exactly the
+          profiles where deleting is the wrong answer.
+        */
         const otherRoles = (effectiveCareerSegments as any[])
-          .filter((s) => s.company.trim().toLowerCase() !== stage.company.trim().toLowerCase());
+          .filter((s) => !sameRole(s, stage));
+
+        /*
+          Hoisted out of resolveStage, because the merge control has to ask what the destination IS
+          before offering itself: a merge is only meaningful between two recorded employments at one
+          employer, and offering it anywhere else would be offering an action that cannot succeed.
+        */
+        const selectedTarget = otherRoles.find(
+          (r) => roleKey(r.company, r.role) === adminStageReassignTo);
+
+        const periods = (stage.careerPeriods ?? []) as Array<{
+          id: number; startDate: string | null; endDate: string | null;
+        }>;
+        // Two spells under one title are two jobs, and the request has to say which.
+        const needsPeriodChoice = periods.length > 1;
+        const chosenPeriod = adminStagePeriod && adminStagePeriod !== "all"
+          ? Number(adminStagePeriod) : null;
+
+        /*
+          MERGING AND MOVING ARE DIFFERENT ACTIONS, and this is the one that changes employment.
+
+          Merge says the two stages are one employment recorded twice: the source role is
+          superseded, its claims redirected and audited. Moving ratings says only that an opinion
+          was filed under the wrong job. reassign used to do both on its own initiative, deciding
+          to supersede an employment period nobody had asked it to touch.
+        */
+        const mergeable =
+          (stage.careerHistoryIds?.length ?? 0) > 0 &&
+          selectedTarget != null &&
+          (selectedTarget.careerHistoryIds?.length ?? 0) > 0 &&
+          sameCompany(selectedTarget, stage) &&
+          // A merge supersedes ONE employment period into another, so an ambiguous source has to
+          // be resolved first. Offering the button before that is offering a certain refusal.
+          (!needsPeriodChoice || chosenPeriod != null);
 
         /*
           "entryOnly" is the original behaviour, kept deliberately.
@@ -3133,10 +3301,17 @@ export default function BossProfile() {
           It is offered only where a row exists, because it is the only one of the three that acts
           on a row.
         */
-        const resolveStage = async (action: "delete" | "reassign" | "entryOnly") => {
+        const resolveStage = async (action: "delete" | "reassign" | "merge" | "entryOnly") => {
           setAdminCareerDeleting(true);
           try {
-            const target = otherRoles.find((r) => r.company === adminStageReassignTo);
+            /*
+            Matched on the role key, because the option's value is one.
+
+            The value used to be r.company, which cannot express a role: two roles at one employer
+            produced two options with the SAME value, so picking either resolved to whichever came
+            first and the ratings went to the wrong job.
+          */
+          const target = selectedTarget;
             if (action === "entryOnly") {
               await axios.delete(
                 `${API_BASE}/api/admin/managers/${manager.id}/career-history/${stage.entryId}`,
@@ -3145,9 +3320,41 @@ export default function BossProfile() {
             } else {
             await axios.post(
               `${API_BASE}/api/admin/managers/${manager.id}/career-stage`,
+              /*
+                The title travels on every one of these. The endpoint identifies a stage by the
+                (company, title) pair and refuses a request that cannot say which role it means,
+                because a company-only delete removed every role at that employer.
+              */
               action === "reassign"
-                ? { action, company: stage.company, toCompany: target?.company, toTitle: target?.role }
-                : { action, company: stage.company, confirmRealReviews: true },
+                // Ratings only. The backend touches no employment record, so no period is named:
+                // the ratings carry one (company, title) snapshot between them and cannot be split
+                // by period even in principle.
+                ? { action, company: stage.company, title: stage.role,
+                    toCompany: target?.company, toTitle: target?.role }
+                : action === "merge"
+                /*
+                  A merge NAMES BOTH ROWS whenever the page knows them.
+
+                  It supersedes one employment record into another, so leaving the server to
+                  re-derive which row from a (company, title) pair is leaving it to re-derive
+                  something already known - and that pair does not identify a row at all once a
+                  stage covers two spells. The chosen period wins; otherwise a stage backed by
+                  exactly one row is that row.
+                */
+                ? { action, company: stage.company, title: stage.role,
+                    toCompany: target?.company, toTitle: target?.role,
+                    ...(chosenPeriod != null
+                        ? { careerHistoryId: chosenPeriod }
+                        : (stage.careerHistoryIds?.length ?? 0) === 1
+                        ? { careerHistoryId: stage.careerHistoryIds![0] } : {}),
+                    ...((target?.careerHistoryIds?.length ?? 0) === 1
+                        ? { toCareerHistoryId: target.careerHistoryIds[0] } : {}) }
+                : { action, company: stage.company, title: stage.role,
+                    confirmRealReviews: true,
+                    // One of the two, never neither: the backend refuses a destructive request
+                    // that names no period, and the control below will not submit without one.
+                    ...(chosenPeriod != null ? { careerHistoryId: chosenPeriod } : {}),
+                    ...(adminStagePeriod === "all" ? { allPeriods: true } : {}) },
               { withCredentials: true },
             );
             }
@@ -3156,8 +3363,13 @@ export default function BossProfile() {
               queryClient.invalidateQueries({ queryKey: ["manager-career-segments", manager.id] }),
             ]);
             setAdminCareerDeleteStage(null);
+            setAdminStagePeriod("");
             toast.success(
-              action === "reassign" ? "Reviews moved and role removed"
+              // Says what happened. "Reviews moved and role removed" described the old behaviour,
+              // where moving ratings also superseded or deleted the employment record; it does not
+              // any more, and a message that claims it did is worse than no message.
+              action === "reassign" ? "Ratings moved. The role is still on the record."
+              : action === "merge" ? "Roles merged"
               : action === "entryOnly" ? "Recorded role removed"
               : "Role removed");
           } catch (err: any) {
@@ -3178,6 +3390,30 @@ export default function BossProfile() {
                 : " · no reviews"}
             </p>
 
+            {needsPeriodChoice && (
+              <div className="mb-4 space-y-2" data-testid="career-period-choice">
+                <p className="text-xs text-muted-foreground">
+                  This role covers {periods.length} separate employment periods, and the chart draws
+                  them as one. Choose which to remove.
+                </p>
+                <select
+                  id="stage-period"
+                  aria-label="Which employment period"
+                  value={adminStagePeriod}
+                  onChange={(e) => setAdminStagePeriod(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Choose a period…</option>
+                  {periods.map((p) => (
+                    <option key={p.id} value={String(p.id)}>
+                      {p.startDate ?? "no start date"} to {p.endDate ?? "present"}
+                    </option>
+                  ))}
+                  <option value="all">Every period of this role</option>
+                </select>
+              </div>
+            )}
+
             {hasReviews && (
               <div className="mb-4 space-y-3">
                 <p className="text-xs text-muted-foreground">
@@ -3196,7 +3432,7 @@ export default function BossProfile() {
                     >
                       <option value="">Choose a role…</option>
                       {otherRoles.map((r: any) => (
-                        <option key={`${r.company}-${r.role}`} value={r.company}>
+                        <option key={roleKey(r.company, r.role)} value={roleKey(r.company, r.role)}>
                           {r.role} at {r.company}
                         </option>
                       ))}
@@ -3215,15 +3451,33 @@ export default function BossProfile() {
                   type="button"
                   disabled={adminCareerDeleting || !adminStageReassignTo}
                   onClick={() => resolveStage("reassign")}
+                  data-testid="career-stage-move"
                   className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
                 >
                   {adminCareerDeleting ? "Working…" : "Move ratings"}
                 </button>
               )}
+              {/*
+                Offered only between two recorded employments at one employer, which is what a role
+                merge IS. Elsewhere the backend refuses it rather than quietly downgrading it to a
+                rating move, so there is nothing to gain by offering a button that cannot work.
+              */}
+              {mergeable && (
+                <button
+                  type="button"
+                  disabled={adminCareerDeleting}
+                  onClick={() => resolveStage("merge")}
+                  data-testid="career-stage-merge"
+                  className="rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+                >
+                  {adminCareerDeleting ? "Working…" : "Merge into that role"}
+                </button>
+              )}
               <button
                 type="button"
-                disabled={adminCareerDeleting}
+                disabled={adminCareerDeleting || (needsPeriodChoice && !adminStagePeriod)}
                 onClick={() => resolveStage("delete")}
+                data-testid="career-stage-delete"
                 className="rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white hover:bg-destructive/90 disabled:opacity-50"
               >
                 {adminCareerDeleting
@@ -3246,7 +3500,7 @@ export default function BossProfile() {
               )}
               <button
                 type="button"
-                onClick={() => setAdminCareerDeleteStage(null)}
+                onClick={() => { setAdminCareerDeleteStage(null); setAdminStagePeriod(""); }}
                 className="text-sm text-muted-foreground hover:text-foreground"
               >
                 Cancel
@@ -3256,6 +3510,64 @@ export default function BossProfile() {
         </div>
         );
       })()}
+
+      {/*
+        ADMIN: the held ratings on this manager, inline.
+
+        Here rather than only in the admin queue because this is where the rest of the context is:
+        the manager, their employment history, and the career-stage controls that are usually what
+        releases a held rating. A moderator who has to hold a review id in their head while moving
+        between two screens is a moderator who will act on the wrong one.
+      */}
+      {user?.role === "admin" && adminHeldRatings.length > 0 && (
+        <section className="bg-background py-3" data-testid="admin-held-ratings">
+          <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+            <div className="rounded-lg border border-border bg-card px-4 py-3">
+              <h3 className="text-sm font-semibold text-foreground">
+                Held ratings on this profile ({adminHeldRatings.length})
+              </h3>
+              <ul className="mt-3 space-y-3">
+                {adminHeldRatings.map((held: any) => (
+                  <li
+                    key={held.reviewId}
+                    className="flex flex-col gap-2 border-t border-border pt-3 first:border-t-0 first:pt-0 sm:flex-row sm:items-start sm:justify-between"
+                    data-testid="admin-held-rating"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground">
+                        {held.overallRating ?? "-"} / 5
+                        {held.title ? ` - ${held.title}` : ""}
+                        {held.company ? `, ${held.company}` : ""}
+                      </p>
+                      {/* The server's wording, verbatim. Paraphrasing it here would be a second
+                          source of truth for a sentence derived from the publication predicate. */}
+                      <p className="mt-0.5 text-sm text-muted-foreground" data-testid="held-why">
+                        {held.whyHeld}
+                      </p>
+                      <p className="text-sm text-muted-foreground" data-testid="held-action">
+                        {held.actionToRelease}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => publishHeldRating(held.reviewId)}
+                      disabled={!held.wouldPublishNow || publishingHeldId === held.reviewId}
+                      data-testid="held-publish"
+                      className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                      /* Titled rather than hidden when it cannot be used: a missing button reads
+                         as a missing feature, while a disabled one with a reason reads as a queue
+                         waiting on something, which is what it is. */
+                      title={held.wouldPublishNow ? "Publish this rating" : held.actionToRelease}
+                    >
+                      {publishingHeldId === held.reviewId ? "Publishing..." : "Publish"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* System notices - between hero and content */}
       {(manager.approvalStatus === "pending_approval" || pendingEdits.length > 0 || !!myHeldReview || (hasReported && manager.approvalStatus !== "pending_approval")) && (

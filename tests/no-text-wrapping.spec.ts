@@ -82,8 +82,15 @@ test.describe("No text wrapping on mobile (375px)", () => {
     );
     await page.goto(`/manager/playwright-test-manager`);
 
-    // The badge title contains "registered account holder"
-    const badge = page.locator('span[title*="registered account"]').first();
+    /*
+      BY TEST ID, because the badge is no longer a span with a title attribute.
+
+      It became an InfoPill - a TooltipTrigger wrapping a span - so the explanation lives in a
+      Tooltip rather than in `title`, and `span[title*="registered account"]` matched nothing. The
+      pill carries data-testid="registered-badge" for exactly this, and a test id does not move
+      when the presentation does, which is the point of having one.
+    */
+    const badge = page.getByTestId("registered-badge").first();
     await expect(badge).toBeVisible({ timeout: 8_000 });
     expect(await isSingleLine(page, badge)).toBe(true);
   });

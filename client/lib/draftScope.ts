@@ -191,6 +191,61 @@ export function fingerprint(payload: unknown): string {
 export const DEFAULT_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** Base keys, named once so a storage slot is never spelled out at a call site again. */
+/**
+ * THE ONE THING THAT PROVES AN ANONYMOUS DRAFT BELONGS TO WHOEVER JUST SIGNED IN.
+ *
+ * <p><b>The problem this solves.</b> Drafts are keyed per account. A logged-out contributor fills
+ * the form, submits, is sent to Auth0 and comes back signed in - at which point their draft is in
+ * the anonymous scope and the form reads the account scope, finds nothing, and opens EMPTY. The
+ * work is still on disk; the form just cannot prove it is theirs, so it offers it behind a banner.
+ *
+ * <p><b>Why a banner is the wrong answer here</b>, even though it is the right answer for a
+ * stale draft found lying around. This person filled the form in seconds ago, in this tab, and
+ * was sent away by the form itself. Asking them to confirm their own in-flight work is asking
+ * them to do the thing CLAUDE.md section 44 exists to prevent: it reads as the answers having
+ * been thrown away.
+ *
+ * <p><b>Why sessionStorage, and why this is not the thing that was rejected.</b> The comment in
+ * AddBoss is right that nothing IN a draft can prove ownership: localStorage is writable by
+ * anybody with the browser, and a query parameter by anybody who can type. sessionStorage is
+ * different in the one way that matters: it is scoped to the TAB. It is created by the redirect
+ * and dies with the tab, so the next person to sit down at a shared machine opens a new tab,
+ * carries no marker, and still gets the offer rather than a stranger's half-written rating.
+ *
+ * <p>Short-lived as well as tab-scoped, because a tab left open for hours on the Auth0 page is
+ * not evidence of anything.
+ */
+const AUTH_HANDOFF_KEY = "rmm_auth_handoff_at";
+const AUTH_HANDOFF_MAX_AGE_MS = 30 * 60 * 1000;
+
+/** Called by the auth redirect, immediately before the page unloads. */
+export function markAuthHandoff(): void {
+  try {
+    sessionStorage.setItem(AUTH_HANDOFF_KEY, String(Date.now()));
+  } catch {
+    // Private windows and blocked site data. The form then falls back to offering the draft,
+    // which is the old behaviour and is still correct, just one click worse.
+  }
+}
+
+/**
+ * Consumes the marker. True exactly once per round trip.
+ *
+ * <p>Removed on read, so a second mount of the same form cannot silently adopt a draft a second
+ * time, and so a later visitor in a reused tab does not inherit it.
+ */
+export function takeAuthHandoff(): boolean {
+  try {
+    const raw = sessionStorage.getItem(AUTH_HANDOFF_KEY);
+    if (!raw) return false;
+    sessionStorage.removeItem(AUTH_HANDOFF_KEY);
+    const at = Number(raw);
+    return Number.isFinite(at) && Date.now() - at <= AUTH_HANDOFF_MAX_AGE_MS;
+  } catch {
+    return false;
+  }
+}
+
 export const MANAGER_DRAFT_KEY = "rmm_pending_manager";
 export const REVIEW_DRAFT_KEY = "rmm_pending_review";
 

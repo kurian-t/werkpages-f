@@ -1,4 +1,7 @@
 import { useMemo, useState, useRef, useLayoutEffect, Fragment } from "react"; // useLayoutEffect kept for scroll detection
+// Aliased: this file already has a roleKey() for the open-breakdown state, which is a
+// different idea - that one keys a UI toggle, this one keys the employment itself.
+import { roleKey as careerRoleKey } from "@/lib/careerRoles";
 import { ExampleRatingBadge, EXAMPLE_TRAJECTORY_EXPLANATION } from "@/components/OpinionCard";
 import {
   Star, TrendingUp, TrendingDown, Minus, Activity,
@@ -184,7 +187,13 @@ function RoleItem({
   expanded: boolean;
   onToggle: () => void;
   onEditCareerEntry?: (entry: { entryId: number | null; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
-  onDeleteCareerEntry?: (stage: { entryId: number | null; company: string; role: string; reviewCount: number }) => void;
+  onDeleteCareerEntry?: (stage: { entryId: number | null; company: string; role: string; reviewCount: number;
+    // The rows behind this tile, and their dates. One tile can be two separate JOBS -
+    // somebody can leave an employer and return to the same title - and the dialog has
+    // to be able to ask WHICH, so it needs more than the single id entryId carries.
+    careerHistoryIds?: number[] | null;
+    careerPeriods?: { id: number; startDate: string | null; endDate: string | null }[] | null;
+  }) => void;
 }) {
   const delta    = role.averageRating - companyAvg;
   const abs      = Math.abs(delta);
@@ -230,6 +239,7 @@ function RoleItem({
               type="button"
               onClick={() => onEditCareerEntry({ entryId: role.careerHistoryId ?? null, company: role.company, role: role.role, startDate: role.startDate, endDate: role.endDate })}
               aria-label={`Edit ${role.company} career entry`}
+              data-testid={`career-edit-${careerRoleKey(role.company, role.role)}`}
               className="text-[10px] text-slate-400 hover:text-slate-600 transition-colors leading-none"
             >
               Edit
@@ -257,8 +267,11 @@ function RoleItem({
                 company: role.company,
                 role: role.role,
                 reviewCount: role.reviewCount ?? 0,
+                careerHistoryIds: role.careerHistoryIds ?? null,
+                careerPeriods: role.careerPeriods ?? null,
               })}
               aria-label={`Delete ${role.company} career entry`}
+              data-testid={`career-delete-${careerRoleKey(role.company, role.role)}`}
               className="text-[10px] text-red-400 hover:text-red-600 transition-colors leading-none"
             >
               Delete
@@ -379,7 +392,13 @@ function CompanyCard({
   openRole: string | null;
   onToggleRole: (key: string) => void;
   onEditCareerEntry?: (entry: { entryId: number | null; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
-  onDeleteCareerEntry?: (stage: { entryId: number | null; company: string; role: string; reviewCount: number }) => void;
+  onDeleteCareerEntry?: (stage: { entryId: number | null; company: string; role: string; reviewCount: number;
+    // The rows behind this tile, and their dates. One tile can be two separate JOBS -
+    // somebody can leave an employer and return to the same title - and the dialog has
+    // to be able to ask WHICH, so it needs more than the single id entryId carries.
+    careerHistoryIds?: number[] | null;
+    careerPeriods?: { id: number; startDate: string | null; endDate: string | null }[] | null;
+  }) => void;
 }) {
   const top     = cardTopY(node.avg);
   const centerY = cardCenterY(node.avg);
@@ -537,6 +556,7 @@ function CompanyCard({
                                  buttons all called "Edit", which tells a screen-reader user
                                  nothing about which one they are on. */
                               aria-label={`Edit ${role.company} career entry`}
+                              data-testid={`career-edit-${careerRoleKey(role.company, role.role)}`}
                               className="text-[10px] text-slate-400 hover:text-slate-600 transition-colors leading-none"
                             >
                               Edit
@@ -551,8 +571,11 @@ function CompanyCard({
                                 company: role.company,
                                 role: role.role,
                                 reviewCount: role.reviewCount ?? 0,
+                                careerHistoryIds: role.careerHistoryIds ?? null,
+                                careerPeriods: role.careerPeriods ?? null,
                               })}
                               aria-label={`Delete ${role.company} career entry`}
+                              data-testid={`career-delete-${careerRoleKey(role.company, role.role)}`}
                               className="text-[10px] text-red-400 hover:text-red-600 transition-colors leading-none"
                             >
                               Delete
@@ -904,7 +927,13 @@ export function CareerTimeline({
    */
   isExample?: boolean;
   onEditCareerEntry?: (entry: { entryId: number | null; company: string; role: string; startDate: string | null; endDate: string | null }) => void;
-  onDeleteCareerEntry?: (stage: { entryId: number | null; company: string; role: string; reviewCount: number }) => void;
+  onDeleteCareerEntry?: (stage: { entryId: number | null; company: string; role: string; reviewCount: number;
+    // The rows behind this tile, and their dates. One tile can be two separate JOBS -
+    // somebody can leave an employer and return to the same title - and the dialog has
+    // to be able to ask WHICH, so it needs more than the single id entryId carries.
+    careerHistoryIds?: number[] | null;
+    careerPeriods?: { id: number; startDate: string | null; endDate: string | null }[] | null;
+  }) => void;
 }) {
   // Only include real reviewed segments in insight/consistency calculations - ghost segments (reviewCount 0) have no rating data
   const reviewedSegments = useMemo(() => segments.filter(s => s.reviewCount > 0), [segments]);

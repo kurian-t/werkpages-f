@@ -103,7 +103,18 @@ test.describe("Account Settings", () => {
       });
     });
 
-    test("delete review button shows confirmation dialog with 30-day warning", async ({ page }) => {
+    /**
+     * ── THE UNLINK LIFECYCLE, FROM ACCOUNT SETTINGS ───────────────────────────
+     *
+     * These three tests drove a "Delete review" control with a 30-day cooldown warning. The
+     * product decision of 2026-11-12/13 replaced permanent self-deletion with UNLINK, so the
+     * cooldown they warned about no longer exists: nothing is deleted and nothing is waiting to be.
+     *
+     * The copy here is the fullest statement of the lifecycle anywhere in the product, and it is
+     * asserted rather than paraphrased, because every clause is a promise about what happens to
+     * somebody's published words.
+     */
+    test("unlink explains retention, the private record, and that it cannot be undone", async ({ page }) => {
       await mockAccountSettingsPage(page, { reviews: [MOCK_MY_REVIEW] });
       await page.goto("/settings");
 
@@ -111,58 +122,101 @@ test.describe("Account Settings", () => {
         timeout: 10_000,
       });
 
-      await page.getByRole("button", { name: /delete/i }).first().click();
+      await page.getByTitle("Unlink rating").first().click();
 
       await expect(
-        page.getByText(/delete this review\?/i)
+        page.getByText(/unlink this rating\?/i)
       ).toBeVisible({ timeout: 3_000 });
-      // Warns the user about the 30-day cooldown before they confirm
+
+      // RETENTION: the rating stays published and keeps contributing.
+      await expect(page.getByText(/remains published anonymously/i)).toBeVisible();
+      await expect(page.getByText(/continues\s+contributing to statistics/i)).toBeVisible();
+
+      /*
+        PRIVACY, stated honestly. A limited private record survives, and the person is told so
+        before they choose. V106's rating_participation holds only that an account rated this
+        subject and whether it earned the gate - no rating id, no score, no employment date, no
+        claim - which is what makes this sentence true rather than reassuring.
+      */
+      await expect(page.getByText(/limited private record/i)).toBeVisible();
+
+      /*
+        PREVENTION and irreversibility, in one assertion because they are one sentence: "This
+        cannot be undone, and you will not be able to rate this manager again." Matched together
+        rather than separately - "cannot be undone" alone also appears in the account-deletion
+        section further down the page, and a two-element match is a strict-mode failure that says
+        nothing about the unlink copy.
+      */
       await expect(
-        page.getByText(/30 days/i)
+        page.getByText(/cannot be undone, and you will not be able to rate this manager again/i)
       ).toBeVisible();
+
       await expect(
-        page.getByRole("button", { name: /yes, delete/i })
+        page.getByRole("button", { name: /yes, unlink/i })
       ).toBeVisible();
       await expect(
         page.getByRole("button", { name: /keep it/i })
       ).toBeVisible();
     });
 
-    test("'Keep it' cancels the delete confirmation", async ({ page }) => {
+    test("'Keep it' cancels the unlink confirmation", async ({ page }) => {
       await mockAccountSettingsPage(page, { reviews: [MOCK_MY_REVIEW] });
       await page.goto("/settings");
 
       await expect(page.getByText("Alex Johnson")).toBeVisible({
         timeout: 10_000,
       });
-      await page.getByRole("button", { name: /delete/i }).first().click();
+      await page.getByTitle("Unlink rating").first().click();
       await expect(
-        page.getByText(/delete this review\?/i)
+        page.getByText(/unlink this rating\?/i)
       ).toBeVisible({ timeout: 3_000 });
 
       await page.getByRole("button", { name: /keep it/i }).click();
 
-      // Confirmation gone, review still there
-      await expect(page.getByText(/delete this review\?/i)).not.toBeVisible();
+      // Confirmation gone, rating still listed and still theirs to edit.
+      await expect(page.getByText(/unlink this rating\?/i)).not.toBeVisible();
       await expect(page.getByText("Alex Johnson")).toBeVisible();
     });
 
-    test("'Yes, delete' removes the review and shows empty state", async ({
+    /**
+     * Confirming unlinks, and never deletes.
+     *
+     * <p>The row leaves THIS ACCOUNT'S list, which is the only thing that changes for the reader -
+     * the rating itself is still on the manager. So the endpoint is asserted as well as the empty
+     * state: an implementation that deleted the rating would produce the same empty list and the
+     * same satisfied test.
+     */
+    test("'Yes, unlink' posts to the unlink endpoint and the rating leaves this account", async ({
       page,
     }) => {
+      let unlinkCalled = false;
+      let deleteAttempts = 0;
+
       await mockAccountSettingsPage(page, { reviews: [MOCK_MY_REVIEW] });
+      await page.route(/\/api\/managers\/[^/]+\/reviews\/[^/]+/, (route: any) => {
+        const method = route.request().method();
+        if (method === "DELETE") { deleteAttempts += 1; return route.fulfill({ status: 200, json: {} }); }
+        if (method === "POST" && route.request().url().endsWith("/unlink")) {
+          unlinkCalled = true;
+          return route.fulfill({ status: 200, json: { unlinked: true } });
+        }
+        return route.fallback();
+      });
       await page.goto("/settings");
 
       await expect(page.getByText("Alex Johnson")).toBeVisible({
         timeout: 10_000,
       });
-      await page.getByRole("button", { name: /delete/i }).first().click();
-      await page.getByRole("button", { name: /yes, delete/i }).click();
+      await page.getByTitle("Unlink rating").first().click();
+      await page.getByRole("button", { name: /yes, unlink/i }).click();
 
-      // Review removed - empty state appears
       await expect(
         page.getByText(/you haven't written any reviews yet/i)
       ).toBeVisible({ timeout: 5_000 });
+
+      expect(unlinkCalled, "unlink is the operation, not delete").toBe(true);
+      expect(deleteAttempts,
+        "a contributor may never permanently delete a published rating").toBe(0);
     });
 
     test("review section heading shows total count from API", async ({ page }) => {
