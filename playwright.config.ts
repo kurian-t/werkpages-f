@@ -31,6 +31,28 @@ const LEGACY_FORM_SPECS = [
   "**/legacy-add-manager-journey.spec.ts",
 ];
 
+/*
+  THE LIVE SIGN-IN SPEC RUNS ON ITS OWN, DELIBERATELY, AND NOT IN THE BULK SUITE.
+
+  It asks the real backend for a real Auth0 redirect, which is the whole point of it: a dead
+  backend once produced a fully passing suite and a sign-in page where every button returned 500.
+
+  But `/api/auth/start` is RATE LIMITED, and a full suite run drains that limiter all by itself.
+  Inside the bulk run the spec therefore fails with 429 - 21 of them did - for a reason that has
+  nothing to do with sign-in. A test that fails for an environmental reason is a test somebody
+  skips or deletes within a month, which would cost exactly the coverage this spec exists to add.
+
+  So it is its own project, excluded from the default run and invoked on purpose before a push:
+
+      SIGNIN_LIVE=1 npx playwright test --project=signin-live
+      pnpm test:signin                                    # the same thing, spelled once
+
+  tools/preflight/check-signin.sh does the same checks without Playwright, and is the quicker
+  thing to reach for. The mocked signin.spec.ts stays in the bulk suite, because it needs no
+  backend and catches a button wired to the wrong connection.
+*/
+const LIVE_BACKEND_SPECS = ["**/signin-live.spec.ts"];
+
 /** Project names carry this prefix so a spec can tell which bundle is serving it. */
 export const LEGACY_FORM_PROJECT_PREFIX = "legacy-form-";
 const LEGACY_FORM_URL = "http://localhost:4175";
@@ -103,17 +125,17 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"], channel: process.env.CI ? "chrome" : undefined },
-      testIgnore: LEGACY_FORM_SPECS,
+      testIgnore: [...LEGACY_FORM_SPECS, ...LIVE_BACKEND_SPECS],
     },
     {
       name: "firefox",
       use: { ...devices["Desktop Firefox"] },
-      testIgnore: LEGACY_FORM_SPECS,
+      testIgnore: [...LEGACY_FORM_SPECS, ...LIVE_BACKEND_SPECS],
     },
     {
       name: "Mobile Chrome",
       use: { ...devices["Pixel 5"] },
-      testIgnore: LEGACY_FORM_SPECS,
+      testIgnore: [...LEGACY_FORM_SPECS, ...LIVE_BACKEND_SPECS],
     },
     /*
       THE JOURNEY WE ARE REPLACING, still tested, against a bundle built without the flag.
@@ -140,6 +162,29 @@ export default defineConfig({
       },
       testMatch: LEGACY_FORM_SPECS,
     })),
+    /*
+      SIGN-IN AGAINST THE REAL BACKEND. One browser, because every assertion in it is made with
+      APIRequestContext against our own redirect rather than through a rendered page, so a second
+      engine would re-prove the same HTTP response.
+
+      DEFINED ONLY WHEN ASKED FOR. Playwright runs every project a config declares, so
+      `testIgnore` on the other projects is not enough to keep this out of a default run - the
+      project itself has to not exist. Hence the env gate, which is what `pnpm test:signin` sets.
+    */
+    ...(process.env.SIGNIN_LIVE === "1" ? [{
+      name: "signin-live",
+      use: { ...devices["Desktop Chrome"], channel: process.env.CI ? "chrome" : undefined },
+      testMatch: LIVE_BACKEND_SPECS,
+      /*
+        SEQUENTIAL, AND PATIENT.
+
+        `/api/auth/start` allows 10 requests a minute per IP. These eight checks fit that only if
+        they go one at a time, and the spec sits out a whole 60 second window if it meets a 429 -
+        so the per-test budget has to be longer than the window it may wait for.
+      */
+      fullyParallel: false,
+      timeout: 150_000,
+    }] : []),
   ],
   // Serves the production build via `vite preview` before running tests.
   // Requires `pnpm build:client` to have run first.

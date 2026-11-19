@@ -2,7 +2,7 @@ import { Star } from "lucide-react";
 import { Stars } from "@/components/Stars";
 
 /**
- * Three datasets side by side: what each one is, its average, and how many opinions it rests on.
+ * Each dataset side by side: what it is, its average, and how many opinions it rests on.
  *
  * <p>One number beside a company name reads as a verdict on the company. It is the mean of the
  * managers people rated there, and it says nothing about what working there is like or what
@@ -89,7 +89,7 @@ export function RatingColumns({
               started at a different x on each row and the block read as ragged. tabular-nums
               keeps the digits aligned; this keeps the rows aligned with each other.
             */}
-            <span className="w-10 flex-shrink-0 whitespace-nowrap text-2xl font-bold leading-none tabular-nums text-[#6d5091]">
+            <span className="w-10 flex-shrink-0 whitespace-nowrap text-2xl font-bold leading-none tabular-nums text-brand-metric">
               {locked || col.value == null ? "-" : col.value.toFixed(1)}
             </span>
             <div className="min-w-0">
@@ -134,8 +134,17 @@ export function RatingColumns({
   }
 
   const stacked = false;
+  /*
+    As many columns as the caller has datasets.
+
+    Two or three: this product rates managers, workplaces and - where the feature exists -
+    interviews, and a brand without one of them must not be given an empty column where its
+    figure would be. grid-cols-N cannot be interpolated, because Tailwind finds classes by
+    scanning source text for complete names, so both are written out in full.
+  */
+  const gridCols = columns.length === 2 ? "grid-cols-2" : "grid-cols-3";
   return (
-    <div className={`grid grid-cols-3 text-center ${stacked ? "gap-3" : "gap-1 min-[420px]:gap-1.5"}`}>
+    <div className={`grid ${gridCols} text-center ${stacked ? "gap-3" : "gap-1 min-[420px]:gap-1.5"}`}>
       {columns.map(col => (
         <div key={col.label} className="min-w-0">
           {/*
@@ -159,7 +168,7 @@ export function RatingColumns({
           {locked ? (
             // The gate, in the same shape: a figure is here and you cannot read it yet.
             <div className={`flex justify-center ${stacked ? "mt-2" : "mt-1"}`}>
-              <span className="inline-block h-3 w-8 rounded-full bg-[#6d5091]/20 blur-[3px]" />
+              <span className="inline-block h-3 w-8 rounded-full bg-brand-metric/20 blur-[3px]" />
             </div>
           ) : col.value != null ? (
             <div className={stacked

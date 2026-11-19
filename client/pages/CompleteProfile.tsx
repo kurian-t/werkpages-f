@@ -34,7 +34,7 @@ export default function CompleteProfile() {
   const location = useLocation();
   const { user, setUser, isAuthenticated } = useAuth();
 
-  const returnTo: string = (location.state as any)?.returnTo || "/explore";
+  const returnTo: string = (location.state as any)?.returnTo || "/search";
   const [username, setUsername] = useState("");
   /*
     Names moved here from the old signup form.

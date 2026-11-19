@@ -23,6 +23,14 @@ export default {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
         },
+        /*
+          The brand purples, by name. See global.css: these were hex literals in class strings,
+          which is how a component shared between the two brands came to have its colour baked
+          into its own markup.
+        */
+        "brand-deep": "hsl(var(--brand-deep))",
+        "brand-metric": "hsl(var(--brand-metric))",
+        "brand-accent": "hsl(var(--brand-accent))",
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",

@@ -217,3 +217,75 @@ jobs:
             --document-name "AWS-RunShellScript" \
             --parameters commands=["aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin 138465306929.dkr.ecr.ca-central-1.amazonaws.com && cd /home/ubuntu/app && docker compose pull werkpages-api werkpages-frontend && docker compose up -d werkpages-api werkpages-frontend && docker image prune -af"] \
             --region ca-central-1
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # PLATFORM PARITY
+  #
+  # WerkPages and RateMyManagers are one platform with two brands. Functionality added
+  # to one and never ported to the other kept being found months later, so it is checked
+  # here instead of being noticed.
+  #
+  # This job needs BOTH products' trees. Only one repository is checked out by default,
+  # so it checks out the other frontend as well when PARITY_SIBLING_TOKEN is configured.
+  # The two BACKEND repositories have no remote at all, so the openapi, java-surface,
+  # migration-ownership and single-controller checks cannot run here and are reported as
+  # having no data rather than as passing. Run the checker locally for those:
+  #
+  #     python3 tools/parity/parity_check.py
+  #
+  # A VIOLATION FAILS THIS JOB. A check with no data does not, and says so in the summary.
+  # Exceptions live in tools/parity/exceptions.yaml and adding one is a product decision,
+  # never a way to make this green.
+  # ───────────────────────────────────────────────────────────────────────────
+  parity:
+    name: Platform Parity
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: self
+
+      # The other brand. Without a token this step is skipped and the cross-product
+      # checks report no data; it is not treated as a pass.
+      - name: Check out the other product
+        id: sibling
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.PARITY_SIBLING_REPO }}
+          token: ${{ secrets.PARITY_SIBLING_TOKEN }}
+          path: sibling
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml
+
+      - name: Check parity
+        env:
+          # Set per repository, because the two keep their app at different depths.
+          PARITY_WP_FRONTEND: ${{ vars.PARITY_WP_FRONTEND }}
+          PARITY_WP_CORPUS: ${{ vars.PARITY_WP_CORPUS }}
+          PARITY_RMM_FRONTEND: ${{ vars.PARITY_RMM_FRONTEND }}
+          PARITY_RMM_CORPUS: ${{ vars.PARITY_RMM_CORPUS }}
+          PARITY_WP_BACKEND: /nonexistent/werkpages-backend
+          PARITY_RMM_BACKEND: /nonexistent/ratemymanager-backend
+        run: |
+          set +e
+          python3 "$(ls -d self/*/tools/parity/parity_check.py self/tools/parity/parity_check.py 2>/dev/null | head -1)" \
+            --allow-tracked-drift | tee parity.out
+          code=${PIPESTATUS[0]}
+          set -e
+          {
+            echo "## Platform parity"
+            echo
+            echo '```'
+            cat parity.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "$code" in
+            0) echo "parity: all applicable checks passed" ;;
+            2) echo "::warning title=Parity checks incomplete::Some checks had no data and did NOT run. This is not a pass - see the job summary." ;;
+            *) echo "::error title=Parity violation::A shared surface differs and is not documented in tools/parity/exceptions.yaml."; exit 1 ;;
+          esac

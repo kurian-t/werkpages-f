@@ -125,7 +125,7 @@ test.describe("Account Settings", () => {
       await page.getByTitle("Unlink rating").first().click();
 
       await expect(
-        page.getByText(/unlink this rating\?/i)
+        page.getByText(/unlink this rating from your account\?/i)
       ).toBeVisible({ timeout: 3_000 });
 
       // RETENTION: the rating stays published and keeps contributing.
@@ -168,13 +168,13 @@ test.describe("Account Settings", () => {
       });
       await page.getByTitle("Unlink rating").first().click();
       await expect(
-        page.getByText(/unlink this rating\?/i)
+        page.getByText(/unlink this rating from your account\?/i)
       ).toBeVisible({ timeout: 3_000 });
 
       await page.getByRole("button", { name: /keep it/i }).click();
 
       // Confirmation gone, rating still listed and still theirs to edit.
-      await expect(page.getByText(/unlink this rating\?/i)).not.toBeVisible();
+      await expect(page.getByText(/unlink this rating from your account\?/i)).not.toBeVisible();
       await expect(page.getByText("Alex Johnson")).toBeVisible();
     });
 

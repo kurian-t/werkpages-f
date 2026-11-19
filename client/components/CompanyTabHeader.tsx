@@ -132,7 +132,7 @@ export function CompanyTabHeader({
           than its first line, so it reads as one figure with its qualifiers beside it. */}
       <div className={`flex items-center gap-3 ${locked ? "select-none" : ""}`}>
         <span
-          className={`text-2xl font-bold text-[#6d5091] tabular-nums leading-none whitespace-nowrap ${
+          className={`text-2xl font-bold text-brand-metric tabular-nums leading-none whitespace-nowrap ${
             locked ? "blur-sm" : ""
           }`}
         >
@@ -272,7 +272,7 @@ export function CompanyTabHeader({
                     <span
                       aria-hidden="true"
                       data-testid="withheld-metric"
-                      className="inline-block h-2.5 w-20 rounded-full bg-[#6d5091]/20 blur-[3px]"
+                      className="inline-block h-2.5 w-20 rounded-full bg-brand-metric/20 blur-[3px]"
                     />
                   ) : (
                     <>

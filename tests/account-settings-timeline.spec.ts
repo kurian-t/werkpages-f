@@ -217,8 +217,8 @@ test.describe("Unlinking a rating from the list @ci", () => {
 
     await unlink(page).click();
 
-    await expect(page.getByText("Unlink this rating?")).toBeVisible();
-    await expect(page.getByText(/permanently removes your ability to edit or manage this rating/i))
+    await expect(page.getByText("Unlink this rating from your account?")).toBeVisible();
+    await expect(page.getByText(/disconnects the rating from your account straight away/i))
       .toBeVisible();
     await expect(page.getByText(/remains published anonymously/i)).toBeVisible();
     await expect(page.getByText(/not be able to rate this manager again/i)).toBeVisible();
@@ -230,7 +230,7 @@ test.describe("Unlinking a rating from the list @ci", () => {
 
     await page.getByRole("button", { name: "Keep it" }).click();
 
-    await expect(page.getByText("Unlink this rating?")).toHaveCount(0);
+    await expect(page.getByText("Unlink this rating from your account?")).toHaveCount(0);
     await expect(page.getByText("Alex Johnson").first()).toBeVisible();
     await expect(unlink(page)).toBeVisible();
   });

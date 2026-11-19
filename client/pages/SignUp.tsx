@@ -41,10 +41,10 @@ export default function SignUp() {
   const location = useLocation();
   const [isRedirecting, setIsRedirecting] = useState(false);
 
-  const returnTo: string = (location.state as any)?.returnTo || "/explore";
+  const returnTo: string = (location.state as any)?.returnTo || "/search";
 
   if (isAuthenticated) {
-    return <Navigate to={returnTo === "/" ? "/explore" : returnTo} replace />;
+    return <Navigate to={returnTo === "/" ? "/search" : returnTo} replace />;
   }
 
   return (

@@ -29,6 +29,7 @@
     "test:full": "npm run test:full:standard && npm run test:full:role-aware",
     "test:full:standard": "pnpm build:client && playwright test",
     "test:full:role-aware": "VITE_ROLE_AWARE_SUBMISSION=true pnpm build:client && VITE_ROLE_AWARE_SUBMISSION=true playwright test tests/role-aware-contribution.spec.ts",
+    "test:signin": "SIGNIN_LIVE=1 playwright test --project=signin-live --workers=1",
     "test:list": "playwright test --list",
     "test:list:ci": "playwright test --list --project=chromium --grep @ci"
   },

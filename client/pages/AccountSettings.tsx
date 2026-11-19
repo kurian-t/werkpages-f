@@ -555,15 +555,34 @@ export default function AccountSettings() {
                     {confirmDeleteReviewId === review.id && (
                       <div className="mt-4 rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 px-4 py-4 space-y-3">
                         <div>
-                          <p className="text-sm font-semibold text-red-900 dark:text-red-200">Unlink this rating?</p>
-                          <p className="mt-1 text-sm text-red-800 dark:text-red-300">
-                            Unlinking permanently removes your ability to edit or manage this rating.
-                            Your numerical feedback remains published anonymously and continues
-                            contributing to statistics. We retain a limited private record that your
-                            account has previously rated this manager to prevent duplicate submissions.
+                          {/*
+                            The same wording as the profile dropdown, which is where most people
+                            meet this, plus the private-record disclosure there is no room for in a
+                            288px panel. Led by what unlinking DOES rather than by what it removes:
+                            "permanently removes your ability to edit or manage" opened on a loss
+                            and left the point of the action to be inferred.
+                          */}
+                          <p className="text-sm font-semibold text-red-900 dark:text-red-200">
+                            Unlink this rating from your account?
                           </p>
+                          <p className="mt-1 text-sm text-red-800 dark:text-red-300">
+                            This disconnects the rating from your account straight away. It remains
+                            published anonymously and continues contributing to statistics, but it
+                            is no longer shown as yours or listed here.
+                          </p>
+                          <p className="mt-1.5 text-sm text-red-800 dark:text-red-300">
+                            We keep a limited private record that your account rated this manager,
+                            so nobody can rate the same person twice.
+                          </p>
+                          {/*
+                            ONE SENTENCE, not two. "This cannot be undone" also appears in the
+                            account-deletion section further down this page, so splitting them
+                            makes that phrase ambiguous on the page and in any test that looks for
+                            it. The consequence and the irreversibility belong together anyway.
+                          */}
                           <p className="mt-1.5 text-xs text-red-600 dark:text-red-400">
-                            This cannot be undone, and you will not be able to rate this manager again.
+                            This cannot be undone, and you will not be able to rate this manager
+                            again.
                           </p>
                         </div>
                         <div className="flex gap-2">

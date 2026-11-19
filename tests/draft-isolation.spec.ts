@@ -600,7 +600,19 @@ test.describe("the email_unverified refusal is recoverable @ci", () => {
     // And it comes back when they return to the form.
     await page.goto("/add");
     await expect.poll(async () => formCarries(page, "Jordan"), { timeout: 15_000 }).toBe(true);
-    expect(await formCarries(page, "Engineering Manager")).toBe(true);
+    /*
+      POLLED FOR ITS OWN VALUE, rather than asserted once off the back of the poll above.
+
+      The two fields do not necessarily arrive together, so the poll on the name does not
+      establish that the title is already there. A bare assertion here passed on chromium and
+      failed on firefox in the same loaded run, and passed three times out of three on firefox
+      alone - a load race, with nothing wrong with the draft or the restore.
+
+      The assertion is unchanged: the title still has to come back. Only the waiting is added, and
+      it is the form this file already uses for the same check elsewhere.
+    */
+    await expect.poll(async () => formCarries(page, "Engineering Manager"), { timeout: 15_000 })
+      .toBe(true);
   });
 });
 

@@ -156,7 +156,7 @@ test.describe("Authenticated review actions", () => {
     await reviewRow.hover();
     await reviewRow.getByTitle("Unlink rating").click();
 
-    await expect(page.getByText(/unlink this rating\?/i)).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText(/unlink this rating from your account\?/i)).toBeVisible({ timeout: 3_000 });
 
     /*
       The three consequences, in the words the person is actually shown. Asserted because this is
@@ -186,12 +186,12 @@ test.describe("Authenticated review actions", () => {
     }).first();
     await reviewRow.hover();
     await reviewRow.getByTitle("Unlink rating").click();
-    await expect(page.getByText(/unlink this rating\?/i)).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText(/unlink this rating from your account\?/i)).toBeVisible({ timeout: 3_000 });
 
     await page.getByRole("button", { name: /cancel/i }).click();
 
     await expect(page.getByText(/your reviews/i)).toBeVisible({ timeout: 3_000 });
-    await expect(page.getByText(/unlink this rating\?/i)).not.toBeVisible();
+    await expect(page.getByText(/unlink this rating from your account\?/i)).not.toBeVisible();
   });
 
   /**
@@ -229,7 +229,7 @@ test.describe("Authenticated review actions", () => {
     }).first();
     await reviewRow.hover();
     await reviewRow.getByTitle("Unlink rating").click();
-    await expect(page.getByText(/unlink this rating\?/i)).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText(/unlink this rating from your account\?/i)).toBeVisible({ timeout: 3_000 });
     await page.getByRole("button", { name: /yes, unlink/i }).click();
 
     await expect(page.getByText(/rating unlinked/i)).toBeVisible({ timeout: 5_000 });
@@ -238,7 +238,7 @@ test.describe("Authenticated review actions", () => {
 
     // And the reader is told what happened, in terms of what survives.
     await expect(page.getByText(/stays published anonymously/i)).toBeVisible();
-    await expect(page.getByText(/unlink this rating\?/i)).not.toBeVisible();
+    await expect(page.getByText(/unlink this rating from your account\?/i)).not.toBeVisible();
   });
 
   /**

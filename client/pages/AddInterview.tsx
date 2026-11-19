@@ -285,7 +285,7 @@ export default function AddInterview() {
         ? returnTo
         : activeSlug
           ? `/companies/${activeSlug}?tab=hiring`
-          : "/explore",
+          : "/search",
     );
 
   const handleBack = () => {

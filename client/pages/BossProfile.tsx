@@ -1,4 +1,5 @@
 import API_BASE from "@/lib/api";
+import { CareerEditor } from "@/components/CareerEditor";
 import { LockedOverlay, LockedPanelCard } from "@/components/LockedNotice";
 import { Stars } from "@/components/Stars";
 import { MIN_OPINIONS_FOR_CONFIDENCE } from "@/components/RatingColumns";
@@ -493,6 +494,49 @@ export default function BossProfile() {
   // response and stored in user state - no separate network request needed.
   const isLocked = !user?.hasContributed;
 
+  /*
+    TWO EXEMPTIONS, both of which stop the rule becoming a dead end rather than loosening it.
+
+    AN ADMIN may already approve, reject and rewrite every one of these fields through the
+    moderation tools, so asking them for a rating first protects nothing.
+
+    A PENDING_APPROVAL PROFILE is this person's own unpublished submission. The server serves a
+    pending row only to its submitter and to admins, and 404s everybody else, so if this page
+    rendered one it is theirs - and the backend checks `submitted_by` itself rather than trusting
+    that. It matters because the rating somebody leaves when they ADD a manager is HELD until the
+    manager is approved, and hasContributed counts only live ratings: without this, whoever
+    submitted a profile sixty seconds ago is exactly who would be refused, with no other form that
+    could fix their own typo. The same confusion once blurred their own rating back at them; see
+    myDataOnly below.
+  */
+  const mayEditWithoutRating =
+    user?.role === "admin" || manager?.approvalStatus === "pending_approval";
+
+  /*
+    WHO MAY CORRECT A CAREER HISTORY: signed in, and having rated a manager before.
+
+    The same two conditions the backend enforces on POST /api/managers/:id/career-edit, which is
+    what actually protects the record. This only avoids offering a form whose submit would be
+    refused, and tells the person what would open it.
+
+    DELIBERATELY NOT the shape the contribution forms use. Those collect a first-hand account from
+    somebody who may not have an account yet, so they render everything, ask at submit and keep the
+    draft - nobody signs up for a form they have not seen, and a wall there captures nothing. This
+    form is different in kind: it proposes a change to somebody ELSE's record, so there is no
+    first-hand account to lose, and an account that has contributed nothing is one social sign-in
+    away from rewriting any employment on the site. The gate therefore sits at the door.
+
+    Ordered with the suspension first: it is the most specific thing true about the account, and
+    saying "rate a manager" to somebody who is suspended would be a lie about what would help.
+  */
+  const careerEditBlocked = isBanned
+    ? "Your account has been suspended"
+    : !user
+    ? "Sign in and rate a manager to correct a career history"
+    : isLocked && !mayEditWithoutRating
+    ? "Rate a manager to correct a career history"
+    : null;
+
   // Fetch internal DB user UUID - cached so it's instant on revisit
   const { data: dbUserId } = useQuery({
     queryKey: ["auth-me"],
@@ -733,7 +777,15 @@ export default function BossProfile() {
     depending on which page you started from.
   */
   const [reviewStep, setReviewStep] = useState<null | "details" | "dates" | "ratings">(null);
-  const [editManagerStep, setEditManagerStep] = useState<null | "info">(null);
+  const [careerEditorOpen, setCareerEditorOpen] = useState(false);
+  /*
+    The career editor's own resume, held so that signing in finishes ITS submission.
+
+    pendingAction "edit-submit" calls handleEditManager, which is the LEGACY form's submit. Reusing
+    it for the career editor would send the old form's untouched state and silently drop everything
+    somebody had just filled in.
+  */
+  const resumeCareerSubmit = useRef<(() => void) | null>(null);
   /* The same three steps, in the same order, as every other contribution form. */
   const [editReviewStep, setEditReviewStep] = useState<null | "details" | "dates" | "ratings">(null);
   const [editingEditRoleInline, setEditingEditRoleInline] = useState(false);
@@ -760,8 +812,6 @@ export default function BossProfile() {
   const [authorType] = useState<"anonymous">("anonymous");
   const [generatedName, setGeneratedName] = useState(() => generateUsername());
   const [modalRatings, setModalRatings] = useState<Record<string, number>>(initializeRatings());
-  const [editFormData, setEditFormData] = useState({ company: "", title: "", status: "active", country: "", linkedinUrl: "" });
-  const [editCompanyLogoUrl, setEditCompanyLogoUrl] = useState<string | undefined>(undefined);
   const [editReviewData, setEditReviewData] = useState<Record<string, number>>({});
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [nextStepOpen, setNextStepOpen] = useState(false);
@@ -794,7 +844,7 @@ export default function BossProfile() {
   const [editReviewDateError, setEditReviewDateError] = useState<string | null>(null);
   const [authFlowStep, setAuthFlowStep] = useState<AuthFlowStep | null>(null);
   const [authFlowEmail, setAuthFlowEmail] = useState("");
-  const pendingAction = useRef<"edit" | "report" | "edit-submit" | "report-submit" | null>(null);
+  const pendingAction = useRef<"edit" | "report" | "career-submit" | "report-submit" | null>(null);
 
   /**
    * Where a report interrupted by sign-in waits.
@@ -920,11 +970,7 @@ export default function BossProfile() {
   // The logo the picker handed back, so it can ride with the save instead of being discarded.
   const [adminCareerEditLogoUrl, setAdminCareerEditLogoUrl] = useState<string | undefined>(undefined);
   const [editManagerTitle, setEditManagerTitle] = useState("");
-  const [editStartDate, setEditStartDate] = useState({ month: "", year: "" });
-  const [editEndDate, setEditEndDate] = useState({ month: "", year: "" });
-  const [editEndCurrent, setEditEndCurrent] = useState(true);
   const [selectedCareerRoleIdx, setSelectedCareerRoleIdx] = useState(0);
-  const [editModalTouched, setEditModalTouched] = useState(false);
   const [editAuthorType, setEditAuthorType] = useState<"username" | "real_name" | "anonymous">("username");
   const [editGeneratedName, setEditGeneratedName] = useState(() => generateUsername());
 
@@ -967,7 +1013,7 @@ export default function BossProfile() {
 
   // Admin direct-edit state
   const [adminEditing, setAdminEditing] = useState(false);
-  const [adminEditForm, setAdminEditForm] = useState({ name: "", title: "", company: "", linkedinUrl: "" });
+  const [adminEditForm, setAdminEditForm] = useState({ name: "", title: "", company: "" });
   const [adminEditLogoUrl, setAdminEditLogoUrl] = useState<string | undefined>(undefined);
   /*
     Where the manager works, on the admin edit form.
@@ -981,8 +1027,6 @@ export default function BossProfile() {
     The MANAGER's location on the edit form - deliberately not editLocation, which is the
     REVIEWER's location for their own opinion and must never be copied from the manager.
   */
-  const [editManagerLocation, setEditManagerLocation] = useState<LocationValue>(EMPTY_LOCATION);
-  const [editManagerLocationOpen, setEditManagerLocationOpen] = useState(false);
   const [adminEditLocationOpen, setAdminEditLocationOpen] = useState(false);
   const [adminEditSaving, setAdminEditSaving] = useState(false);
   const [adminDeleteConfirm, setAdminDeleteConfirm] = useState(false);
@@ -1174,42 +1218,6 @@ export default function BossProfile() {
 
   // editReviewData is populated directly when the Edit button is clicked (see "Your Reviews" section)
 
-  // Initialize edit form data when manager loads
-  useEffect(() => {
-    if (manager) {
-      setEditFormData({
-        company: manager.company,
-        title: manager.title,
-        status: manager.status === "retired" ? "retired" : "active",
-        country: manager.country || "",
-        linkedinUrl: manager.linkedinUrl || "",
-      });
-      // The control holds the whole answer, so it is seeded with the whole answer - subject to
-      // what this profile is allowed to reveal at all. See visibleManagerLocation.
-      setEditManagerLocation(visibleManagerLocation(manager as any));
-      setEditManagerLocationOpen(false);
-      // Seed the selection with the company as it stands, so an edit that changes only the title
-      // still submits the company this manager already belongs to.
-      editCompany.set(manager.company, manager.companyId ?? undefined);
-      // Parse start/end dates from the most recent career history entry
-      const ch = manager.careerHistory?.[0];
-      if (ch?.startDate) {
-        const [y, m] = ch.startDate.split("-");
-        setEditStartDate({ year: y ?? "", month: m ?? "" });
-      } else {
-        setEditStartDate({ month: "", year: "" });
-      }
-      if (ch?.endDate) {
-        const [y, m] = ch.endDate.split("-");
-        setEditEndDate({ year: y ?? "", month: m ?? "" });
-        setEditEndCurrent(false);
-      } else {
-        setEditEndDate({ month: "", year: "" });
-        setEditEndCurrent(true);
-      }
-      setEditModalTouched(false);
-    }
-  }, [manager?.id, manager?.company, manager?.title]);
 
   // Reset ratings when review form opens (skip if we just restored from localStorage)
   useEffect(() => {
@@ -1703,36 +1711,6 @@ export default function BossProfile() {
     }
   };
 
-  const handleCancelEdit = () => {
-    if (!manager) { setEditManagerStep(null); return; }
-    setEditFormData({
-      company: manager.company,
-      title: manager.title,
-      status: manager.status === "retired" ? "retired" : "active",
-      country: manager.country || "",
-      linkedinUrl: manager.linkedinUrl || "",
-    });
-    setEditManagerLocation(visibleManagerLocation(manager as any));
-    setEditManagerLocationOpen(false);
-    const ch = manager.careerHistory?.[0];
-    if (ch?.startDate) {
-      const [y, m] = ch.startDate.split("-");
-      setEditStartDate({ year: y ?? "", month: m ?? "" });
-    } else {
-      setEditStartDate({ month: "", year: "" });
-    }
-    if (ch?.endDate) {
-      const [y, m] = ch.endDate.split("-");
-      setEditEndDate({ year: y ?? "", month: m ?? "" });
-      setEditEndCurrent(false);
-    } else {
-      setEditEndDate({ month: "", year: "" });
-      setEditEndCurrent(true);
-    }
-    setEditModalTouched(false);
-    setEditManagerStep(null);
-  };
-
   const handleSubmitReview = async (overrideUser?: User) => {
     const effectiveUser = overrideUser ?? user;
 
@@ -2006,117 +1984,6 @@ export default function BossProfile() {
     }
     setIsReplacingReview(false);
     setIsSubmittingReview(false);
-  };
-
-  const handleEditManager = async () => {
-    if (!editFormData.company.trim() || !editFormData.title.trim()) {
-      toast.error("Please fill in all fields", {
-        description: "Both company and title are required.",
-      });
-      return;
-    }
-
-    if (!user) {
-      pendingAction.current = "edit-submit";
-      setAuthFlowStep("signup");
-      return;
-    }
-
-    const isEditRetired = !editEndCurrent;
-    const newStartDate = toYearMonth(editStartDate.month, editStartDate.year);
-    const newEndDate   = isEditRetired ? toYearMonth(editEndDate.month, editEndDate.year) : null;
-
-    // Pending managers: overwrite directly (not live, no edit request needed)
-    if (manager?.approvalStatus === "pending_approval") {
-      try {
-        await axios.put(`${API_BASE}/api/managers/${manager.id}`, {
-          ...(await editCompany.payload()),
-          companyLogoUrl: editCompanyLogoUrl ?? null,
-          title: toJobTitleCase(editFormData.title),
-          status: editFormData.status,
-          country: editManagerLocation.country || editFormData.country || null,
-          linkedinUrl: editFormData.linkedinUrl.trim() || null,
-          startDate: newStartDate,
-          endDate: newEndDate,
-        });
-        queryClient.invalidateQueries({ queryKey: managerQueryKey });
-        queryClient.invalidateQueries({ queryKey: ["my-submitted-managers"] });
-        queryClient.invalidateQueries({ queryKey: ["company-profile-slug"] });
-        queryClient.invalidateQueries({ queryKey: ["company-listing"] });
-        toast.success("Manager updated!", {
-          description: "Your changes have been saved.",
-        });
-        setEditManagerStep(null);
-      } catch {
-        toast.error("Failed to update manager. Please try again.");
-      }
-      return;
-    }
-
-    try {
-      const ch = manager?.careerHistory?.[0];
-      const origStartDate = ch?.startDate ?? null;
-      const origEndDate   = ch?.endDate ?? null;
-
-      const statusChanged   = editFormData.status !== manager?.status;
-      const companyChanged  = editFormData.company.trim() !== manager?.company;
-      const titleChanged    = editFormData.title.trim() !== manager?.title;
-      /*
-        The whole location, not just the country.
-
-        This compared country alone, so moving a manager from Toronto to Kitchener - same country,
-        different city - counted as no change at all and the form returned "no changes to save".
-      */
-      const countryChanged  = (editManagerLocation.country || null) !== (manager?.country || null);
-      const locationChanged = countryChanged
-        || (editManagerLocation.state || null) !== ((manager as any)?.state || null)
-        || (editManagerLocation.city  || null) !== ((manager as any)?.city  || null)
-        || (editManagerLocation.companyLocationId ?? null) !== ((manager as any)?.companyLocationId ?? null);
-      const linkedinChanged = (editFormData.linkedinUrl.trim() || null) !== (manager?.linkedinUrl || null);
-      const startChanged    = newStartDate !== origStartDate;
-      const endChanged      = newEndDate !== origEndDate;
-      const anyChanged = statusChanged || companyChanged || titleChanged || locationChanged || linkedinChanged || startChanged || endChanged;
-
-      if (!anyChanged) {
-        setEditManagerStep(null);
-        return;
-      }
-
-      // All changes go through edit-request flow for admin approval
-      const payload: Record<string, string | number | null> = {};
-      // The picked company's identity rides with the request. Approval uses it directly, so an
-      // admin approving weeks later cannot land on a different company that shares the name.
-      if (companyChanged)  Object.assign(payload, await editCompany.payload());
-      if (companyChanged && editCompanyLogoUrl) payload.companyLogoUrl = editCompanyLogoUrl;
-      if (titleChanged)    payload.title       = toJobTitleCase(editFormData.title);
-      if (statusChanged)   payload.status      = editFormData.status;
-      if (countryChanged)  payload.country     = editManagerLocation.country || null;
-      /*
-        The rest of the answer travels with it - a city nobody can send is a city nobody can fix.
-        Sent as "" rather than omitted when cleared, because the backend leaves a null column
-        alone and an edit that removes a city has to be able to say so.
-      */
-      if (locationChanged) {
-        payload.state = editManagerLocation.state || "";
-        payload.city  = editManagerLocation.city  || "";
-        if (editManagerLocation.precision) payload.precision = editManagerLocation.precision;
-        // Negative means "no longer at a specific building" - the field is otherwise additive.
-        payload.companyLocationId = editManagerLocation.companyLocationId ?? -1;
-      }
-      if (linkedinChanged) payload.linkedinUrl = editFormData.linkedinUrl.trim();
-      if (startChanged)    payload.startDate   = newStartDate;
-      if (endChanged)      payload.endDate     = newEndDate;
-
-      await axios.post(`${API_BASE}/api/managers/${manager?.id}/edit-requests`, payload);
-      queryClient.invalidateQueries({ queryKey: ["manager-pending-edits", manager?.id] });
-
-      toast.success("Change request submitted!", {
-        description: "Your changes have been submitted for admin approval.",
-      });
-      setEditManagerStep(null);
-    } catch {
-      toast.error("Failed to save changes. Please try again.");
-    }
   };
 
   const handleEditReview = async () => {
@@ -2498,7 +2365,7 @@ export default function BossProfile() {
                       type="button"
                       data-testid="admin-edit-button"
                       onClick={() => {
-                        setAdminEditForm({ name: manager.name, title: manager.title, company: manager.company, linkedinUrl: manager.linkedinUrl ?? "" });
+                        setAdminEditForm({ name: manager.name, title: manager.title, company: manager.company });
                         // Seed the selection with the company as it stands. Without this the form
                         // would submit an empty name for an admin who edited only the title.
                         adminEditCompany.set(manager.company, manager.companyId ?? undefined);
@@ -2796,10 +2663,29 @@ export default function BossProfile() {
                       {pendingDeleteReviewId ? (
                         /* Inline delete confirmation */
                         <div className="px-4 py-4">
-                          <p className="text-sm font-semibold text-foreground">Unlink this rating?</p>
+                          {/*
+                            SAYS WHAT UNLINKING IS, THEN WHAT IT COSTS.
+
+                            The old wording opened on "stays published anonymously" and never said
+                            the rating is detached from the account, which is the whole action - so
+                            somebody read a list of things they would lose with no idea what they
+                            were gaining. It leads with the disconnection now.
+
+                            "No longer shown as yours", not "nobody can ever tell": a private
+                            record that this account rated this manager is kept, to stop a second
+                            rating, and promising total severance would be untrue.
+                          */}
+                          <p className="text-sm font-semibold text-foreground">
+                            Unlink this rating from your account?
+                          </p>
                           <p className="mt-1 text-xs text-muted-foreground">
-                            Your feedback stays published anonymously and keeps counting toward this
-                            manager's statistics. You will no longer be able to edit it, and you
+                            This disconnects it from your account
+                            <span className="font-medium text-foreground"> straight away</span>. The
+                            rating stays published anonymously and keeps counting toward this
+                            manager's score, but it is no longer shown as yours.
+                          </p>
+                          <p className="mt-1.5 text-xs text-muted-foreground">
+                            This cannot be undone, and you
                             <span className="font-medium text-foreground"> will not be able to rate this manager again</span>.
                           </p>
                           <div className="mt-3 flex gap-2">
@@ -2935,14 +2821,55 @@ export default function BossProfile() {
               <div className="flex items-center justify-between gap-2">
                 <button
                   onClick={() => {
-                    setEditManagerStep("info");
+                    /*
+                      ONE FORM, for every manager.
+
+                      This used to send a pending manager to the old single-position form, on the
+                      reasoning that the submitter's own unpublished draft has nothing to moderate.
+                      That reasoning was about the BACKEND and it leaked into the UI: somebody
+                      correcting the manager they had just submitted got the form that cannot add a
+                      position or end a role, which is exactly when they most need to.
+
+                      The immediacy is preserved where it belongs - the server applies a change set
+                      straight away when the manager is unpublished and the editor is its submitter,
+                      through the same applier a moderator's approval uses.
+                    */
+                    // Belt and braces: the button is disabled, and the backend refuses the
+                    // submission regardless. Neither is load-bearing on its own.
+                    if (careerEditBlocked) return;
+                    setCareerEditorOpen(true);
                   }}
-                  disabled={isBanned}
-                  aria-label={isBanned ? "Your account has been suspended" : manager.approvalStatus === "pending_approval" ? "Edit your submission" : "Edit manager's position"}
+                  disabled={Boolean(careerEditBlocked)}
+                  /*
+                    One FORM for every manager, but not one LABEL.
+
+                    "Edit your submission" tells the person this manager is their own unpublished
+                    draft, which is still true and still worth saying. Flattening it to "Edit
+                    career history" for everybody lost that distinction for no reason: unifying
+                    the form never required unifying the wording.
+                  */
+                  aria-label={isBanned
+                    ? "Your account has been suspended"
+                    : manager.approvalStatus === "pending_approval"
+                    ? "Edit your submission"
+                    : "Edit career history"}
+                  /*
+                    THE REASON GOES IN title, AND NOT INTO THE ACCESSIBLE NAME.
+
+                    A control that is disabled without saying why reads as broken rather than as
+                    locked, so the reason has to be somewhere. It must not become the button's
+                    NAME, though: "Rate a manager to correct a career history" as an aria-label
+                    collided with the locked Performance Breakdown's own "Rate a manager" call to
+                    action on this same page, so getByRole(..., { name: /rate a manager/i }).first()
+                    began resolving to THIS disabled button and two unrelated tests hung clicking
+                    it. aria-label wins over title in the accessible-name calculation, so the name
+                    stays stable and the explanation rides alongside as the description.
+                  */
+                  title={careerEditBlocked ?? undefined}
                   className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Edit2 size={13} aria-hidden="true" className="flex-shrink-0" />
-                  Edit Manager Details
+                  Edit Career History
                 </button>
                 {manager.approvalStatus !== "pending_approval" && (
                   <button
@@ -2983,6 +2910,7 @@ export default function BossProfile() {
                 <label className="block text-xs text-muted-foreground mb-1">Name</label>
                 <input
                   type="text"
+                  data-testid="admin-edit-name"
                   value={adminEditForm.name}
                   onChange={e => setAdminEditForm(p => ({ ...p, name: e.target.value }))}
                   maxLength={100}
@@ -2993,6 +2921,7 @@ export default function BossProfile() {
                 <label className="block text-xs text-muted-foreground mb-1">Title</label>
                 <input
                   type="text"
+                  data-testid="admin-edit-title"
                   value={adminEditForm.title}
                   onChange={e => setAdminEditForm(p => ({ ...p, title: e.target.value }))}
                   maxLength={100}
@@ -3025,17 +2954,6 @@ export default function BossProfile() {
                   id="admin-edit-location"
                 />
               </div>
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">LinkedIn URL</label>
-                <input
-                  type="text"
-                  value={adminEditForm.linkedinUrl}
-                  onChange={e => setAdminEditForm(p => ({ ...p, linkedinUrl: e.target.value }))}
-                  placeholder="https://linkedin.com/in/…"
-                  maxLength={500}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
-                />
-              </div>
             </div>
             <div className="flex items-center gap-3 mt-4">
               <button
@@ -3048,7 +2966,6 @@ export default function BossProfile() {
                       name:           toNameCase(adminEditForm.name)       || undefined,
                       title:          toJobTitleCase(adminEditForm.title) || undefined,
                       ...(await adminEditCompany.payload()),
-                      linkedinUrl:    adminEditForm.linkedinUrl.trim() || undefined,
                       companyLogoUrl: adminEditLogoUrl,
                       country: adminEditLocation.country ?? undefined,
                       state:   adminEditLocation.state   ?? undefined,
@@ -4700,182 +4617,38 @@ export default function BossProfile() {
         );
       })()}
 
-      {/* Edit Manager Details - Full-Screen Form */}
-      {editManagerStep && (() => {
-        const editStartVal = toYMVal(editStartDate.month, editStartDate.year);
-        const editEndVal   = toYMVal(editEndDate.month,   editEndDate.year);
-        const editDatesValid =
-          (!editStartVal || editStartVal <= nowVal) &&
-          (editEndCurrent || !editEndVal || (editEndVal <= nowVal && (!editStartVal || editEndVal >= editStartVal)));
-        const canSave = editFormData.title.trim().length > 0 && editFormData.company.trim().length > 0 && editDatesValid;
-        return (
-          <div className="fixed inset-0 z-50 flex flex-col bg-background">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
-              <button
-                onClick={handleCancelEdit}
-                className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors min-w-[60px]"
-              >
-                Cancel
-              </button>
-              <div className="text-center">
-                <p className="text-sm font-semibold text-foreground">Edit Manager Details</p>
-                <p className="text-xs text-muted-foreground">Step 1 of 1 · {manager.name}</p>
-              </div>
-              <button
-                onClick={handleCancelEdit}
-                aria-label="Close"
-                className="text-muted-foreground hover:text-foreground transition-colors p-1 min-w-[60px] flex justify-end"
-              >
-                <X size={18} aria-hidden="true" />
-              </button>
-            </div>
+      {/* The career history editor, for every live manager. */}
+      {manager && (
+        <CareerEditor
+          managerId={manager.id}
+          managerName={manager.name}
+          open={careerEditorOpen}
+          onClose={() => setCareerEditorOpen(false)}
+          signedIn={Boolean(user)}
+          onAuthRequired={(resume) => {
+            /*
+              The page's own authentication step, not a second route to sign-in. The whole form has
+              already been filled in by this point: an account is asked for at submit and never
+              before, which is the only order anybody completes.
 
-            {/* Progress bar */}
-            <div className="h-1 bg-[#2e0562]" />
-
-            {/* Scrollable content */}
-            <div className="flex-1 overflow-y-auto">
-              <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-[22px] font-semibold text-foreground">Manager's current position</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {manager.approvalStatus === "pending_approval"
-                        ? "Update your submission. Changes are applied directly since this profile hasn't been approved yet."
-                        : `Update ${manager.name}'s current position. A record of previous positions will be automatically tracked.`}
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-2">Title *</label>
-                    <input
-                      type="text"
-                      value={editFormData.title}
-                      onChange={(e) => { setEditModalTouched(true); setEditFormData((prev) => ({ ...prev, title: e.target.value })); }}
-                      placeholder="e.g., CEO, Engineering Manager"
-                      maxLength={100}
-                      className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-2">Company *</label>
-                    <CompanyAutocomplete
-                      initialDomain={(manager as any)?.companyDomain}
-                      initialBrandfetchIconUrl={(manager as any)?.companyBrandfetchIconUrl}
-                      value={editFormData.company}
-                      onChange={(val) => { setEditModalTouched(true); setEditFormData((prev) => ({ ...prev, company: val })); setEditCompanyLogoUrl(undefined); editCompany.bind.onChange(val); }}
-                      onSuggestionSelect={(_name, logoUrl) => setEditCompanyLogoUrl(logoUrl)}
-                      onCompanyIdChange={editCompany.bind.onCompanyIdChange}
-                      placeholder="e.g., Microsoft, Apple"
-                      className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-2">Location</label>
-                    {/*
-                      The same control every other form uses, not a country dropdown.
-
-                      This asked only for a country, from a <select>, while the add form, the
-                      review form and the interview form all ask the same question through
-                      LocationField - so the answer somebody could give depended on which page
-                      they happened to be on, and a manager edited here could never be given a
-                      city, let alone an address.
-
-                      It also defaulted to whatever the list happened to show, which is how a
-                      Canadian company ended up recorded in the United Kingdom.
-                    */}
-                    <LocationField
-                      value={editManagerLocation}
-                      onChange={(next) => { setEditModalTouched(true); setEditManagerLocation(next); }}
-                      companyId={editCompany.id}
-                      companyName={editFormData.company}
-                      editing={editManagerLocationOpen}
-                      onEditStart={() => setEditManagerLocationOpen(true)}
-                      onEditDone={() => setEditManagerLocationOpen(false)}
-                      id="edit-manager-location"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-3">Manager Status *</label>
-                    <div className="space-y-2">
-                      <label className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${editFormData.status === "active" ? "border-[#2e0562] bg-[#2e0562]/5" : "border-border hover:bg-accent/5"}`}>
-                        <input type="radio" name="editStatus" value="active" checked={editFormData.status === "active"}
-                          onChange={() => { setEditModalTouched(true); setEditFormData(prev => ({ ...prev, status: "active" })); setEditEndDate({ month: "", year: "" }); setEditEndCurrent(true); }}
-                          className="w-4 h-4" />
-                        <div>
-                          <p className="font-medium text-foreground">Currently Active</p>
-                          <p className="text-xs text-muted-foreground">Manager is actively leading</p>
-                        </div>
-                      </label>
-                      <label className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${editFormData.status === "retired" ? "border-[#2e0562] bg-[#2e0562]/5" : "border-border hover:bg-accent/5"}`}>
-                        <input type="radio" name="editStatus" value="retired" checked={editFormData.status === "retired"}
-                          onChange={() => { setEditModalTouched(true); setEditFormData(prev => ({ ...prev, status: "retired" })); setEditEndCurrent(false); }}
-                          className="w-4 h-4" />
-                        <div>
-                          <p className="font-medium text-foreground">Retired / No longer in this role</p>
-                          <p className="text-xs text-muted-foreground">Manager has stepped down or left</p>
-                        </div>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-3">
-                      Role dates <span className="font-normal text-muted-foreground text-xs">(optional)</span>
-                    </label>
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-1.5">When did they start in this role?</p>
-                        <DateSelects
-                          label="Start"
-                          value={editStartDate}
-                          onChange={v => { setEditModalTouched(true); setEditStartDate(v); }}
-                        />
-                      </div>
-                      {editFormData.status === "retired" && (
-                        <div>
-                          <p className="text-sm text-muted-foreground mb-1.5">When did they leave?</p>
-                          <DateSelects
-                            label="End"
-                            value={editEndDate}
-                            onChange={v => { setEditModalTouched(true); setEditEndDate(v); }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                    {editStartVal && editStartVal > nowVal && (
-                      <p className="mt-2 text-xs text-red-500">Start date cannot be in the future</p>
-                    )}
-                    {!editEndCurrent && editEndVal && editEndVal > nowVal && (
-                      <p className="mt-2 text-xs text-red-500">End date cannot be in the future</p>
-                    )}
-                    {!editEndCurrent && editStartVal && editEndVal && editEndVal < editStartVal && (
-                      <p className="mt-2 text-xs text-red-500">End date must be after start date</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="border-t border-border px-4 py-4 sm:px-6 bg-background">
-              <div className="mx-auto max-w-2xl">
-                <button
-                  onClick={handleEditManager}
-                  disabled={!canSave}
-                  className="w-full rounded-lg bg-[#2e0562] px-4 py-3 font-medium text-white transition-all hover:bg-[#2e0562]/90 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+              The editor also writes its draft to sessionStorage before calling this, so a social
+              sign-in - which is a full-page redirect that destroys this component - comes back to
+              the answers rather than to an empty form.
+            */
+            resumeCareerSubmit.current = resume;
+            pendingAction.current = "career-submit";
+            setAuthFlowStep("signup");
+          }}
+          onSubmitted={({ positions, nameChanged }) => {
+            queryClient.invalidateQueries({ queryKey: managerQueryKey });
+            toast.success("Thank you", {
+              description: positions === 0 && nameChanged
+                ? "Your name correction has been sent for review."
+                : `Your ${positions} change${positions === 1 ? "" : "s"} ${positions === 1 ? "has" : "have"} been sent for review.`,
+            });
+          }}
+        />
+      )}
 
       {/* Edit Review - Full-Screen Stepped Form */}
       {editReviewStep && user && (() => {
@@ -5218,8 +4991,10 @@ export default function BossProfile() {
             destroys this component and its ref along with it, so they are restored from
             sessionStorage by the effects near the top of the file instead.
           */
-          if (action === "edit-submit") {
-            handleEditManager();
+          if (action === "career-submit") {
+            const resume = resumeCareerSubmit.current;
+            resumeCareerSubmit.current = null;
+            if (resume) resume();
           } else if (action === "report-submit") {
             handleSubmitReport(authedUser);
           } else if (fromVerified) {

@@ -67,10 +67,10 @@ export default function SignIn() {
     (queryReturnTo && queryReturnTo.startsWith("/") && !queryReturnTo.startsWith("//")
       ? queryReturnTo
       : null) ||
-    "/explore";
+    "/search";
 
   if (isAuthenticated) {
-    return <Navigate to={returnTo === "/" ? "/explore" : returnTo} replace />;
+    return <Navigate to={returnTo === "/" ? "/search" : returnTo} replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -6,6 +6,7 @@ import { Layout } from "@/components/Layout";
 import { useAuth } from "@/hooks/useAuth";
 import { Shield, CheckCircle, XCircle, Ban, RotateCcw, Plus, X, Clock, GitMerge, Pencil, MessageSquare, Star, Building2 } from "lucide-react";
 import { toast } from "sonner";
+import { ChangeSetReview } from "@/components/ChangeSetReview";
 import { CompanyField } from "@/components/CompanyField";
 import { LocationField } from "@/components/LocationField";
 import {
@@ -114,6 +115,14 @@ export default function Admin() {
 
   // Pending edits state
   const [pendingEdits, setPendingEdits] = useState<any[]>([]);
+  /*
+    The company a moderator chose for one position of a change set, keyed by edit id then by the
+    change row's id. Per position, because a contribution can carry two positions that each name a
+    company with no record yet, and one answer cannot serve both without filing an employment under
+    the wrong employer.
+  */
+  const [changeSetCompanies, setChangeSetCompanies] =
+    useState<Record<string, Record<number, { companyId: number | null; name: string }>>>({});
   const [editsLoading, setEditsLoading] = useState(true);
 
   // Banned users state
@@ -578,10 +587,19 @@ export default function Admin() {
     try {
       // Corrections only when there are some. An empty body would be indistinguishable from
       // "approve exactly what was asked for", which is what no body already means.
-      const fix = editFix[editId];
+      const fix = { ...(editFix[editId] ?? {}) } as Record<string, unknown>;
+      // Resolved companies travel keyed by position, which is how approveCareerEdit reads them.
+      const chosen = changeSetCompanies[editId];
+      if (chosen) {
+        const positions: Record<string, { companyId: number }> = {};
+        Object.entries(chosen).forEach(([positionId, choice]) => {
+          if (choice.companyId != null) positions[positionId] = { companyId: choice.companyId };
+        });
+        if (Object.keys(positions).length > 0) fix.positions = positions;
+      }
       await axios.post(
         `${API_BASE}/api/admin/pending-edits/${editId}/approve`,
-        fix && Object.keys(fix).length > 0 ? fix : undefined,
+        Object.keys(fix).length > 0 ? fix : undefined,
       );
       setPendingEdits((prev) => prev.filter((e) => e.id !== editId));
       setEditFix((prev) => { const next = { ...prev }; delete next[editId]; return next; });
@@ -1590,6 +1608,32 @@ export default function Admin() {
                       </span>
                     </div>
 
+                    {/*
+                      A career-editor contribution's legacy summary columns are all null - its
+                      substance is the change set - so it is read from its own endpoint instead of
+                      being summarised here into fields it does not use.
+                    */}
+                    {edit.changeFormat === "career_editor" ? (
+                      <div className="mb-4">
+                        <div className="mb-3 flex items-center gap-2">
+                          <span className="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                            Career history
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {edit.positionCount} position{edit.positionCount === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                        <ChangeSetReview
+                          editId={edit.id}
+                          companyChoices={changeSetCompanies[edit.id] ?? {}}
+                          onCompanyResolved={(positionId, companyId, name) =>
+                            setChangeSetCompanies(prev => ({
+                              ...prev,
+                              [edit.id]: { ...(prev[edit.id] ?? {}), [positionId]: { companyId, name } },
+                            }))}
+                        />
+                      </div>
+                    ) : (
                     <div className="grid gap-4 sm:grid-cols-2 mb-4">
                       <div className="rounded-lg bg-muted/40 p-4">
                         <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Current</p>
@@ -1615,6 +1659,7 @@ export default function Admin() {
                         )}
                       </div>
                     </div>
+                    )}
 
                     {/*
                       CORRECT BEFORE APPROVING.

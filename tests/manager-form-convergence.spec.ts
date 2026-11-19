@@ -68,7 +68,22 @@ test.describe("The fields a review asks for", () => {
     await expect(page.locator("#review-last-name")).toHaveValue("Johnson");
     await expect(page.locator("#review-first-name")).toHaveAttribute("readonly", "");
     await expect(page.locator("#review-last-name")).toHaveAttribute("readonly", "");
-    await expect(page.getByRole("button", { name: /edit manager details/i })).toHaveCount(0);
+    /*
+      Scoped to the review form, and that matters.
+
+      This read `page.getByRole("button", { name: /edit manager details/i })` and passed for the
+      wrong reason: a role locator matches the ACCESSIBLE name, which came from the button's
+      aria-label, never from its visible text - so it matched nothing whatever the page contained.
+      It was asserting against a locator that could not resolve.
+
+      The profile's own edit control still exists behind the full-screen review overlay, which is
+      correct. What must not happen is the REVIEW form offering it, so the question is asked of the
+      form rather than of the whole document.
+    */
+    const reviewForm = page.locator("#review-first-name").locator("xpath=ancestor::form | ancestor::div[@role='dialog']").first();
+    const scope = (await reviewForm.count()) > 0 ? reviewForm : page.locator("#review-first-name").locator("xpath=ancestor::div[3]");
+    await expect(scope.getByRole("button", { name: /edit career history|edit your submission/i }))
+      .toHaveCount(0);
   });
 
   test("the review asks whether the manager is still in the role, as the add form does", async ({ page }) => {

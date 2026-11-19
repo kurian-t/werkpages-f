@@ -41,13 +41,13 @@ test.describe("BossProfile - view states", () => {
       });
     });
 
-    test("edit manager details button is visible for all users", async ({
+    test("edit career history button is visible for all users", async ({
       page,
     }) => {
       await page.goto(`/manager/${TEST_MANAGER_ID}`);
-      // Button text is "Edit Manager Details" (aria-label differs by state)
+      // Button text is "Edit Career History" (aria-label differs by state)
       await expect(
-        page.locator("button").filter({ hasText: /edit manager details/i })
+        page.locator("button").filter({ hasText: /edit career history/i })
       ).toBeVisible({ timeout: 10_000 });
     });
   });
@@ -66,12 +66,12 @@ test.describe("BossProfile - view states", () => {
       ).toBeVisible({ timeout: 10_000 });
     });
 
-    test("edit manager details button is visible for logged-in user", async ({
+    test("edit career history button is visible for logged-in user", async ({
       page,
     }) => {
       await page.goto(`/manager/${TEST_MANAGER_ID}`);
       await expect(
-        page.locator("button").filter({ hasText: /edit manager details/i })
+        page.locator("button").filter({ hasText: /edit career history/i })
       ).toBeVisible({ timeout: 5_000 });
     });
   });

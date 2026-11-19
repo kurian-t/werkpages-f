@@ -24,6 +24,25 @@
     --primary: 262 80% 50%;
     --primary-foreground: 0 0% 100%;
 
+    /*
+      THE BRAND PURPLES, NAMED.
+
+      These three were written out as hex literals in class strings - #2e0562, #6d5091 and
+      #6d28d9 - which is why a component shared with the other brand could not be shared: its
+      colour was baked into its markup, so the two copies differed by a hex code and then drifted
+      everywhere else while nobody could tell which differences were deliberate.
+
+      Decimals, not round numbers: these are the exact HSL of those three hex values, so nothing
+      on the site changes colour. brand-deep 266.5 90.3% 20.2% renders #2e0562 exactly.
+
+      deep    - the solid brand purple: primary buttons, progress bars, focus rings.
+      metric  - the muted purple a large figure is set in.
+      accent  - the brighter purple a title lifts to on hover.
+    */
+    --brand-deep: 266.5 90.3% 20.2%;
+    --brand-metric: 267 28.9% 44.1%;
+    --brand-accent: 263.4 70% 50.4%;
+
     --secondary: 200 100% 50%;
     --secondary-foreground: 0 0% 100%;
 
@@ -71,6 +90,25 @@
 
     --primary: 262 80% 50%;
     --primary-foreground: 220 19% 9%;
+
+    /*
+      THE BRAND PURPLES, NAMED.
+
+      These three were written out as hex literals in class strings - #2e0562, #6d5091 and
+      #6d28d9 - which is why a component shared with the other brand could not be shared: its
+      colour was baked into its markup, so the two copies differed by a hex code and then drifted
+      everywhere else while nobody could tell which differences were deliberate.
+
+      Decimals, not round numbers: these are the exact HSL of those three hex values, so nothing
+      on the site changes colour. brand-deep 266.5 90.3% 20.2% renders #2e0562 exactly.
+
+      deep    - the solid brand purple: primary buttons, progress bars, focus rings.
+      metric  - the muted purple a large figure is set in.
+      accent  - the brighter purple a title lifts to on hover.
+    */
+    --brand-deep: 266.5 90.3% 20.2%;
+    --brand-metric: 267 28.9% 44.1%;
+    --brand-accent: 263.4 70% 50.4%;
 
     --secondary: 200 100% 50%;
     --secondary-foreground: 220 19% 9%;

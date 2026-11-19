@@ -84,7 +84,7 @@ export function CompanyTile({
       <div className="flex items-center gap-3 mb-3">
         <CompanyLogoImg company={company.name} logoUrl={company.logoUrl} from={company} sizeClass="h-12 w-12" />
         <div className="min-w-0 flex-1">
-          <h2 className="font-semibold text-sm text-foreground group-hover:text-[#6d28d9] leading-tight transition-colors line-clamp-2">
+          <h2 className="font-semibold text-sm text-foreground group-hover:text-brand-accent leading-tight transition-colors line-clamp-2">
             {company.name}
           </h2>
           {/*

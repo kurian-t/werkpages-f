@@ -1,0 +1,286 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# THE PARITY EXCEPTION LIST
+#
+# WerkPages and RateMyManagers are ONE shared platform with two brands, not two
+# independently evolving products. WerkPages is the canonical implementation and the
+# authoritative owner of shared platform functionality.
+#
+# Everything shared is expected to MATCH. This file is the complete list of what is
+# allowed not to, and every entry carries the reason. An entry here is a product
+# decision; anything not here that differs is drift, and the checker fails on it.
+#
+# DO NOT ADD AN ENTRY TO MAKE CI GREEN. An entry is how a difference becomes
+# permanent, so adding one is a product decision, not a build fix. If something
+# differs and should not, fix the code in both products.
+#
+# This file is IDENTICAL in both repositories. Change it in both, in one sitting.
+# ─────────────────────────────────────────────────────────────────────────────
+
+meta:
+  last_reviewed: 2026-11-16
+  canonical_owner: werkpages
+  # Read a migration version out of flyway_schema_history or the deployment record,
+  # never out of a document. See CLAUDE.md.
+  migration_owner: werkpages
+  rmm_migrations_frozen_at: 43
+
+# ── 1. The three WerkPages-only feature areas ───────────────────────────────
+#
+# These are the ONLY features that may exist in one product and not the other.
+werkpages_only_features:
+  - name: industries
+    reason: >-
+      Industry pages, APIs and classifications. An explicitly permitted feature
+      difference. RateMyManagers has no industry surface and is not expected to.
+    owns:
+      openapi_paths: ["/api/industries", "/api/industries/"]
+      openapi_operations: ["industr"]
+      frontend_files: ["Industry", "Industries"]
+      java_classes: ["Industry"]
+      columns: ["companies.industry", "company_stats_live.industry"]
+      # "industries.spec.ts" as well as "industry-..." - the stem, not the word.
+      specs: ["industr"]
+
+  - name: interview_ratings
+    reason: >-
+      Rating an interview experience, and every statistic derived from it. An
+      explicitly permitted feature difference.
+    owns:
+      openapi_paths: ["/api/interviews", "/api/companies/{slug}/interviews"]
+      openapi_operations: ["interview"]
+      # Substrings, not paths: client/lib/interviews.ts and
+      # client/hooks/useCompanyInterviews.ts are this feature too, and
+      # client/lib/strongestWeakest.test.ts is an interview test whose FILENAME
+      # hides that - it imports INTERVIEW_CATEGORIES from @/lib/interviews.
+      frontend_files: ["interview", "strongestWeakest"]
+      java_classes: ["InterviewService", "InterviewRepository"]
+      columns: ["interview_reviews", "company_stats_live.interview_count",
+                "company_stats_live.interview_avg_rating"]
+      specs: ["interview", "strongestWeakest"]
+
+  - name: resume_builder
+    reason: >-
+      Building and exporting a resume. An explicitly permitted feature difference.
+    owns:
+      openapi_paths: ["/api/resume"]
+      openapi_operations: ["resume"]
+      frontend_files: ["Resume", "resume-templates",
+                       # The resume editor. Nothing else renders rich text in
+                       # either product, so it is the builder's, not a shared field.
+                       "RichTextEditor"]
+      java_classes: ["ResumeService", "ResumeRepository"]
+      specs: ["resume"]
+
+# ── 2. The search page ──────────────────────────────────────────────────────
+#
+# A DELIBERATE, PRODUCT-DECIDED difference at the search-page level, recorded here
+# on 2026-11-16 so that future parity audits stop reporting it as a defect.
+search_page:
+  canonical_url: /search
+  reason: >-
+    Both products serve their search experience at /search, which is the canonical
+    search URL in both. The PAGE BEHIND IT IS DELIBERATELY DIFFERENT and must stay
+    that way: RateMyManagers keeps its own search page, FindManagerForm, layout,
+    inputs and interactions exactly as they are. Company search is NOT to be added
+    to it, its flow is NOT to be redesigned, and it is NOT to be replaced with
+    WerkPages' Explore component.
+  components:
+    werkpages: client/pages/Explore.tsx
+    ratemymanager: client/pages/FindYourManager.tsx
+  notes:
+    - >-
+      Explore.tsx is simply the internal component implementing WerkPages' /search
+      page. Its filename is not a reason to rename or rewrite it, and WerkPages has
+      no separate user-facing Explore destination competing with Search.
+    - >-
+      /explore and /find still resolve in WerkPages and redirect to /search, so old
+      links keep working. Nothing points at them deliberately any more: internal
+      destinations and the backend's DEFAULT_RETURN_TO are /search in both products.
+    - >-
+      WerkPages retains its industry-specific search, which is covered by the
+      industries exception above.
+    - >-
+      The SHARED manager-search business rules still apply identically in both. The
+      exception is the page, not the rules. See the manager-search-flow corpus
+      document, which is mandatory reading before any change to either.
+  allowed_differing_files:
+    - client/pages/Explore.tsx
+    - client/pages/FindYourManager.tsx
+    - client/components/FindManagerForm.tsx
+
+# ── 3. Branding, theme and copy ─────────────────────────────────────────────
+branding:
+  reason: >-
+    Two brands. Colour, wording and imagery are expected to differ; the COMPONENT
+    is not. A shared component names its colour with a theme token and the token
+    resolves per product, so the markup matches and only the value differs.
+  allowed:
+    - theme token VALUES in client/global.css, including --brand-deep,
+      --brand-metric and --brand-accent
+    - the product name, domain and logo wherever they appear
+    - per-product product copy, including the review/opinion noun
+  not_allowed:
+    - a hardcoded colour in a shared component, which is what made two copies of
+      one component differ by a hex code and then drift everywhere else
+
+# ── 4. Infrastructure and environment ───────────────────────────────────────
+infrastructure:
+  reason: Legitimate environment-specific differences. Not product behaviour.
+  allowed:
+    - separate Auth0 tenants, client ids and callback URLs
+    - separate domains, ECR image names, compose service names and IAM policies
+    - separate PostHog projects
+    - local port allocations: RMM 8080/8888/4173, WerkPages 8081/8889/4174
+    - >-
+      RateMyManagers' nginx is the public edge and terminates TLS on 80/443 with
+      ssl_verify_client; WerkPages' frontend container is internal.
+    - >-
+      WerkPages ships with SITE_HIDDEN_FROM_SEARCH = true while it is pre-launch.
+  allowed_exports:
+    # One product is not launched and the other is. The flag is the difference.
+    - SITE_HIDDEN_FROM_SEARCH
+    - >-
+      RateMyManagers keeps its app in the ratemymanager/ subdirectory while
+      WerkPages keeps it at the repository root, so CI paths differ. The four
+      allowed CI differences are listed in the header of ci.yml itself.
+    - >-
+      RateMyManagers' PlatformMigrations shim and PLATFORM_MIGRATIONS_DIR exist
+      because it reads a schema it does not own.
+
+# ── 5. Single-controller ownership ──────────────────────────────────────────
+#
+# Not an exception. An INVARIANT, listed here because the checker enforces it and
+# this is where somebody will come looking for the reason.
+single_controller:
+  reason: >-
+    One shared PostgreSQL database, one flyway_schema_history, one authoritative
+    migration stream. Anything that should execute ONCE against shared data has
+    exactly one executor, and that executor is WerkPages.
+  werkpages_owns:
+    - Flyway migrations, all of them, including any needed only by an RMM feature
+    - the daily MaintenanceSweep timer
+    - the six-hourly company_stats_live reconciliation timer
+    - the anonymous ghost-slot expiry sweep
+  ratemymanager_keeps:
+    - every API its own users and admins need, including the admin-triggered
+      company_stats rebuild and the boot-time maintenance staleness check
+    - MaintenanceSweep itself, and its tests - what it must not have is a TIMER
+  never:
+    - a competing scheduled job or duplicate database-wide process in both apps
+    - a second implementation of a shared calculation, in either product
+
+# ── 5b. npm dependency versions ───────────────────────────────
+#
+# Reviewed 2026-11-16. Three differed; one was aligned and two are deliberately left.
+dependencies:
+  aligned:
+    - name: react-router-dom
+      to: ^6.30.6
+      reason: >-
+        A patch bump on the package that decides shared routing behaviour, which is
+        exactly where the two products must agree. RateMyManagers moved 6.30.1 to
+        6.30.6 to match; the lockfile and node_modules moved with it.
+  left_differing:
+    - name: axios
+      werkpages: ^1.20.0
+      ratemymanager: ^1.13.6
+      reason: >-
+        DELIBERATELY NOT ALIGNED. Seven minor versions on a package in every request
+        path, to fix nothing that has been identified. No security, compatibility or
+        functional reason was found, and a version number is not a reason on its own.
+        Align it when something actually needs 1.20, and then in both products at once.
+    - name: express
+      werkpages: ^5.2.1
+      ratemymanager: ^5.1.0
+      reason: >-
+        DELIBERATELY NOT ALIGNED, same reasoning. Express serves the preview build
+        here, so a regression would surface as a test-infrastructure failure rather
+        than a product one, which is a poor trade for matching digits.
+  rule: >-
+    A dependency version is never changed without the user's explicit approval - see
+    CLAUDE.md section 38 - so this list is a record of decisions, not a backlog. The
+    parity checker deliberately does NOT fail on these: pom and package versions are
+    reviewed by a person, and a checker that forced them to match would turn section 38
+    into a build error.
+
+# ── 6. TRACKED DRIFT — NOT an exception list ────────────────────────────────
+#
+# Differences the checker has FOUND and nobody has decided to keep. An entry here is
+# an admission and a deadline, not permission: it says "this is drift, it is known,
+# and it is being fixed", which is categorically different from the exceptions above.
+#
+# How the checker treats it:
+#   * a tracked item is reported on every run, by name, under [DRIFT]
+#   * CI passes --allow-tracked-drift so the pipeline is not permanently red, and the
+#     job summary lists every item
+#   * ANY DIFFERENCE NOT LISTED HERE OR ABOVE FAILS THE BUILD IMMEDIATELY
+#   * an item still here after its review_by date FAILS the build, so the deadline is
+#     enforced rather than aspirational
+#
+# Clearing an item means porting the functionality, not deleting the line.
+tracked_drift:
+  review_by: 2026-12-15
+  found: 2026-11-16
+  found_by: >-
+    The first run of this checker, during the platform parity correction of
+    2026-11-16. These were NOT part of that authorized change set and were
+    deliberately not fixed inside it; they are reported instead.
+  items:
+    - id: role-alias-classification-admin
+      only_in: werkpages
+      reason_not_fixed: >-
+        Outside the authorized change set. The role-alias classification admin
+        surface is part of the Rev 268 role work, which is implemented in both
+        products, so this looks like an unported admin tool rather than a
+        permitted feature difference. It needs a product decision before it is
+        ported, because it also reaches the role taxonomy.
+      openapi_operations: [classifyRoles, listRoleAliases, setRoleAlias]
+      java_classes: [RoleClassifier]
+      java_methods:
+        RoleService: [classifyManually, classifyPending, coverage, listAliases]
+        RoleAliasRepository: [findAllWithCounts, findByTitle, findCoverage,
+                              findUnclassifiedTitles, upsert, upsertManual]
+        CompanyRepository: [countUnclassified, findUnclassified, setClassifier]
+        AnthropicClient: [CompanyToClassify]
+
+    - id: manager-icons-by-domain
+      only_in: werkpages
+      reason_not_fixed: >-
+        ManagerService.iconsByDomain has no counterpart here. Logo identity is
+        shared behaviour, so this is probably a port that never happened, but it
+        is not in the authorized change set.
+      java_methods:
+        ManagerService: [iconsByDomain]
+
+    - id: pin-current-logo
+      only_in: werkpages
+      reason_not_fixed: >-
+        CompanyRepository.pinCurrentLogo, an admin brand action. Same reasoning.
+      java_methods:
+        CompanyRepository: [pinCurrentLogo]
+
+    - id: seo-and-canonical-url-specs
+      only_in: both
+      reason_not_fixed: >-
+        The same subject is covered under different names in each product:
+        canonical-urls.spec.ts in WerkPages, seo-index-signals.spec.ts and
+        brand-identity.spec.ts here. Reconciling them means reading all three and
+        deciding what the shared assertion is, which is work, not a rename.
+      specs: [canonical-urls.spec.ts, seo-index-signals.spec.ts, brand-identity.spec.ts]
+
+    - id: route-meta-test-seam
+      only_in: werkpages
+      reason_not_fixed: >-
+        RouteMeta.tsx exports __classifyForTest in WerkPages and not here, though
+        both carry the identical private classify(). Exporting an unused seam to
+        make a checker quiet is worse than the difference; what this wants is the
+        test that uses it, ported, and that is not in the authorized change set.
+      frontend_files: [__classifyForTest]
+
+    - id: company-rating-strip-spec
+      only_in: werkpages
+      reason_not_fixed: >-
+        PORTABLE, and worth porting. It tests how companyRating reads on the
+        company profile; this product has that field. It was previously recorded
+        as testing a component neither product has, which was wrong.
+      specs: [company-rating-strip.spec.ts]

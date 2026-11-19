@@ -101,8 +101,12 @@ test.describe("BossProfile - admin edit section", () => {
     await page.getByRole("button").filter({ hasText: /^Edit$/ }).first().click();
     // Admin edit form should appear
     await expect(page.getByText(/admin edit.*changes cascade/i)).toBeVisible({ timeout: 5000 });
-    // Admin edit form shows inputs for name, title, company, LinkedIn
-    await expect(page.locator('input[placeholder*="linkedin"]').first()).toBeVisible({ timeout: 3000 });
+    /*
+      Probed on the Name field rather than the LinkedIn one, which has been removed. The test is
+      about the admin form opening at all, and the LinkedIn input was only ever the thing it
+      happened to look for.
+    */
+    await expect(page.getByTestId("admin-edit-name")).toBeVisible({ timeout: 3000 });
   });
 
   test("admin edit form: fill fields and save", async ({ page }) => {
@@ -120,9 +124,9 @@ test.describe("BossProfile - admin edit section", () => {
     await expect(page.getByRole("heading", { name: /alex johnson/i }).first()).toBeVisible({ timeout: 10000 });
     await page.getByRole("button").filter({ hasText: /^Edit$/ }).first().click();
     await expect(page.getByText(/admin edit.*changes cascade/i)).toBeVisible({ timeout: 5000 });
-    // Fill in the LinkedIn URL field (it's empty by default)
-    const linkedinInput = page.locator('input[placeholder*="linkedin"]').first();
-    await linkedinInput.fill("https://linkedin.com/in/alexjohnson");
+    // Fills the title instead of the removed LinkedIn field; the point is that a field accepts
+    // input and Save then persists it.
+    await page.getByTestId("admin-edit-title").fill("Director of Engineering");
     // Click Save changes
     await page.getByRole("button", { name: /save changes/i }).click();
     // Form closes (adminEditing = false) and success toast appears

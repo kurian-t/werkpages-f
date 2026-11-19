@@ -134,16 +134,16 @@ test.describe("Access Control", () => {
       await expect(writeBtn).toBeDisabled({ timeout: 10_000 });
     });
 
-    test("edit manager details is disabled for banned user", async ({
+    test("edit career history is disabled for banned user", async ({
       page,
     }) => {
       const bannedUser = { ...MOCK_USER, isBanned: true };
       await mockManagerPage(page, { loggedIn: true, user: bannedUser });
       await page.goto(`/manager/${TEST_MANAGER_ID}`);
 
-      // Button text is "Edit Manager Details"; aria-label says "Your account has been suspended" when banned
+      // Button text is "Edit Career History"; aria-label says "Your account has been suspended" when banned
       await expect(
-        page.locator("button").filter({ hasText: /edit manager details/i })
+        page.locator("button").filter({ hasText: /edit career history/i })
       ).toBeDisabled({ timeout: 5_000 });
     });
   });
