@@ -54,7 +54,7 @@ export function Layout({ children }: LayoutProps) {
           {/* Legal line */}
           <div className="mt-6 border-t border-border pt-5 text-center">
             <p className="text-[11px] text-muted-foreground">
-              All content is user-submitted and reflects personal opinions only. Profiles and reviews are not independently verified.{" "}
+              All content is user-submitted and reflects personal opinions only.{" "}
               <Link to="/terms" className="underline hover:text-foreground transition-colors">Terms of Use</Link>
               {" · "}
               <Link to="/privacy" className="underline hover:text-foreground transition-colors">Privacy Policy</Link>
