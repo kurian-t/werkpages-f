@@ -515,7 +515,6 @@ export function summarize(
 export function buildSubmission(
   name: string,
   originalName: string,
-  explanation: string,
   drafts: PositionDraft[],
   originals: Map<string, Employment>,
 ): Record<string, unknown> {
@@ -560,7 +559,7 @@ export function buildSubmission(
 
   const changedName = name.trim() && name.trim() !== originalName.trim() ? name.trim() : null;
 
-  return { name: changedName, explanation: explanation.trim(), positions };
+  return { name: changedName, positions };
 }
 
 /**

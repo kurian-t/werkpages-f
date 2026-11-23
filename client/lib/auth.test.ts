@@ -66,6 +66,27 @@ describe("starting a login", () => {
     vi.stubGlobal("sessionStorage", { setItem, getItem: () => null, removeItem: vi.fn() });
     const { startSocialLogin } = await import("./auth");
     startSocialLogin("google-oauth2", "/add");
-    expect(setItem).not.toHaveBeenCalled();
+
+    /*
+      NARROWED 2026-11-18, and the narrowing matters, so it is written down.
+
+      This asserted `setItem` was never called AT ALL, and it began failing when
+      `startSocialLogin` started calling `markAuthHandoff`, which writes one key:
+      `rmm_auth_handoff_at`, a timestamp marking that a sign-in redirect is in flight. That is
+      not OAuth state. It binds nothing, an attacker forging it gains nothing, and losing it
+      costs only a draft handoff.
+
+      "No writes whatsoever" was never the property worth protecting; it was a cheap proxy for
+      it. The property is that `state` and `returnTo` never live in browser storage, because a
+      value the browser holds cannot bind a login to that browser. So the assertion now names
+      those two directly and permits nothing else to resemble them.
+    */
+    const written = setItem.mock.calls.map(([key, value]) => `${key}=${value}`);
+    for (const entry of written) {
+      expect(entry, `OAuth state must never reach sessionStorage, found: ${entry}`)
+        .not.toMatch(/state|return[_-]?to|code[_-]?verifier|nonce/i);
+    }
+    // And the one write that IS expected stays expected, so a future write cannot hide beside it.
+    expect(setItem.mock.calls.map(([key]) => key)).toEqual(["rmm_auth_handoff_at"]);
   });
 });

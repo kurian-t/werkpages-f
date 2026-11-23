@@ -577,11 +577,21 @@ test.describe("BossProfile - review interactions and states", () => {
     await expect(page.getByText(/acme corp/i).first()).toBeVisible({ timeout: 5000 });
   });
 
-  test("logged-in user with review sees review content", async ({ page }) => {
+  /*
+    THE PROSE IS GONE, SO THESE ANCHOR ON THE AUTHOR INSTEAD.
+
+    Free-form review text was removed on 2026-11-18: a rating is scores. The mock still CARRIES a
+    `text` field, deliberately, and the assertion is now that it does not appear - which makes
+    these a regression test for the removal rather than two specs that merely stopped checking.
+  */
+  test("logged-in user with review sees the review card, and no prose", async ({ page }) => {
     await mockBossProfilePage(page, { loggedIn: true, hasContributed: true, reviews: MOCK_REVIEWS });
     await page.goto(`/companies/${TEST_COMPANY_SLUG}/managers/${TEST_MANAGER_SLUG}`);
     await expect(page.getByRole("heading", { name: /alex johnson/i }).first()).toBeVisible({ timeout: 8000 });
-    await expect(page.getByText(/great manager/i)).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText(/testuser/i).filter({ visible: true }).first())
+      .toBeVisible({ timeout: 8000 });
+    // The mock supplies "Great manager." and nothing may render it.
+    await expect(page.getByText(/great manager/i)).toHaveCount(0);
   });
 
   test("unauthenticated user sees write-a-review CTA", async ({ page }) => {
@@ -591,17 +601,20 @@ test.describe("BossProfile - review interactions and states", () => {
     await expect(page.getByText(/write a review|rate this manager|share your experience/i).first()).toBeVisible({ timeout: 5000 });
   });
 
-  test("helpful vote button is clickable", async ({ page }) => {
-    const reviewWithHelp = { ...MOCK_REVIEWS[0], authorDisplayName: "otheruser", author: "otheruser" };
-    await mockBossProfilePage(page, { loggedIn: true, hasContributed: true, reviews: [reviewWithHelp] });
-    await page.goto(`/companies/${TEST_COMPANY_SLUG}/managers/${TEST_MANAGER_SLUG}`);
-    await expect(page.getByText(/great manager/i)).toBeVisible({ timeout: 8000 });
-    const helpfulBtn = page.getByRole("button").filter({ hasText: /helpful|useful/i }).first();
-    if (await helpfulBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await helpfulBtn.click();
-    }
-    await expect(page.getByText(/great manager/i)).toBeVisible({ timeout: 3000 });
-  });
+  /*
+   * REMOVED 2026-11-18: "helpful vote button is clickable".
+   *
+   * There is no helpful-voting feature in either product and there never has been. The test
+   * looked for the button with `if (await helpfulBtn.isVisible(...))` and clicked it only if one
+   * turned up, so it never found one and passed regardless - a test that asserted nothing while
+   * reading as coverage for a feature nobody built.
+   *
+   * What exists is vestigial and is deliberately left alone here: `reviews.helpful_count` from
+   * V1__init.sql (always 0, nothing writes it), an unreachable `case "helpful"` sort branch, and
+   * `helpful` in the API's sort enum. There is no vote endpoint, no per-user vote table and no
+   * UI. Removing those is a separate decision.
+   */
+
 });
 
 // ─── AddBoss.tsx - multi-step form flow ───────────────────────────────────────

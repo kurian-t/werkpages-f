@@ -65,7 +65,6 @@ export function CareerEditor({
   const [name, setName]         = useState(managerName);
   const [nameOpen, setNameOpen] = useState(false);
   const [openKey, setOpenKey]   = useState<string | null>(null);
-  const [explanation, setExplanation] = useState("");
   const [submitting, setSubmitting]   = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -83,7 +82,7 @@ export function CareerEditor({
   const draftKey = `career-editor-draft:${managerId}`;
 
   const saveDraft = (next: {
-    name: string; explanation: string; drafts: PositionDraft[];
+    name: string; drafts: PositionDraft[];
   }) => {
     try { sessionStorage.setItem(draftKey, JSON.stringify(next)); } catch { /* not available */ }
   };
@@ -122,7 +121,6 @@ export function CareerEditor({
             if (Array.isArray(parsed?.drafts)) {
               setDrafts(parsed.drafts);
               if (typeof parsed.name === "string") setName(parsed.name);
-              if (typeof parsed.explanation === "string") setExplanation(parsed.explanation);
               restored = true;
             }
           }
@@ -174,14 +172,14 @@ export function CareerEditor({
     if (!signedIn) {
       // Written synchronously, BEFORE handing over to authentication: an effect would run after
       // the render that follows, which never happens if the handler navigates away in this tick.
-      saveDraft({ name, explanation, drafts });
+      saveDraft({ name, drafts });
       onAuthRequired(() => void submit());
       return;
     }
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const body = buildSubmission(name, managerName, explanation, drafts, originals);
+      const body = buildSubmission(name, managerName, drafts, originals);
       const res = await axios.post(`${API_BASE}/api/managers/${managerId}/career-edit`, body);
       clearDraft();
       onSubmitted({
@@ -200,7 +198,7 @@ export function CareerEditor({
           a draft written any later is a draft never written. Without this the 401 path threw away
           a complete answer and brought them back to an empty form.
         */
-        saveDraft({ name, explanation, drafts });
+        saveDraft({ name, drafts });
         onAuthRequired(() => void submit());
         return;
       }
@@ -328,36 +326,6 @@ export function CareerEditor({
                 <Plus size={16} aria-hidden="true" /> Add position
               </button>
 
-              {/*
-                ONE EXPLANATION FOR THE WHOLE SUBMISSION, ASKED ON THE FORM ITSELF.
-
-                The audit trail needs a reason against every field it records, but asking per field
-                would mean retyping the same sentence to fix five things, so this one is reused for
-                each correction the submission produces.
-
-                It used to be asked on a separate Review Changes step. That step was removed: it
-                restated what the person had just typed and made them press a second button to
-                send it. The question itself is required by the API, the service and a CHECK on
-                manager_edits, so it lives here rather than disappearing with the page.
-              */}
-              <div>
-                <label htmlFor="career-explanation" className="mb-2 block text-sm font-semibold text-foreground">
-                  How do you know? <span className="text-destructive">*</span>
-                </label>
-                <textarea
-                  id="career-explanation"
-                  value={explanation}
-                  onChange={e => setExplanation(e.target.value)}
-                  rows={3}
-                  maxLength={2000}
-                  placeholder="e.g. I worked in this team until 2023 and they moved to a different company in March."
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  One explanation covers every change you make above.
-                </p>
-              </div>
-
               {submitError && (
                 <p data-testid="submit-error" className="text-sm text-destructive">{submitError}</p>
               )}
@@ -377,8 +345,7 @@ export function CareerEditor({
 
             Every condition the old pair checked between them is checked here, which is the part
             worth being careful about: `blocked` is a position that cannot be submitted yet, and
-            the explanation is required by the API, the service and a CHECK on manager_edits, so
-            submitting without it would be refused by the server rather than caught here.
+            `anything` is a submission with no change in it.
           */}
           {blocked && (
             <p className="mb-2 text-xs font-medium text-destructive">{blocked}</p>
@@ -386,8 +353,7 @@ export function CareerEditor({
           <button
             type="button"
             onClick={() => void submit()}
-            disabled={!anything || Boolean(blocked) || loading || submitting
-                      || !explanation.trim()}
+            disabled={!anything || Boolean(blocked) || loading || submitting}
             data-testid="submit-changes"
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >

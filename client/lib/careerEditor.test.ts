@@ -178,7 +178,7 @@ describe("buildSubmission", () => {
                            employmentStatus: "ended" });
     const drafts = [draftOf(a), { ...draftOf(b), title: "Night Supervisor" }];
 
-    const body = buildSubmission("Priya", "Priya", "why", drafts, originals(a, b)) as
+    const body = buildSubmission("Priya", "Priya", drafts, originals(a, b)) as
       { positions: Record<string, unknown>[] };
 
     // Opening three cards and editing one is a one-position contribution.
@@ -189,7 +189,7 @@ describe("buildSubmission", () => {
 
   it("sends an addition with no roleId, because it names no existing employment", () => {
     const d = { ...emptyDraft(), title: "Night Lead", company: "Marlowe", companyId: 9 };
-    const body = buildSubmission("P", "P", "why", [d], originals()) as
+    const body = buildSubmission("P", "P", [d], originals()) as
       { positions: Record<string, unknown>[] };
     expect(body.positions[0].intent).toBe("add");
     expect(body.positions[0].roleId).toBeNull();
@@ -197,7 +197,7 @@ describe("buildSubmission", () => {
 
   it("identifies a correction by id and never by company name", () => {
     const e = employment({ id: 77 });
-    const body = buildSubmission("P", "P", "why", [{ ...draftOf(e), title: "X" }],
+    const body = buildSubmission("P", "P", [{ ...draftOf(e), title: "X" }],
                                  originals(e)) as { positions: Record<string, unknown>[] };
     // Company name cannot distinguish two spells at one employer; only the id can.
     expect(body.positions[0].roleId).toBe(77);
@@ -206,35 +206,28 @@ describe("buildSubmission", () => {
   it("never sends an end date for a role still held", () => {
     const d = { ...emptyDraft(), title: "Lead", company: "C", companyId: 1,
                 status: "ongoing" as const, endDate: "2024-01" };
-    const body = buildSubmission("P", "P", "why", [d], originals()) as
+    const body = buildSubmission("P", "P", [d], originals()) as
       { positions: Record<string, unknown>[] };
     expect(body.positions[0].endDate).toBeNull();
   });
 
   it("omits a start date rather than inventing one", () => {
     const d = { ...emptyDraft(), title: "Lead", company: "C", companyId: 1 };
-    const body = buildSubmission("P", "P", "why", [d], originals()) as
+    const body = buildSubmission("P", "P", [d], originals()) as
       { positions: Record<string, unknown>[] };
     expect(body.positions[0].startDate).toBeNull();
     expect(body.positions[0].periodKnown).toBe(false);
   });
 
   it("sends a name change only when the name actually moved", () => {
-    const unchanged = buildSubmission("  Priya  ", "Priya", "why", [], originals()) as
+    const unchanged = buildSubmission("  Priya  ", "Priya", [], originals()) as
       { name: string | null };
     expect(unchanged.name).toBeNull();
-    const changed = buildSubmission("Priya Iyer", "Priya", "why", [], originals()) as
+    const changed = buildSubmission("Priya Iyer", "Priya", [], originals()) as
       { name: string | null };
     expect(changed.name).toBe("Priya Iyer");
   });
 
-  it("carries one explanation for the whole submission", () => {
-    const e = employment();
-    const body = buildSubmission("P", "P", "  because I worked there  ",
-                                 [{ ...draftOf(e), title: "X" }], originals(e)) as
-      { explanation: string };
-    expect(body.explanation).toBe("because I worked there");
-  });
 });
 
 describe("hasAnythingToSubmit", () => {
@@ -405,7 +398,7 @@ describe("the manager-record position", () => {
   it("is sent as an addition carrying the marker, because there is no row to name yet", () => {
     const e = fromRecord({ title: "Enginering Manager" });
     const d = { ...draftOf(e), title: "Engineering Manager" };
-    const body = buildSubmission("P", "P", "typo", [d], originals(e)) as
+    const body = buildSubmission("P", "P", [d], originals(e)) as
       { positions: Record<string, unknown>[] };
     expect(body.positions).toHaveLength(1);
     expect(body.positions[0].intent).toBe("add");
@@ -482,7 +475,7 @@ describe("titles are normalised on submission", () => {
   */
   const titleSent = (typed: string): string | null => {
     const d = { ...emptyDraft(), title: typed, company: "Acme", companyId: 1 };
-    const body = buildSubmission("P", "P", "why", [d], originals()) as
+    const body = buildSubmission("P", "P", [d], originals()) as
       { positions: Record<string, unknown>[] };
     return body.positions[0].title as string | null;
   };
@@ -509,7 +502,7 @@ describe("titles are normalised on submission", () => {
 
   it("sends null rather than an empty string when there is no title", () => {
     const d = { ...emptyDraft(), title: "   ", company: "Acme", companyId: 1 };
-    const body = buildSubmission("P", "P", "why", [d], originals()) as
+    const body = buildSubmission("P", "P", [d], originals()) as
       { positions: Record<string, unknown>[] };
     // changedFields leaves the title out entirely when it is blank, so the position carries none.
     expect(body.positions[0]?.title ?? null).toBeNull();

@@ -334,24 +334,19 @@ test.describe("Career history editor", () => {
     await expect(notice).toContainText("3 people's ratings");
   });
 
-  test("Submit needs an explanation", async ({ page }) => {
-    await setup(page);
-    await openEditor(page);
-
-    await page.getByTestId("position-card-0").getByRole("button", { name: /^Edit/ }).click();
-    await page.getByRole("button", { name: "Edit title details" }).click();
-    await page.getByLabel("Title", { exact: false }).first().fill("Senior Depot Supervisor");
-    await page.getByRole("button", { name: "Done editing this position" }).click();
-
-    /*
-      One explanation for the whole submission, and it is required: role_corrections.reason is
-      NOT NULL, so a contribution with no reason cannot be recorded. It is asked on the form
-      itself - there is no second page - so Submit stays disabled until it is answered.
-    */
-    await expect(page.getByTestId("submit-changes")).toBeDisabled();
-    await page.getByLabel(/how do you know/i).fill("I reported to them until 2023.");
-    await expect(page.getByTestId("submit-changes")).toBeEnabled();
-  });
+  /*
+   * REMOVED 2026-11-18: "Submit needs an explanation".
+   *
+   * It asserted that Submit stays disabled until the "How do you know?" box is answered. That
+   * question was removed from the form on request, and with it the service refusal and the
+   * database CHECK (V111 drops manager_edits_career_editor_explains).
+   *
+   * Its replacement is "the form does not ask how you know, and submits without it", which
+   * asserts the field is absent AND that Submit is enabled on a single change with nothing else
+   * supplied. Recorded rather than deleted silently, because the thing it protected - that a
+   * contribution could not be recorded without a reason - was a real rule and is now gone on
+   * purpose, not by accident.
+   */
 
   /**
    * THE JOURNEY THE OLD FORM COULD NOT DO: end a role and add its successor in one session, and
@@ -379,11 +374,10 @@ test.describe("Career history editor", () => {
     await chooseLocation(page, 3);
     await page.getByRole("button", { name: "Done editing new position" }).click();
 
-    await page.getByLabel(/how do you know/i).fill("They moved to the night team in March 2023.");
     await page.getByTestId("submit-changes").click();
 
     await expect.poll(() => submitted.length).toBe(1);
-    const body = submitted[0] as { positions: Record<string, unknown>[]; explanation: string };
+    const body = submitted[0] as { positions: Record<string, unknown>[] };
 
     expect(body.positions).toHaveLength(2);
     // The correction names the employment by ID, which is the only identifier that can tell two
@@ -395,7 +389,6 @@ test.describe("Career history editor", () => {
     const addition = body.positions.find(p => p.intent === "add")!;
     expect(addition.roleId).toBeNull();
     expect(addition.title).toBe("Night Operations Lead");
-    expect(body.explanation).toContain("night team");
   });
 
   test("a name correction alone is a submission in its own right", async ({ page }) => {
@@ -406,7 +399,6 @@ test.describe("Career history editor", () => {
     await page.getByRole("button", { name: "Edit manager's name details" }).click();
     await page.locator("#manager-name").fill("Alexandra Johnson");
 
-    await page.getByLabel(/how do you know/i).fill("She goes by her full name now.");
     await page.getByTestId("submit-changes").click();
 
     await expect.poll(() => submitted.length).toBe(1);
@@ -436,6 +428,81 @@ test.describe("Career history editor", () => {
    * draft behind" proves the clearing, and "an expired session" below proves the keeping, on the
    * journey that is still reachable.
    */
+  /**
+   * "NOT LISTED? ADD <NAME>" KEEPS THE NAME AND SENDS NO COMPANY ID.
+   *
+   * <p>This is the contributor half of the bug an administrator reported on 2026-11-18: they typed
+   * an employer the picker did not know, took its "Not listed? Add ..." entry, submitted, and the
+   * moderation screen then refused to approve it because the employment named a company with no
+   * record.
+   *
+   * <p>The picker itself was never broken, and this test pins down why, so nobody "fixes" the
+   * wrong end of it. `chooseCreate` deliberately keeps the typed name and clears the company id,
+   * because a company is NOT created from unreviewed contributor input - that is what the daily
+   * company creation cap exists to enforce. Its own comment says "The write path creates."
+   *
+   * <p>So the submission legitimately carries `company` with `companyId: null`, and the fix went
+   * where the promise was broken: approval now creates the company. If this spec ever starts
+   * seeing an id here, the backend's `resolveProposedCompanies` has silently stopped being
+   * exercised by the real client.
+   */
+  test("adding a company the picker does not know sends its name and no id", async ({ page }) => {
+    const submitted = await setup(page);
+    // The picker knows nothing, which is what puts the "Not listed?" row on screen.
+    await page.route("**/api/companies/suggest**", route => route.fulfill({ json: [] }));
+    await openEditor(page);
+
+    await page.getByTestId("add-position").click();
+    const added = page.getByTestId("position-editor-3");
+    await added.locator("#position-title-3").fill("Conseiller");
+    await added.getByPlaceholder(/acme corp/i).fill("ville.levis.qc.ca");
+
+    await page.getByText(/not listed\? add/i).click();
+    // The name survives the click. It used to be the only thing that did.
+    await expect(added.getByPlaceholder(/acme corp/i)).toHaveValue("ville.levis.qc.ca");
+
+    await chooseLocation(page, 3);
+    await page.getByTestId("submit-changes").click();
+
+    await expect.poll(() => submitted.length).toBe(1);
+    const body = submitted[0] as { positions: { company: string; companyId: number | null }[] };
+    const added3 = body.positions.find(p => p.company === "ville.levis.qc.ca");
+    expect(added3, "the typed employer must reach the server").toBeTruthy();
+    expect(added3!.companyId, "no company is created at submit time, by design").toBeNull();
+  });
+
+  /**
+   * THE FORM DOES NOT ASK "HOW DO YOU KNOW?" ANY MORE.
+   *
+   * <p>It was a required textarea that disabled Submit until it was filled in, and it was removed
+   * on request on 2026-11-18. The removal spanned three layers: this form, the service's refusal,
+   * and `manager_edits_career_editor_explains`, the CHECK V109 installed, dropped by V111.
+   *
+   * <p>Asserted rather than left to the absence of the old fills, because a spec that merely stops
+   * typing into a field proves nothing about whether the field is still on screen demanding an
+   * answer. Submit being enabled with a single change and nothing else is the other half.
+   */
+  test("the form does not ask how you know, and submits without it", async ({ page }) => {
+    const submitted = await setup(page);
+    await openEditor(page);
+
+    await expect(page.getByLabel(/how do you know/i)).toHaveCount(0);
+    await expect(page.getByText(/one explanation covers/i)).toHaveCount(0);
+
+    await page.getByTestId("position-card-0").getByRole("button", { name: /^Edit/ }).click();
+    await page.getByRole("button", { name: "Edit title details" }).click();
+    await page.getByLabel("Title", { exact: false }).first().fill("Senior Depot Supervisor");
+    await page.getByRole("button", { name: "Done editing this position" }).click();
+
+    await expect(page.getByTestId("submit-changes")).toBeEnabled();
+    await page.getByTestId("submit-changes").click();
+
+    await expect.poll(() => submitted.length).toBe(1);
+    // And nothing invents one on the way out, which would be a sentence the person never wrote
+    // sitting in a moderator's queue under their name.
+    expect(submitted[0]).not.toHaveProperty("explanation");
+  });
+
   test("a successful submission does not leave the draft behind", async ({ page }) => {
     const submitted = await setup(page);
     await openEditor(page);
@@ -444,7 +511,6 @@ test.describe("Career history editor", () => {
     await page.getByRole("button", { name: "Edit title details" }).click();
     await page.getByLabel("Title", { exact: false }).first().fill("Senior Depot Supervisor");
     await page.getByRole("button", { name: "Done editing this position" }).click();
-    await page.getByLabel(/how do you know/i).fill("I reported to them until 2023.");
     await page.getByTestId("submit-changes").click();
 
     await expect.poll(() => submitted.length).toBe(1);
@@ -484,7 +550,6 @@ test.describe("Career history editor", () => {
     await page.getByRole("button", { name: "Edit title details" }).click();
     await page.getByLabel("Title", { exact: false }).first().fill("Senior Depot Supervisor");
     await page.getByRole("button", { name: "Done editing this position" }).click();
-    await page.getByLabel(/how do you know/i).fill("I reported to them until 2023.");
     await page.getByTestId("submit-changes").click();
 
     // Written BEFORE handing over to authentication. An effect scheduled for the render that
@@ -554,13 +619,12 @@ test.describe("Career history editor", () => {
     await page.getByRole("button", { name: "Edit title details" }).click();
     await page.getByLabel("Title", { exact: false }).first().fill("Senior Depot Supervisor");
     await page.getByRole("button", { name: "Done editing this position" }).click();
-    await page.getByLabel(/how do you know/i).fill("I reported to them until 2023.");
     await page.getByTestId("submit-changes").click();
 
     await expect(page.getByTestId("submit-error")).toBeVisible();
     // Still open, still holding what they wrote, so Submit can simply be pressed again.
     await expect(page.getByTestId("career-editor")).toBeVisible();
-    await expect(page.getByLabel(/how do you know/i)).toHaveValue(/reported to them/);
+    await expect(page.getByTestId("position-card-0")).toContainText("Senior Depot Supervisor");
   });
 
   /**
@@ -649,7 +713,6 @@ test.describe("Career history editor", () => {
     */
     await editor.getByLabel("From year").selectOption("2013");
     await chooseLocation(page, 2);
-    await page.getByLabel(/how do you know/i).fill("I worked that shift with them in 2013.");
     await expect(page.getByTestId("submit-changes")).toBeEnabled();
   });
 
@@ -678,9 +741,8 @@ test.describe("Career history editor", () => {
     const added = page.getByTestId("position-editor-3");
     await added.locator("#position-title-3").fill("Night Operations Lead");
     await added.getByPlaceholder(/acme corp/i).fill("Halverson Logistics");
-    // Everything else answered, and an explanation given, so the location is the only thing
-    // missing and therefore the only possible reason the button is still disabled.
-    await page.getByLabel(/how do you know/i).fill("They started on the night team in March.");
+    // Everything else answered, so the location is the only thing missing and therefore the only
+    // possible reason the button is still disabled.
 
     await expect(added.getByTestId("position-problem-3")).toContainText(/location is needed/i);
     await expect(page.getByTestId("submit-changes")).toBeDisabled();
@@ -708,7 +770,6 @@ test.describe("Career history editor", () => {
     await page.getByRole("button", { name: "Edit title details" }).click();
     await page.getByLabel("Title", { exact: false }).first().fill("Senior Depot Supervisor");
     await page.getByRole("button", { name: "Done editing this position" }).click();
-    await page.getByLabel(/how do you know/i).fill("I reported to them until 2023.");
 
     await expect(page.getByTestId("submit-changes")).toBeEnabled();
     await page.getByTestId("submit-changes").click();

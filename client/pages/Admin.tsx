@@ -1311,7 +1311,7 @@ export default function Admin() {
                                 </div>
                               </div>
                               <p className="text-xs text-muted-foreground">{review.managerTitle} at {review.managerCompany}</p>
-                              {review.text && <p className="text-xs text-foreground leading-relaxed">{review.text}</p>}
+                              {/* No free-form text: a rating is scores. See BossProfile. */}
                               {review.disposition === "held" && (
                                 <p className="text-xs font-semibold text-amber-800">
                                   Held pending verification

@@ -3968,9 +3968,11 @@ export default function BossProfile() {
                     </div>
                   </div>
 
-                  {review.text && (
-                    <p className="mb-3 text-sm text-foreground leading-relaxed">{review.text}</p>
-                  )}
+                  {/*
+                    NO FREE-FORM TEXT. A rating is scores, not prose. No form collects a review
+                    body, the service no longer accepts one and the API no longer serves the
+                    field, so there is nothing to render and nothing that could arrive later.
+                  */}
 
                   {/* Collapsible category breakdown */}
                   <button

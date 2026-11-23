@@ -633,7 +633,9 @@ test.describe("Admin - manager reviews", () => {
      * their reviews, and making an admin fetch them first invites deciding without them.
      */
     await expect(page.getByText(/anonymous reviewer/i)).toBeVisible({ timeout: 8000 });
-    await expect(page.getByText(/decent manager overall/i)).toBeVisible({ timeout: 3000 });
+    // The mock supplies review text and the admin screen must not render it either: free-form
+    // review text was removed on 2026-11-18 and moderation is no exception.
+    await expect(page.getByText(/decent manager overall/i)).toHaveCount(0);
     await expect(page.getByRole("button", { name: /see reviews|hide reviews/i })).toHaveCount(0);
   });
 });
