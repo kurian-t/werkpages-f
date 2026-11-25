@@ -57,7 +57,7 @@ import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import { DeleteRatingControl } from "@/components/DeleteRatingControl";
 import { RequiredMark } from "@/components/FormFields";
 import { roleKey, sameCompany, sameRole } from "@/lib/careerRoles";
-
+ 
 const RATING_CATEGORIES = [
   "Communication Style",
   "Perceived Approachability",
