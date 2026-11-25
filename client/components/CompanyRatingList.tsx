@@ -34,6 +34,13 @@ interface CompanyRatingRow {
   datesHidden?: boolean | null;
   createdAt: string;
   updatedAt?: string | null;
+  /**
+   * What its author answered when asked to sum it up themselves.
+   *
+   * One of the eleven scores averaged into overallRating above, and the last row of the
+   * breakdown, so the headline is visibly the average of the rows under it.
+   */
+  authorsOverallRating?: number | null;
   /** The handle its author picked. Null on ratings written before authors existed. */
   author: string | null;
   mine: boolean;
@@ -60,9 +67,36 @@ function writtenWhen(createdAt: string, updatedAt?: string | null): string {
 /**
  * What a withheld score looks like: a plausible number, always blurred, never the real one.
  *
- * <p>Ten of them so a ten-category breakdown does not read as the same figure repeated.
+ * <p>Eleven of them, one per row of the breakdown, so it does not read as the same figure
+ * repeated.
  */
-const WITHHELD_SCORES = [4.2, 3.8, 4.5, 3.6, 4.0, 4.4, 3.9, 4.1, 3.7, 4.3];
+const WITHHELD_SCORES = [4.2, 3.8, 4.5, 3.6, 4.0, 4.4, 3.9, 4.1, 3.7, 4.3, 3.5];
+
+/** The author's own overall, labelled the way the manager breakdown labels its own. */
+const AUTHORS_OVERALL_LABEL = "Overall Working Experience";
+
+/**
+ * The rows behind one rating's number, asked order, the author's own overall last.
+ *
+ * ELEVEN rows, not ten. The headline is the average of eleven scores, and a card whose rows do
+ * not add up to the number printed over them is the exact complaint this came from: a breakdown
+ * of five 5s, four 1s and a 3 under a headline of 1.0.
+ */
+function breakdownRows(r: CompanyRatingRow, blurred: boolean) {
+  const raw: { key: string; label: string; value: number | null | undefined }[] =
+    COMPANY_CATEGORIES.map((c, i) => ({
+      key: String(c),
+      label: COMPANY_CATEGORY_LABELS[c],
+      value: blurred ? WITHHELD_SCORES[i] : r.categories?.[c],
+    }));
+  raw.push({
+    key: "authors_overall",
+    label: AUTHORS_OVERALL_LABEL,
+    value: blurred ? WITHHELD_SCORES[COMPANY_CATEGORIES.length] : r.authorsOverallRating,
+  });
+  return raw.filter((row): row is { key: string; label: string; value: number } =>
+    typeof row.value === "number");
+}
 
 /** A stable pick per row, so a stand-in does not change on every render. */
 function stableIndex(seed: string, size: number): number {
@@ -177,7 +211,12 @@ function WorkplaceRatingCard({
 
               {/* The one thing the gate actually withholds. */}
               <div className={`flex-shrink-0 flex items-center gap-1.5 ${blurred ? "blur-sm select-none" : ""}`}>
-                <span className="text-lg font-bold text-foreground tabular-nums leading-none">
+                {/* Testid so a spec can assert THE HEADLINE rather than any element that happens
+                    to print the same number: a breakdown row often does. */}
+                <span
+                  data-testid="workplace-rating-score"
+                  className="text-lg font-bold text-foreground tabular-nums leading-none"
+                >
                   {score.toFixed(1)}
                 </span>
                 {/* The shared Stars: half-filled where the score is, not rounded up. */}
@@ -195,24 +234,23 @@ function WorkplaceRatingCard({
 
             {expanded && (
               <div className="grid gap-1.5 sm:grid-cols-2 mt-3 pt-3 border-t border-border/60">
-                {COMPANY_CATEGORIES.map((c, i) => {
-                  /*
-                    Stand-ins behind the blur.
+                {/*
+                    Stand-ins behind the blur come from breakdownRows.
 
-                    The server strips every category out of a gated row, so without this the
+                    The server strips every score out of a gated row, so without them the
                     breakdown opened onto nothing at all - a reader clicked "Show rating
                     breakdown" and got an empty panel, which reads as a broken control rather
-                    than a withheld one. The numbers here are invented and unreadable; what they
+                    than a withheld one. The numbers are invented and unreadable; what they
                     convey is that there is a full breakdown to be had.
-                  */
-                  const v = blurred ? WITHHELD_SCORES[i % WITHHELD_SCORES.length] : r.categories?.[c];
-                  if (v == null) return null;
+                 */}
+                {breakdownRows(r, blurred).map(({ key, label, value: v }) => {
                   return (
                     <div
-                      key={String(c)}
+                      key={key}
+                      data-testid="workplace-breakdown-row"
                       className="flex items-center justify-between rounded-md bg-muted/40 px-2.5 py-1.5"
                     >
-                      <span className="text-xs text-muted-foreground">{COMPANY_CATEGORY_LABELS[c]}</span>
+                      <span className="text-xs text-muted-foreground">{label}</span>
                       <div className={`flex items-center gap-1 flex-shrink-0 ml-2 ${blurred ? "blur-sm select-none" : ""}`}>
                         <span className="text-xs font-semibold text-foreground tabular-nums">
                           {v.toFixed(1)}

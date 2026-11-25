@@ -143,6 +143,34 @@ test.describe("Rating a workplace @ci", () => {
     await expect(page.getByText("Your overall take, not an average of the ratings above.")).toBeVisible();
   });
 
+  test("Next is inert until BOTH the location and the period are answered", async ({ page }) => {
+    /*
+      Reported: Next was solid while "Where did you work?" read "No location set" and the period
+      was empty. Clicking it was correctly refused and the errors appeared, so nothing invalid
+      could be submitted - but a button that looks usable and does nothing reads as a broken page,
+      and AddBoss and AddInterview have both disabled theirs for as long as they have existed.
+
+      Checked one answer at a time, because a gate that passes on either half is the same bug
+      wearing a different number: the location is mandatory and so is the start of the period.
+    */
+    await openForm(page);
+    await goToDatesStep(page);
+
+    const next = page.getByRole("button", { name: "Next" });
+    await expect(next).toBeDisabled();
+
+    await answerLocation(page);
+    await expect(next).toBeDisabled();
+
+    await page.getByLabel("From month").selectOption("03");
+    await page.getByLabel("From year").selectOption({ index: 3 });
+    await page.getByRole("checkbox", { name: /current/i }).check();
+
+    await expect(next).toBeEnabled();
+    await next.click();
+    await expect(page.getByText("Step 3 of 3 · Red Hat")).toBeVisible();
+  });
+
   test("an incomplete ratings step will not submit", async ({ page }) => {
     // The ratings are the last step now, so the thing they block is the submission rather than a
     // Next. Either way nothing half-answered reaches the server.

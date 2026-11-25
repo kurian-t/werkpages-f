@@ -1,3 +1,4 @@
+import { RatingInput, FormField } from "@/components/RatingInput";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,7 +11,6 @@ import { Layout } from "@/components/Layout";
 import { CompanyLogoImg } from "@/components/ManagerCard";
 import { CompanyField } from "@/components/CompanyField";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
-import { RatingInput, FormField } from "@/components/RatingInput";
 import { AboutPanel, AnonymityCard, FormIntro, FormSubjectCard, HideDatesField, RatingRow } from "@/components/RatingFormParts";
 import { recentYears } from "@/components/MonthYear";
 import { WorkTimelineFields, type MonthYear as MonthYearValue } from "@/components/ManagerFormFields";
@@ -40,6 +40,7 @@ import {
   COMPANY_CATEGORY_LABELS,
   emptyCompanyRatingDraft,
   toCompanyRatingPayload,
+  isCompanyStepComplete,
   validateCompanyRating,
   type CompanyRatingDraft,
   type CompanyRatingErrors,
@@ -161,7 +162,15 @@ export default function RateCompany() {
     // look like a different reviewer to anybody who had read it.
     if (mine.author) setGeneratedName(mine.author);
     setDraft({
-      overallRating: mine.overallRating ?? null,
+      /*
+        The author's OWN answer, not the rating's number.
+
+        Since V115 `overallRating` on every endpoint means the average of this rating's eleven
+        scores, which is not a question anybody can answer. Prefilling the form with it would
+        put an average into the box that asks for a judgement, and the first save would make it
+        one. The fallback is for the deploy window where this bundle is newer than the backend.
+      */
+      overallRating: mine.authorsOverallRating ?? mine.overallRating ?? null,
       ratings: mine.ratings ?? {},
       workedFrom: (mine.workedFrom ?? "").slice(0, 7),
       workedUntil: mine.workedUntil ? mine.workedUntil.slice(0, 7) : null,
@@ -638,6 +647,28 @@ export default function RateCompany() {
   const years = recentYears();
 
   const stepIdx = STEPS.indexOf(step) + 1;
+
+  /*
+    THE SAME GATE THE MANAGER FORM USES, on the step that has mandatory fields somebody can see.
+
+    Reported: Next was enabled on the dates step with "No location set" and an empty period. The
+    click was refused and the errors appeared, so nothing invalid could be submitted, but an
+    enabled button that does nothing is indistinguishable from a broken one. The location is one
+    of those mandatory fields and is checked here with the period.
+
+    NOT applied to the last step, deliberately. Ten rows are rated there, and a disabled Submit
+    cannot say WHICH one is blank, while clicking it marks every unanswered row "Required". This
+    repository has a production report of the other shape - a form filled in, signed in, returned
+    to, and "pressing Submit did nothing at all" - which is what a grey button with nothing on
+    screen explaining it buys. See the comment on AddBoss's restored attestation.
+  */
+  const stepComplete = isCompanyStepComplete(draft, step, {
+    locationSet: hasDeclaredLocation(location),
+  });
+  const nextDisabled =
+    submitting
+    || (step === "dates" && !stepComplete)
+    || (step === "ratings" && !attested);
   const stepTitles: Record<Step, string> = {
     details: "Company information",
     dates:   "When and where",
@@ -960,7 +991,7 @@ export default function RateCompany() {
               if (Object.keys(forStep).length > 0) { setErrors((prev) => ({ ...prev, ...forStep })); return; }
               setStep(STEPS[STEPS.indexOf(step) + 1]);
             }}
-            disabled={submitting || (step === "ratings" && !attested)}
+            disabled={nextDisabled}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#2e0562] px-4 py-3 font-medium text-white transition-all hover:bg-[#2e0562]/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {step !== "ratings"

@@ -71,7 +71,7 @@ export default function Admin() {
     paused: boolean; trippedBy: string | null;
   } | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"pending-managers" | "live-profiles" | "captured-drafts" | "approvals" | "bans" | "merge" | "companies" | "pending-companies" | "ai-suggestions" | "proposed-employments" | "role-conflicts" | "held-ratings">("pending-managers");
+  const [activeTab, setActiveTab] = useState<"pending-managers" | "live-profiles" | "captured-drafts" | "approvals" | "bans" | "merge" | "companies" | "pending-companies" | "ai-suggestions" | "proposed-employments" | "role-conflicts" | "held-ratings" | "reports">("pending-managers");
   const { summary: moderationSummary, reload: reloadModerationSummary } = useModerationSummary();
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
   const [aiSuggestionsTotal, setAiSuggestionsTotal] = useState(0);
@@ -358,7 +358,72 @@ export default function Admin() {
       toast.error("Could not save that decision");
     }
   };
+  /*
+    REPORTS FILED FROM THE REPORT BUTTON.
+
+    They were written to the database from the day the button shipped and read by nothing but the
+    duplicate check, so no admin had ever seen one. This tab is the read side; V114 added the
+    resolution state that lets it drain.
+  */
+  const REPORT_REASON_LABELS: Record<string, string> = {
+    incorrect_person:      "Wrong person",
+    never_worked_here:     "Never worked there",
+    duplicate_profile:     "Duplicate profile",
+    incorrect_information: "Incorrect information",
+    other:                 "Other",
+  };
+  const [reports, setReports] = useState<any[]>([]);
+  const [reportStatus, setReportStatus] = useState<"open" | "resolved" | "dismissed">("open");
+  const [reportOpenTotal, setReportOpenTotal] = useState(0);
+  const [reportNotes, setReportNotes] = useState<Record<string, string>>({});
+  const fetchReports = async (status: "open" | "resolved" | "dismissed") => {
+    try {
+      const res = await axios.get(`${API_BASE}/api/admin/reports`,
+        { params: { status }, withCredentials: true });
+      setReports(Array.isArray(res.data?.data) ? res.data.data : []);
+      // The badge counts OPEN reports whichever list is on screen, so switching to the resolved
+      // view cannot make a waiting queue look empty.
+      if (status === "open") setReportOpenTotal(res.data?.total ?? 0);
+    } catch {
+      toast.error("Failed to load reports");
+    }
+  };
+  const decideReport = async (id: string, action: "resolved" | "dismissed") => {
+    try {
+      await axios.post(`${API_BASE}/api/admin/reports/${id}/resolve`,
+        { action, note: reportNotes[id]?.trim() || null }, { withCredentials: true });
+      setReports(prev => prev.filter(r => r.id !== id));
+      setReportOpenTotal(prev => Math.max(prev - 1, 0));
+      setReportNotes(prev => { const next = { ...prev }; delete next[id]; return next; });
+      toast.success(action === "resolved" ? "Report marked resolved" : "Report dismissed");
+    } catch (err: any) {
+      // 409 means somebody else decided it first, which is information rather than a failure.
+      if (err?.response?.status === 409) {
+        toast.info("Another admin already decided that report");
+        fetchReports(reportStatus);
+      } else {
+        toast.error("Could not save that decision");
+      }
+    }
+  };
   useEffect(() => { if (activeTab === "pending-companies") fetchPendingCompanies(); }, [activeTab]);
+  useEffect(() => { if (activeTab === "reports") fetchReports(reportStatus); }, [activeTab, reportStatus]);
+  /*
+    THE BADGE ON ARRIVAL, not on first visit.
+
+    A queue nobody opens is the same as no queue: the reports sit unread and invisible either way,
+    and these ones had been invisible since the Report button shipped. The count is what makes the
+    work findable, so it is fetched once on mount with limit=1 - the total is all this needs.
+
+    A failure is swallowed on purpose. The tab itself still loads and still works; only the badge
+    is missing, and a toast about it on every admin page load would be noise.
+  */
+  useEffect(() => {
+    axios.get(`${API_BASE}/api/admin/reports`,
+      { params: { status: "open", limit: 1 }, withCredentials: true })
+      .then(res => setReportOpenTotal(res.data?.total ?? 0))
+      .catch(() => {});
+  }, []);
 
   const fetchCapturedDrafts = async () => {
     setCapturedDraftsLoading(true);
@@ -839,7 +904,7 @@ export default function Admin() {
           <div className="mb-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div className="rounded-xl border border-border bg-card p-4 text-center">
               <p className="text-2xl font-semibold" data-testid="stat-user-submitted">{stats?.realManagers?.toLocaleString() ?? "-"}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">User Submitted</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Added by People</p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4 text-center">
               <p className="text-2xl font-semibold" data-testid="stat-opinions-shared">{stats?.realReviews?.toLocaleString() ?? "-"}</p>
@@ -969,6 +1034,21 @@ export default function Admin() {
               {pendingCompanies.length > 0 && (
                 <span className="ml-2 inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-xs font-bold text-white">
                   {pendingCompanies.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("reports")}
+              className={`whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                activeTab === "reports"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Reports
+              {reportOpenTotal > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-xs font-bold text-white">
+                  {reportOpenTotal}
                 </span>
               )}
             </button>
@@ -2084,6 +2164,115 @@ export default function Admin() {
                         Add to directory
                       </button>
                     </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* ── Reports filed against a profile ── */}
+          {activeTab === "reports" && (
+            <div className="space-y-3">
+              {/*
+                THE STATE SELECTOR IS NOT DECORATION. A decided report has to stay readable, or the
+                only record of why a profile was left alone is in the memory of whichever admin
+                made the call.
+              */}
+              {/*
+                A GROUP WITH A NAME, and aria-pressed on each button.
+
+                Which state is selected was conveyed by the background colour alone, which says
+                nothing to a screen reader and nothing to anyone who cannot separate the two
+                colours. aria-pressed carries the same fact in text.
+              */}
+              <div className="flex gap-2" role="group" aria-label="Filter reports by state">
+                {(["open", "resolved", "dismissed"] as const).map((s) => (
+                  <button
+                    key={s}
+                    aria-pressed={reportStatus === s}
+                    onClick={() => setReportStatus(s)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+                      reportStatus === s
+                        ? "bg-primary text-primary-foreground"
+                        : "border border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+
+              {reports.length === 0 ? (
+                <div className="rounded-xl border border-border bg-card p-8 text-center">
+                  <p className="text-sm font-medium text-foreground">
+                    {reportStatus === "open" ? "Nothing waiting" : `No ${reportStatus} reports`}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Reports filed from the Report button on a manager profile appear here.
+                  </p>
+                </div>
+              ) : (
+                reports.map((r) => (
+                  <div key={r.id} className="rounded-xl border border-border bg-card p-4">
+                    <div className="min-w-0">
+                      <a
+                        href={`/manager/${r.managerId}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm font-semibold text-foreground hover:text-primary hover:underline"
+                      >
+                        {r.managerName}
+                      </a>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {REPORT_REASON_LABELS[r.reason] ?? r.reason}
+                        {" · "}
+                        {/*
+                          The handle, or the fact that there is no account to look at. reports.user_id
+                          is ON DELETE SET NULL, so a deleted account leaves its report standing with
+                          nobody named against it, and the report is still worth reading.
+                        */}
+                        {r.reporterKnown ? (r.reporter ?? "unnamed account") : "no account attached"}
+                        {" · "}{new Date(r.createdAt).toLocaleDateString()}
+                      </p>
+                      {r.comment && (
+                        <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{r.comment}</p>
+                      )}
+                      {r.status !== "open" && (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {r.status === "resolved" ? "Resolved" : "Dismissed"}
+                          {r.resolvedBy ? ` by ${r.resolvedBy}` : ""}
+                          {r.resolvedAt ? ` on ${new Date(r.resolvedAt).toLocaleDateString()}` : ""}
+                          {r.resolutionNote ? ` · ${r.resolutionNote}` : ""}
+                        </p>
+                      )}
+                    </div>
+
+                    {r.status === "open" && (
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <input
+                          type="text"
+                          value={reportNotes[r.id] ?? ""}
+                          onChange={(e) => setReportNotes(prev => ({ ...prev, [r.id]: e.target.value }))}
+                          placeholder="What did you conclude? (optional)"
+                          maxLength={500}
+                          className="flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        />
+                        <div className="flex flex-shrink-0 gap-2">
+                          <button
+                            onClick={() => decideReport(r.id, "dismissed")}
+                            className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/60"
+                          >
+                            Dismiss
+                          </button>
+                          <button
+                            onClick={() => decideReport(r.id, "resolved")}
+                            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                          >
+                            Mark resolved
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))
               )}

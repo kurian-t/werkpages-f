@@ -105,6 +105,42 @@ export function validateCompanyRating(draft: CompanyRatingDraft): CompanyRatingE
   return errors;
 }
 
+/** The three steps the workplace form walks through, in order. */
+export type CompanyRatingStep = "details" | "dates" | "ratings";
+
+/**
+ * Whether a step has been answered well enough to leave it.
+ *
+ * Separate from validateCompanyRating, which asks "is the whole thing submittable". The Next
+ * button needs the question per step, the way AddBoss asks it with its own nextDisabled and
+ * AddInterview asks it through isStepComplete. This form had neither, so Next stayed solid while
+ * "Where did you work?" read "No location set" and the period was empty: the click was correctly
+ * refused and the errors appeared, but a button that looks usable and does nothing reads as a
+ * broken page.
+ *
+ * The location is PASSED IN rather than read from the draft. It is resolved server-side against
+ * the company's places and deliberately lives outside the draft, which is how its required
+ * asterisk went months with nothing enforcing it.
+ */
+export function isCompanyStepComplete(
+  draft: CompanyRatingDraft,
+  step: CompanyRatingStep,
+  context: { locationSet: boolean },
+): boolean {
+  if (step === "details") {
+    // The company is prefilled from the page this opened on and the field enforces its own
+    // choice, so there is no unanswered mandatory question to hold anybody on this step.
+    return true;
+  }
+  if (step === "dates") {
+    return context.locationSet
+      && draft.workedFrom.trim().length > 0
+      && (draft.stillHere || (draft.workedUntil ?? "").trim().length > 0);
+  }
+  return draft.overallRating != null
+    && COMPANY_CATEGORIES.every((category) => draft.ratings[category] != null);
+}
+
 export function isCompanyRatingComplete(draft: CompanyRatingDraft): boolean {
   return Object.keys(validateCompanyRating(draft)).length === 0;
 }

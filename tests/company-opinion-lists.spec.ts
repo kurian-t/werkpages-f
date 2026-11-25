@@ -161,6 +161,50 @@ test.describe("The workplace ratings behind the average", () => {
     await expect(page.getByText("1.6")).toBeVisible();
   });
 
+  test("the headline is the average of every row under it, not its author's own overall", async ({ page }) => {
+    /*
+      THE PRODUCTION BUG, on the card it was reported from.
+
+      Compulsion Games held one workplace rating: ten categories of five 5s, four 1s and a 3, and
+      its author's own answer to "Overall, how was working here?" of 1. The card printed 1.0
+      directly above that breakdown, because the company's rating WAS that eleventh answer and
+      nothing else. Sixteen of the twenty workplace ratings on the site showed a figure that was
+      not an average of their own scores.
+
+      Now the figure is the average of all eleven, and the eleventh is the last row of the
+      breakdown, so a reader can add up what they are shown and arrive at the number above it:
+      (5+5+1+1+5+1+1+5+5+3 + 1) / 11 = 3.0.
+
+      Asserted through the testid, not by text: "3.0" also appears as the tools-and-resources row,
+      so getByText would pass on the wrong element.
+    */
+    const COMPULSION = [5, 5, 1, 1, 5, 1, 1, 5, 5, 3];
+    await open(page, {
+      tab: "?tab=company",
+      ratings: [{
+        id: "rat-average",
+        overallRating: 3.0,          // what the server derives from the eleven
+        authorsOverallRating: 1.0,   // what its author answered
+        categories: Object.fromEntries(CATEGORIES.map((c, i) => [c, COMPULSION[i]])),
+        workedFrom: "2021-04-01",
+        workedUntil: null,
+        current: false,
+        createdAt: ago(22),
+        author: "SuspiciousWombat28",
+        mine: false,
+      }],
+    });
+
+    await expect(page.getByTestId("workplace-rating-score")).toHaveText("3.0", { timeout: 10_000 });
+
+    await page.getByRole("button", { name: /Show rating breakdown/ }).click();
+
+    // Eleven rows, not ten: the author's own overall is one of the scores being averaged, so it
+    // is shown with the rest. A card whose rows cannot reach its headline is the whole complaint.
+    await expect(page.getByTestId("workplace-breakdown-row")).toHaveCount(11);
+    await expect(page.getByText("Overall Working Experience")).toBeVisible();
+  });
+
   test("a rating nobody signed still renders, as an anonymous employee", async ({ page }) => {
     // The alternative is a card that throws on a null handle, taking the whole list with it.
     await open(page, { tab: "?tab=company" });

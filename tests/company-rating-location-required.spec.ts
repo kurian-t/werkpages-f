@@ -85,13 +85,20 @@ test.describe("The workplace rating asks for a location, and means it", () => {
     await expect(page.getByTestId("rating-location-value")).toHaveText(/no location set/i);
 
     await fillDates(page);
-    await page.getByRole("button", { name: "Next" }).click();
 
-    // Still on the dates step, and told why.
+    /*
+      THE BUTTON IS INERT, rather than refusing when pressed.
+
+      Same guarantee, said earlier and the way the manager and interview forms say it. It used to
+      be enforced on the click: the step held and the errors appeared, which protected the data
+      but left a control that looked usable and did nothing.
+    */
+    await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
+
+    // Still on the dates step, with the unanswered question still marked as unanswered.
     await expect(page.getByText(/Step 2 of 3/)).toBeVisible();
     await expect(page.getByLabel("From month")).toBeVisible();
-    await expect(page.getByText(/where.*(work|location)|location is required|add a location/i).first())
-      .toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("rating-location-value")).toHaveText(/no location set/i);
   });
 
   test("with a location chosen, the step advances", async ({ page }) => {
@@ -146,7 +153,9 @@ test.describe("The workplace rating asks for a location, and means it", () => {
     await expect(page.getByTestId("rating-location-value")).not.toContainText("Kitchener");
 
     await fillDates(page);
-    await page.getByRole("button", { name: "Next" }).click();
+    // A complete period is not enough on its own: with no location the step cannot be left, and
+    // the button says so by being inert.
+    await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
     await expect(page.getByText(/Step 2 of 3/)).toBeVisible();
   });
 });
