@@ -394,15 +394,18 @@ test.describe("Rating a workplace @ci", () => {
       Per-step validation, from the other side. The ratings step filters the date errors out; this
       step filters everything else out, so a missing start date is caught here rather than carried
       to the end and turned into an undated rating.
+
+      This used to prove that by clicking Next and reading the error back. Next is disabled now, so
+      the refusal lands before the click rather than after it and there is no error left to read:
+      what is asserted is that the button is inert and the form has not moved off step 2. The
+      location is answered first, so the one thing holding it back is the missing start date.
     */
     await openForm(page);
     await goToDatesStep(page);
+    await answerLocation(page);
 
-    await page.getByRole("button", { name: "Next" }).click();
-
-    // Still on the dates step, saying what is missing.
+    await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
     await expect(page.getByText("Step 2 of 3 · Red Hat")).toBeVisible();
-    await expect(page.getByRole("alert").first()).toBeVisible();
   });
 
   test("picking a different company moves the form to that company", async ({ page }) => {
