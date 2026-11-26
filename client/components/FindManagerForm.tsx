@@ -12,6 +12,7 @@ import LockedManagerCard from "@/components/LockedManagerCard";
 import { CompanyAutocomplete } from "@/components/CompanyAutocomplete";
 import { useAuth } from "@/hooks/useAuth";
 import { fetchGeo } from "@/lib/geo";
+import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 
 const INPUT_CLASS =
   "rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] shadow-sm placeholder:text-muted-foreground";
@@ -152,12 +153,25 @@ export default function FindManagerForm({ prefilledCompany }: Props) {
           {/* Sentence line */}
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <span className="shrink-0">who is a</span>
-            <input
-              value={title}
-              onChange={e => { setTitle(e.target.value); setError(null); }}
-              placeholder="job title"
-              className={`${INPUT_CLASS} flex-1 min-w-[140px]`}
-            />
+            {/*
+              The one title control, not a bare box.
+
+              Manager search is one workflow with three entry points (manager-search-flow.md,
+              rule 13), and this was the entry point where the title question had no list at all:
+              the company beside it suggested and this did not. Wrapped the way the company field
+              beside it is wrapped, because the dropdown anchors to its own container and a
+              flex-sized input is not that container.
+            */}
+            <div className="flex-1 min-w-[140px]">
+              <RoleAutocomplete
+                value={title}
+                onChange={v => { setTitle(v); setError(null); }}
+                placeholder="job title"
+                maxLength={100}
+                ariaLabel="Job title"
+                className={`${INPUT_CLASS} w-full`}
+              />
+            </div>
             <span className="shrink-0">at</span>
             {prefilledCompany ? (
               <span className="font-semibold text-foreground">{prefilledCompany}</span>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import { Pencil, Trash2, Check, AlertTriangle } from "lucide-react";
 import { CollapsibleField, FormTextInput, RequiredMark } from "@/components/FormFields";
 import { CompanyField } from "@/components/CompanyField";
@@ -173,7 +174,18 @@ export function PositionEditor({
           onEditStart={() => setTitleOpen(true)}
           onEditDone={() => setTitleOpen(false)}
         >
-          <FormTextInput
+          {/*
+            The same picker every other title field uses, not a plain box. Correcting somebody's
+            employment history is exactly where a spelling should be chosen rather than invented:
+            this is the form that writes career_history.title, and a free-typed "Snr Mgr" here
+            creates a variant nobody else will ever match.
+
+            The class is spelled out rather than inherited from FormTextInput because that is the
+            one thing the shared picker does not own, and the red outline has to stay with the
+            caller: two Tailwind border classes on one element are resolved by stylesheet order,
+            not attribute order.
+          */}
+          <RoleAutocomplete
             /* The id CollapsibleField's <label htmlFor> names. A different one here leaves the
                label pointing at nothing, so the field has no accessible name at all. */
             id={`position-title-${index}`}
@@ -182,6 +194,9 @@ export function PositionEditor({
             placeholder="e.g. Engineering Manager"
             maxLength={100}
             invalid={!draft.title.trim()}
+            className={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562] ${
+              draft.title.trim() ? "border-border" : "border-red-500"
+            }`}
           />
         </CollapsibleField>
 

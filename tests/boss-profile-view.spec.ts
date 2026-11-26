@@ -359,9 +359,17 @@ test.describe("BossProfile - admin edit", () => {
     const adminPanel = page.locator("section").filter({ hasText: /admin edit/i });
     await expect(adminPanel).toBeVisible({ timeout: 3_000 });
 
-    // Name is the first textbox in the panel, title is the second
+    /*
+      The name by position, the title by its own test id.
+
+      This read the title as the SECOND textbox, which stopped being true when the field became
+      the shared title picker: a typeahead is role="combobox", not role="textbox", so it dropped
+      out of that list entirely and nth(1) silently moved on to the company field. The assertion
+      still failed loudly, which is the only reason this was caught - a positional locator that
+      lands on a neighbouring field of the same type would simply have asserted the wrong thing.
+    */
     await expect(adminPanel.getByRole("textbox").first()).toHaveValue("Alex Johnson");
-    await expect(adminPanel.getByRole("textbox").nth(1)).toHaveValue("Engineering Manager");
+    await expect(adminPanel.getByTestId("admin-edit-title")).toHaveValue("Engineering Manager");
   });
 
   test("Save changes calls PUT /api/admin/managers/:id and shows success toast", async ({ page }) => {

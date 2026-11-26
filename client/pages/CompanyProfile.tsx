@@ -1,4 +1,5 @@
 import { useSearchLocation } from "@/hooks/useSearchLocation";
+import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import { LocationField } from "@/components/LocationField";
 import { SITE_HIDDEN_FROM_SEARCH } from "@/components/PageMeta";
 import API_BASE from "@/lib/api";
@@ -1152,9 +1153,9 @@ export default function CompanyProfile() {
                       className={SIDEBAR_INPUT}
                     />
                   </div>
-                  <input
+                  <RoleAutocomplete
                     value={title}
-                    onChange={e => setTitle(e.target.value)}
+                    onChange={v => setTitle(v)}
                     placeholder="Job title"
                     className={SIDEBAR_INPUT}
                   />

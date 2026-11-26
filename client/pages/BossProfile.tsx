@@ -56,7 +56,8 @@ import { MonthYear } from "@/components/MonthYear";
 import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import { DeleteRatingControl } from "@/components/DeleteRatingControl";
 import { RequiredMark } from "@/components/FormFields";
-import { roleKey, sameCompany, sameRole } from "@/lib/careerRoles";
+import { roleKey, sameCompany, sameRole, compareCareerStages, isOngoingRole }
+  from "@/lib/careerRoles";
  
 const RATING_CATEGORIES = [
   "Communication Style",
@@ -339,7 +340,11 @@ export default function BossProfile() {
         role:             ch.title     ?? manager.title   ?? "",
         startDate:        ch.startDate ? String(ch.startDate).slice(0, 7) : null,
         endDate:          ch.endDate   ? String(ch.endDate).slice(0, 7)   : null,
-        isCurrent:        ch.endDate == null,
+        /*
+          Not `endDate == null`, which called a row with NO dates at all the person's current
+          job. A missing end date means "still there" only when there is a period at all.
+        */
+        isCurrent:        isOngoingRole(ch),
         averageRating:    0,
         reviewCount:      0,
         categoryAverages: {},
@@ -430,23 +435,33 @@ export default function BossProfile() {
       const ghosts = ghostEntries.map(toGhost);
       const enriched = careerSegments.map(withSegmentLogo);
       const all = [...enriched, ...ghosts];
-      all.sort((a: any, b: any) => {
-        // Sort by startDate ascending; null startDates go last
-        if (!a.startDate && !b.startDate) {
-          if (a.isCurrent !== b.isCurrent) return a.isCurrent ? 1 : -1;
-          return 0;
-        }
-        if (!a.startDate) return 1;
-        if (!b.startDate) return -1;
-        if (a.startDate !== b.startDate) return a.startDate < b.startDate ? -1 : 1;
-        // Same startDate: current (no endDate) role sorts last
-        if (a.isCurrent !== b.isCurrent) return a.isCurrent ? 1 : -1;
-        return 0;
-      });
+      /*
+        One ordering rule, in client/lib/careerRoles.ts, where it is unit tested.
+
+        It used to be inline here and sent a null start date to the BACK, which in an
+        oldest-first list is the NEWEST position. A merge is where that became visible: it
+        brings an unrated profile's employments onto a rated one, and an employment is undated
+        precisely because nobody rated it, so every merged-in job drew as the person's most
+        recent. No date now means older, which is the safe direction for an assumption.
+      */
+      all.sort(compareCareerStages);
       return all;
     }
 
-    return careerSegments.map(withSegmentLogo);
+    /*
+      SORTED HERE TOO, and this is the branch that actually ships.
+
+      The sort above only ran when there were ghost entries to merge in. When the segments
+      endpoint already covers every employment - which is the normal case, and exactly the case
+      after a merge - this path returned the server's order untouched, so the ordering rule did
+      not apply at all. The undated employment stayed where the server put it, at the end.
+
+      It also split one employer in two: CareerTimeline groups ADJACENT segments of the same
+      company, so Thornbury, AccuWeather, Thornbury renders as three blocks with Thornbury twice.
+      Ordering by date first puts an employer's spells together without the grouping needing to
+      know anything about dates.
+    */
+    return careerSegments.map(withSegmentLogo).sort(compareCareerStages);
   }, [careerSegments, manager]);
 
   /*
@@ -2919,13 +2934,13 @@ export default function BossProfile() {
               </div>
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">Title</label>
-                <input
-                  type="text"
-                  data-testid="admin-edit-title"
+                <RoleAutocomplete
                   value={adminEditForm.title}
-                  onChange={e => setAdminEditForm(p => ({ ...p, title: e.target.value }))}
+                  onChange={(v) => setAdminEditForm(p => ({ ...p, title: v }))}
+                  placeholder="e.g. Engineering Manager"
                   maxLength={100}
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
+                  testId="admin-edit-title"
                 />
               </div>
               <div>
@@ -2962,7 +2977,7 @@ export default function BossProfile() {
                 onClick={async () => {
                   setAdminEditSaving(true);
                   try {
-                    await axios.put(`${API_BASE}/api/admin/managers/${manager?.id}`, {
+                    const saved = await axios.put(`${API_BASE}/api/admin/managers/${manager?.id}`, {
                       name:           toNameCase(adminEditForm.name)       || undefined,
                       title:          toJobTitleCase(adminEditForm.title) || undefined,
                       ...(await adminEditCompany.payload()),
@@ -2977,8 +2992,46 @@ export default function BossProfile() {
                       */
                       companyLocationId: adminEditLocation.companyLocationId ?? -1,
                     }, { withCredentials: true });
+                    /*
+                      THE ADDRESS MOVES FIRST, BEFORE ANYTHING REFETCHES.
+
+                      Correcting a name moves the slug, so the key this page is mounted on names a
+                      URL that no longer exists. Invalidating first refetched THAT key, got a 404
+                      and rendered "Manager Not Found" - the profile was fine, the request was for
+                      an address it had just left. Reported exactly that way: "the url did update
+                      but the page said Manager Not Found".
+
+                      Navigating first remounts the page on the new slug, whose own query fetches
+                      cleanly; the invalidations below then refresh the lists and the company
+                      surfaces.
+                    */
+                    const movedTo: string | undefined = saved?.data?.slug;
+                    /*
+                      ONLY FROM THE CANONICAL SLUG ROUTE, AND TO A CANONICAL SLUG URL.
+
+                      `/manager/:id` is the LEGACY NUMERIC-ID route: its query calls
+                      `/api/managers/${id}`, the by-id endpoint. Sending an admin to
+                      `/manager/<slug>` therefore asks for a manager whose id is a slug, which
+                      cannot resolve - reported as "the url did update but the page said Manager
+                      Not Found" on a URL the server answered 200 for. The canonical form is the
+                      nested one that managerPath builds, which is what the legacy redirect below
+                      already converts to.
+
+                      From the legacy route nothing is navigated here on purpose: the id has not
+                      changed, so its query refetches and the existing redirect effect moves to
+                      the new canonical URL by itself.
+                    */
+                    const slugMoved = !!movedTo && !!managerSlug && movedTo !== managerSlug;
+                    if (slugMoved && companySlug) {
+                      navigate(managerPath(manager?.industrySlug, companySlug, movedTo!),
+                               { replace: true });
+                    }
                     await Promise.all([
-                      queryClient.invalidateQueries({ queryKey: managerQueryKey }),
+                      // Not the manager's own key when the slug moved: that key is the old URL,
+                      // and refetching it is what produced the 404.
+                      ...(slugMoved
+                        ? []
+                        : [queryClient.invalidateQueries({ queryKey: managerQueryKey })]),
                       queryClient.invalidateQueries({ queryKey: ["manager-reviews", manager?.id] }),
                       queryClient.invalidateQueries({ queryKey: ["manager-career-segments", manager?.id] }),
                       queryClient.invalidateQueries({ queryKey: ["user-reviews", manager?.id] }),

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
@@ -251,9 +252,9 @@ export default function ProveIt() {
                 </FormField>
 
                 <FormField label="What was your role?" required error={errors.claimedTitle}>
-                  <input
+                  <RoleAutocomplete
                     value={claimedTitle}
-                    onChange={(e) => { setClaimedTitle(e.target.value); setErrors((p) => ({ ...p, claimedTitle: undefined })); }}
+                    onChange={(v) => { setClaimedTitle(v); setErrors((p) => ({ ...p, claimedTitle: undefined })); }}
                     maxLength={100}
                     placeholder="Job title"
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -303,11 +304,13 @@ function CorrectionForm({
         </p>
         <label className="block text-xs text-muted-foreground">
           Job title
-          <input
+          <RoleAutocomplete
             value={title}
-            onChange={e => setTitle(e.target.value)}
-            data-testid={`correct-title-${live.roleId}`}
+            onChange={(v) => setTitle(v)}
+            placeholder="e.g. Engineering Manager"
+            maxLength={100}
             className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+            testId={`correct-title-${live.roleId}`}
           />
         </label>
         <div className="mt-2 grid grid-cols-2 gap-2">

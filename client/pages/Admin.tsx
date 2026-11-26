@@ -1,4 +1,5 @@
 import API_BASE from "@/lib/api";
+import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -51,6 +52,7 @@ function adminLocationOf(m: any): LocationValue {
 }
 import { useCompanySelection } from "@/hooks/useCompanySelection";
 import axios from "axios";
+import { rankCompanyMatches } from "@/lib/companyMatch";
 
 export default function Admin() {
   const navigate = useNavigate();
@@ -778,7 +780,13 @@ export default function Admin() {
       const res = await axios.get(`${API_BASE}/api/admin/companies`);
       const all: any[] = res.data?.data ?? [];
       const q = query.trim().toLowerCase();
-      setCoMergeResults(all.filter((c: any) => c.name.toLowerCase().includes(q)).slice(0, 8));
+      /*
+        Ranked, not merely filtered. A plain `includes` plus the first eight of an alphabetical
+        list answered "TD" with Academy Sports + Outdoors and three companies ending in Ltd,
+        because each contains the letters "td", and put the company actually called TD below the
+        cut where no further typing could reach it. See client/lib/companyMatch.ts.
+      */
+      setCoMergeResults(rankCompanyMatches(all, q, 8));
     } catch {
       setCoMergeResults([]);
     } finally {
@@ -797,7 +805,8 @@ export default function Admin() {
       const res = await axios.get(`${API_BASE}/api/admin/companies`);
       const all: any[] = res.data?.data ?? [];
       const q = query.trim().toLowerCase();
-      const hits = all.filter((c: any) => c.name.toLowerCase().includes(q)).slice(0, 6);
+      // The same ranking the merge picker above uses, for the same reason.
+      const hits = rankCompanyMatches(all, q, 6);
       which === "child" ? setParentChildResults(hits) : setParentOwnerResults(hits);
     } catch {
       which === "child" ? setParentChildResults([]) : setParentOwnerResults([]);
@@ -1244,10 +1253,11 @@ export default function Admin() {
                               placeholder="Manager name"
                               className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             />
-                            <input
+                            <RoleAutocomplete
                               value={editingTitle}
-                              onChange={e => setEditingTitle(e.target.value)}
+                              onChange={(v) => setEditingTitle(v)}
                               placeholder="Job title"
+                              maxLength={100}
                               className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             />
                             {/*
@@ -1524,10 +1534,11 @@ export default function Admin() {
                               placeholder="Manager name"
                               className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             />
-                            <input
+                            <RoleAutocomplete
                               value={editingTitle}
-                              onChange={e => setEditingTitle(e.target.value)}
+                              onChange={(v) => setEditingTitle(v)}
                               placeholder="Job title"
+                              maxLength={100}
                               className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                             />
                             {/*

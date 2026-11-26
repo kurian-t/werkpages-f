@@ -30,7 +30,25 @@ async function openForm(page: any, suggestions: any[] = ROLES) {
 }
 
 const title = (page: any) => page.locator('input[name="title"]');
+
+/*
+  EVERY option, suggestions and the create row alike.
+
+  The list gained a last row, "Not listed? Add <what you typed>", so that a title the catalogue
+  does not hold is offered rather than silently absent - the field used to show nothing at all
+  for an unknown title, which read as a broken control. It is a real option: the keyboard reaches
+  it and it is the last stop when walking the list.
+
+  So a count of every option is no longer a count of the suggestions. The assertions below say
+  which of the two they mean, because "the list offered three spellings" and "the list has three
+  rows" stopped being the same sentence.
+*/
 const options = (page: any) => page.getByRole("option");
+/** The suggestion rows alone. */
+const suggestions = (page: any) =>
+  page.getByRole("option").filter({ hasNotText: "Not listed?" });
+/** The create row. Always last, when it is there at all. */
+const addRow = (page: any) => page.getByRole("option").filter({ hasText: "Not listed?" });
 
 test.describe("Offering spellings other people already used", () => {
   test("one character is not enough to ask on", async ({ page }) => {
@@ -56,9 +74,12 @@ test.describe("Offering spellings other people already used", () => {
 
     await title(page).fill("Engineering");
 
-    await expect(options(page)).toHaveCount(3, { timeout: 10_000 });
-    await expect(options(page).nth(0)).toHaveText("Engineering Manager");
-    await expect(options(page).nth(2)).toHaveText("Engineering Lead");
+    await expect(suggestions(page)).toHaveCount(3, { timeout: 10_000 });
+    await expect(suggestions(page).nth(0)).toHaveText("Engineering Manager");
+    await expect(suggestions(page).nth(2)).toHaveText("Engineering Lead");
+    // And the create row after them, because "Engineering" is not one of the three.
+    await expect(addRow(page)).toHaveCount(1);
+    await expect(options(page).last()).toContainText("Not listed?");
   });
 
   test("a suggestion identical to what was typed is not offered", async ({ page }) => {
@@ -74,9 +95,9 @@ test.describe("Offering spellings other people already used", () => {
   test("picking one fills the field and closes the list", async ({ page }) => {
     await openForm(page);
     await title(page).fill("Engineering");
-    await expect(options(page)).toHaveCount(3, { timeout: 10_000 });
+    await expect(suggestions(page)).toHaveCount(3, { timeout: 10_000 });
 
-    await options(page).nth(1).click();
+    await suggestions(page).nth(1).click();
 
     await expect(title(page)).toHaveValue("Engineering Director");
     await expect(options(page)).toHaveCount(0);
@@ -90,32 +111,47 @@ test.describe("Offering spellings other people already used", () => {
     */
     await openForm(page);
     await title(page).fill("Engineering");
-    await expect(options(page)).toHaveCount(3, { timeout: 10_000 });
+    await expect(suggestions(page)).toHaveCount(3, { timeout: 10_000 });
 
-    await options(page).nth(0).click();
+    await suggestions(page).nth(0).click();
 
     await expect(options(page)).toHaveCount(0);
     await page.waitForTimeout(500);
     await expect(options(page)).toHaveCount(0);
   });
 
-  test("a title nobody has used yet is still accepted", async ({ page }) => {
-    // The whole point. A control that only accepts what is already in the list cannot record a
-    // company-specific title, which is a large share of real ones.
+  test("a title nobody has used yet is still accepted, and says so", async ({ page }) => {
+    /*
+      The whole point. A control that only accepts what is already in the list cannot record a
+      company-specific title, which is a large share of real ones.
+
+      This asserted that NO list appeared, and passed for the wrong reason: the check ran before
+      the debounce and the request had resolved, so it was reading an empty page rather than an
+      empty list. What should happen now is that the create row appears and nothing else, which
+      is the only feedback distinguishing "your title will be used" from a field that ignored you.
+    */
     await openForm(page, []);
 
     await title(page).fill("Chief Vibes Officer");
 
+    await expect(addRow(page)).toHaveCount(1, { timeout: 10_000 });
+    await expect(addRow(page)).toContainText("Chief Vibes Officer", { useInnerText: true });
+    await expect(suggestions(page)).toHaveCount(0);
     await expect(title(page)).toHaveValue("Chief Vibes Officer");
-    await expect(options(page)).toHaveCount(0);
   });
 });
 
 test.describe("Working the list from the keyboard", () => {
+  /*
+    Three suggestions and the create row after them: FOUR stops, which is what the wrapping
+    tests below count against.
+  */
+  const STOPS = 4;
+
   async function openList(page: any) {
     await openForm(page);
     await title(page).fill("Engineering");
-    await expect(options(page)).toHaveCount(3, { timeout: 10_000 });
+    await expect(options(page)).toHaveCount(STOPS, { timeout: 10_000 });
   }
 
   test("down marks the first, then walks the list", async ({ page }) => {
@@ -129,22 +165,32 @@ test.describe("Working the list from the keyboard", () => {
   });
 
   test("down past the end returns to the first", async ({ page }) => {
-    // Wrapping rather than stopping: a three-item list is short enough that running off the end is
-    // a mis-press rather than an intent to leave the list.
+    // Wrapping rather than stopping: a list this short is one where running off the end is a
+    // mis-press rather than an intent to leave it.
     await openList(page);
 
-    for (let i = 0; i < 4; i++) await title(page).press("ArrowDown");
+    // One press per stop lands on the last, which is the create row.
+    for (let i = 0; i < STOPS; i++) await title(page).press("ArrowDown");
+    await expect(options(page).last()).toHaveAttribute("aria-selected", "true");
+    await expect(options(page).last()).toContainText("Not listed?");
 
+    // One more wraps.
+    await title(page).press("ArrowDown");
     await expect(options(page).nth(0)).toHaveAttribute("aria-selected", "true");
   });
 
   test("up from nothing selected goes to the last", async ({ page }) => {
-    // The list opens with nothing active, so the first Up is a reach for the bottom of it.
+    /*
+      The list opens with nothing active, so the first Up is a reach for the bottom of it. The
+      bottom is now the create row, which is the point of putting it in the same list rather than
+      beside it: reaching "add what I typed" takes one key from a closed selection.
+    */
     await openList(page);
 
     await title(page).press("ArrowUp");
 
-    await expect(options(page).nth(2)).toHaveAttribute("aria-selected", "true");
+    await expect(options(page).last()).toHaveAttribute("aria-selected", "true");
+    await expect(options(page).last()).toContainText("Not listed?");
   });
 
   test("Enter takes the marked one", async ({ page }) => {
@@ -194,7 +240,7 @@ test.describe("When the list is in the way", () => {
   test("clicking elsewhere closes it", async ({ page }) => {
     await openForm(page);
     await title(page).fill("Engineering");
-    await expect(options(page)).toHaveCount(3, { timeout: 10_000 });
+    await expect(suggestions(page)).toHaveCount(3, { timeout: 10_000 });
 
     await page.locator('input[name="firstName"]').click();
 
@@ -210,9 +256,9 @@ test.describe("When the list is in the way", () => {
     */
     await openForm(page);
     await title(page).fill("Engineering");
-    await expect(options(page)).toHaveCount(3, { timeout: 10_000 });
+    await expect(suggestions(page)).toHaveCount(3, { timeout: 10_000 });
 
-    await options(page).nth(2).click();
+    await suggestions(page).nth(2).click();
 
     await expect(title(page)).toHaveValue("Engineering Lead");
   });

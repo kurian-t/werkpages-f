@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import {
   AlignLeft,
   ArrowLeft,
@@ -493,10 +494,11 @@ function WorkEditor({
           onChange={event => onChange({ ...entry, company: event.target.value })}
           className={INPUT}
         />
-        <input
+        <RoleAutocomplete
           value={entry.title}
+          onChange={(v) => onChange({ ...entry, title: v })}
           placeholder="Job title"
-          onChange={event => onChange({ ...entry, title: event.target.value })}
+          maxLength={100}
           className={INPUT}
         />
         <div className={compact ? "grid gap-3" : "grid gap-3 sm:grid-cols-2"}>

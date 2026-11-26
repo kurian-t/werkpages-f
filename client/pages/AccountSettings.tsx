@@ -1,4 +1,5 @@
 import API_BASE from "@/lib/api";
+import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Layout } from "@/components/Layout";
@@ -843,9 +844,13 @@ export default function AccountSettings() {
                           <div className="grid gap-3 sm:grid-cols-2">
                             <div>
                               <label className="block text-xs text-muted-foreground mb-1">Their title <RequiredMark /></label>
-                              <input type="text" value={editManagerTitle} onChange={(e) => setEditManagerTitle(e.target.value)}
-                                placeholder="e.g. Engineering Manager" maxLength={100} autoFocus
-                                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
+                              <RoleAutocomplete
+                                value={editManagerTitle}
+                                onChange={(v) => setEditManagerTitle(v)}
+                                placeholder="e.g. Engineering Manager"
+                                maxLength={100}
+                                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                              />
                             </div>
                             <div>
                               <label className="block text-xs text-muted-foreground mb-1">Their company <RequiredMark /></label>
@@ -1033,11 +1038,11 @@ export default function AccountSettings() {
               </div>
               <div>
                 <label htmlFor="submission-field-title" className="block text-sm font-semibold text-foreground mb-1">Title <RequiredMark /></label>
-                <input
+                <RoleAutocomplete
                   id="submission-field-title"
-                  type="text"
                   value={editSubmissionData.title}
-                  onChange={(e) => setEditSubmissionData((p) => ({ ...p, title: e.target.value }))}
+                  onChange={(v) => setEditSubmissionData((p) => ({ ...p, title: v }))}
+                  placeholder="e.g. Engineering Manager"
                   maxLength={100}
                   className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                 />

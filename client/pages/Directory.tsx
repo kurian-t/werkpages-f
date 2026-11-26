@@ -18,6 +18,7 @@ import { useManagerSearchFlow } from "@/hooks/useManagerSearchFlow";
 import ManagerSearchMore from "@/components/ManagerSearchMore";
 import { fetchGeo } from "@/lib/geo";
 import axios from "axios";
+import { RoleAutocomplete } from "@/components/RoleAutocomplete";
 
 const PAGE_SIZE = 20;
 
@@ -304,10 +305,13 @@ export default function Directory() {
                       className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                     />
                   </div>
-                  <input
+                  {/* Same control as /search asks the same question with - rule 13. */}
+                  <RoleAutocomplete
                     value={searchTitle}
-                    onChange={e => setSearchTitle(e.target.value)}
+                    onChange={v => setSearchTitle(v)}
                     placeholder="Job title"
+                    maxLength={100}
+                    ariaLabel="Job title"
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#2e0562]"
                   />
                   <CompanyAutocomplete

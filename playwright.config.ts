@@ -53,6 +53,25 @@ const LEGACY_FORM_SPECS = [
 */
 const LIVE_BACKEND_SPECS = ["**/signin-live.spec.ts"];
 
+/*
+  LOCAL ONLY, AND NOT BY OMISSION.
+
+  The title picker spec asserts against the real backend and the real job_titles catalogue, which
+  is the only way to prove either is reachable: a mocked suggestion list always has something in
+  it, which is exactly how the picker stayed broken while its spec passed.
+
+  Leaving it untagged would keep it out of routine CI but NOT out of the manually dispatched full
+  suite, which runs everything the tag leaves out. So, like signin-live, its project is defined
+  only when its variable is set and no workflow sets it.
+*/
+const TITLE_PICKER_SPECS = ["**/title-picker-live.spec.ts"];
+/*
+  THE TRAJECTORY, AGAINST A RUNNING BACKEND. Same reasoning as TITLE_PICKER_SPECS:
+  it reads a real manager out of a real database, so it is local only and its project
+  is declared only when asked for.
+*/
+const TRAJECTORY_SPECS = ["**/career-trajectory-live.spec.ts"];
+
 /** Project names carry this prefix so a spec can tell which bundle is serving it. */
 export const LEGACY_FORM_PROJECT_PREFIX = "legacy-form-";
 const LEGACY_FORM_URL = "http://localhost:4175";
@@ -125,17 +144,20 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"], channel: process.env.CI ? "chrome" : undefined },
-      testIgnore: [...LEGACY_FORM_SPECS, ...LIVE_BACKEND_SPECS],
+      testIgnore: [...LEGACY_FORM_SPECS, ...LIVE_BACKEND_SPECS, ...TITLE_PICKER_SPECS,
+                   ...TRAJECTORY_SPECS],
     },
     {
       name: "firefox",
       use: { ...devices["Desktop Firefox"] },
-      testIgnore: [...LEGACY_FORM_SPECS, ...LIVE_BACKEND_SPECS],
+      testIgnore: [...LEGACY_FORM_SPECS, ...LIVE_BACKEND_SPECS, ...TITLE_PICKER_SPECS,
+                   ...TRAJECTORY_SPECS],
     },
     {
       name: "Mobile Chrome",
       use: { ...devices["Pixel 5"] },
-      testIgnore: [...LEGACY_FORM_SPECS, ...LIVE_BACKEND_SPECS],
+      testIgnore: [...LEGACY_FORM_SPECS, ...LIVE_BACKEND_SPECS, ...TITLE_PICKER_SPECS,
+                   ...TRAJECTORY_SPECS],
     },
     /*
       THE JOURNEY WE ARE REPLACING, still tested, against a bundle built without the flag.
@@ -171,6 +193,26 @@ export default defineConfig({
       `testIgnore` on the other projects is not enough to keep this out of a default run - the
       project itself has to not exist. Hence the env gate, which is what `pnpm test:signin` sets.
     */
+    /*
+      THE TITLE PICKER, AGAINST A RUNNING BACKEND. Defined only when asked for, for the reason
+      TITLE_PICKER_SPECS records: a declared project runs in every default run, so keeping this
+      out of CI means not declaring it. Sequential, because all seven tests drive one form on one
+      page and racing them only produces flake.
+    */
+    ...(process.env.TITLE_PICKER_LIVE === "1" ? [{
+      name: "title-picker-live",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: TITLE_PICKER_SPECS,
+      fullyParallel: false,
+      retries: 0,
+    }] : []),
+    ...(process.env.CAREER_TRAJECTORY_LIVE === "1" ? [{
+      name: "career-trajectory-live",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: TRAJECTORY_SPECS,
+      fullyParallel: false,
+      retries: 0,
+    }] : []),
     ...(process.env.SIGNIN_LIVE === "1" ? [{
       name: "signin-live",
       use: { ...devices["Desktop Chrome"], channel: process.env.CI ? "chrome" : undefined },
