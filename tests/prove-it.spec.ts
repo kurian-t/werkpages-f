@@ -1,5 +1,5 @@
 import { test, expect } from "./base";
-import { MOCK_USER } from "./fixtures";
+import { MOCK_USER, dismissTitleSuggestions } from "./fixtures";
 
 /**
  * The page somebody lands on when their rating is held for verification.
@@ -37,6 +37,17 @@ async function fillForm(page: any) {
   await page.getByLabel("End month").selectOption("11");
   await page.getByLabel("End year").selectOption({ index: 1 });
   await page.getByPlaceholder("Job title").fill("Staff Engineer");
+  /*
+    The job title is the shared picker, so typing opens its suggestion list - and the list is
+    portalled over whatever follows the field, which here is "Submit for verification". Every test
+    in this file fills the form and then presses that button, so the list is dealt with here once
+    rather than in each of them.
+
+    Without it this failed intermittently on firefox: Playwright reported the "Not listed? Add
+    Staff Engineer" row intercepting the click, but only when the 120ms debounce and the fetch
+    resolved before the press. A person clicks a suggestion, takes that Add row, or clicks away.
+  */
+  await dismissTitleSuggestions(page);
 }
 
 test.describe("Arriving at a held rating", () => {

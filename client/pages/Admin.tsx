@@ -73,7 +73,7 @@ export default function Admin() {
     paused: boolean; trippedBy: string | null;
   } | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"pending-managers" | "live-profiles" | "captured-drafts" | "approvals" | "bans" | "merge" | "companies" | "pending-companies" | "ai-suggestions" | "proposed-employments" | "role-conflicts" | "held-ratings" | "reports">("pending-managers");
+  const [activeTab, setActiveTab] = useState<"pending-managers" | "live-profiles" | "captured-drafts" | "approvals" | "bans" | "merge" | "companies" | "pending-companies" | "ai-suggestions" | "proposed-employments" | "role-conflicts" | "held-ratings" | "reports" | "job-titles">("pending-managers");
   const { summary: moderationSummary, reload: reloadModerationSummary } = useModerationSummary();
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
   const [aiSuggestionsTotal, setAiSuggestionsTotal] = useState(0);
@@ -95,6 +95,16 @@ export default function Admin() {
 
   // Live profiles (ghost managers) state
   const [ghostManagers, setGhostManagers] = useState<any[]>([]);
+  /*
+    Titles people have used that the curated catalogue does not hold.
+
+    The picker offers "Not listed? Add <what you typed>" for an unknown title, and that row
+    keeps the wording and tells nobody: job_titles could only change by writing a migration.
+    This tab is the review that was missing.
+  */
+  const [unlistedTitles, setUnlistedTitles] = useState<any[]>([]);
+  const [unlistedTitlesLoading, setUnlistedTitlesLoading] = useState(false);
+  const [promotingTitle, setPromotingTitle] = useState<string | null>(null);
   const [ghostManagersLoading, setGhostManagersLoading] = useState(false);
 
   /*
@@ -310,6 +320,35 @@ export default function Admin() {
     }
   };
 
+  const fetchUnlistedTitles = async () => {
+    setUnlistedTitlesLoading(true);
+    try {
+      const res = await axios.get(`${API_BASE}/api/admin/job-titles/unlisted`);
+      setUnlistedTitles(Array.isArray(res.data.data) ? res.data.data : []);
+    } catch {
+      toast.error("Failed to load job titles.");
+    } finally {
+      setUnlistedTitlesLoading(false);
+    }
+  };
+
+  const handlePromoteTitle = async (title: string) => {
+    setPromotingTitle(title);
+    try {
+      const res = await axios.post(`${API_BASE}/api/admin/job-titles/promote`, { title });
+      // added=false is not a failure: another admin reached the same obvious title first, or a
+      // different spelling of it already normalises into the catalogue.
+      toast.success(res.data?.added
+        ? `"${title}" added to the title list`
+        : `"${title}" was already in the title list`);
+      setUnlistedTitles(prev => prev.filter(t => t.title !== title));
+    } catch {
+      toast.error("Could not add that title.");
+    } finally {
+      setPromotingTitle(null);
+    }
+  };
+
   const handleMarkGhostReviewed = async (managerId: string | number) => {
     try {
       await axios.post(`${API_BASE}/api/admin/ghost-managers/${managerId}/mark-reviewed`);
@@ -474,6 +513,7 @@ export default function Admin() {
   useEffect(() => { if (activeTab === "captured-drafts") fetchCapturedDrafts(); }, [activeTab]);
   useEffect(() => { if (activeTab === "live-profiles") fetchGhostManagers(); }, [activeTab]);
   useEffect(() => { if (activeTab === "bans") fetchBanData(); }, [activeTab]);
+  useEffect(() => { if (activeTab === "job-titles") fetchUnlistedTitles(); }, [activeTab]);
   useEffect(() => {
     if (activeTab !== "ai-suggestions") return;
     setAiSuggestionsLoading(true);
@@ -1112,6 +1152,21 @@ export default function Admin() {
               Companies
             </button>
             <button
+              onClick={() => setActiveTab("job-titles")}
+              className={`whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                activeTab === "job-titles"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Job Titles
+              {unlistedTitles.length > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-blue-500 px-1.5 py-0.5 text-xs font-bold text-white">
+                  {unlistedTitles.length}
+                </span>
+              )}
+            </button>
+            <button
               onClick={() => setActiveTab("ai-suggestions")}
               className={`whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
                 activeTab === "ai-suggestions"
@@ -1324,7 +1379,27 @@ export default function Admin() {
                                 <Pencil size={14} />
                               </button>
                             </div>
-                            <p className="text-sm text-muted-foreground">{manager.title} at {manager.company}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {manager.title} at {manager.company}
+                              {/*
+                                Says the title is one the suggestion list does not hold, where the
+                                decision is actually being made. The Job Titles tab lists them all;
+                                this is so an admin reviewing ONE submission does not have to know
+                                to go and look.
+                              */}
+                              {(manager as any).titleUnlisted && manager.title && (
+                                <button
+                                  type="button"
+                                  data-testid="promote-title"
+                                  onClick={() => handlePromoteTitle(manager.title)}
+                                  disabled={promotingTitle === manager.title}
+                                  title="This title is not in the suggestion list. Add it?"
+                                  className="ml-2 whitespace-nowrap rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                                >
+                                  {promotingTitle === manager.title ? "Adding..." : "New title · add to list"}
+                                </button>
+                              )}
+                            </p>
                             {/*
                               Shown before the approve button, not hidden behind the edit form.
 
@@ -1508,6 +1583,60 @@ export default function Admin() {
           )}
 
           {/* ── Live Profiles (Ghost Managers) Tab ── */}
+          {/*
+            JOB TITLES NOBODY HAS CATALOGUED.
+
+            The title picker offers "Not listed? Add <what you typed>" when it cannot find a
+            title. That row keeps the contributor's wording and records nothing anywhere, so a
+            title entered the site by being submitted and the curated vocabulary could only change
+            by writing a migration. V116 reserved source = 'promoted' for this and nothing ever
+            wrote it.
+
+            Grouped by normalised key, because "Sr. Manager" and "Snr Manager" are one decision,
+            and shown with counts, because a spelling fifty people use is a different proposition
+            from one somebody typed once.
+          */}
+          {activeTab === "job-titles" && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Titles people have used that the suggestion list does not offer. Adding one puts it
+                in the list for everybody who types something similar from then on. It does not
+                change any existing profile.
+              </p>
+              {unlistedTitlesLoading ? (
+                <p className="text-muted-foreground text-sm">Loading...</p>
+              ) : unlistedTitles.length === 0 ? (
+                <div className="rounded-2xl border border-border bg-background p-8 text-center">
+                  <CheckCircle size={32} className="mx-auto mb-3 text-accent" />
+                  <p className="text-muted-foreground">Every title in use is already in the list.</p>
+                </div>
+              ) : (
+                unlistedTitles.map((row) => (
+                  <div
+                    key={row.matchKey}
+                    data-testid="unlisted-title-row"
+                    className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-background p-4"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-foreground">{row.title}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {row.managerCount} {row.managerCount === 1 ? "manager" : "managers"}
+                        {row.pendingCount > 0 && ` · ${row.pendingCount} awaiting review`}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handlePromoteTitle(row.title)}
+                      disabled={promotingTitle === row.title}
+                      className="shrink-0 whitespace-nowrap rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {promotingTitle === row.title ? "Adding..." : "Add to title list"}
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
           {activeTab === "live-profiles" && (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
@@ -1605,7 +1734,27 @@ export default function Admin() {
                                 <Pencil size={14} />
                               </button>
                             </div>
-                            <p className="text-sm text-muted-foreground">{manager.title} at {manager.company}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {manager.title} at {manager.company}
+                              {/*
+                                Says the title is one the suggestion list does not hold, where the
+                                decision is actually being made. The Job Titles tab lists them all;
+                                this is so an admin reviewing ONE submission does not have to know
+                                to go and look.
+                              */}
+                              {(manager as any).titleUnlisted && manager.title && (
+                                <button
+                                  type="button"
+                                  data-testid="promote-title"
+                                  onClick={() => handlePromoteTitle(manager.title)}
+                                  disabled={promotingTitle === manager.title}
+                                  title="This title is not in the suggestion list. Add it?"
+                                  className="ml-2 whitespace-nowrap rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                                >
+                                  {promotingTitle === manager.title ? "Adding..." : "New title · add to list"}
+                                </button>
+                              )}
+                            </p>
                             {/*
                               Shown before the approve button, not hidden behind the edit form.
 

@@ -17,9 +17,21 @@ interface RoleSuggestion {
   usageCount: number;
 }
 
-/** What a row reads. The pair where there is one, the words alone otherwise. */
+/**
+ * What a row reads: THE LONG FORM, ALWAYS, and nothing else.
+ *
+ * This read `${acronym} (${title})`, so a list answering "vp" was five rows beginning VP, SVP,
+ * AVP, AVP, EVP. REPORTED 2026-11-26: "I see a lot of VP instead of Vice President, thought we
+ * agreed to long form", and again after the first attempt only moved the acronym into brackets.
+ * Long form ONLY was the ask, and the decision of 2026-11-25 says the same: the extended form is
+ * what the product uses and what selection STORES.
+ *
+ * The acronym is still matched on, so typing "ceo" or "vp" still finds the row. It is simply not
+ * shown: the words are what identifies the job, and "Assistant Vice President" and "Associate Vice
+ * President" are told apart by their own second word rather than by a shared AVP.
+ */
 function rowLabel(s: RoleSuggestion): string {
-  return s.acronym ? `${s.acronym} (${s.title})` : s.title;
+  return s.title;
 }
 
 interface Props {
@@ -58,6 +70,24 @@ interface Props {
  */
 export function RoleAutocomplete({ id, value, onChange, placeholder, className, name, maxLength, invalid = false, ariaLabel, testId }: Props) {
   const [suggestions, setSuggestions] = useState<RoleSuggestion[]>([]);
+  /*
+    The query the ENDPOINT confirmed it already holds, exactly.
+
+    Kept apart from `suggestions` because the filter below removes a title identical to what was
+    typed, as noise - and the create row's question, "is this title unknown?", was then asked of
+    what was left. The match is never in there, so "Not listed? Add Engineering Manager" was
+    offered for a title the catalogue plainly holds, over whatever control sat beneath the list.
+
+    Stored as the query itself rather than a boolean, so it can never suppress the row for text it
+    was not about: the answer belongs to one query, and the next keystroke changes the question
+    before the next response arrives.
+
+    CompanyAutocomplete needs none of this: it does not filter its list, so its own exact match is
+    still in it to be found (company-identity.spec.ts, "Crumbl"). The filter here is deliberate -
+    a row identical to what somebody just typed offers nothing to choose - so the fact is recorded
+    instead of the row being kept.
+  */
+  const [exactFor, setExactFor] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -91,6 +121,7 @@ export function RoleAutocomplete({ id, value, onChange, placeholder, className, 
     // field with a long value stays as silent as opening an empty one.
     if (!userTypedRef.current) {
       setSuggestions([]);
+      setExactFor(null);
       setOpen(false);
       return;
     }
@@ -98,6 +129,7 @@ export function RoleAutocomplete({ id, value, onChange, placeholder, className, 
     const query = value.trim();
     if (query.length < 2) {
       setSuggestions([]);
+      setExactFor(null);
       setOpen(false);
       return;
     }
@@ -109,6 +141,9 @@ export function RoleAutocomplete({ id, value, onChange, placeholder, className, 
         );
         if (!res.ok) throw new Error(String(res.status));
         const data = (await res.json()) as RoleSuggestion[];
+        // ASKED OF THE WHOLE ANSWER, before the filter below removes the very row that answers it.
+        const known = data.some((s) => s.title.trim().toLowerCase() === query.toLowerCase());
+        setExactFor(known ? query : null);
         // A suggestion identical to what has already been typed is noise.
         const useful = data.filter(
           (s) => s.title.toLowerCase() !== query.toLowerCase(),
@@ -129,11 +164,18 @@ export function RoleAutocomplete({ id, value, onChange, placeholder, className, 
           click.
         */
         const stillFocused = containerRef.current?.contains(document.activeElement);
-        setOpen(stillFocused ? useful.length > 0 || query.length >= 2 : false);
+        /*
+          `query.length >= 2` is what makes the create row reachable, per the comment above. It is
+          qualified by `!known` so that a title the catalogue HOLDS opens nothing: the identical row
+          has just been filtered out, the create row must not be offered, and a listbox with
+          nothing in it would still report itself expanded while covering the controls below.
+        */
+        setOpen(stillFocused ? useful.length > 0 || (query.length >= 2 && !known) : false);
         setActiveIndex(-1);
       } catch {
         // Suggestions are a convenience - a failure here must never block typing a title.
         setSuggestions([]);
+        setExactFor(null);
         setOpen(false);
       }
     }, 120);  // the endpoint answers in single-digit milliseconds; the wait was almost entirely this timer
@@ -170,7 +212,14 @@ export function RoleAutocomplete({ id, value, onChange, placeholder, className, 
     CompanyAutocomplete's rule, deliberately: a person who types a title we do not hold must be
     told it will be used, not left looking at an empty field wondering what it wants.
   */
-  const exactMatch = suggestions.some((s) => s.title.toLowerCase() === typed.toLowerCase());
+  /*
+    Either the endpoint said it holds this exact title, or a row still listed is it. The second is
+    kept as well: a response that arrives for a longer query narrows the list without being about
+    this text, and the row is then the only evidence left.
+  */
+  const knownExactly = exactFor !== null && exactFor.trim().toLowerCase() === typed.toLowerCase();
+  const exactMatch = knownExactly
+    || suggestions.some((s) => s.title.toLowerCase() === typed.toLowerCase());
   const showCreateRow = typed.length >= 2 && !exactMatch;
   /* The create row is the last option, so the keyboard can reach it like any other. */
   const optionCount = suggestions.length + (showCreateRow ? 1 : 0);

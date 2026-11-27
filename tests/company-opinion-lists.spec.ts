@@ -205,11 +205,38 @@ test.describe("The workplace ratings behind the average", () => {
     await expect(page.getByText("Overall Working Experience")).toBeVisible();
   });
 
-  test("a rating nobody signed still renders, as an anonymous employee", async ({ page }) => {
-    // The alternative is a card that throws on a null handle, taking the whole list with it.
+  /*
+    REPORTED, 2026-11-26: a company page showed one opinion signed "WiseCrane53" and the one
+    beside it signed "Anonymous employee". That literal is worn by no live rating, so it marked
+    out exactly the rows whose author was unknown - and every rating written by somebody who had
+    deleted their account was one of them, because the erasure nulled the column. A reader could
+    tell which opinion belonged to a deleted account, which is the one fact the erasure removes.
+
+    THIS TEST USED TO ASSERT THAT THE LITERAL WAS VISIBLE. It was written to prove the card does
+    not throw on a null handle, which is a real requirement and is still covered below, but the
+    assertion it reached for pinned the disclosure in place: the fix could not land while this
+    test passed.
+  */
+  test("a rating nobody signed renders under a handle, never labelled anonymous", async ({ page }) => {
     await open(page, { tab: "?tab=company" });
 
-    await expect(page.getByText("Anonymous employee")).toBeVisible({ timeout: 10_000 });
+    // The card still renders, which was this test's original point: rat-3 carries author: null
+    // and its tenure line is the proof the row was not skipped or thrown away.
+    await expect(page.getByText("Current employee").first()).toBeVisible({ timeout: 10_000 });
+
+    // And it is signed like its neighbours. Adjective + Animal + two digits, the shape every
+    // handle on the page has, derived from the row id so it does not change between renders.
+    await expect(page.getByText(/^[A-Z][a-z]+[A-Z][a-z]+[1-9][0-9]$/).first()).toBeVisible();
+
+    /*
+      And no card is LABELLED instead of signed.
+
+      Scoped to the labels, not to the word: this first asserted that /anonymous/i appeared nowhere
+      on the page and failed on "Anonymous opinions on workplace managers", which is the site's own
+      promise about how contributions work and has to stay. The requirement is about what stands in
+      for a byline, so these are the strings that matter.
+    */
+    await expect(page.getByText(/anonymous (employee|candidate|user)/i)).toHaveCount(0);
   });
 
   test("tenure reads as a fact rather than a missing field", async ({ page }) => {
@@ -339,7 +366,7 @@ test.describe("The workplace ratings behind the average", () => {
     */
     await open(page, { ratings: [], tab: "?tab=company" });
 
-    await expect(page.getByRole("tab", { name: "Company" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("tab", { name: "Company Reviews" })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole("heading", { name: /Opinions on working at Red Hat/i })).toBeVisible();
     await expect(page.getByText(/Nobody has written about working at Red Hat yet/i)).toBeVisible();
   });
@@ -410,7 +437,7 @@ test.describe("The interview experiences behind the average", () => {
     // Same reasoning as the workplace list above: an empty company is an answer, not an absence.
     await open(page, { interviews: [], tab: "?tab=hiring" });
 
-    await expect(page.getByRole("tab", { name: "Interviewing" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("tab", { name: "Interview Reviews" })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole("heading", { name: /Opinions on interviews/i })).toBeVisible();
     await expect(page.getByText(/No individual experiences have been shared for Red Hat yet/i))
       .toBeVisible();

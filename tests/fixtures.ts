@@ -1154,3 +1154,30 @@ export async function answerLocation(page: Page, idPrefix = "rating") {
   await page.getByText("Toronto, Ontario, Canada").first().click();
   await page.getByTestId(`${idPrefix}-location-value`).first().waitFor({ state: "visible" });
 }
+
+/**
+ * Dismisses the job-title suggestion list, the way somebody keeping what they typed does before
+ * reaching for a control beneath it.
+ *
+ * <p>The list is portalled and anchored to the input, so while it is open it covers the field's
+ * own "Done editing" control: measured at four suggestions, the list spans y=345..536 while Done
+ * sits at y=353, under the first suggestion row. A click aimed at Done therefore lands on a
+ * suggestion and selects it. That is what made duplicate-review.spec.ts fail intermittently on
+ * firefox - it passed whenever the 120ms debounce and the fetch resolved AFTER the click, and
+ * failed whenever they resolved before it.
+ *
+ * <p>So a test that types a title and then reaches for Done has to do what a person does: deal
+ * with the list first. The product behaviour is deliberate - pick a suggestion, take the
+ * "Not listed? Add ..." row, or click away, and the list closes.
+ *
+ * <p>Escape rather than a click elsewhere: it leaves the review form open, where a click on the
+ * backdrop would close it, and it does not re-focus the input, which would reopen the list it just
+ * closed. Retried, because a response still in flight can open the list again after one press.
+ */
+export async function dismissTitleSuggestions(page: Page) {
+  const list = page.locator("#role-suggestions");
+  await expect(async () => {
+    await page.keyboard.press("Escape");
+    await expect(list).toHaveCount(0);
+  }).toPass({ timeout: 5_000 });
+}

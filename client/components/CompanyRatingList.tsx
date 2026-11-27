@@ -7,6 +7,7 @@ import { COMPANY_CATEGORIES, COMPANY_CATEGORY_LABELS } from "@/lib/companyRating
 import { getAvatarColor, getInitials } from "@/components/ManagerCard";
 import { formatDistanceToNow } from "date-fns";
 import { Stars } from "@/components/Stars";
+import { stablePseudonym } from "@/lib/pseudonym";
 import { OpinionCard, OpinionAuthor, LockedOpinions } from "@/components/OpinionCard";
 import { formatReviewPeriod } from "@/lib/reviewPeriod";
 
@@ -144,12 +145,22 @@ function WorkplaceRatingCard({
   const score = blurred
     ? WITHHELD_SCORES[stableIndex(r.id, WITHHELD_SCORES.length)]
     : (r.overallRating ?? 0);
-  // Anonymous by construction, so the avatar is seeded from the row's own id rather than a
-  // name. Stable per rating, and it reveals nothing.
-  // Seeded from the handle so the avatar colour and initials belong to the name shown.
-  // Falling back to the row id keeps older, unsigned ratings stable and distinct.
-  const seed = r.author ?? r.id;
-  const displayName = r.author ?? "Anonymous employee";
+  /*
+    NEVER "Anonymous employee".
+
+    REPORTED, 2026-11-26: this card showed that literal beside ratings signed with ordinary
+    handles, so a reader could tell which opinion had been written by somebody who deleted their
+    account - the one fact the erasure exists to remove. The byline was null because account
+    erasure nulled the column, on the premise that no author name was ever selected for display.
+    It is selected, by this line.
+
+    The server now writes a handle on every path and substitutes a stable one at read time, so a
+    null should not arrive. When one does, the card is signed like its neighbours rather than
+    labelled, and the name is derived from the row id so it does not change between renders.
+  */
+  const displayName = r.author ?? stablePseudonym(r.id);
+  // Seeded from the name shown, so the avatar colour and its initials belong to the same handle.
+  const seed = displayName;
   return (
           <OpinionCard>
             {/* Tenure first - the context a reader needs before the number means anything. */}

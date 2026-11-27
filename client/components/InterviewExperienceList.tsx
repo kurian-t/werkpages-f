@@ -8,6 +8,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ChevronDown, Star } from "lucide-react";
 import API_BASE from "@/lib/api";
 import { PROCESS_LENGTH_LABELS, type ProcessLength } from "@/lib/interviews";
+import { stablePseudonym } from "@/lib/pseudonym";
 
 /**
  * The individual interview experiences behind the average.
@@ -159,8 +160,15 @@ function InterviewExperienceCard({
                 Withheld with the score, except on the lead card of a locked stack when that
                 card is genuinely somebody's.
               */}
+              {/*
+                NEVER "Anonymous candidate". That literal is worn by no live experience, so it
+                marked out the rows whose author was unknown - including every experience whose
+                author had deleted their account, because the erasure nulled this column until
+                2026-11-26. An unsigned experience is signed like its neighbours instead, from its
+                own id so the name does not change between renders.
+              */}
               <OpinionAuthor
-                name={r.author ?? "Anonymous candidate"}
+                name={r.author ?? stablePseudonym(r.id)}
                 when={writtenWhen(r.createdAt, r.updatedAt)}
                 blurred={blurred && !revealIdentity}
               />

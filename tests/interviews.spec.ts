@@ -102,7 +102,7 @@ async function mockCompany(page: any, stats: Record<string, unknown>, signedIn =
 
 async function openHiringTab(page: any) {
   await page.goto(COMPANY_URL);
-  await page.getByRole("tab", { name: "Interviewing" }).click();
+  await page.getByRole("tab", { name: "Interview Reviews" }).click();
 }
 
 /**
@@ -159,8 +159,8 @@ test.describe("Getting hired tab", () => {
 
     await expect(page.getByRole("tab", { name: "Managers" }))
       .toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole("tab", { name: "Company" })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Interviewing" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Company Reviews" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Interview Reviews" })).toBeVisible();
     await expect(page.getByRole("tab")).toHaveCount(3);
   });
 
@@ -193,7 +193,7 @@ test.describe("Getting hired tab", () => {
     await mockCompany(page, interviewStats(), false);
     await page.goto(`${COMPANY_URL}?tab=hiring`);
 
-    await expect(page.getByRole("tab", { name: "Interviewing" }))
+    await expect(page.getByRole("tab", { name: "Interview Reviews" }))
       .toHaveAttribute("aria-selected", "true", { timeout: 10_000 });
     await expect(page.getByTestId("interview-panel")).toBeVisible();
   });
@@ -230,7 +230,7 @@ test.describe("Getting hired tab", () => {
     */
     await mockCompany(page, interviewStats({ gated: true, hasContributed: false, categoryAverages: null, categoryComparison: null }));
     await page.goto(COMPANY_URL);
-    await page.getByRole("tab", { name: "Interviewing" }).click();
+    await page.getByRole("tab", { name: "Interview Reviews" }).click();
     await expect(page.getByText(/are locked/i).first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/\d+ (candidate )?experiences/)).toHaveCount(0);
   });
@@ -516,7 +516,7 @@ test.describe("Adding an interview experience", () => {
     await page.getByRole("button", { name: "Cancel" }).click();
 
     await expect(page).toHaveURL(/red-hat\?tab=hiring$/, { timeout: 10_000 });
-    await expect(page.getByRole("tab", { name: "Interviewing" }))
+    await expect(page.getByRole("tab", { name: "Interview Reviews" }))
       .toHaveAttribute("aria-selected", "true");
   });
 
@@ -527,7 +527,7 @@ test.describe("Adding an interview experience", () => {
 
     await page.reload();
 
-    await expect(page.getByRole("tab", { name: "Interviewing" }))
+    await expect(page.getByRole("tab", { name: "Interview Reviews" }))
       .toHaveAttribute("aria-selected", "true", { timeout: 10_000 });
   });
 });

@@ -77,7 +77,7 @@ async function open(page: any, over: Record<string, unknown> = {}) {
   await page.route("**/api/companies/red-hat/interviews**", (r: any) =>
     r.fulfill({ json: stats(over) }));
   await page.goto(`${COMPANY_URL}?tab=hiring`);
-  await expect(page.getByRole("tab", { name: "Interviewing" })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("tab", { name: "Interview Reviews" })).toBeVisible({ timeout: 10_000 });
 }
 
 test.describe("The outcome split", () => {
@@ -136,7 +136,7 @@ test.describe("The typical process", () => {
     // Rounds are optional on the form, so an empty list is ordinary rather than an error.
     await open(page, { typicalRounds: [] });
 
-    await expect(page.getByRole("tab", { name: "Interviewing" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("tab", { name: "Interview Reviews" })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/Recruiter screen.*Technical/)).toHaveCount(0);
   });
 

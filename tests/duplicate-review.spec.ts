@@ -8,7 +8,7 @@ import {
   MOCK_EXISTING_REVIEW,
   RATING_CATEGORIES,
   mockManagerPage,
-  advanceToDatesStep, answerLocation } from "./fixtures";
+  advanceToDatesStep, answerLocation, dismissTitleSuggestions } from "./fixtures";
 
 const FULL_RATINGS = Object.fromEntries(RATING_CATEGORIES.map((c) => [c, 5]));
 
@@ -439,6 +439,13 @@ test.describe("Duplicate review - conflict UI after auth", () => {
     await page.getByRole("button", { name: /edit title details/i }).click();
     // The review form uses the shared ManagerIdentityFields now, which owns this placeholder.
     await page.getByPlaceholder(/e\.g\.,? Engineering Manager/).fill("Senior Software Engineer");
+    /*
+      Typing opens the suggestion list, which is anchored over this field's own Done control, so
+      the list is dealt with first - as somebody keeping their own wording would. Without this the
+      click lands on a suggestion row instead, and this test failed intermittently on firefox
+      depending on whether the debounce and the fetch beat it. See dismissTitleSuggestions.
+    */
+    await dismissTitleSuggestions(page);
     await page.getByRole("button", { name: /done editing title/i }).click();
 
     // "Add another role" opens a NEW review, so its location starts empty and is required.

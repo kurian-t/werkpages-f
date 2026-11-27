@@ -97,12 +97,25 @@ test.describe("The title picker, live", () => {
     await expect(page.locator(OPTION).filter({ hasText: /^Manager$/ })).toHaveCount(1);
   });
 
-  test("an acronym row shows both forms, so the stored value is never a surprise", async ({ page }) => {
+  /*
+    THE LONG FORM, AND ONLY THE LONG FORM.
+
+    This asserted "CEO (Chief Executive Officer)" until 2026-11-26, when it was reported that a
+    list answering "vp" read as five rows beginning VP, SVP, AVP, AVP, EVP. Moving the acronym
+    into brackets was not enough and was reported again: long form only is the ask, and it matches
+    the 2026-11-25 decision that the extended form is what the product uses and what it stores.
+
+    The acronym is still MATCHED on, which is what the next line proves: three letters find a row
+    that never displays them.
+  */
+  test("typing an acronym finds the row, and the row shows the words", async ({ page }) => {
     await titleField(page);
     await type(page, "ceo");
 
-    await expect(page.locator(OPTION).filter({ hasText: "CEO (Chief Executive Officer)" }))
+    await expect(page.locator(OPTION).filter({ hasText: /^Chief Executive Officer$/ }))
       .toHaveCount(1);
+    // Not "CEO (...)", not "... (CEO)". The acronym is a search key, never a label.
+    await expect(page.locator(OPTION).filter({ hasText: /CEO/ })).toHaveCount(0);
   });
 
   /*
@@ -121,7 +134,7 @@ test.describe("The title picker, live", () => {
   });
 
   /*
-    What gets STORED is the extended form, not the label. "CEO (Chief Executive Officer)" would
+    What gets STORED is the extended form, which is also what the row now reads. The label would
     normalize to the long form twice over, because the normalizer expands the acronym as well,
     which would key one job as a different job.
   */
@@ -129,7 +142,7 @@ test.describe("The title picker, live", () => {
     const field = await titleField(page);
     await type(page, "ceo");
 
-    await page.locator(OPTION).filter({ hasText: "CEO (Chief Executive Officer)" }).click();
+    await page.locator(OPTION).filter({ hasText: /^Chief Executive Officer$/ }).click();
 
     await expect(field).toHaveValue("Chief Executive Officer");
     await expect(page.locator(LIST)).toHaveCount(0);
@@ -158,7 +171,7 @@ test.describe("The title picker, live", () => {
   test("returning to a filled field asks for nothing", async ({ page }) => {
     const field = await titleField(page);
     await type(page, "ceo");
-    await page.locator(OPTION).filter({ hasText: "CEO (Chief Executive Officer)" }).click();
+    await page.locator(OPTION).filter({ hasText: /^Chief Executive Officer$/ }).click();
     await expect(field).toHaveValue("Chief Executive Officer");
 
     // Away, then back, without typing.

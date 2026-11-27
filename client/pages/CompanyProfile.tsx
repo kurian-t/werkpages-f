@@ -235,7 +235,7 @@ function CompanyRatingPanel({
 
           The redesign moved this tab onto CompanyTabHeader and did not carry the overlay across,
           so a locked reader got a blurred dash and no words at all - the figure was still properly
-          withheld, but nothing said why or what to do about it. The Interviewing tab kept its
+          withheld, but nothing said why or what to do about it. The Interview Reviews tab kept its
           overlay through the same change, which left two sibling tabs explaining the same gate and
           the third staying silent.
         */
@@ -578,7 +578,7 @@ export default function CompanyProfile() {
    * would be a second, cruder gate on top of that - and one that teaches a first-time visitor
    * nothing. A tab you cannot open yet still says the dataset exists and what opens it.
    *
-   * This used to hide Interviewing until a manager had been rated, which quietly made a manager
+   * This used to hide Interview Reviews until a manager had been rated, which quietly made a manager
    * rating the price of admission to two datasets it says nothing about.
    */
   const visibleTabs: CompanyTab[] = ["managers", "company", "hiring"];
@@ -946,8 +946,8 @@ export default function CompanyProfile() {
           */}
           {(([
             { id: "managers", title: "Managers" },
-            { id: "company",  title: "Company" },
-            { id: "hiring",   title: "Interviewing" },
+            { id: "company",  title: "Company Reviews" },
+            { id: "hiring",   title: "Interview Reviews" },
           ] as const).filter((tab) => visibleTabs.includes(tab.id))).map((tab) => {
             const active = activeTab === tab.id;
             return (

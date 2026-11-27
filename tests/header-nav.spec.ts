@@ -441,3 +441,43 @@ test.describe("Header - mobile menu", () => {
     ).toBeVisible({ timeout: 3_000 });
   });
 });
+
+/**
+ * THE ADD MANAGER BUTTON KEEPS ITS SHAPE.
+ *
+ * <p>REPORTED, 2026-11-26: "the add manager button being this square and weird is also wrong, it
+ * should be rectangular and should not be changing shape based on the screen shrinking and
+ * growing". At narrower desktop widths the label broke across two lines, "Add" over "Manager", and
+ * the button became a square that changed shape as the window moved.
+ *
+ * <p>Cause: the nav is a flex row, and a flex item may be compressed below the width of its own
+ * text. This button is the last item in the row, so it was the one that gave.
+ *
+ * <p>Measured from the DOM, not from the class list. A Tailwind class named in a diff proves
+ * nothing about what the browser laid out, and the failure mode here is purely geometric: a
+ * wrapped button is taller than an unwrapped one.
+ */
+test.describe("The Add Manager button does not reshape with the window", () => {
+  test("its height is the same at 1280px and at the narrowest desktop width", async ({ page }) => {
+    await setupAuthPage(page);
+    await page.goto("/");
+
+    const button = page.getByRole("link", { name: /add manager/i });
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(button).toBeVisible({ timeout: 10_000 });
+    const wide = await button.boundingBox();
+
+    // 768px is where this header switches to the mobile menu, so this is the tightest the desktop
+    // row is ever asked to be. The old behaviour wrapped well before here.
+    await page.setViewportSize({ width: 800, height: 800 });
+    await expect(button).toBeVisible();
+    const narrow = await button.boundingBox();
+
+    expect(wide).not.toBeNull();
+    expect(narrow).not.toBeNull();
+    expect(narrow!.height).toBe(wide!.height);
+    // And still wider than it is tall, which is what "rectangular, not square" means here.
+    expect(narrow!.width).toBeGreaterThan(narrow!.height);
+  });
+});

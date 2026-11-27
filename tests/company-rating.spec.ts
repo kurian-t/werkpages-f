@@ -85,9 +85,9 @@ test.describe("Company ratings on a company page", () => {
   test("there are three tabs, one question each", async ({ page }) => {
     await mock(page);
 
-    await expect(page.getByRole("tab", { name: "Company" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("tab", { name: "Company Reviews" })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole("tab", { name: "Managers" })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Interviewing" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Interview Reviews" })).toBeVisible();
   });
 
   /*
@@ -119,7 +119,7 @@ test.describe("Company ratings on a company page", () => {
      * same teaser every other company shows.
      */
     await mock(page, UNRATED, false, false);
-    await page.getByRole("tab", { name: "Company" }).click();
+    await page.getByRole("tab", { name: "Company Reviews" }).click();
 
     await expect(page.getByText("Workplace ratings are locked")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/Nobody has rated Red Hat as a workplace yet/)).toHaveCount(0);
@@ -135,7 +135,7 @@ test.describe("Company ratings on a company page", () => {
       bars are no longer rendered at all. The property is unchanged; what carries it moved.
     */
     await mock(page, UNRATED, false, false);
-    await page.getByRole("tab", { name: "Company" }).click();
+    await page.getByRole("tab", { name: "Company Reviews" }).click();
 
     await expect(page.getByText("Workplace ratings are locked")).toBeVisible({ timeout: 10_000 });
     // And it does not admit the emptiness while it is locked.
@@ -146,7 +146,7 @@ test.describe("Company ratings on a company page", () => {
   test("an unrated company says so rather than showing zero", async ({ page }) => {
     // 0.0 says the workplace is terrible. Saying nothing says nobody has told us yet.
     await mock(page, UNRATED);
-    await page.getByRole("tab", { name: "Company" }).click();
+    await page.getByRole("tab", { name: "Company Reviews" }).click();
 
     await expect(page.getByText(/Nobody has rated Red Hat as a workplace yet/)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("0.0")).toHaveCount(0);
@@ -156,7 +156,7 @@ test.describe("Company ratings on a company page", () => {
     // They were rendering in the clear while the manager averages beside them were blurred. A
     // second dataset does not get a lighter policy than the first just because it is newer.
     await mock(page, COMPANY, false);
-    await page.getByRole("tab", { name: "Company" }).click();
+    await page.getByRole("tab", { name: "Company Reviews" }).click();
 
     await expect(page.getByText("Workplace ratings are locked")).toBeVisible({ timeout: 10_000 });
     /*
@@ -172,7 +172,7 @@ test.describe("Company ratings on a company page", () => {
     // Reading is earned; contributing is not. Someone who arrived from a search for the company
     // can still say what it was like without first rating a stranger.
     await mock(page, COMPANY, false);
-    await page.getByRole("tab", { name: "Company" }).click();
+    await page.getByRole("tab", { name: "Company Reviews" }).click();
 
     await expect(page.getByRole("button", { name: /Rate this workplace/ })).toBeVisible({ timeout: 10_000 });
   });
@@ -187,16 +187,16 @@ test.describe("Company ratings on a company page", () => {
     // Hiding it entirely tells a first-time visitor nothing at all.
     await mock(page, UNRATED, false, false);
 
-    await expect(page.getByRole("tab", { name: "Company" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("tab", { name: "Company Reviews" })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole("tab", { name: "Managers" })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Interviewing" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Interview Reviews" })).toBeVisible();
   });
 
   test("rating a manager does not unlock the workplace numbers", async ({ page }) => {
     // One gate per dataset. Somebody who has rated a manager knows nothing about the workplace,
     // so their manager contribution should not buy them the workplace figures.
     await mock(page, COMPANY, true, false);
-    await page.getByRole("tab", { name: "Company" }).click();
+    await page.getByRole("tab", { name: "Company Reviews" }).click();
 
     await expect(page.getByText("Workplace ratings are locked")).toBeVisible({ timeout: 10_000 });
   });

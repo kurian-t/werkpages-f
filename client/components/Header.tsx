@@ -106,7 +106,12 @@ export function Header() {
           <BrandLogo />
 
           {/* Desktop Navigation */}
-          <nav className="hidden items-center gap-8 md:flex">
+          {/*
+            whitespace-nowrap on the row, not on one control. Every item here is a short label that
+            means nothing broken across two lines, and the first one to wrap changes the height of
+            the whole header.
+          */}
+          <nav className="hidden items-center gap-8 whitespace-nowrap md:flex">
             {!user && (
               <Link
                 to="/"
@@ -151,7 +156,14 @@ export function Header() {
               <Link
                 to={isBanned ? "#" : "/add"}
                 onClick={(e) => isBanned && e.preventDefault()}
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                /*
+                  shrink-0 as well as the row's nowrap. A flex item may be compressed below the
+                  width of its own text, and this one is the last thing in the row, so when the
+                  window narrowed it was the one that gave: "Add Manager" broke over two lines and
+                  the button turned into a square that changed shape as the window moved. A button
+                  keeps its shape; the row scrolls or the layout breaks to mobile instead.
+                */
+                className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
                   isBanned
                     ? "bg-muted text-muted-foreground cursor-not-allowed"
                     : "bg-[#2e0562] text-white hover:bg-[#2e0562]/90"
