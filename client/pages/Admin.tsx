@@ -1381,25 +1381,27 @@ export default function Admin() {
                             </div>
                             <p className="text-sm text-muted-foreground">
                               {manager.title} at {manager.company}
-                              {/*
-                                Says the title is one the suggestion list does not hold, where the
-                                decision is actually being made. The Job Titles tab lists them all;
-                                this is so an admin reviewing ONE submission does not have to know
-                                to go and look.
-                              */}
-                              {(manager as any).titleUnlisted && manager.title && (
-                                <button
-                                  type="button"
-                                  data-testid="promote-title"
-                                  onClick={() => handlePromoteTitle(manager.title)}
-                                  disabled={promotingTitle === manager.title}
-                                  title="This title is not in the suggestion list. Add it?"
-                                  className="ml-2 whitespace-nowrap rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
-                                >
-                                  {promotingTitle === manager.title ? "Adding..." : "New title · add to list"}
-                                </button>
-                              )}
                             </p>
+                            {/*
+                              ON ITS OWN LINE, not inside the sentence above.
+
+                              It sat after {manager.company} and read "Driver / Operator at City of
+                              CalgaryNew title · add to list" - and where a submission has no
+                              company, "Salesman at New title · add to list", as though the
+                              employer were called that. A control is not a noun in a sentence.
+                            */}
+                            {(manager as any).titleUnlisted && manager.title && (
+                              <button
+                                type="button"
+                                data-testid="promote-title"
+                                onClick={() => handlePromoteTitle(manager.title)}
+                                disabled={promotingTitle === manager.title}
+                                title="This title is not in the suggestion list. Add it?"
+                                className="mt-1 inline-flex w-fit whitespace-nowrap rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                              >
+                                {promotingTitle === manager.title ? "Adding..." : "New title · add to list"}
+                              </button>
+                            )}
                             {/*
                               Shown before the approve button, not hidden behind the edit form.
 
@@ -1736,25 +1738,27 @@ export default function Admin() {
                             </div>
                             <p className="text-sm text-muted-foreground">
                               {manager.title} at {manager.company}
-                              {/*
-                                Says the title is one the suggestion list does not hold, where the
-                                decision is actually being made. The Job Titles tab lists them all;
-                                this is so an admin reviewing ONE submission does not have to know
-                                to go and look.
-                              */}
-                              {(manager as any).titleUnlisted && manager.title && (
-                                <button
-                                  type="button"
-                                  data-testid="promote-title"
-                                  onClick={() => handlePromoteTitle(manager.title)}
-                                  disabled={promotingTitle === manager.title}
-                                  title="This title is not in the suggestion list. Add it?"
-                                  className="ml-2 whitespace-nowrap rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
-                                >
-                                  {promotingTitle === manager.title ? "Adding..." : "New title · add to list"}
-                                </button>
-                              )}
                             </p>
+                            {/*
+                              ON ITS OWN LINE, not inside the sentence above.
+
+                              It sat after {manager.company} and read "Driver / Operator at City of
+                              CalgaryNew title · add to list" - and where a submission has no
+                              company, "Salesman at New title · add to list", as though the
+                              employer were called that. A control is not a noun in a sentence.
+                            */}
+                            {(manager as any).titleUnlisted && manager.title && (
+                              <button
+                                type="button"
+                                data-testid="promote-title"
+                                onClick={() => handlePromoteTitle(manager.title)}
+                                disabled={promotingTitle === manager.title}
+                                title="This title is not in the suggestion list. Add it?"
+                                className="mt-1 inline-flex w-fit whitespace-nowrap rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                              >
+                                {promotingTitle === manager.title ? "Adding..." : "New title · add to list"}
+                              </button>
+                            )}
                             {/*
                               Shown before the approve button, not hidden behind the edit form.
 
